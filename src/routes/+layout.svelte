@@ -11,7 +11,7 @@
 <div class="flex min-h-screen flex-col bg-background">
 	<TopBar />
 
-	<main class="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+	<main class="mx-auto w-full max-w-360 flex-1 px-6 py-8">
 		{@render children()}
 	</main>
 
