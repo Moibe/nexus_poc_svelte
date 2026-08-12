@@ -4,6 +4,12 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	server: {
+		port: 7000,
+		// Sin esto, si el 7000 está ocupado Vite se brinca al 7001 sin avisar y
+		// terminas hablándole a un server viejo sin darte cuenta. Mejor que truene.
+		strictPort: true
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({
