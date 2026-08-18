@@ -33,6 +33,20 @@ const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
 const DURACION_SIMULADA_MS = 900;
 const INTERVALO_TICK_MS = 60;
 
+// NO usar crypto.randomUUID(): esa API solo existe en "contextos seguros"
+// (HTTPS o localhost), y el server de CSI expone esta app por HTTP plano en su
+// IP interna (sin nginx ni TLS) — ahí `crypto.randomUUID` ni siquiera existe
+// como función, y truena la app entera al intentar agregar un archivo.
+// Confirmado 2026-08-18 en producción (funcionaba en local porque `localhost`
+// cuenta como contexto seguro aunque sea HTTP). Este generador no toca
+// crypto en absoluto: es suficientemente único para una lista efímera en
+// memoria del navegador, que es todo lo que necesita hoy.
+let contadorId = 0;
+function generarId(): string {
+	contadorId += 1;
+	return `${Date.now().toString(36)}-${contadorId}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
 
 export function agregarArchivos(files: FileList) {
@@ -41,7 +55,7 @@ export function agregarArchivos(files: FileList) {
 		if (!EXTENSIONES_PERMITIDAS.includes(extension)) continue;
 		if (file.size > TAMANO_MAXIMO_BYTES) continue;
 
-		const id = crypto.randomUUID();
+		const id = generarId();
 		documentosEnBandeja.push({
 			id,
 			nombre: file.name,
