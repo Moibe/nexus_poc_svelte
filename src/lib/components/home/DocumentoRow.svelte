@@ -6,13 +6,16 @@
 
 	let { documento }: { documento: DocumentoEnBandeja } = $props();
 
-	const esImagen = ['JPG', 'JPEG', 'TIFF'].includes(documento.extension);
+	const esImagen = $derived(['JPG', 'JPEG', 'TIFF'].includes(documento.extension));
 </script>
 
-<div class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
-	<span
-		class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-	>
+<div
+	class={[
+		'flex items-center gap-3 rounded-lg border px-3 py-2.5',
+		documento.estado === 'duplicado' ? 'border-red-200 bg-red-50/60' : 'border-border bg-background'
+	]}
+>
+	<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
 		{#if esImagen}
 			<ImageIcon />
 		{:else}
@@ -37,6 +40,12 @@
 			<p class="text-xs text-muted-foreground">
 				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {documento.origen}
 			</p>
+			{#if documento.estado === 'duplicado'}
+				<p class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
+					<span class="size-1.5 shrink-0 rounded-full bg-red-600"></span>
+					Documento duplicado
+				</p>
+			{/if}
 		</div>
 	{/if}
 

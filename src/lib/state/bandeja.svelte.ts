@@ -5,12 +5,15 @@
  * Es a propósito mientras el DBA termina SQL Server — cuando esté lista la
  * base, esto se reemplaza por datos reales vía nexus_back y HU027.
  *
- * El "progreso" de subida también es SIMULADO: hoy no hay ningún envío real a
- * un servidor (no hay backend conectado todavía), así que no existe un evento
- * de progreso real que mostrar. Cuando exista la subida real hacia nexus_back,
- * `simularSubida` se reemplaza por el progreso que reporte esa llamada (ej. el
- * evento `progress` de XHR o de fetch con ReadableStream).
+ * Por lo mismo, la detección de duplicados de aquí SOLO ve lo que ya está en
+ * esta lista en memoria en esta sesión del navegador — si refrescas la página
+ * o subes el mismo archivo en otro momento, no hay historial contra el cual
+ * comparar. HU024 (calcular Y ALMACENAR el hash) es justo lo que resuelve esto
+ * de verdad: el valor real de esta función aparece hasta que el hash se
+ * compare contra todo lo que ya se ingirió antes, vía SQL Server.
  */
+
+import { sha256 } from 'js-sha256';
 
 export type DocumentoEnBandeja = {
 	id: string;
@@ -19,8 +22,9 @@ export type DocumentoEnBandeja = {
 	tamanioBytes: number;
 	origen: 'Manual';
 	agregadoEn: Date;
-	estado: 'subiendo' | 'listo';
+	estado: 'subiendo' | 'listo' | 'duplicado';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
+	hashSha256: string | null; // null mientras estado === 'subiendo'
 };
 
 // Mismas restricciones que ya anuncia la UI del dropzone. Centralizadas aquí
@@ -30,7 +34,7 @@ export type DocumentoEnBandeja = {
 const EXTENSIONES_PERMITIDAS = ['pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'tiff'];
 const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
 
-const DURACION_SIMULADA_MS = 900;
+const DURACION_ANIMACION_MS = 900;
 const INTERVALO_TICK_MS = 60;
 
 // NO usar crypto.randomUUID(): esa API solo existe en "contextos seguros"
@@ -45,6 +49,17 @@ let contadorId = 0;
 function generarId(): string {
 	contadorId += 1;
 	return `${Date.now().toString(36)}-${contadorId}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Mismo problema de contexto seguro con la huella del documento: la forma
+// "normal" de sacar un SHA-256 en el navegador es `crypto.subtle.digest`, pero
+// esa API también está restringida a contexto seguro y truena igual en el
+// server de CSI. `js-sha256` calcula el hash en JavaScript puro, sin tocar
+// `crypto` en absoluto — funciona igual en HTTP plano (verificado leyendo su
+// código fuente antes de instalarla).
+async function calcularHash(file: File): Promise<string> {
+	const buffer = await file.arrayBuffer();
+	return sha256(buffer);
 }
 
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
@@ -64,33 +79,45 @@ export function agregarArchivos(files: FileList) {
 			origen: 'Manual',
 			agregadoEn: new Date(),
 			estado: 'subiendo',
-			progreso: 0
+			progreso: 0,
+			hashSha256: null
 		});
-		simularSubida(id);
+		procesarArchivo(id, file);
 	}
 }
 
-function simularSubida(id: string) {
+// La animación de progreso y el cálculo del hash corren en paralelo, pero solo
+// el hash decide cuándo termina de verdad: el timer nunca pasa de 90% ni marca
+// "listo" por sí solo (por eso el tope), así que nunca declaramos completo un
+// archivo antes de saber si es duplicado. Si el hash tarda más que la
+// animación (archivo grande, equipo lento), la barra simplemente se queda en
+// 90% esperando el resultado real en vez de mentir.
+function animarProgresoMientrasSube(id: string) {
 	const inicio = Date.now();
 	const intervalo = setInterval(() => {
-		// Se busca por id en cada tick (en vez de guardar la referencia del
-		// objeto) porque $state envuelve en un proxy lo que se hace push aquí;
-		// mutar un objeto guardado de antes de insertarlo no dispara reactividad.
-		// Buscarlo de nuevo también resuelve solo el caso de que lo hayan quitado
-		// (botón "quitar") a medio simular: aquí ya no se encuentra y se limpia.
 		const doc = documentosEnBandeja.find((d) => d.id === id);
-		if (!doc) {
+		if (!doc || doc.estado !== 'subiendo') {
 			clearInterval(intervalo);
 			return;
 		}
-
 		const transcurrido = Date.now() - inicio;
-		doc.progreso = Math.min(100, Math.round((transcurrido / DURACION_SIMULADA_MS) * 100));
-		if (transcurrido >= DURACION_SIMULADA_MS) {
-			doc.estado = 'listo';
-			clearInterval(intervalo);
-		}
+		doc.progreso = Math.min(90, Math.round((transcurrido / DURACION_ANIMACION_MS) * 90));
 	}, INTERVALO_TICK_MS);
+}
+
+async function procesarArchivo(id: string, file: File) {
+	animarProgresoMientrasSube(id);
+
+	const hash = await calcularHash(file);
+
+	const doc = documentosEnBandeja.find((d) => d.id === id);
+	if (!doc) return; // lo quitaron (botón "quitar") mientras se procesaba
+
+	const esDuplicado = documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
+
+	doc.hashSha256 = hash;
+	doc.progreso = 100;
+	doc.estado = esDuplicado ? 'duplicado' : 'listo';
 }
 
 export function quitarDocumento(id: string) {
