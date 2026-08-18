@@ -4,6 +4,12 @@
  * PROVISIONAL: solo vive en memoria del navegador (se pierde al refrescar).
  * Es a propósito mientras el DBA termina SQL Server — cuando esté lista la
  * base, esto se reemplaza por datos reales vía nexus_back y HU027.
+ *
+ * El "progreso" de subida también es SIMULADO: hoy no hay ningún envío real a
+ * un servidor (no hay backend conectado todavía), así que no existe un evento
+ * de progreso real que mostrar. Cuando exista la subida real hacia nexus_back,
+ * `simularSubida` se reemplaza por el progreso que reporte esa llamada (ej. el
+ * evento `progress` de XHR o de fetch con ReadableStream).
  */
 
 export type DocumentoEnBandeja = {
@@ -13,6 +19,8 @@ export type DocumentoEnBandeja = {
 	tamanioBytes: number;
 	origen: 'Manual';
 	agregadoEn: Date;
+	estado: 'subiendo' | 'listo';
+	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 };
 
 // Mismas restricciones que ya anuncia la UI del dropzone. Centralizadas aquí
@@ -22,6 +30,9 @@ export type DocumentoEnBandeja = {
 const EXTENSIONES_PERMITIDAS = ['pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'tiff'];
 const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
 
+const DURACION_SIMULADA_MS = 900;
+const INTERVALO_TICK_MS = 60;
+
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
 
 export function agregarArchivos(files: FileList) {
@@ -30,15 +41,42 @@ export function agregarArchivos(files: FileList) {
 		if (!EXTENSIONES_PERMITIDAS.includes(extension)) continue;
 		if (file.size > TAMANO_MAXIMO_BYTES) continue;
 
+		const id = crypto.randomUUID();
 		documentosEnBandeja.push({
-			id: crypto.randomUUID(),
+			id,
 			nombre: file.name,
 			extension: extension.toUpperCase(),
 			tamanioBytes: file.size,
 			origen: 'Manual',
-			agregadoEn: new Date()
+			agregadoEn: new Date(),
+			estado: 'subiendo',
+			progreso: 0
 		});
+		simularSubida(id);
 	}
+}
+
+function simularSubida(id: string) {
+	const inicio = Date.now();
+	const intervalo = setInterval(() => {
+		// Se busca por id en cada tick (en vez de guardar la referencia del
+		// objeto) porque $state envuelve en un proxy lo que se hace push aquí;
+		// mutar un objeto guardado de antes de insertarlo no dispara reactividad.
+		// Buscarlo de nuevo también resuelve solo el caso de que lo hayan quitado
+		// (botón "quitar") a medio simular: aquí ya no se encuentra y se limpia.
+		const doc = documentosEnBandeja.find((d) => d.id === id);
+		if (!doc) {
+			clearInterval(intervalo);
+			return;
+		}
+
+		const transcurrido = Date.now() - inicio;
+		doc.progreso = Math.min(100, Math.round((transcurrido / DURACION_SIMULADA_MS) * 100));
+		if (transcurrido >= DURACION_SIMULADA_MS) {
+			doc.estado = 'listo';
+			clearInterval(intervalo);
+		}
+	}, INTERVALO_TICK_MS);
 }
 
 export function quitarDocumento(id: string) {
