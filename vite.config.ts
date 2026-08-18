@@ -1,5 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
@@ -18,9 +18,16 @@ export default defineConfig({
 				runes: ({ filename }) => filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
+			// adapter-node: el deploy va a pm2 en el server de CSI, que necesita un
+			// servidor Node real (build/index.js) y no un target de plataforma.
+			// Además la app va a proxear a nexus_back desde su capa server, así que
+			// un build estático no serviría.
+			//
+			// OJO en producción: adapter-node NO autocarga el .env — build/env.js
+			// solo lee process.env tal cual. Hay que arrancar con
+			// `--node-args="--env-file=.env"`, si no Node usa sus defaults
+			// (PORT=3000) en silencio y la app queda "online" en pm2 pero en el
+			// puerto equivocado. Mismo tropiezo ya documentado en shape_up.
 			adapter: adapter()
 		})
 	]
