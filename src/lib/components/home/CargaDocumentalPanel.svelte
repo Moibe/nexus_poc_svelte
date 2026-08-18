@@ -3,9 +3,29 @@
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import ArrowDownIcon from '$lib/components/icons/ArrowDownIcon.svelte';
+	import { agregarArchivos } from '$lib/state/bandeja.svelte';
 
 	let fileInput = $state<HTMLInputElement>();
 	let files = $state<FileList | null>(null);
+	let arrastrando = $state(false);
+
+	// Selección por clic: bind:files dispara esto; se reenvía a la bandeja y se
+	// limpia el input para que el dropzone vuelva a su estado ocioso (el
+	// "documento agregado" ya se ve reflejado allá, no hace falta dejar aquí un
+	// contador de "N archivos seleccionados").
+	$effect(() => {
+		if (files && files.length > 0) {
+			agregarArchivos(files);
+			files = null;
+		}
+	});
+
+	function manejarDrop(evento: DragEvent) {
+		evento.preventDefault();
+		arrastrando = false;
+		const soltados = evento.dataTransfer?.files;
+		if (soltados && soltados.length > 0) agregarArchivos(soltados);
+	}
 </script>
 
 <div class="flex h-full flex-col gap-2.5 rounded-2xl border-2 border-border bg-card p-6">
@@ -25,8 +45,17 @@
 
 	<button
 		type="button"
-		class="flex h-[200px] w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-background p-4"
+		class={[
+			'flex h-50 w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-4 transition-colors',
+			arrastrando ? 'border-primary bg-muted' : 'border-border bg-background'
+		]}
 		onclick={() => fileInput?.click()}
+		ondragover={(evento) => {
+			evento.preventDefault();
+			arrastrando = true;
+		}}
+		ondragleave={() => (arrastrando = false)}
+		ondrop={manejarDrop}
 	>
 		<span class="flex size-8 items-center justify-center rounded-lg border border-border bg-card">
 			<FolderLibraryIcon />
@@ -49,9 +78,6 @@
 			Buscar archivos
 		</span>
 	</button>
-	{#if files && files.length > 0}
-		<p class="text-center text-xs text-muted-foreground">{files.length} archivo(s) seleccionado(s)</p>
-	{/if}
 
 	<div class="flex flex-1 items-center justify-center">
 		<EmptyState
