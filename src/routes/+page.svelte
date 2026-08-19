@@ -2,6 +2,7 @@
 	import CargaDocumentalPanel from '$lib/components/home/CargaDocumentalPanel.svelte';
 	import BandejaPreparacionPanel from '$lib/components/home/BandejaPreparacionPanel.svelte';
 	import PipelineDocumentalPanel from '$lib/components/home/PipelineDocumentalPanel.svelte';
+	import BarraAccionesSeleccion from '$lib/components/home/BarraAccionesSeleccion.svelte';
 </script>
 
 <svelte:head><title>NexusDoc AI — Inicio</title></svelte:head>
@@ -21,3 +22,5 @@
 	<div class="min-h-175"><BandejaPreparacionPanel /></div>
 	<div class="min-h-175"><PipelineDocumentalPanel /></div>
 </div>
+
+<BarraAccionesSeleccion />
