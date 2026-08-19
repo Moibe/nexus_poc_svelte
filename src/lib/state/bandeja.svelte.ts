@@ -131,3 +131,17 @@ export function formatearTamano(bytes: number): string {
 	if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
 	return `${(kb / 1024).toFixed(1)} MB`;
 }
+
+// PROVISIONAL igual que el resto de este archivo: hoy es la hora del navegador
+// de quien sube el archivo, formateada a mano (sin Intl.DateTimeFormat porque
+// el formato DD/MM/AAAA, HH:MM ya está fijo y no necesita localización). Se
+// reemplaza por la fecha real que registre SQL Server (columna de ingesta)
+// cuando exista HU027.
+export function formatearFecha(fecha: Date): string {
+	const dia = String(fecha.getDate()).padStart(2, '0');
+	const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+	const anio = fecha.getFullYear();
+	const horas = String(fecha.getHours()).padStart(2, '0');
+	const minutos = String(fecha.getMinutes()).padStart(2, '0');
+	return `${dia}/${mes}/${anio}, ${horas}:${minutos}`;
+}

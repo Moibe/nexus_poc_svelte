@@ -2,7 +2,12 @@
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import ImageIcon from '$lib/components/icons/ImageIcon.svelte';
 	import X from '@lucide/svelte/icons/x';
-	import { formatearTamano, quitarDocumento, type DocumentoEnBandeja } from '$lib/state/bandeja.svelte';
+	import {
+		formatearFecha,
+		formatearTamano,
+		quitarDocumento,
+		type DocumentoEnBandeja
+	} from '$lib/state/bandeja.svelte';
 
 	let { documento }: { documento: DocumentoEnBandeja } = $props();
 
@@ -38,7 +43,8 @@
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
 			<p class="text-xs text-muted-foreground">
-				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {documento.origen}
+				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {documento.origen} ·
+				{formatearFecha(documento.agregadoEn)}
 			</p>
 			{#if documento.estado === 'duplicado'}
 				<p class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
