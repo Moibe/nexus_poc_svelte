@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import ImageIcon from '$lib/components/icons/ImageIcon.svelte';
 	import X from '@lucide/svelte/icons/x';
 	import {
+		alternarSeleccion,
 		formatearFecha,
 		formatearTamano,
 		quitarDocumento,
@@ -20,6 +22,13 @@
 		documento.estado === 'duplicado' ? 'border-red-200 bg-red-50/60' : 'border-border bg-background'
 	]}
 >
+	<Checkbox
+		checked={documento.seleccionado}
+		disabled={documento.estado === 'subiendo'}
+		onCheckedChange={() => alternarSeleccion(documento.id)}
+		aria-label={`Seleccionar ${documento.nombre}`}
+	/>
+
 	<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
 		{#if esImagen}
 			<ImageIcon />

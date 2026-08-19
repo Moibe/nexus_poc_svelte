@@ -25,6 +25,7 @@ export type DocumentoEnBandeja = {
 	estado: 'subiendo' | 'listo' | 'duplicado';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 	hashSha256: string | null; // null mientras estado === 'subiendo'
+	seleccionado: boolean;
 };
 
 // Mismas restricciones que ya anuncia la UI del dropzone. Centralizadas aquí
@@ -80,7 +81,8 @@ export function agregarArchivos(files: FileList) {
 			agregadoEn: new Date(),
 			estado: 'subiendo',
 			progreso: 0,
-			hashSha256: null
+			hashSha256: null,
+			seleccionado: false
 		});
 		procesarArchivo(id, file);
 	}
@@ -123,6 +125,11 @@ async function procesarArchivo(id: string, file: File) {
 export function quitarDocumento(id: string) {
 	const indice = documentosEnBandeja.findIndex((doc) => doc.id === id);
 	if (indice !== -1) documentosEnBandeja.splice(indice, 1);
+}
+
+export function alternarSeleccion(id: string) {
+	const doc = documentosEnBandeja.find((d) => d.id === id);
+	if (doc) doc.seleccionado = !doc.seleccionado;
 }
 
 export function formatearTamano(bytes: number): string {
