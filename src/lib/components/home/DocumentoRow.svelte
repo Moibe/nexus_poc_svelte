@@ -14,14 +14,20 @@
 	let { documento }: { documento: DocumentoEnBandeja } = $props();
 
 	const esImagen = $derived(['JPG', 'JPEG', 'TIFF'].includes(documento.extension));
+
+	// Los tres estados problemáticos se muestran igual: texto rojo bajo los
+	// metadatos, sin fondo ni punto de color. Así están en Figma (el token
+	// --error/error-2), donde la tarjeta se queda blanca y solo cambia el texto.
+	const problema = $derived(
+		{
+			duplicado: 'Documento duplicado',
+			protegido: 'Documento protegido mediante contraseña',
+			corrupto: 'Archivo corrupto o ilegible'
+		}[documento.estado as 'duplicado' | 'protegido' | 'corrupto']
+	);
 </script>
 
-<div
-	class={[
-		'flex items-center gap-3 rounded-lg border px-3 py-2.5',
-		documento.estado === 'duplicado' ? 'border-red-200 bg-red-50/60' : 'border-border bg-background'
-	]}
->
+<div class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
 	<Checkbox
 		checked={documento.seleccionado}
 		disabled={documento.estado === 'subiendo'}
@@ -55,11 +61,8 @@
 				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {documento.origen} ·
 				{formatearFecha(documento.agregadoEn)}
 			</p>
-			{#if documento.estado === 'duplicado'}
-				<p class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
-					<span class="size-1.5 shrink-0 rounded-full bg-red-600"></span>
-					Documento duplicado
-				</p>
+			{#if problema}
+				<p class="mt-0.5 text-xs text-red-500">{problema}</p>
 			{/if}
 		</div>
 	{/if}

@@ -15,6 +15,8 @@
 
 import { sha256 } from 'js-sha256';
 
+import { detectarProblema } from '$lib/documentos/validar';
+
 export type DocumentoEnBandeja = {
 	id: string;
 	nombre: string;
@@ -22,7 +24,7 @@ export type DocumentoEnBandeja = {
 	tamanioBytes: number;
 	origen: 'Manual';
 	agregadoEn: Date;
-	estado: 'subiendo' | 'listo' | 'duplicado';
+	estado: 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 	hashSha256: string | null; // null mientras estado === 'subiendo'
 	seleccionado: boolean;
@@ -58,8 +60,7 @@ function generarId(): string {
 // server de CSI. `js-sha256` calcula el hash en JavaScript puro, sin tocar
 // `crypto` en absoluto — funciona igual en HTTP plano (verificado leyendo su
 // código fuente antes de instalarla).
-async function calcularHash(file: File): Promise<string> {
-	const buffer = await file.arrayBuffer();
+function calcularHash(buffer: ArrayBuffer): string {
 	return sha256(buffer);
 }
 
@@ -84,7 +85,7 @@ export function agregarArchivos(files: FileList) {
 			hashSha256: null,
 			seleccionado: false
 		});
-		procesarArchivo(id, file);
+		procesarArchivo(id, file, extension);
 	}
 }
 
@@ -107,18 +108,31 @@ function animarProgresoMientrasSube(id: string) {
 	}, INTERVALO_TICK_MS);
 }
 
-async function procesarArchivo(id: string, file: File) {
+async function procesarArchivo(id: string, file: File, extension: string) {
 	animarProgresoMientrasSube(id);
 
-	const hash = await calcularHash(file);
+	// Se lee el archivo UNA sola vez y de ahí salen las dos cosas: la huella y
+	// la revisión de integridad. Leerlo dos veces significaría cargar hasta
+	// 20 MB de más a memoria por documento.
+	const buffer = await file.arrayBuffer();
+	const hash = calcularHash(buffer);
+	const problema = detectarProblema(new Uint8Array(buffer), extension);
 
 	const doc = documentosEnBandeja.find((d) => d.id === id);
 	if (!doc) return; // lo quitaron (botón "quitar") mientras se procesaba
 
-	const esDuplicado = documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
-
 	doc.hashSha256 = hash;
 	doc.progreso = 100;
+
+	// Prioridad: un archivo que no se puede abrir (corrupto o con contraseña) no
+	// va a poder procesarse aunque además sea duplicado, así que ese problema
+	// manda sobre la marca de duplicado.
+	if (problema) {
+		doc.estado = problema;
+		return;
+	}
+
+	const esDuplicado = documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
 	doc.estado = esDuplicado ? 'duplicado' : 'listo';
 }
 
