@@ -3,6 +3,7 @@
 	import LogoMark from '$lib/components/icons/LogoMark.svelte';
 	import DashboardCircleIcon from '$lib/components/icons/DashboardCircleIcon.svelte';
 	import UserStatusIcon from '$lib/components/icons/UserStatusIcon.svelte';
+	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import NotificationBellIcon from '$lib/components/icons/NotificationBellIcon.svelte';
 	import SettingGearIcon from '$lib/components/icons/SettingGearIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
@@ -62,6 +63,13 @@
 		</div>
 
 		<div class="flex items-center gap-3">
+			<button
+				type="button"
+				aria-label="Buscar"
+				class="flex size-8 items-center justify-center rounded-lg border border-border bg-white transition-colors hover:bg-muted"
+			>
+				<SearchIcon />
+			</button>
 			<button
 				type="button"
 				aria-label="Notificaciones"
