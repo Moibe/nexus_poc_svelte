@@ -5,9 +5,8 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import { Separator } from '$lib/components/ui/separator/index.js';
-	import Settings from '@lucide/svelte/icons/settings';
-	import X from '@lucide/svelte/icons/x';
+	import SetupIcon from '$lib/components/icons/SetupIcon.svelte';
+	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -73,43 +72,52 @@
 		showCloseButton={false}
 		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[75%] data-[side=right]:xl:w-[70%]"
 	>
-		<div class="flex items-center justify-between px-6 py-4">
-			<Sheet.Title class="text-sm font-medium text-foreground">Modulo de configuración</Sheet.Title>
+		<!-- header . navigation -->
+		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
+			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
+				Modulo de configuración
+			</Sheet.Title>
 			<Sheet.Close>
 				{#snippet child({ props })}
 					<button
 						{...props}
-						class="flex size-7 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+						class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
 					>
-						<X class="size-4" />
+						<CancelSquareIcon />
 						<span class="sr-only">Cerrar</span>
 					</button>
 				{/snippet}
 			</Sheet.Close>
 		</div>
 
-		<div class="flex items-start gap-3 px-6 pb-5">
-			<span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-				<Settings class="size-5" />
+		<!-- header.modal -->
+		<div class="flex items-center gap-3 px-6 py-4">
+			<span
+				class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"
+			>
+				<SetupIcon />
 			</span>
-			<div class="space-y-1">
-				<h2 class="text-lg font-semibold text-foreground">Motor de configuración documental</h2>
-				<Sheet.Description>
-					Configura la forma en que NexusDoc AI comprende tus documentos.
+			<div class="min-w-0 flex-1">
+				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
+				<Sheet.Description class="text-sm">
+					Configura la forma en que NexusDoc comprende tus documentos.
 				</Sheet.Description>
 			</div>
 		</div>
 
-		<Separator />
-
 		<div class="flex min-h-0 flex-1">
-			<aside class="w-65 shrink-0 overflow-y-auto border-r border-border p-6">
+			<!-- statusbar: 330px, fondo #fcfcfc y bordes de 2px según Figma -->
+			<aside
+				class="w-82.5 shrink-0 overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
+			>
 				<p class="mb-4 text-sm font-semibold text-foreground">Nuevo tipo documental</p>
 				<ol class="space-y-6">
 					{#each steps as step, i (step.title)}
 						{@const n = i + 1}
 						{@const state = n < currentStep ? 'completado' : n === currentStep ? 'activo' : 'pendiente'}
-						<li class={state === 'activo' ? 'border-b-2 border-primary pb-4' : 'pb-4'}>
+						<!-- El subrayado del paso activo va en el verde de éxito de Figma
+						     (--exito/exito-2 = #22c55e), no en el color de marca. -->
+						<li class={state === 'activo' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
 							<div class="mb-1 flex items-center gap-1.5">
 								{#if state === 'completado'}
 									<Check class="size-3.5 text-green-600" />

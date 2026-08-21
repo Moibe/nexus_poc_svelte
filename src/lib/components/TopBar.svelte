@@ -8,10 +8,15 @@
 	import SettingGearIcon from '$lib/components/icons/SettingGearIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
+
+	// El sheet se monta aquí junto al menú que lo abre; se renderiza en un portal
+	// sobre todo el documento, así que no importa que viva dentro del header.
+	let configAbierto = $state(false);
 
 	const navItems = [
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
@@ -26,10 +31,14 @@
 	// hizo con los del header. Si aparece el link de Figma de este menú, vale la
 	// pena reemplazarlos por los exportados.
 	const opcionesConfiguracion = [
-		{ etiqueta: 'Motor de reglas', icono: Cog },
-		{ etiqueta: 'Modulo de configuración', icono: SlidersHorizontal },
-		{ etiqueta: 'Conectores', icono: Plug },
-		{ etiqueta: 'Auditoria y trazabilidad', icono: Waypoints }
+		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: undefined },
+		{
+			etiqueta: 'Modulo de configuración',
+			icono: SlidersHorizontal,
+			alSeleccionar: () => (configAbierto = true)
+		},
+		{ etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
+		{ etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined }
 	];
 </script>
 
@@ -92,7 +101,7 @@
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end" class="w-60">
 					{#each opcionesConfiguracion as opcion (opcion.etiqueta)}
-						<DropdownMenu.Item class="gap-3 py-2.5">
+						<DropdownMenu.Item class="gap-3 py-2.5" onSelect={opcion.alSeleccionar}>
 							<opcion.icono class="size-4 text-muted-foreground" />
 							{opcion.etiqueta}
 						</DropdownMenu.Item>
@@ -116,3 +125,5 @@
 		</div>
 	</div>
 </header>
+
+<ConfigSheet bind:open={configAbierto} />
