@@ -29,8 +29,12 @@ const FIRMA_PDF = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
 const FIRMA_ZIP = [0x50, 0x4b, 0x03, 0x04]; // "PK\x03\x04" — docx/xlsx son ZIP por dentro
 const FIRMA_CFB = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]; // contenedor OLE
 const FIRMA_JPEG = [0xff, 0xd8, 0xff];
+const FIRMA_PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const FIRMA_TIFF_LE = [0x49, 0x49, 0x2a, 0x00]; // "II*\0" little-endian
 const FIRMA_TIFF_BE = [0x4d, 0x4d, 0x00, 0x2a]; // "MM\0*" big-endian
+const FIRMA_GIF = [0x47, 0x49, 0x46, 0x38]; // "GIF8"
+const FIRMA_BMP = [0x42, 0x4d]; // "BM"
+const FIRMA_RIFF = [0x52, 0x49, 0x46, 0x46]; // "RIFF" (contenedor de WebP)
 
 function empiezaCon(bytes: Uint8Array, firma: number[]): boolean {
 	if (bytes.length < firma.length) return false;
@@ -77,12 +81,16 @@ function revisarPdf(bytes: Uint8Array): ProblemaDocumento | null {
 	// equivocarse aquí es una etiqueta roja de más, no perder datos.
 	if (contiene(bytes, comoAscii('/Encrypt'))) return 'protegido';
 
-	// Todo PDF completo cierra con el marcador %%EOF. Si no está en la cola,
-	// el archivo se truncó (descarga a medias, copia interrumpida).
-	// Se revisan los últimos 2 KB y no solo los últimos bytes porque es común
-	// que haya relleno o metadatos después del marcador.
-	const colaDesde = Math.max(0, bytes.length - 2048);
-	if (!contiene(bytes, comoAscii('%%EOF'), colaDesde)) return 'corrupto';
+	// Todo PDF completo cierra con el marcador %%EOF; si no aparece por ningún
+	// lado, el archivo se truncó (descarga a medias, copia interrumpida).
+	//
+	// Se busca en TODO el archivo, no en una ventana al final: hay PDFs (firmas
+	// digitales, actualizaciones incrementales, exportadores que dejan relleno)
+	// con bastantes datos después del último marcador, y acotar la búsqueda los
+	// marcaba corruptos siendo válidos. El precio es no detectar un PDF cortado
+	// justo después de un %%EOF intermedio — se prefiere eso a rechazar archivos
+	// buenos.
+	if (!contiene(bytes, comoAscii('%%EOF'))) return 'corrupto';
 
 	return null;
 }
@@ -104,22 +112,42 @@ function revisarOoxml(bytes: Uint8Array): ProblemaDocumento | null {
 	return 'corrupto';
 }
 
-function revisarJpeg(bytes: Uint8Array): ProblemaDocumento | null {
-	if (!empiezaCon(bytes, FIRMA_JPEG)) return 'corrupto';
-
-	// Un JPEG completo termina con el marcador EOI (FF D9). Se busca en los
-	// últimos 64 bytes porque algunos traen metadatos después del marcador.
-	const colaDesde = Math.max(0, bytes.length - 64);
-	if (!contiene(bytes, [0xff, 0xd9], colaDesde)) return 'corrupto';
-
-	return null;
-}
-
-function revisarTiff(bytes: Uint8Array): ProblemaDocumento | null {
-	if (!empiezaCon(bytes, FIRMA_TIFF_LE) && !empiezaCon(bytes, FIRMA_TIFF_BE)) {
-		return 'corrupto';
+/**
+ * Revisa cualquier archivo con extensión de imagen.
+ *
+ * NO exige que el contenido coincida con la extensión: un PNG guardado como
+ * .jpg es una imagen perfectamente legible, solo está mal nombrada, y marcarla
+ * "corrupta" es un falso positivo. Pasa seguido con lo que exportan escáneres y
+ * sistemas documentales. Lo que sí importa es que sea *alguna* imagen conocida.
+ */
+function revisarImagen(bytes: Uint8Array): ProblemaDocumento | null {
+	if (empiezaCon(bytes, FIRMA_JPEG)) {
+		// Un JPEG completo cierra con el marcador EOI (FF D9). Se busca en todo
+		// el archivo y no en una ventana al final, porque muchos traen metadatos
+		// (EXIF, XMP, miniaturas) después del marcador y acotar la búsqueda los
+		// marcaba corruptos siendo válidos. Buscar en todo el archivo es seguro:
+		// dentro de los datos comprimidos los bytes FF van escapados como FF 00,
+		// así que un FF D9 suelto solo puede ser el marcador de fin.
+		if (!contiene(bytes, [0xff, 0xd9])) return 'corrupto';
+		return null;
 	}
-	return null;
+
+	if (empiezaCon(bytes, FIRMA_PNG)) {
+		// Un PNG completo cierra con el chunk IEND.
+		if (!contiene(bytes, comoAscii('IEND'))) return 'corrupto';
+		return null;
+	}
+
+	const esOtraImagenConocida =
+		empiezaCon(bytes, FIRMA_TIFF_LE) ||
+		empiezaCon(bytes, FIRMA_TIFF_BE) ||
+		empiezaCon(bytes, FIRMA_GIF) ||
+		empiezaCon(bytes, FIRMA_BMP) ||
+		empiezaCon(bytes, FIRMA_RIFF);
+
+	// Ninguna firma de imagen reconocida: esto sí es basura o algo que no es
+	// una imagen (un ejecutable, texto plano, un archivo a medio copiar).
+	return esOtraImagenConocida ? null : 'corrupto';
 }
 
 /**
@@ -137,9 +165,8 @@ export function detectarProblema(bytes: Uint8Array, extension: string): Problema
 			return revisarOoxml(bytes);
 		case 'jpg':
 		case 'jpeg':
-			return revisarJpeg(bytes);
 		case 'tiff':
-			return revisarTiff(bytes);
+			return revisarImagen(bytes);
 		default:
 			return null;
 	}
