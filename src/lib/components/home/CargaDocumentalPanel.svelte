@@ -17,6 +17,16 @@
 		if (files && files.length > 0) {
 			agregarArchivos(files);
 			files = null;
+			// Limpiar el estado NO limpia el <input>: su `value` sigue guardando la
+			// ruta del archivo elegido, y el navegador solo dispara `change` cuando
+			// ese value CAMBIA. Sin esta línea, volver a elegir EL MISMO archivo no
+			// hacía absolutamente nada — ni una fila, ni un error, ni un aviso.
+			//
+			// Y ese caso es de lo más normal: procesas un documento, se va al
+			// pipeline, y quieres volver a subirlo (para reprocesarlo, o porque no
+			// te diste cuenta de que ya lo habías subido). Antes tenías que elegir
+			// otro archivo primero para "destrabar" el input.
+			if (fileInput) fileInput.value = '';
 		}
 	});
 
