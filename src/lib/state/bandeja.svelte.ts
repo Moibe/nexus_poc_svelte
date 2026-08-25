@@ -28,6 +28,13 @@ export type DocumentoEnBandeja = {
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 	hashSha256: string | null; // null mientras estado === 'subiendo'
 	seleccionado: boolean;
+	// El File original. Se guarda porque el pipeline necesita volver a leer los
+	// bytes cuando el usuario le da "Iniciar pipeline", que puede ser mucho
+	// después de la carga. No cuesta memoria: un File es una referencia al
+	// archivo en disco, no su contenido — el navegador lo lee cuando se le pide.
+	// Svelte no lo envuelve en un proxy de $state (solo lo hace con objetos
+	// planos y arrays), así que llega intacto a fetch().
+	archivo: File;
 };
 
 // Mismas restricciones que ya anuncia la UI del dropzone. Centralizadas aquí
@@ -83,7 +90,8 @@ export function agregarArchivos(files: FileList) {
 			estado: 'subiendo',
 			progreso: 0,
 			hashSha256: null,
-			seleccionado: false
+			seleccionado: false,
+			archivo: file
 		});
 		procesarArchivo(id, file, extension);
 	}
