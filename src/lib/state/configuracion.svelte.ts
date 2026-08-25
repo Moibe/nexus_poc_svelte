@@ -18,7 +18,8 @@ export type BorradorTipoDocumental = {
 	vertical: string;
 	/** En qué paso del wizard se quedó (1-3). */
 	paso: number;
-	/** ISO-8601. Sirve para saber qué tan viejo es lo que se rehidrata. */
+	/** ISO-8601 de la última vez que se persistió, tal como venía al rehidratar.
+	 *  No se actualiza en memoria al guardar — el valor fresco va al payload. */
 	actualizadoEn: string | null;
 };
 
@@ -99,10 +100,27 @@ export function guardarBorrador() {
 	const store = almacen();
 	if (!store) return;
 	try {
-		borradorTipoDocumental.actualizadoEn = new Date().toISOString();
-		// $state.snapshot: el objeto está envuelto en un proxy de Svelte y
+		// Un borrador vacío no es un borrador: se QUITA la llave en vez de dejar
+		// un objeto de campos en blanco. Esto hace que el almacenamiento sea una
+		// función pura de los datos y no dependa del orden en que corran las
+		// cosas — que es justo lo que falló antes: `limpiarBorrador` hacía
+		// removeItem, pero el $effect del componente se disparaba después por la
+		// mutación y volvía a escribir la llave vacía.
+		if (!hayBorrador()) {
+			store.removeItem(LLAVE);
+			return;
+		}
+		// El timestamp se arma en el payload y NO se escribe en el estado
+		// reactivo: mutar `$state` desde dentro de un `$effect` es la receta de
+		// los bucles de actualización, aunque este en particular no se leyera.
+		//
+		// $state.snapshot porque el objeto está envuelto en un proxy de Svelte y
 		// JSON.stringify sobre el proxy no serializa lo que uno espera.
-		store.setItem(LLAVE, JSON.stringify($state.snapshot(borradorTipoDocumental)));
+		const payload = {
+			...$state.snapshot(borradorTipoDocumental),
+			actualizadoEn: new Date().toISOString()
+		};
+		store.setItem(LLAVE, JSON.stringify(payload));
 	} catch {
 		// Cuota llena o almacenamiento bloqueado. No se avisa al usuario: el
 		// wizard sigue funcionando en memoria, solo pierde la red de seguridad
