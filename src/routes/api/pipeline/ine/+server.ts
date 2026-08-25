@@ -16,8 +16,18 @@ import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 
 /** Cada llamada a Document AI cuesta dinero. Este handler es hoy el único que
  *  puede dispararlas desde el navegador, así que el guardia de tamaño va aquí
- *  además del que ya tiene la API. */
-const MAX_BYTES = 20 * 1024 * 1024;
+ *  además del que ya tiene la API.
+ *
+ *  Los 20 MB son los mismos tres números alineados a propósito: el texto del
+ *  dropzone ("Max 20 MB", que viene de Figma), este guardia, y MAX_SUBIDA_MB en
+ *  el .env de nexus_back. Si se desalinean, aparece una franja de archivos que
+ *  la UI promete y el back rechaza. */
+const MAX_MB = 20;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+
+/** Lo que hay que poner en BODY_SIZE_LIMIT: por encima de MAX_MB, porque el
+ *  cuerpo multipart pesa un poco más que el archivo (cabeceras y fronteras). */
+const LIMITE_TEXTO = `${MAX_MB + 5}M`;
 
 function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
@@ -27,7 +37,26 @@ export const POST: RequestHandler = async ({ request }) => {
 	let entrada: FormData;
 	try {
 		entrada = await request.formData();
-	} catch {
+	} catch (err) {
+		// OJO, esto costó un diagnóstico equivocado: adapter-node aborta el cuerpo
+		// con un SvelteKitError 413 ANTES de que este handler pueda mirarlo, si
+		// pesa más que BODY_SIZE_LIMIT (default 512 KB). formData() truena, y si
+		// se responde "formulario inválido" el mensaje apunta al lugar
+		// equivocado — el archivo estaba perfecto, lo que falló fue el
+		// transporte. Se distingue para que el error diga la verdad.
+		//
+		// No se reproduce en `npm run dev`: el dev server de Vite llama a
+		// getRequest() SIN bodySizeLimit, así que ahí no hay tope. Solo aparece
+		// contra el build (`node build/index.js`), que es lo que corre en el
+		// server de CSI.
+		const status = (err as { status?: number } | null)?.status;
+		if (status === 413) {
+			return fallo(
+				`El archivo excede el límite de subida del servidor. ` +
+					`Súbele BODY_SIZE_LIMIT en el .env del server (hoy debería ser ${LIMITE_TEXTO}).`,
+				413
+			);
+		}
 		return fallo('La petición no traía un formulario válido.', 400);
 	}
 
@@ -39,7 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return fallo('El archivo llegó vacío.', 400);
 	}
 	if (archivo.size > MAX_BYTES) {
-		return fallo('El archivo excede el límite de 20 MB.', 413);
+		return fallo(`El archivo excede el límite de ${MAX_MB} MB.`, 413);
 	}
 
 	// El nombre del campo cambia a `imagen` porque así lo declara el endpoint de
@@ -72,7 +101,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	// El cuerpo puede no ser JSON si algo se rompió antes de FastAPI (un proxy,
 	// un 502 de infraestructura). Se lee como texto primero para no tirar un
 	// error de parseo encima del error real.
-	const texto = await respuesta.text();
+	let texto: string;
+	try {
+		texto = await respuesta.text();
+	} catch {
+		// La conexión se cortó después de las cabeceras. Sin esto el handler
+		// truena y el front recibe un 500 de SvelteKit sin `mensaje`, que es
+		// justo la forma que el cliente no sabe leer.
+		return fallo('nexus_back cortó la conexión antes de mandar la respuesta.', 502);
+	}
+
 	let cuerpo: unknown;
 	try {
 		cuerpo = JSON.parse(texto);

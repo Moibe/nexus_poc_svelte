@@ -51,6 +51,9 @@ export type BloqueOcr = {
 export type CapaOcr = {
 	engine: string;
 	engine_version: string | null;
+	page_count: number;
+	/** Idioma de la primera página donde se detectó alguno; `null` si ninguna. */
+	language: string | null;
 	paginas: Array<{
 		page_number: number;
 		ancho: number | null;

@@ -53,8 +53,12 @@
 	// deja veinte archivos completos retenidos en RAM.
 	let urlPrevia = $state<string | null>(null);
 
+	// Atado a `documento` y NO a `open`: si dependiera de `open`, la vista previa
+	// se borraría en cuanto empieza la animación de cierre y el usuario vería el
+	// panel vaciarse mientras se desliza. Como `documento` solo cambia cuando se
+	// abre otro detalle, la URL vive exactamente lo que tiene que vivir.
 	$effect(() => {
-		if (!open || !documento || !sePuedePrevisualizar) {
+		if (!documento || !sePuedePrevisualizar) {
 			urlPrevia = null;
 			return;
 		}
@@ -72,8 +76,25 @@
 		const enlace = document.createElement('a');
 		enlace.href = url;
 		enlace.download = documento.nombre;
+
+		// Dos detalles que parecen de más y no lo son:
+		//  - El <a> se INSERTA en el DOM. Firefox ignora el click() de un elemento
+		//    que no está en el documento, así que sin esto la descarga no arranca.
+		//  - La URL se revoca en el siguiente tick, no en este. revokeObjectURL()
+		//    es inmediato: si se llama en el mismo tick del click, el navegador
+		//    todavía no empezó a leer el blob y la descarga sale vacía o falla.
+		document.body.appendChild(enlace);
 		enlace.click();
-		URL.revokeObjectURL(url);
+		enlace.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 0);
+	}
+
+	/** `procesado_en` viene en ISO-8601 UTC; se muestra en la hora local de quien
+	 *  mira, que es lo que espera cualquiera leyendo una pantalla. */
+	function fechaHoraIso(iso: string | undefined): string | null {
+		if (!iso) return null;
+		const fecha = new Date(iso);
+		return Number.isNaN(fecha.getTime()) ? null : fechaHora(fecha);
 	}
 
 	function fechaHora(fecha: Date | null): string {
@@ -97,8 +118,12 @@
 {/snippet}
 
 <Sheet.Root bind:open>
+	<!-- showCloseButton={false}: Sheet.Content trae su propia X arriba a la
+	     derecha por default, y se encimaba con la del header (se veían dos). El
+	     header ya tiene su cierre, que es el que pide Figma. -->
 	<Sheet.Content
 		side="right"
+		showCloseButton={false}
 		class="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-147.5"
 	>
 		<div class="flex items-center gap-3 border-b border-border px-6 py-4">
@@ -209,7 +234,14 @@
 
 				<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Procesamiento OCR</h3>
 
-				{#snippet valorEjecucion()}{fechaHora(documento.terminadoEn)}{/snippet}
+				<!-- procesado_en lo estampa el back al terminar la llamada a Document AI;
+				     terminadoEn es el reloj del navegador cuando llegó la respuesta.
+				     El primero es el que se va a guardar en extraction_run, así que es
+				     el que hay que mostrar — si difieren, es la latencia de red y más
+				     vale que la pantalla y la base digan lo mismo. -->
+				{#snippet valorEjecucion()}{fechaHoraIso(
+						documento.resultado?._metadata?.procesado_en
+					) ?? fechaHora(documento.terminadoEn)}{/snippet}
 				{@render dato('Fecha y hora de ejecución', valorEjecucion)}
 
 				{#snippet valorConfianza()}

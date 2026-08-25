@@ -73,6 +73,21 @@ function calcularHash(buffer: ArrayBuffer): string {
 
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
 
+/**
+ * Huellas de documentos que YA salieron de la bandeja rumbo al pipeline.
+ *
+ * Sin esto, la detección de duplicados se rompía en cuanto se usaba el
+ * pipeline: al mover un documento al tercer panel desaparece de
+ * `documentosEnBandeja`, y volver a subir el mismo archivo ya no encontraba
+ * contra qué compararse. Justo el caso más probable — procesar algo y volverlo
+ * a subir sin querer — quedaba sin detectar.
+ *
+ * NO se registran aquí los que el usuario quita con la X: eso significa "no
+ * quería ese archivo", no "ese archivo ya se ingirió". Solo cuenta lo que de
+ * verdad entró al pipeline.
+ */
+const huellasProcesadas = new Set<string>();
+
 export function agregarArchivos(files: FileList) {
 	for (const file of Array.from(files)) {
 		const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -122,7 +137,22 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 	// Se lee el archivo UNA sola vez y de ahí salen las dos cosas: la huella y
 	// la revisión de integridad. Leerlo dos veces significaría cargar hasta
 	// 20 MB de más a memoria por documento.
-	const buffer = await file.arrayBuffer();
+	let buffer: ArrayBuffer;
+	try {
+		buffer = await file.arrayBuffer();
+	} catch {
+		// Pasa de verdad: el archivo se movió, se desmontó la USB, o el navegador
+		// negó el permiso. Sin este catch la promesa quedaba rechazada sin dueño,
+		// la fila se quedaba en 'subiendo' PARA SIEMPRE (con su setInterval vivo)
+		// y el checkbox nunca se habilitaba.
+		const perdido = documentosEnBandeja.find((d) => d.id === id);
+		if (perdido) {
+			perdido.progreso = 100;
+			perdido.estado = 'corrupto';
+		}
+		return;
+	}
+
 	const hash = calcularHash(buffer);
 	const problema = detectarProblema(new Uint8Array(buffer), extension);
 
@@ -140,8 +170,18 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 		return;
 	}
 
-	const esDuplicado = documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
+	const esDuplicado =
+		huellasProcesadas.has(hash) ||
+		documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
 	doc.estado = esDuplicado ? 'duplicado' : 'listo';
+}
+
+/** Saca un documento de la bandeja PORQUE entró al pipeline, recordando su
+ *  huella. Es distinto de `quitarDocumento`, que es el descarte del usuario. */
+export function moverDocumentoAlPipeline(id: string) {
+	const doc = documentosEnBandeja.find((d) => d.id === id);
+	if (doc?.hashSha256) huellasProcesadas.add(doc.hashSha256);
+	quitarDocumento(id);
 }
 
 export function quitarDocumento(id: string) {

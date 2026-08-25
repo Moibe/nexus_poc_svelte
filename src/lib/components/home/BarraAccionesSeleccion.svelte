@@ -26,7 +26,12 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
-	import { documentosEnPipeline, iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
+	import {
+		documentosEnPipeline,
+		hayLoteEnCurso,
+		iniciarPipeline,
+		sePuedeProcesar
+	} from '$lib/state/pipeline.svelte';
 
 	let { alAbrirDetalle }: { alAbrirDetalle: (id: string) => void } = $props();
 
@@ -53,17 +58,11 @@
 		unicoSeleccionado !== null && seleccionPipeline.length === 1
 	);
 
-	let enviando = $state(false);
-
-	async function alIniciar() {
-		if (enviando) return;
-		enviando = true;
-		try {
-			await iniciarPipeline();
-		} finally {
-			enviando = false;
-		}
-	}
+	// El candado vive en el módulo del pipeline, no aquí: esta barra se DESMONTA
+	// en cuanto la selección queda vacía —justo lo que pasa al mover los
+	// documentos al tercer panel— así que un `let enviando` local desaparecía
+	// junto con el componente y no impedía arrancar un segundo lote.
+	const enviando = $derived(hayLoteEnCurso());
 
 	const claseBoton =
 		'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40';
@@ -87,7 +86,7 @@
 					type="button"
 					class="{claseBoton} text-[#f9fafb] enabled:hover:bg-white/10"
 					disabled={enviando}
-					onclick={alIniciar}
+					onclick={iniciarPipeline}
 				>
 					<Play class="size-4" />
 					{enviando ? 'Procesando…' : `Iniciar pipeline (${procesables.length})`}

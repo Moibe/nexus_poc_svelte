@@ -14,7 +14,11 @@
  * guardar el resultado en RAM.
  */
 
-import { documentosEnBandeja, quitarDocumento, type DocumentoEnBandeja } from './bandeja.svelte';
+import {
+	documentosEnBandeja,
+	moverDocumentoAlPipeline,
+	type DocumentoEnBandeja
+} from './bandeja.svelte';
 import type { ResultadoIne } from '$lib/types/ine';
 
 export type EstadoPipeline =
@@ -63,6 +67,21 @@ const MIME_POR_EXTENSION: Record<string, string> = {
 
 export const documentosEnPipeline = $state<DocumentoEnPipeline[]>([]);
 
+/**
+ * Candado del lote en curso. Vive en el MÓDULO y no en el componente de la
+ * barra flotante a propósito: esa barra se desmonta en cuanto la selección
+ * queda vacía —que es justo lo que pasa al mover los documentos al pipeline—
+ * así que un `let enviando` local se perdía al instante y no impedía nada. Con
+ * el candado aquí, seleccionar más archivos y volver a picar "Iniciar
+ * pipeline" mientras el primer lote corre ya no arranca un segundo lote en
+ * paralelo (que serían llamadas simultáneas a Document AI, o sea costo).
+ */
+let loteEnCurso = $state(false);
+
+export function hayLoteEnCurso(): boolean {
+	return loteEnCurso;
+}
+
 /** Solo lo que se puede mandar: un archivo que sigue subiendo no tiene bytes
  *  confirmados, y uno protegido o corrupto no se va a poder abrir del otro
  *  lado. Un duplicado SÍ se puede mandar a propósito — es una decisión del
@@ -81,8 +100,10 @@ export function sePuedeProcesar(doc: DocumentoEnBandeja): boolean {
  * espera sea explícita en vez de parecer que la app se colgó.
  */
 export async function iniciarPipeline() {
+	if (loteEnCurso) return;
 	const elegibles = documentosEnBandeja.filter((d) => d.seleccionado && sePuedeProcesar(d));
 	if (elegibles.length === 0) return;
+	loteEnCurso = true;
 
 	// Se mueven TODOS primero y después se procesan: si se hiciera de a uno, la
 	// bandeja se iría vaciando poco a poco y el usuario vería saltar las filas
@@ -108,11 +129,15 @@ export async function iniciarPipeline() {
 		};
 		documentosEnPipeline.push(entrada);
 		recienLlegados.push(entrada);
-		quitarDocumento(doc.id);
+		moverDocumentoAlPipeline(doc.id);
 	}
 
-	for (const entrada of recienLlegados) {
-		await procesarUno(entrada.id);
+	try {
+		for (const entrada of recienLlegados) {
+			await procesarUno(entrada.id);
+		}
+	} finally {
+		loteEnCurso = false;
 	}
 }
 
@@ -139,14 +164,24 @@ async function procesarUno(id: string) {
 
 	try {
 		const respuesta = await fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo });
-		const datos = await respuesta.json();
+
+		// Se parsea con red: no todo error llega del BFF con forma {mensaje}. Un
+		// 502 de infraestructura o una página de error devuelven HTML, y hacer
+		// .json() a ciegas convertía eso en un SyntaxError de parseo que tapaba
+		// el error real con un mensaje sobre JSON.
+		let datos: { mensaje?: string; _metadata?: { quality_alert?: boolean } } | null = null;
+		try {
+			datos = await respuesta.json();
+		} catch {
+			datos = null;
+		}
 
 		const vivo = documentosEnPipeline.find((d) => d.id === id);
 		if (!vivo) return; // lo quitaron mientras se procesaba
 
 		vivo.terminadoEn = new Date();
 
-		if (!respuesta.ok) {
+		if (!respuesta.ok || datos === null) {
 			vivo.estado = 'fallido';
 			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status}.`;
 			return;
