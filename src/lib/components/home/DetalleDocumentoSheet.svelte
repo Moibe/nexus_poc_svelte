@@ -5,19 +5,20 @@
 	 * Muestra el resultado de haber pasado un documento por el pipeline. La
 	 * estructura —"Información" y luego "Procesamiento OCR"— es la de Figma.
 	 *
-	 * DOS COSAS QUE NO ESTÁN EN FIGMA y se agregaron a propósito:
+	 * LO QUE SIGUE SIN ESTAR EN FIGMA (pendiente de que lo revise el UX):
 	 *
-	 *  1. La sección "Campos extraídos". El frame de Figma solo muestra el
-	 *     resumen del OCR (fecha, confianza, calidad), pero el endpoint de INE
-	 *     devuelve los campos con su valor y su confianza individual, y sin
-	 *     verlos no se puede saber si la extracción sirvió — que es justo lo que
-	 *     se pidió con "ejecutar y mostrar los resultados". Si el UX prefiere
-	 *     otra forma de presentarlos, esta sección es la que se cambia.
-	 *
-	 *  2. La vista previa real de la imagen. Figma dibuja un ícono de archivo de
+	 *  1. La vista previa real de la imagen. Figma dibuja un ícono de archivo de
 	 *     relleno; aquí, cuando el documento es una imagen, se muestra la imagen
 	 *     misma. Para PDF sí se queda el ícono, porque renderizarlo exigiría un
 	 *     visor y eso es otra historia.
+	 *  2. El renglón "Versión del modelo" en Procesamiento OCR. Figma llega hasta
+	 *     "Calidad de la lectura".
+	 *  3. Los avisos de error y de quality_alert. Sin ellos, un documento que
+	 *     falló se ve exactamente igual que uno que salió bien.
+	 *
+	 * La sección "Campos extraídos" SÍ estuvo y se retiró el 2026-08-25 por la
+	 * misma razón: no está en el frame y el UX no la ha visto. Ver la nota en el
+	 * cuerpo, donde dice cómo devolverla.
 	 */
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -27,7 +28,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { ETIQUETA_ESTADO, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-	import { calidadDe, camposDe } from '$lib/types/ine';
+	import { calidadDe } from '$lib/types/ine';
 
 	let {
 		open = $bindable(false),
@@ -38,7 +39,6 @@
 	const esImagen = $derived(
 		documento ? ['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension) : false
 	);
-	const campos = $derived(documento?.resultado ? camposDe(documento.resultado) : []);
 	const confianza = $derived(documento?.resultado?.confianza_minima ?? null);
 	const calidad = $derived(calidadDe(confianza));
 
@@ -245,7 +245,13 @@
 				{@render dato('Fecha y hora de ejecución', valorEjecucion)}
 
 				{#snippet valorConfianza()}
-					{confianza === null ? '—' : `${confianza.toFixed(1)} %`}
+					<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
+			     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
+			     decir qué tan confiable fue la lectura, mostrar un 100 falso es
+			     justo el error que no se puede permitir. Dos decimales es además
+			     la precisión real: el back redondea a 2 al convertir de 0-1 a
+			     0-100 (`_a_cien` en servicios/ia.py). -->
+					{confianza === null ? '—' : `${confianza.toFixed(2)} %`}
 				{/snippet}
 				{@render dato('Nivel de confianza obtenida', valorConfianza)}
 
@@ -276,45 +282,19 @@
 					</div>
 				{/if}
 
-				{#if campos.length > 0}
-					<h3 class="mt-6 mb-1 text-base font-medium text-foreground">
-						Campos extraídos
-						<span class="ml-1 text-xs font-normal text-muted-foreground">({campos.length})</span>
-					</h3>
-					<div class="flex flex-col gap-2">
-						{#each campos as [nombre, campo] (nombre)}
-							<div class="rounded-lg border border-border bg-background px-3 py-2">
-								<div class="flex items-baseline justify-between gap-3">
-									<span class="font-mono text-xs text-muted-foreground">{nombre}</span>
-									{#if campo.confianza !== null}
-										<!-- Se colorea por campo y no solo en el resumen: el mínimo
-										     global dice que ALGO salió mal, pero no cuál. -->
-										<span
-											class="shrink-0 text-xs tabular-nums {campo.confianza >= 85
-												? 'text-green-600'
-												: campo.confianza >= 60
-													? 'text-amber-600'
-													: 'text-red-500'}"
-										>
-											{campo.confianza.toFixed(1)}%
-										</span>
-									{/if}
-								</div>
-								<p class="mt-0.5 text-sm wrap-break-word text-foreground">
-									{campo.value_normalized ?? '—'}
-								</p>
-								{#if campo.value_raw && campo.value_raw !== campo.value_normalized}
-									<!-- Solo cuando difieren: si el normalizado cambió algo (fecha a
-									     ISO, punto final del estado), hay que poder auditar qué se
-									     leyó de verdad contra qué se guardó. -->
-									<p class="mt-0.5 text-xs text-muted-foreground">
-										Crudo: <span class="font-mono">{campo.value_raw}</span>
-									</p>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				{/if}
+				<!-- LA SECCIÓN "CAMPOS EXTRAÍDOS" SE QUITÓ EL 2026-08-25, a propósito.
+				     No es que estorbara: funcionaba y mostraba el valor de cada campo con
+				     su confianza individual. Se retiró porque NO está en el frame de Figma
+				     (905:49554) y el UX todavía no la ha revisado — esta pantalla se va a
+				     someter a su revisión, y meterle secciones inventadas ensucia lo que
+				     tiene que evaluar.
+
+				     Para devolverla: el helper `camposDe()` de $lib/types/ine sigue ahí
+				     intacto (aplana `domicilio.estado` y filtra el ruido de la respuesta),
+				     así que basta con recuperar este bloque del historial y volver a
+				     importarlo con su $derived.
+				     Mostraba, por campo: nombre punteado, valor normalizado, el crudo
+				     cuando difería, y la confianza coloreada por umbral. -->
 			</div>
 
 			<div class="flex justify-end border-t border-border px-6 py-4">

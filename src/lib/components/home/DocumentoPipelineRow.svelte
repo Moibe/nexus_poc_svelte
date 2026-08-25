@@ -99,7 +99,13 @@
 		<!-- La confianza MÍNIMA, no el promedio: un solo campo mal leído (la CURP,
 		     por ejemplo) se diluye en un promedio y es justo el que importa. -->
 		<span class="shrink-0 text-xs tabular-nums text-muted-foreground">
-			{documento.resultado.confianza_minima.toFixed(1)}%
+			<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
+			     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
+			     decir qué tan confiable fue la lectura, mostrar un 100 falso es
+			     justo el error que no se puede permitir. Dos decimales es además
+			     la precisión real: el back redondea a 2 al convertir de 0-1 a
+			     0-100 (`_a_cien` en servicios/ia.py). -->
+			{documento.resultado.confianza_minima.toFixed(2)}%
 		</span>
 	{/if}
 </div>
