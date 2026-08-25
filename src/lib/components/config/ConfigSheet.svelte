@@ -10,6 +10,11 @@
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
+	import {
+		borradorTipoDocumental,
+		guardarBorrador,
+		limpiarBorrador
+	} from '$lib/state/configuracion.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -45,39 +50,42 @@
 		{ value: 'otro', label: 'Otro' }
 	];
 
-	let currentStep = $state(1);
-	let nombre = $state('');
-	let descripcion = $state('');
-	let vertical = $state('');
+	// El estado del wizard vive en el módulo, no aquí, y se respalda en
+	// localStorage. Antes eran `$state` locales que se borraban al cerrar: si
+	// cerrabas la ventana —o se te iba un refresh— perdías la captura completa.
+	const borrador = borradorTipoDocumental;
 
-	const verticalLabel = $derived(verticales.find((v) => v.value === vertical)?.label);
-	const canContinue = $derived(nombre.trim() !== '' && descripcion.trim() !== '');
+	const verticalLabel = $derived(verticales.find((v) => v.value === borrador.vertical)?.label);
+	const canContinue = $derived(
+		borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
+	);
 
-	function reset() {
-		currentStep = 1;
-		nombre = '';
-		descripcion = '';
-		vertical = '';
-	}
+	// Se persiste en cuanto cambia algo, no al picar "Continuar": lo que se
+	// quiere salvar es precisamente lo capturado cuando el usuario NO llegó a
+	// confirmar nada.
+	$effect(() => {
+		// Se leen los cuatro para que el efecto dependa de todos.
+		void [borrador.nombre, borrador.descripcion, borrador.vertical, borrador.paso];
+		guardarBorrador();
+	});
 
 	// Al cerrar se vuelve a 'biblioteca' para que la próxima apertura empiece
-	// donde marca el diseño, y no a media captura del wizard anterior.
+	// donde marca el diseño. Lo que YA NO se hace es borrar lo capturado: el
+	// borrador sobrevive, así que al volver a entrar al wizard los campos
+	// siguen llenos. Vaciarlo es una acción explícita ("Cancelar").
 	$effect(() => {
-		if (!open) {
-			vista = 'biblioteca';
-			reset();
-		}
+		if (!open) vista = 'biblioteca';
 	});
 
 	function cancelar() {
-		reset();
+		limpiarBorrador();
 		vista = 'biblioteca';
 	}
 
 	function continuar() {
 		if (!canContinue) return;
-		if (currentStep < steps.length) {
-			currentStep += 1;
+		if (borrador.paso < steps.length) {
+			borrador.paso += 1;
 		} else {
 			open = false;
 		}
@@ -149,7 +157,7 @@
 					<ol class="space-y-6">
 						{#each steps as step, i (step.title)}
 						{@const n = i + 1}
-						{@const state = n < currentStep ? 'completado' : n === currentStep ? 'activo' : 'pendiente'}
+						{@const state = n < borrador.paso ? 'completado' : n === borrador.paso ? 'activo' : 'pendiente'}
 						<!-- El subrayado del paso activo va en el verde de éxito de Figma
 						     (--exito/exito-2 = #22c55e), no en el color de marca. -->
 						<li class={state === 'activo' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
@@ -192,7 +200,7 @@
 						</div>
 						<Button class="w-60" onclick={() => (vista = 'wizard')}>Nuevo tipo documental</Button>
 					</div>
-				{:else if currentStep === 1}
+				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Ingresa la información necesaria para registrar un nuevo tipo documental y continuar
@@ -204,7 +212,7 @@
 							<Label for="nombre-tipo">Nombre de tipo documental *</Label>
 							<Input
 								id="nombre-tipo"
-								bind:value={nombre}
+								bind:value={borrador.nombre}
 								placeholder="Ingresa el nombre del tipo documental a configurar"
 							/>
 						</div>
@@ -213,7 +221,7 @@
 							<Label for="descripcion-tipo">Descripción *</Label>
 							<Textarea
 								id="descripcion-tipo"
-								bind:value={descripcion}
+								bind:value={borrador.descripcion}
 								rows={3}
 								placeholder="Describe el propósito y contenido de este tipo documental."
 							/>
@@ -221,7 +229,7 @@
 
 						<div class="space-y-2">
 							<Label for="vertical-negocio">Vertical de negocio</Label>
-							<Select.Root type="single" bind:value={vertical}>
+							<Select.Root type="single" bind:value={borrador.vertical}>
 								<Select.Trigger id="vertical-negocio" class="w-full">
 									{verticalLabel ?? 'Ingresa una vertical de negocio'}
 								</Select.Trigger>
@@ -235,7 +243,7 @@
 					</div>
 				{:else}
 					<div class="flex h-full flex-col items-center justify-center text-center">
-						<p class="text-sm font-semibold text-foreground">{steps[currentStep - 1].title}</p>
+						<p class="text-sm font-semibold text-foreground">{steps[borrador.paso - 1].title}</p>
 						<p class="mt-1 max-w-sm text-sm text-muted-foreground">
 							Esta sección aún no está disponible. Vuelve más tarde para configurarla.
 						</p>
