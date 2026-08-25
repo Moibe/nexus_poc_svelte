@@ -30,7 +30,7 @@
 <div class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
 	<Checkbox
 		checked={documento.seleccionado}
-		disabled={documento.estado === 'subiendo'}
+		disabled={documento.estado === 'subiendo' || documento.estado === 'en_cola'}
 		onCheckedChange={() => alternarSeleccion(documento.id)}
 		aria-label={`Seleccionar ${documento.nombre}`}
 	/>
@@ -43,7 +43,18 @@
 		{/if}
 	</span>
 
-	{#if documento.estado === 'subiendo'}
+	{#if documento.estado === 'en_cola'}
+		<!-- Sin barra de progreso a propósito: todavía no se ha leído un solo byte
+		     de este archivo. Una barra en 0% se ve trabada; "En cola" dice lo que
+		     de verdad está pasando. -->
+		<div class="min-w-0 flex-1">
+			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+			<p class="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+				<span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
+				En cola
+			</p>
+		</div>
+	{:else if documento.estado === 'subiendo'}
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
 			<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">

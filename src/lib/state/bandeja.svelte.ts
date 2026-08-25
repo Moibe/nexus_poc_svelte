@@ -24,7 +24,7 @@ export type DocumentoEnBandeja = {
 	tamanioBytes: number;
 	origen: 'Manual';
 	agregadoEn: Date;
-	estado: 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto';
+	estado: 'en_cola' | 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 	hashSha256: string | null; // null mientras estado === 'subiendo'
 	seleccionado: boolean;
@@ -74,6 +74,39 @@ function calcularHash(buffer: ArrayBuffer): string {
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
 
 /**
+ * Cola de lectura de archivos: se procesa UNO A LA VEZ.
+ *
+ * Antes se lanzaban todas las lecturas a la par. Con dos o tres archivos no se
+ * nota, pero soltar veinte de varios MB significaba veinte `arrayBuffer()`
+ * simultáneos — o sea los veinte archivos COMPLETOS en memoria al mismo tiempo,
+ * más el hashing y el escaneo de firmas encima, todo peleando por el mismo hilo.
+ * En fila, el pico de memoria es el del archivo más grande, no la suma.
+ *
+ * Las filas aparecen en la bandeja de inmediato (todas, en cuanto se sueltan);
+ * lo que se serializa es la LECTURA. Por eso existe el estado 'en_cola': una
+ * barra de progreso en 0% se ve trabada, y decir "En cola" es la verdad.
+ *
+ * Es la misma forma que ya usa el pipeline para llamar a Document AI, por las
+ * mismas razones.
+ */
+const colaDeLectura: Array<() => Promise<void>> = [];
+let drenando = false;
+
+async function drenarCola() {
+	if (drenando) return;
+	drenando = true;
+	try {
+		while (colaDeLectura.length > 0) {
+			// shift() no puede devolver undefined aquí: es el único consumidor y
+			// acaba de comprobar que hay elementos.
+			await colaDeLectura.shift()!();
+		}
+	} finally {
+		drenando = false;
+	}
+}
+
+/**
  * Huellas de documentos que YA salieron de la bandeja rumbo al pipeline.
  *
  * Sin esto, la detección de duplicados se rompía en cuanto se usaba el
@@ -102,13 +135,14 @@ export function agregarArchivos(files: FileList) {
 			tamanioBytes: file.size,
 			origen: 'Manual',
 			agregadoEn: new Date(),
-			estado: 'subiendo',
+			estado: 'en_cola',
 			progreso: 0,
 			hashSha256: null,
 			seleccionado: false,
 			archivo: file
 		});
-		procesarArchivo(id, file, extension);
+		colaDeLectura.push(() => procesarArchivo(id, file, extension));
+		drenarCola();
 	}
 }
 
@@ -132,6 +166,10 @@ function animarProgresoMientrasSube(id: string) {
 }
 
 async function procesarArchivo(id: string, file: File, extension: string) {
+	const enTurno = documentosEnBandeja.find((d) => d.id === id);
+	if (!enTurno) return; // lo quitaron mientras esperaba turno
+	enTurno.estado = 'subiendo';
+
 	animarProgresoMientrasSube(id);
 
 	// Se lee el archivo UNA sola vez y de ahí salen las dos cosas: la huella y
