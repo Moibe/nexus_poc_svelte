@@ -36,7 +36,7 @@
 
 	const etiqueta = $derived(documento ? ETIQUETA_ESTADO[documento.estado] : null);
 	const esImagen = $derived(
-		documento ? ['JPG', 'JPEG', 'TIFF'].includes(documento.extension) : false
+		documento ? ['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension) : false
 	);
 	const campos = $derived(documento?.resultado ? camposDe(documento.resultado) : []);
 	const confianza = $derived(documento?.resultado?.confianza_minima ?? null);

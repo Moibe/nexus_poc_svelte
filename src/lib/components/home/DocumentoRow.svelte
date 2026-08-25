@@ -13,7 +13,7 @@
 
 	let { documento }: { documento: DocumentoEnBandeja } = $props();
 
-	const esImagen = $derived(['JPG', 'JPEG', 'TIFF'].includes(documento.extension));
+	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 
 	// Los tres estados problemáticos se muestran igual: texto rojo bajo los
 	// metadatos, sin fondo ni punto de color. Así están en Figma (el token

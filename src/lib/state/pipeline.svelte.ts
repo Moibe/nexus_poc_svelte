@@ -62,6 +62,7 @@ const MIME_POR_EXTENSION: Record<string, string> = {
 	PDF: 'application/pdf',
 	JPG: 'image/jpeg',
 	JPEG: 'image/jpeg',
+	PNG: 'image/png',
 	TIFF: 'image/tiff'
 };
 

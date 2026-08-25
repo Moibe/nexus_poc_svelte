@@ -41,7 +41,13 @@ export type DocumentoEnBandeja = {
 // porque drag&drop no respeta el atributo `accept` del <input> (eso solo
 // filtra el diálogo nativo de selección), así que hace falta validar en
 // código sin importar por cuál de las dos vías llegó el archivo.
-const EXTENSIONES_PERMITIDAS = ['pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'tiff'];
+// PNG se agregó el 2026-08-25 y NO viene del Figma original, que solo listaba
+// PDF/DOCX/XLSX/JPG/JPEG/TIFF. La razón es medida, no de gusto: en el corpus
+// real de INEs del usuario (548 archivos) el 17% son PNG, así que una sexta
+// parte de los documentos que de verdad se van a procesar no se podía ni subir.
+// El back y Document AI ya lo aceptaban; el único que lo bloqueaba era este
+// listado. Si el UX actualiza el frame, alinear el texto del dropzone también.
+const EXTENSIONES_PERMITIDAS = ['pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'png', 'tiff'];
 const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
 
 const DURACION_ANIMACION_MS = 900;

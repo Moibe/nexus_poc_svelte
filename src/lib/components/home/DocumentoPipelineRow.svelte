@@ -28,7 +28,7 @@
 		alAbrirDetalle
 	}: { documento: DocumentoEnPipeline; alAbrirDetalle: (id: string) => void } = $props();
 
-	const esImagen = $derived(['JPG', 'JPEG', 'TIFF'].includes(documento.extension));
+	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 	const etiqueta = $derived(ETIQUETA_ESTADO[documento.estado]);
 	const enProceso = $derived(documento.estado === 'en_cola' || documento.estado === 'procesando');
 
