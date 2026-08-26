@@ -387,3 +387,48 @@ export const VERTICALES = [
 export function etiquetaVertical(valor: string): string | undefined {
 	return VERTICALES.find((v) => v.value === valor)?.label;
 }
+
+/**
+ * Carga un tipo documental guardado dentro del borrador, para retomarlo.
+ *
+ * Los campos se copian con ids NUEVOS: los del guardado podrían chocar con los
+ * que ya trae el borrador en memoria, y un `#each` de Svelte con llaves
+ * repetidas rompe el render.
+ *
+ * Se abre en el paso 1 a propósito: es "abrir el expediente", y desde ahí se
+ * avanza. Aterrizar directo en el 2 escondería el nombre y la descripción, que
+ * son justo lo que uno quiere confirmar al retomar algo de hace días.
+ */
+export function cargarTipoDocumental(id: string): boolean {
+	const tipo = tiposDocumentales.find((tp) => tp.id === id);
+	if (!tipo) return false;
+	Object.assign(borradorTipoDocumental, {
+		nombre: tipo.nombre,
+		descripcion: tipo.descripcion,
+		vertical: tipo.vertical,
+		campos: tipo.campos.map((c) => ({ ...$state.snapshot(c), id: idCampo() })),
+		campoEnCaptura: campoVacio(),
+		idGuardado: tipo.id,
+		paso: 1
+	});
+	guardarBorrador();
+	return true;
+}
+
+/**
+ * Sincroniza la entrada de la biblioteca con lo que hay en el borrador, PERO
+ * solo si ese borrador ya corresponde a una entrada guardada.
+ *
+ * Esto es lo que vuelve seguro que "Nuevo tipo documental" empiece siempre en
+ * blanco: sin esta sincronización, alguien a media captura del paso 2 que
+ * cerrara y picara "Nuevo" perdería los campos que aún no había guardado. Con
+ * ella, todo lo que se teclea sobre un tipo ya existente viaja de inmediato a
+ * la biblioteca y no hay nada que perder.
+ *
+ * No crea entradas: si el borrador todavía no se guardó (`idGuardado` en null)
+ * no hace nada. Dar de alta sigue siendo un acto explícito del wizard.
+ */
+export function sincronizarTipoGuardado() {
+	if (!borradorTipoDocumental.idGuardado) return;
+	guardarTipoDocumental();
+}

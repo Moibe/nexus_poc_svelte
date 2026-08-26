@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -17,6 +18,8 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		campoCompleto,
+		campoIntacto,
+		cargarTipoDocumental,
 		etiquetaVertical,
 		guardarTipoDocumental,
 		tiposDocumentales,
@@ -24,6 +27,7 @@
 		guardarBorrador,
 		limpiarBorrador,
 		quitarCampo,
+		sincronizarTipoGuardado,
 		TIPOS_DE_DATO
 	} from '$lib/state/configuracion.svelte';
 
@@ -72,7 +76,14 @@
 		borrador.paso === 1
 			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
 			: borrador.paso === 2
-				? borrador.campos.length > 0 || puedeAgregar
+				// Los campos son OPCIONALES para avanzar: el tipo documental ya quedó
+				// guardado al salir del paso 1, así que exigir al menos uno aquí
+				// dejaría atrapado a quien creó el tipo sin campos a propósito.
+				//
+				// Lo único que sí bloquea es un formulario A MEDIAS: dejarlo pasar
+				// tiraría en silencio lo que la persona alcanzó a escribir. Vacío o
+				// completo, adelante; a medias, no.
+				? campoIntacto(borrador.campoEnCaptura) || campoCompleto(borrador.campoEnCaptura)
 				// Paso 3: habilitado. Es un placeholder sin nada que validar, y con el
 				// botón apagado la única salida del wizard era la X — se veía roto. El
 				// tipo documental ya quedó guardado en el paso 2, así que aquí solo se
@@ -100,7 +111,21 @@
 		// Recorrer los campos hace que el efecto dependa de cada propiedad de
 		// cada uno: sin esto, teclear dentro de una tarjeta no dispara el guardado.
 		for (const c of borrador.campos) void [c.nombre, c.tipoDato, c.descripcion, c.obligatorio];
-		guardarBorrador();
+
+		// untrack es OBLIGATORIO aquí, no una optimización: `guardarTipoDocumental`
+		// BUSCA la entrada dentro de `tiposDocumentales` (lectura) y luego le
+		// asigna los datos nuevos (escritura). Sin untrack, el efecto queda
+		// suscrito a ese mismo arreglo que él mismo modifica y Svelte entra en
+		// bucle — `effect_update_depth_exceeded`. Las dependencias reales son solo
+		// los campos del borrador que se leen arriba.
+		untrack(() => {
+			guardarBorrador();
+			// Si este borrador ya corresponde a un tipo de la biblioteca, lo que se
+			// teclea viaja de inmediato a esa entrada. Eso es lo que permite que
+			// "Nuevo tipo documental" empiece siempre en blanco sin que nadie
+			// pierda trabajo a medio capturar.
+			sincronizarTipoGuardado();
+		});
 	});
 
 	// Al cerrar se vuelve a 'biblioteca' para que la próxima apertura empiece
@@ -114,6 +139,17 @@
 	function cancelar() {
 		limpiarBorrador();
 		vista = 'biblioteca';
+	}
+
+	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
+	 *  picando su tarjeta en la lista, que es donde el usuario lo busca. */
+	function nuevoTipoDocumental() {
+		limpiarBorrador();
+		vista = 'wizard';
+	}
+
+	function abrirTipoDocumental(id: string) {
+		if (cargarTipoDocumental(id)) vista = 'wizard';
 	}
 
 	function continuar() {
@@ -245,8 +281,15 @@
 
 						<div class="mt-4 flex flex-col gap-3">
 							{#each tiposDocumentales as tipo (tipo.id)}
-								<div
-									class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3"
+								<!-- La tarjeta entera es el control para retomar el tipo. El frame
+								     tiene aquí un botón de 82x38 (de HU038) y un ícono de menú; sin
+								     esos, hacer clicable la fila completa es el gesto más obvio y no
+								     agrega elementos que el UX tendría que revisar. La flecha es la
+								     misma que ya usa el renglón "Biblioteca" del sidebar. -->
+								<button
+									type="button"
+									class="flex w-full items-center gap-4 rounded-xl border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+									onclick={() => abrirTipoDocumental(tipo.id)}
 								>
 									<span
 										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
@@ -274,6 +317,8 @@
 
 									<span class="shrink-0 text-xs text-muted-foreground">Administrador</span>
 
+									<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
+
 									<!-- Aquí va, en el frame 1077:65410, un botón de 82x38 más un ícono
 									     de menú de 24x24. Ese botón es de HU038 ("Activar versión de
 									     Configuration Table para producción"), que todavía no existe, y
@@ -283,12 +328,12 @@
 									     por no estar en el diseño. `eliminarTipoDocumental()` sigue en
 									     el módulo de estado, probada y lista para cuando haya un control
 									     real. Ver docs/pendientes-ux.md. -->
-								</div>
+								</button>
 							{/each}
 						</div>
 
 						<div class="mt-8">
-							<Button class="w-60" onclick={() => (vista = 'wizard')}>Nuevo tipo documental</Button>
+							<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 						</div>
 					{:else}
 					<!-- Estado vacío de la biblioteca de modelos documentales -->
@@ -307,7 +352,7 @@
 								y validaciones del modelo.
 							</p>
 						</div>
-						<Button class="w-60" onclick={() => (vista = 'wizard')}>Nuevo tipo documental</Button>
+						<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 					</div>
 					{/if}
 				{:else if borrador.paso === 1}
