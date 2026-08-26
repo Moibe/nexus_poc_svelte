@@ -12,10 +12,39 @@
 
 import { browser } from '$app/environment';
 
+/**
+ * Los seis tipos que ofrece el desplegable en Figma (frame 972:53474). Su
+ * destino es `field_definition.data_type` del diccionario.
+ *
+ * OJO con `lista`: implica que el campo tiene un conjunto cerrado de valores
+ * permitidos, o sea filas en `catalog_value` (2.3). Hoy nada las captura — eso
+ * es trabajo del paso 3 ("Propiedades de campo"), que todavía no existe.
+ */
+export const TIPOS_DE_DATO = [
+	{ value: 'texto', label: 'Texto' },
+	{ value: 'numero', label: 'Número' },
+	{ value: 'fecha', label: 'Fecha' },
+	{ value: 'moneda', label: 'Moneda' },
+	{ value: 'booleano', label: 'Booleano' },
+	{ value: 'lista', label: 'Lista' }
+] as const;
+
+const VALORES_TIPO = TIPOS_DE_DATO.map((t) => t.value) as readonly string[];
+
+export type CampoBorrador = {
+	/** Solo para la llave del #each; no viaja a la base. */
+	id: string;
+	nombre: string;
+	tipoDato: string;
+	descripcion: string;
+	obligatorio: boolean;
+};
+
 export type BorradorTipoDocumental = {
 	nombre: string;
 	descripcion: string;
 	vertical: string;
+	campos: CampoBorrador[];
 	/** En qué paso del wizard se quedó (1-3). */
 	paso: number;
 	/** ISO-8601 de la última vez que se persistió, tal como venía al rehidratar.
@@ -23,10 +52,24 @@ export type BorradorTipoDocumental = {
 	actualizadoEn: string | null;
 };
 
+// NO usar crypto.randomUUID: esa API solo existe en contexto seguro y el server
+// de CSI sirve por HTTP plano, donde ni siquiera está definida. Misma razón que
+// en bandeja.svelte.ts. Esto solo tiene que ser único dentro de una lista.
+let contadorCampo = 0;
+function idCampo(): string {
+	contadorCampo += 1;
+	return `campo-${Date.now().toString(36)}-${contadorCampo}`;
+}
+
+export function campoVacio(): CampoBorrador {
+	return { id: idCampo(), nombre: '', tipoDato: '', descripcion: '', obligatorio: false };
+}
+
 const VACIO: BorradorTipoDocumental = {
 	nombre: '',
 	descripcion: '',
 	vertical: '',
+	campos: [],
 	paso: 1,
 	actualizadoEn: null
 };
@@ -77,6 +120,23 @@ function leer(): BorradorTipoDocumental | null {
 			nombre: typeof datos.nombre === 'string' ? datos.nombre : '',
 			descripcion: typeof datos.descripcion === 'string' ? datos.descripcion : '',
 			vertical: typeof datos.vertical === 'string' ? datos.vertical : '',
+			campos: Array.isArray(datos.campos)
+				? datos.campos.filter((c: unknown) => typeof c === 'object' && c !== null).map(
+						(c: Record<string, unknown>) => ({
+							// El id se regenera en vez de confiar en el guardado: si dos
+							// pestañas escribieron, podrían venir repetidos y el #each de
+							// Svelte con llaves duplicadas rompe el render.
+							id: idCampo(),
+							nombre: typeof c.nombre === 'string' ? c.nombre : '',
+							tipoDato:
+								typeof c.tipoDato === 'string' && VALORES_TIPO.includes(c.tipoDato)
+									? c.tipoDato
+									: '',
+							descripcion: typeof c.descripcion === 'string' ? c.descripcion : '',
+							obligatorio: c.obligatorio === true
+						})
+					)
+				: [],
 			paso: Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1,
 			actualizadoEn: typeof datos.actualizadoEn === 'string' ? datos.actualizadoEn : null
 		};
@@ -92,8 +152,21 @@ export function hayBorrador(): boolean {
 	return (
 		borradorTipoDocumental.nombre.trim() !== '' ||
 		borradorTipoDocumental.descripcion.trim() !== '' ||
-		borradorTipoDocumental.vertical !== ''
+		borradorTipoDocumental.vertical !== '' ||
+		borradorTipoDocumental.campos.some(
+			(c) => c.nombre.trim() !== '' || c.tipoDato !== '' || c.descripcion.trim() !== ''
+		)
 	);
+}
+
+/** Un campo está completo cuando tiene sus tres obligatorios. */
+export function campoCompleto(c: CampoBorrador): boolean {
+	return c.nombre.trim() !== '' && c.tipoDato !== '' && c.descripcion.trim() !== '';
+}
+
+/** Un campo al que no se le ha tocado nada. Se ignoran al guardar. */
+export function campoIntacto(c: CampoBorrador): boolean {
+	return c.nombre.trim() === '' && c.tipoDato === '' && c.descripcion.trim() === '';
 }
 
 export function guardarBorrador() {

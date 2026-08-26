@@ -10,10 +10,17 @@
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import CirclePlus from '@lucide/svelte/icons/circle-plus';
+	import X from '@lucide/svelte/icons/x';
 	import {
 		borradorTipoDocumental,
+		campoCompleto,
+		campoIntacto,
+		campoVacio,
 		guardarBorrador,
-		limpiarBorrador
+		limpiarBorrador,
+		TIPOS_DE_DATO
 	} from '$lib/state/configuracion.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -56,9 +63,47 @@
 	const borrador = borradorTipoDocumental;
 
 	const verticalLabel = $derived(verticales.find((v) => v.value === borrador.vertical)?.label);
+
+	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
+
+	// Las tarjetas que el usuario ni tocó no cuentan para nada: ni bloquean el
+	// guardado ni se van a guardar. Solo estorbarían si contaran como incompletas.
+	const camposUtiles = $derived(borrador.campos.filter((c) => !campoIntacto(c)));
+
+	// Se puede avanzar cuando hay al menos un campo y NINGUNO quedó a medias.
+	// Un campo a medias sí bloquea: dejarlo pasar lo perdería en silencio, que es
+	// peor que un botón deshabilitado.
+	const camposListos = $derived(camposUtiles.length > 0 && camposUtiles.every(campoCompleto));
+
 	const canContinue = $derived(
-		borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
+		borrador.paso === 1
+			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
+			: borrador.paso === 2
+				? camposListos
+				: false
 	);
+
+	const etiquetaAvance = $derived(
+		borrador.paso === 1 ? 'Continuar y agregar datos' : 'Guardar y agregar propiedades'
+	);
+
+	// Al llegar al paso 2 siempre tiene que haber una tarjeta visible: en Figma
+	// la pantalla nunca aparece en blanco. Converge — en cuanto hay una, deja de
+	// entrar.
+	$effect(() => {
+		if (vista === 'wizard' && borrador.paso === 2 && borrador.campos.length === 0) {
+			borrador.campos.push(campoVacio());
+		}
+	});
+
+	function agregarCampo() {
+		borrador.campos.push(campoVacio());
+	}
+
+	function quitarCampo(id: string) {
+		const i = borrador.campos.findIndex((c) => c.id === id);
+		if (i !== -1) borrador.campos.splice(i, 1);
+	}
 
 	// Se persiste en cuanto cambia algo, no al picar "Continuar": lo que se
 	// quiere salvar es precisamente lo capturado cuando el usuario NO llegó a
@@ -66,6 +111,9 @@
 	$effect(() => {
 		// Se leen los cuatro para que el efecto dependa de todos.
 		void [borrador.nombre, borrador.descripcion, borrador.vertical, borrador.paso];
+		// Recorrer los campos hace que el efecto dependa de cada propiedad de
+		// cada uno: sin esto, teclear dentro de una tarjeta no dispara el guardado.
+		for (const c of borrador.campos) void [c.nombre, c.tipoDato, c.descripcion, c.obligatorio];
 		guardarBorrador();
 	});
 
@@ -164,7 +212,11 @@
 							<div class="mb-1 flex items-center gap-1.5">
 								{#if state === 'completado'}
 									<Check class="size-3.5 text-green-600" />
-									<span class="text-xs font-medium text-green-600">Completado</span>
+									<!-- "Listo", no "Completado": es el texto literal del frame
+									     1060:61194 de Figma. Se había puesto "Completado" al
+									     implementar el paso 1, cuando ese estado todavía no se veía
+									     en ninguna pantalla y no había contra qué contrastarlo. -->
+									<span class="text-xs font-medium text-green-600">Listo</span>
 								{:else if state === 'activo'}
 									<span class="size-1.5 rounded-full bg-green-500"></span>
 									<span class="text-xs font-medium text-green-600">En configuración</span>
@@ -241,6 +293,100 @@
 							</Select.Root>
 						</div>
 					</div>
+				{:else if borrador.paso === 2}
+					<h3 class="text-xl font-semibold text-foreground">Nuevo campo de extracción</h3>
+					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+						Completa la información requerida para agregar un nuevo campo al modelo documental y
+						mejorar la precisión de la extracción automática.
+					</p>
+
+					<div class="mt-8 flex max-w-3xl flex-col gap-4">
+						{#each borrador.campos as campo, i (campo.id)}
+							<div class="relative rounded-xl border border-border bg-background p-6">
+								{#if borrador.campos.length > 1}
+									<!-- QUITAR TARJETA: no está en Figma. El frame solo dibuja una
+									     tarjeta, así que no contempla el caso de haber agregado una de
+									     más. Sin esto, una tarjeta agregada por error y con una sola
+									     letra escrita deja el botón de guardar deshabilitado y la única
+									     salida es "Cancelar registro", que borra TODO lo capturado.
+									     Solo aparece cuando hay más de una. -->
+									<button
+										type="button"
+										aria-label="Quitar este campo"
+										class="absolute top-3 right-3 flex size-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										onclick={() => quitarCampo(campo.id)}
+									>
+										<X class="size-3.5" />
+									</button>
+								{/if}
+
+								<div class="grid gap-6 md:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="campo-nombre-{campo.id}">Nombre del campo *</Label>
+										<Input
+											id="campo-nombre-{campo.id}"
+											bind:value={campo.nombre}
+											placeholder="Ingresa nombre de campo"
+										/>
+									</div>
+
+									<div class="space-y-2">
+										<Label for="campo-tipo-{campo.id}">Tipo de dato *</Label>
+										<Select.Root type="single" bind:value={campo.tipoDato}>
+											<Select.Trigger id="campo-tipo-{campo.id}" class="w-full">
+												{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
+											</Select.Trigger>
+											<Select.Content>
+												{#each TIPOS_DE_DATO as tipo (tipo.value)}
+													<Select.Item value={tipo.value} label={tipo.label} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
+									</div>
+								</div>
+
+								<div class="mt-6 space-y-2">
+									<Label for="campo-desc-{campo.id}">Descripción funcional *</Label>
+									<Textarea
+										id="campo-desc-{campo.id}"
+										bind:value={campo.descripcion}
+										rows={3}
+										placeholder="Describe qué información representa este campo y cómo debe interpretarse durante la extracción."
+									/>
+								</div>
+
+								<div class="mt-6 flex items-center justify-between gap-4">
+									<div class="flex items-center gap-2">
+										<Checkbox
+											id="campo-obligatorio-{campo.id}"
+											checked={campo.obligatorio}
+											onCheckedChange={(v) => (campo.obligatorio = v === true)}
+										/>
+										<Label
+											for="campo-obligatorio-{campo.id}"
+											class="font-normal text-muted-foreground"
+										>
+											Obligatorio
+										</Label>
+									</div>
+
+									<!-- El enlace vive solo en la última tarjeta. En Figma está dentro
+									     de la única que existe; repetirlo en todas dejaría varios
+									     "agregar" apilados sin que ninguno signifique algo distinto. -->
+									{#if i === borrador.campos.length - 1}
+										<Button
+											variant="link"
+											class="h-auto gap-1.5 p-0 text-primary"
+											onclick={agregarCampo}
+										>
+											<CirclePlus class="size-4" />
+											Agregar otro campo
+										</Button>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
 				{:else}
 					<div class="flex h-full flex-col items-center justify-center text-center">
 						<p class="text-sm font-semibold text-foreground">{steps[borrador.paso - 1].title}</p>
@@ -259,7 +405,7 @@
 				<Button variant="link" class="h-auto p-0 text-destructive" onclick={cancelar}>
 					Cancelar registro
 				</Button>
-				<Button disabled={!canContinue} onclick={continuar}>Continuar y agregar datos</Button>
+				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
 			</div>
 		{/if}
 	</Sheet.Content>
