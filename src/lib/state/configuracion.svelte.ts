@@ -44,7 +44,11 @@ export type BorradorTipoDocumental = {
 	nombre: string;
 	descripcion: string;
 	vertical: string;
+	/** Los campos YA agregados, los que se listan bajo "Campos agregados". */
 	campos: CampoBorrador[];
+	/** El formulario de arriba. Vive aparte de la lista a propósito: en Figma
+	 *  siempre está en blanco y es el que da de alta, no un elemento más. */
+	campoEnCaptura: CampoBorrador;
 	/** En qué paso del wizard se quedó (1-3). */
 	paso: number;
 	/** ISO-8601 de la última vez que se persistió, tal como venía al rehidratar.
@@ -65,14 +69,20 @@ export function campoVacio(): CampoBorrador {
 	return { id: idCampo(), nombre: '', tipoDato: '', descripcion: '', obligatorio: false };
 }
 
-const VACIO: BorradorTipoDocumental = {
-	nombre: '',
-	descripcion: '',
-	vertical: '',
-	campos: [],
-	paso: 1,
-	actualizadoEn: null
-};
+// Función y no constante: `campoEnCaptura` es un objeto, y una constante
+// compartida haría que limpiar el borrador reusara la MISMA referencia que ya
+// está en el estado reactivo — mutarla en un lado la mutaría en el otro.
+function vacio(): BorradorTipoDocumental {
+	return {
+		nombre: '',
+		descripcion: '',
+		vertical: '',
+		campos: [],
+		campoEnCaptura: campoVacio(),
+		paso: 1,
+		actualizadoEn: null
+	};
+}
 
 /**
  * La llave lleva versión en el nombre. Si algún día cambia la forma del
@@ -105,6 +115,22 @@ function almacen(): Storage | null {
 	}
 }
 
+/** Normaliza un campo venido de localStorage. `null` si no es ni un objeto. */
+function leerCampo(c: unknown): CampoBorrador | null {
+	if (typeof c !== 'object' || c === null) return null;
+	const d = c as Record<string, unknown>;
+	return {
+		// El id se REGENERA en vez de confiar en el guardado: si dos pestañas
+		// escribieron, podrían venir repetidos, y un #each de Svelte con llaves
+		// duplicadas rompe el render.
+		id: idCampo(),
+		nombre: typeof d.nombre === 'string' ? d.nombre : '',
+		tipoDato: typeof d.tipoDato === 'string' && VALORES_TIPO.includes(d.tipoDato) ? d.tipoDato : '',
+		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+		obligatorio: d.obligatorio === true
+	};
+}
+
 function leer(): BorradorTipoDocumental | null {
 	const store = almacen();
 	if (!store) return null;
@@ -120,22 +146,9 @@ function leer(): BorradorTipoDocumental | null {
 			nombre: typeof datos.nombre === 'string' ? datos.nombre : '',
 			descripcion: typeof datos.descripcion === 'string' ? datos.descripcion : '',
 			vertical: typeof datos.vertical === 'string' ? datos.vertical : '',
+			campoEnCaptura: leerCampo(datos.campoEnCaptura) ?? campoVacio(),
 			campos: Array.isArray(datos.campos)
-				? datos.campos.filter((c: unknown) => typeof c === 'object' && c !== null).map(
-						(c: Record<string, unknown>) => ({
-							// El id se regenera en vez de confiar en el guardado: si dos
-							// pestañas escribieron, podrían venir repetidos y el #each de
-							// Svelte con llaves duplicadas rompe el render.
-							id: idCampo(),
-							nombre: typeof c.nombre === 'string' ? c.nombre : '',
-							tipoDato:
-								typeof c.tipoDato === 'string' && VALORES_TIPO.includes(c.tipoDato)
-									? c.tipoDato
-									: '',
-							descripcion: typeof c.descripcion === 'string' ? c.descripcion : '',
-							obligatorio: c.obligatorio === true
-						})
-					)
+				? (datos.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
 				: [],
 			paso: Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1,
 			actualizadoEn: typeof datos.actualizadoEn === 'string' ? datos.actualizadoEn : null
@@ -145,7 +158,7 @@ function leer(): BorradorTipoDocumental | null {
 	}
 }
 
-export const borradorTipoDocumental = $state<BorradorTipoDocumental>(leer() ?? { ...VACIO });
+export const borradorTipoDocumental = $state<BorradorTipoDocumental>(leer() ?? vacio());
 
 /** ¿Hay algo capturado que valga la pena conservar? */
 export function hayBorrador(): boolean {
@@ -153,10 +166,25 @@ export function hayBorrador(): boolean {
 		borradorTipoDocumental.nombre.trim() !== '' ||
 		borradorTipoDocumental.descripcion.trim() !== '' ||
 		borradorTipoDocumental.vertical !== '' ||
-		borradorTipoDocumental.campos.some(
-			(c) => c.nombre.trim() !== '' || c.tipoDato !== '' || c.descripcion.trim() !== ''
-		)
+		borradorTipoDocumental.campos.length > 0 ||
+		!campoIntacto(borradorTipoDocumental.campoEnCaptura)
 	);
+}
+
+/** Mueve el formulario a la lista y lo deja en blanco. No hace nada si el campo
+ *  no está completo — el botón que lo llama ya viene deshabilitado en ese caso,
+ *  esto es el segundo cinturón. */
+export function agregarCampoEnCaptura(): boolean {
+	const c = borradorTipoDocumental.campoEnCaptura;
+	if (!campoCompleto(c)) return false;
+	borradorTipoDocumental.campos.push({ ...$state.snapshot(c), id: idCampo() });
+	borradorTipoDocumental.campoEnCaptura = campoVacio();
+	return true;
+}
+
+export function quitarCampo(id: string) {
+	const i = borradorTipoDocumental.campos.findIndex((c) => c.id === id);
+	if (i !== -1) borradorTipoDocumental.campos.splice(i, 1);
 }
 
 /** Un campo está completo cuando tiene sus tres obligatorios. */
@@ -203,7 +231,7 @@ export function guardarBorrador() {
 }
 
 export function limpiarBorrador() {
-	Object.assign(borradorTipoDocumental, VACIO);
+	Object.assign(borradorTipoDocumental, vacio());
 	const store = almacen();
 	if (!store) return;
 	try {

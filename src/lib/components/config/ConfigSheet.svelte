@@ -12,14 +12,14 @@
 	import Check from '@lucide/svelte/icons/check';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
-	import X from '@lucide/svelte/icons/x';
+	import Minus from '@lucide/svelte/icons/minus';
 	import {
 		borradorTipoDocumental,
+		agregarCampoEnCaptura,
 		campoCompleto,
-		campoIntacto,
-		campoVacio,
 		guardarBorrador,
 		limpiarBorrador,
+		quitarCampo,
 		TIPOS_DE_DATO
 	} from '$lib/state/configuracion.svelte';
 
@@ -66,44 +66,24 @@
 
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
 
-	// Las tarjetas que el usuario ni tocó no cuentan para nada: ni bloquean el
-	// guardado ni se van a guardar. Solo estorbarían si contaran como incompletas.
-	const camposUtiles = $derived(borrador.campos.filter((c) => !campoIntacto(c)));
+	// El formulario de arriba se puede "Agregar" solo cuando está completo.
+	const puedeAgregar = $derived(campoCompleto(borrador.campoEnCaptura));
 
-	// Se puede avanzar cuando hay al menos un campo y NINGUNO quedó a medias.
-	// Un campo a medias sí bloquea: dejarlo pasar lo perdería en silencio, que es
-	// peor que un botón deshabilitado.
-	const camposListos = $derived(camposUtiles.length > 0 && camposUtiles.every(campoCompleto));
-
+	// Se puede pasar al paso 3 si ya hay campos en la lista, o si el formulario
+	// tiene uno completo listo para entrar. Lo segundo evita el caso cruel de
+	// haber llenado el último campo y que el botón esté apagado por no haber
+	// picado "Agregar" — al guardar se agrega solo.
 	const canContinue = $derived(
 		borrador.paso === 1
 			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
 			: borrador.paso === 2
-				? camposListos
+				? borrador.campos.length > 0 || puedeAgregar
 				: false
 	);
 
 	const etiquetaAvance = $derived(
 		borrador.paso === 1 ? 'Continuar y agregar datos' : 'Guardar y agregar propiedades'
 	);
-
-	// Al llegar al paso 2 siempre tiene que haber una tarjeta visible: en Figma
-	// la pantalla nunca aparece en blanco. Converge — en cuanto hay una, deja de
-	// entrar.
-	$effect(() => {
-		if (vista === 'wizard' && borrador.paso === 2 && borrador.campos.length === 0) {
-			borrador.campos.push(campoVacio());
-		}
-	});
-
-	function agregarCampo() {
-		borrador.campos.push(campoVacio());
-	}
-
-	function quitarCampo(id: string) {
-		const i = borrador.campos.findIndex((c) => c.id === id);
-		if (i !== -1) borrador.campos.splice(i, 1);
-	}
 
 	// Se persiste en cuanto cambia algo, no al picar "Continuar": lo que se
 	// quiere salvar es precisamente lo capturado cuando el usuario NO llegó a
@@ -132,6 +112,8 @@
 
 	function continuar() {
 		if (!canContinue) return;
+		// Si quedó un campo completo sin "Agregar", se agrega en vez de perderlo.
+		if (borrador.paso === 2) agregarCampoEnCaptura();
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
 		} else {
@@ -300,93 +282,114 @@
 						mejorar la precisión de la extracción automática.
 					</p>
 
-					<div class="mt-8 flex max-w-3xl flex-col gap-4">
-						{#each borrador.campos as campo, i (campo.id)}
-							<div class="relative rounded-xl border border-border bg-background p-6">
-								{#if borrador.campos.length > 1}
-									<!-- QUITAR TARJETA: no está en Figma. El frame solo dibuja una
-									     tarjeta, así que no contempla el caso de haber agregado una de
-									     más. Sin esto, una tarjeta agregada por error y con una sola
-									     letra escrita deja el botón de guardar deshabilitado y la única
-									     salida es "Cancelar registro", que borra TODO lo capturado.
-									     Solo aparece cuando hay más de una. -->
+					<!-- El formulario de alta. Siempre en blanco: no es un elemento más de
+					     la lista, es el que da de alta. Así está en Figma (1067:62363). -->
+					<div class="mt-8 max-w-3xl rounded-xl border border-border bg-background p-6">
+						<div class="grid gap-6 md:grid-cols-2">
+							<div class="space-y-2">
+								<Label for="campo-nombre">Nombre del campo *</Label>
+								<Input
+									id="campo-nombre"
+									bind:value={borrador.campoEnCaptura.nombre}
+									placeholder="Ingresa nombre de campo"
+								/>
+							</div>
+
+							<div class="space-y-2">
+								<Label for="campo-tipo">Tipo de dato *</Label>
+								<Select.Root type="single" bind:value={borrador.campoEnCaptura.tipoDato}>
+									<Select.Trigger id="campo-tipo" class="w-full">
+										{etiquetaTipo(borrador.campoEnCaptura.tipoDato) ?? 'Selecciona un tipo de campo'}
+									</Select.Trigger>
+									<Select.Content>
+										{#each TIPOS_DE_DATO as tipo (tipo.value)}
+											<Select.Item value={tipo.value} label={tipo.label} />
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+						</div>
+
+						<div class="mt-6 space-y-2">
+							<Label for="campo-desc">Descripción funcional *</Label>
+							<Textarea
+								id="campo-desc"
+								bind:value={borrador.campoEnCaptura.descripcion}
+								rows={3}
+								placeholder="Describe qué información representa este campo y cómo debe interpretarse durante la extracción."
+							/>
+						</div>
+
+						<div class="mt-6 flex items-center justify-between gap-4">
+							<div class="flex items-center gap-2">
+								<Checkbox
+									id="campo-obligatorio"
+									checked={borrador.campoEnCaptura.obligatorio}
+									onCheckedChange={(v) => (borrador.campoEnCaptura.obligatorio = v === true)}
+								/>
+								<Label for="campo-obligatorio" class="font-normal text-muted-foreground">
+									Obligatorio
+								</Label>
+							</div>
+
+							<!-- Deshabilitado mientras el campo esté incompleto: es el único
+							     camino para que entre a la lista, y dejarlo picar sin efecto
+							     visible se siente como que la app se tragó el clic. -->
+							<Button
+								variant="link"
+								class="h-auto gap-1.5 p-0 text-primary"
+								disabled={!puedeAgregar}
+								onclick={agregarCampoEnCaptura}
+							>
+								<CirclePlus class="size-4" />
+								Agregar otro campo
+							</Button>
+						</div>
+					</div>
+
+					{#if borrador.campos.length > 0}
+						<h4 class="mt-8 text-xl font-semibold text-foreground">Campos agregados</h4>
+
+						<div class="mt-4 flex max-w-3xl flex-col gap-4">
+							{#each borrador.campos as campo (campo.id)}
+								<div class="flex items-end gap-4">
+									<div class="grid flex-1 gap-4 md:grid-cols-2">
+										<div class="space-y-2">
+											<Label for="agregado-nombre-{campo.id}">Nombre del campo</Label>
+											<!-- readonly, no disabled: `disabled` los saca del orden de
+											     tabulación y del lector de pantalla, y este contenido sí
+											     hay que poder leerlo. La edición no existe en el diseño;
+											     para cambiar algo se quita y se vuelve a agregar. -->
+											<Input
+												id="agregado-nombre-{campo.id}"
+												value={campo.nombre}
+												readonly
+												class="bg-muted text-muted-foreground"
+											/>
+										</div>
+										<div class="space-y-2">
+											<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
+											<Input
+												id="agregado-tipo-{campo.id}"
+												value={etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
+												readonly
+												class="bg-muted text-muted-foreground"
+											/>
+										</div>
+									</div>
+
 									<button
 										type="button"
-										aria-label="Quitar este campo"
-										class="absolute top-3 right-3 flex size-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										aria-label={`Quitar el campo ${campo.nombre}`}
+										class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
 										onclick={() => quitarCampo(campo.id)}
 									>
-										<X class="size-3.5" />
+										<Minus class="size-4" />
 									</button>
-								{/if}
-
-								<div class="grid gap-6 md:grid-cols-2">
-									<div class="space-y-2">
-										<Label for="campo-nombre-{campo.id}">Nombre del campo *</Label>
-										<Input
-											id="campo-nombre-{campo.id}"
-											bind:value={campo.nombre}
-											placeholder="Ingresa nombre de campo"
-										/>
-									</div>
-
-									<div class="space-y-2">
-										<Label for="campo-tipo-{campo.id}">Tipo de dato *</Label>
-										<Select.Root type="single" bind:value={campo.tipoDato}>
-											<Select.Trigger id="campo-tipo-{campo.id}" class="w-full">
-												{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
-											</Select.Trigger>
-											<Select.Content>
-												{#each TIPOS_DE_DATO as tipo (tipo.value)}
-													<Select.Item value={tipo.value} label={tipo.label} />
-												{/each}
-											</Select.Content>
-										</Select.Root>
-									</div>
 								</div>
-
-								<div class="mt-6 space-y-2">
-									<Label for="campo-desc-{campo.id}">Descripción funcional *</Label>
-									<Textarea
-										id="campo-desc-{campo.id}"
-										bind:value={campo.descripcion}
-										rows={3}
-										placeholder="Describe qué información representa este campo y cómo debe interpretarse durante la extracción."
-									/>
-								</div>
-
-								<div class="mt-6 flex items-center justify-between gap-4">
-									<div class="flex items-center gap-2">
-										<Checkbox
-											id="campo-obligatorio-{campo.id}"
-											checked={campo.obligatorio}
-											onCheckedChange={(v) => (campo.obligatorio = v === true)}
-										/>
-										<Label
-											for="campo-obligatorio-{campo.id}"
-											class="font-normal text-muted-foreground"
-										>
-											Obligatorio
-										</Label>
-									</div>
-
-									<!-- El enlace vive solo en la última tarjeta. En Figma está dentro
-									     de la única que existe; repetirlo en todas dejaría varios
-									     "agregar" apilados sin que ninguno signifique algo distinto. -->
-									{#if i === borrador.campos.length - 1}
-										<Button
-											variant="link"
-											class="h-auto gap-1.5 p-0 text-primary"
-											onclick={agregarCampo}
-										>
-											<CirclePlus class="size-4" />
-											Agregar otro campo
-										</Button>
-									{/if}
-								</div>
-							</div>
-						{/each}
-					</div>
+							{/each}
+						</div>
+					{/if}
 				{:else}
 					<div class="flex h-full flex-col items-center justify-center text-center">
 						<p class="text-sm font-semibold text-foreground">{steps[borrador.paso - 1].title}</p>
