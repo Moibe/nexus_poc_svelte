@@ -13,12 +13,10 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
 	import Minus from '@lucide/svelte/icons/minus';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		campoCompleto,
-		eliminarTipoDocumental,
 		etiquetaVertical,
 		guardarTipoDocumental,
 		tiposDocumentales,
@@ -266,18 +264,15 @@
 
 									<span class="shrink-0 text-xs text-muted-foreground">Administrador</span>
 
-									<!-- ELIMINAR: no está en el frame, que en su lugar tiene un botón
-									     (82x38) y un ícono de menú. Ese botón es de HU038 ("Activar
-									     versión"), que todavía no existe. Sin algo aquí, un tipo
-									     guardado por error se queda para siempre. -->
-									<button
-										type="button"
-										aria-label={`Eliminar ${tipo.nombre}`}
-										class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
-										onclick={() => eliminarTipoDocumental(tipo.id)}
-									>
-										<Trash2 class="size-4" />
-									</button>
+									<!-- Aquí va, en el frame 1077:65410, un botón de 82x38 más un ícono
+									     de menú de 24x24. Ese botón es de HU038 ("Activar versión de
+									     Configuration Table para producción"), que todavía no existe, y
+									     no pude ver los píxeles del frame porque se agotó la cuota de
+									     Figma.
+									     Hubo aquí un botón de eliminar propio; se retiró el 2026-08-26
+									     por no estar en el diseño. `eliminarTipoDocumental()` sigue en
+									     el módulo de estado, probada y lista para cuando haya un control
+									     real. Ver docs/pendientes-ux.md. -->
 								</div>
 							{/each}
 						</div>
