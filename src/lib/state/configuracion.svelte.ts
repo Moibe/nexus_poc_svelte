@@ -49,6 +49,9 @@ export type BorradorTipoDocumental = {
 	/** El formulario de arriba. Vive aparte de la lista a propósito: en Figma
 	 *  siempre está en blanco y es el que da de alta, no un elemento más. */
 	campoEnCaptura: CampoBorrador;
+	/** Si este borrador ya se guardó, el id de su entrada en la biblioteca.
+	 *  Sirve para que volver a guardar ACTUALICE en vez de duplicar. */
+	idGuardado: string | null;
 	/** En qué paso del wizard se quedó (1-3). */
 	paso: number;
 	/** ISO-8601 de la última vez que se persistió, tal como venía al rehidratar.
@@ -79,6 +82,7 @@ function vacio(): BorradorTipoDocumental {
 		vertical: '',
 		campos: [],
 		campoEnCaptura: campoVacio(),
+		idGuardado: null,
 		paso: 1,
 		actualizadoEn: null
 	};
@@ -150,6 +154,7 @@ function leer(): BorradorTipoDocumental | null {
 			campos: Array.isArray(datos.campos)
 				? (datos.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
 				: [],
+			idGuardado: typeof datos.idGuardado === 'string' ? datos.idGuardado : null,
 			paso: Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1,
 			actualizadoEn: typeof datos.actualizadoEn === 'string' ? datos.actualizadoEn : null
 		};
@@ -239,4 +244,146 @@ export function limpiarBorrador() {
 	} catch {
 		/* mismo caso que arriba */
 	}
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Biblioteca de tipos documentales guardados
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un tipo documental ya guardado. Su destino en la base es un `document_type`
+ * más su `config_version` con los `field_definition` — o sea que esto que hoy es
+ * UN objeto plano se va a partir en tres tablas. Se deja plano a propósito
+ * mientras no exista la base: inventar aquí la normalización sin poder probarla
+ * contra SQL Server solo agregaría formas que después habría que corregir.
+ */
+export type TipoDocumentalGuardado = {
+	id: string;
+	nombre: string;
+	descripcion: string;
+	vertical: string;
+	campos: CampoBorrador[];
+	/** ISO-8601 de cuándo se guardó por primera vez. */
+	guardadoEn: string;
+	/** Precursor de `config_version.status`. Hoy solo hay uno: nada se activa
+	 *  todavía, porque activar exige validar que los campos requeridos tengan
+	 *  mapeo (regla de integridad #3 de la sección 2.6). */
+	estado: 'borrador';
+};
+
+const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
+
+let contadorTipo = 0;
+function idTipo(): string {
+	contadorTipo += 1;
+	return `tipo-${Date.now().toString(36)}-${contadorTipo}`;
+}
+
+function leerBiblioteca(): TipoDocumentalGuardado[] {
+	const store = almacen();
+	if (!store) return [];
+	try {
+		const crudo = store.getItem(LLAVE_BIBLIOTECA);
+		if (!crudo) return [];
+		const datos = JSON.parse(crudo);
+		if (!Array.isArray(datos)) return [];
+		return datos
+			.filter((d) => typeof d === 'object' && d !== null && typeof d.nombre === 'string')
+			.map((d: Record<string, unknown>) => ({
+				id: typeof d.id === 'string' ? d.id : idTipo(),
+				nombre: d.nombre as string,
+				descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+				vertical: typeof d.vertical === 'string' ? d.vertical : '',
+				campos: Array.isArray(d.campos)
+					? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
+					: [],
+				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
+				estado: 'borrador' as const
+			}));
+	} catch {
+		return [];
+	}
+}
+
+export const tiposDocumentales = $state<TipoDocumentalGuardado[]>(leerBiblioteca());
+
+function guardarBiblioteca() {
+	const store = almacen();
+	if (!store) return;
+	try {
+		if (tiposDocumentales.length === 0) {
+			store.removeItem(LLAVE_BIBLIOTECA);
+			return;
+		}
+		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify($state.snapshot(tiposDocumentales)));
+	} catch {
+		/* cuota llena o almacenamiento bloqueado; ver guardarBorrador */
+	}
+}
+
+/**
+ * Guarda el borrador actual en la biblioteca y devuelve su id.
+ *
+ * Si el borrador ya se había guardado (`idGuardado`), ACTUALIZA esa entrada en
+ * vez de crear otra. Sin eso, pasar dos veces por el paso 2 —algo normal si el
+ * usuario regresa a corregir un campo— dejaría dos tipos documentales iguales
+ * en la lista.
+ */
+export function guardarTipoDocumental(): string | null {
+	const b = borradorTipoDocumental;
+	if (b.nombre.trim() === '') return null;
+
+	const datos = {
+		nombre: b.nombre.trim(),
+		descripcion: b.descripcion.trim(),
+		vertical: b.vertical,
+		campos: $state.snapshot(b.campos) as CampoBorrador[]
+	};
+
+	const existente = b.idGuardado
+		? tiposDocumentales.find((tp) => tp.id === b.idGuardado)
+		: undefined;
+
+	if (existente) {
+		Object.assign(existente, datos);
+	} else {
+		const nuevo: TipoDocumentalGuardado = {
+			id: idTipo(),
+			...datos,
+			guardadoEn: new Date().toISOString(),
+			estado: 'borrador'
+		};
+		tiposDocumentales.push(nuevo);
+		b.idGuardado = nuevo.id;
+	}
+
+	guardarBiblioteca();
+	return b.idGuardado;
+}
+
+export function eliminarTipoDocumental(id: string) {
+	const i = tiposDocumentales.findIndex((tp) => tp.id === id);
+	if (i === -1) return;
+	tiposDocumentales.splice(i, 1);
+	// Si se borró el que el borrador tenía asociado, se desliga para que un
+	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
+	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;
+	guardarBiblioteca();
+}
+
+/** Etiqueta legible de la vertical. Vive aquí y no en el componente porque la
+ *  biblioteca la necesita para pintar las tarjetas. */
+export const VERTICALES = [
+	{ value: 'seguros', label: 'Seguros' },
+	{ value: 'bancario', label: 'Bancario / Financiero' },
+	{ value: 'retail', label: 'Retail' },
+	{ value: 'salud', label: 'Salud' },
+	{ value: 'gobierno', label: 'Gobierno' },
+	{ value: 'logistica', label: 'Logística' },
+	{ value: 'otro', label: 'Otro' }
+] as const;
+
+export function etiquetaVertical(valor: string): string | undefined {
+	return VERTICALES.find((v) => v.value === valor)?.label;
 }

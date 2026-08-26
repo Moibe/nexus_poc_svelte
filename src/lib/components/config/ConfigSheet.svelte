@@ -13,10 +13,16 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
 	import Minus from '@lucide/svelte/icons/minus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		campoCompleto,
+		eliminarTipoDocumental,
+		etiquetaVertical,
+		guardarTipoDocumental,
+		tiposDocumentales,
+		VERTICALES,
 		guardarBorrador,
 		limpiarBorrador,
 		quitarCampo,
@@ -47,22 +53,13 @@
 		}
 	];
 
-	const verticales = [
-		{ value: 'seguros', label: 'Seguros' },
-		{ value: 'bancario', label: 'Bancario / Financiero' },
-		{ value: 'retail', label: 'Retail' },
-		{ value: 'salud', label: 'Salud' },
-		{ value: 'gobierno', label: 'Gobierno' },
-		{ value: 'logistica', label: 'Logística' },
-		{ value: 'otro', label: 'Otro' }
-	];
 
 	// El estado del wizard vive en el módulo, no aquí, y se respalda en
 	// localStorage. Antes eran `$state` locales que se borraban al cerrar: si
 	// cerrabas la ventana —o se te iba un refresh— perdías la captura completa.
 	const borrador = borradorTipoDocumental;
 
-	const verticalLabel = $derived(verticales.find((v) => v.value === borrador.vertical)?.label);
+	const verticalLabel = $derived(etiquetaVertical(borrador.vertical));
 
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
 
@@ -78,11 +75,22 @@
 			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
 			: borrador.paso === 2
 				? borrador.campos.length > 0 || puedeAgregar
-				: false
+				// Paso 3: habilitado. Es un placeholder sin nada que validar, y con el
+				// botón apagado la única salida del wizard era la X — se veía roto. El
+				// tipo documental ya quedó guardado en el paso 2, así que aquí solo se
+				// cierra.
+				: true
 	);
 
+	// "Finalizar" NO viene de Figma: el frame del paso 3 no está implementado y no
+	// sé qué dice su pie. Es una etiqueta honesta para un placeholder — cuando se
+	// construya el paso 3, se cambia por la del diseño.
 	const etiquetaAvance = $derived(
-		borrador.paso === 1 ? 'Continuar y agregar datos' : 'Guardar y agregar propiedades'
+		borrador.paso === 1
+			? 'Continuar y agregar datos'
+			: borrador.paso === 2
+				? 'Guardar y agregar propiedades'
+				: 'Finalizar'
 	);
 
 	// Se persiste en cuanto cambia algo, no al picar "Continuar": lo que se
@@ -113,10 +121,20 @@
 	function continuar() {
 		if (!canContinue) return;
 		// Si quedó un campo completo sin "Agregar", se agrega en vez de perderlo.
-		if (borrador.paso === 2) agregarCampoEnCaptura();
+		if (borrador.paso === 2) {
+			agregarCampoEnCaptura();
+			// El botón dice "Guardar": aquí es donde el tipo documental entra a la
+			// biblioteca. Si el usuario abandona el paso 3, el tipo ya quedó — con
+			// sus campos pero sin propiedades, que es un borrador legítimo.
+			guardarTipoDocumental();
+		}
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
 		} else {
+			// Fin del wizard: el borrador se limpia para que el próximo "Nuevo tipo
+			// documental" arranque en blanco. Lo capturado no se pierde — ya vive en
+			// la biblioteca.
+			limpiarBorrador();
 			open = false;
 		}
 	}
@@ -216,6 +234,58 @@
 
 			<div class="flex-1 overflow-y-auto p-8">
 				{#if vista === 'biblioteca'}
+					{#if tiposDocumentales.length > 0}
+						<!-- Biblioteca poblada. Estructura tomada del frame 1077:65410:
+						     título "Modelos documentales agregados" y una tarjeta por
+						     modelo (682x72). No pude ver los píxeles —se agotó la cuota de
+						     Figma— así que el espaciado y el detalle fino quedan pendientes
+						     de una pasada de fidelidad contra el frame. -->
+						<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
+
+						<div class="mt-4 flex flex-col gap-3">
+							{#each tiposDocumentales as tipo (tipo.id)}
+								<div
+									class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3"
+								>
+									<span
+										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+									>
+										<SetupIcon class="size-4" />
+									</span>
+
+									<div class="min-w-0 flex-1">
+										<p class="truncate text-sm font-medium text-foreground">{tipo.nombre}</p>
+										<p class="truncate text-xs text-muted-foreground">
+											{tipo.campos.length}
+											{tipo.campos.length === 1 ? 'campo' : 'campos'}
+											{#if etiquetaVertical(tipo.vertical)}
+												· {etiquetaVertical(tipo.vertical)}
+											{/if}
+										</p>
+									</div>
+
+									<span class="shrink-0 text-xs text-muted-foreground">Administrador</span>
+
+									<!-- ELIMINAR: no está en el frame, que en su lugar tiene un botón
+									     (82x38) y un ícono de menú. Ese botón es de HU038 ("Activar
+									     versión"), que todavía no existe. Sin algo aquí, un tipo
+									     guardado por error se queda para siempre. -->
+									<button
+										type="button"
+										aria-label={`Eliminar ${tipo.nombre}`}
+										class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+										onclick={() => eliminarTipoDocumental(tipo.id)}
+									>
+										<Trash2 class="size-4" />
+									</button>
+								</div>
+							{/each}
+						</div>
+
+						<div class="mt-8">
+							<Button class="w-60" onclick={() => (vista = 'wizard')}>Nuevo tipo documental</Button>
+						</div>
+					{:else}
 					<!-- Estado vacío de la biblioteca de modelos documentales -->
 					<div class="flex h-full flex-col items-center justify-center gap-6 text-center">
 						<span
@@ -234,6 +304,7 @@
 						</div>
 						<Button class="w-60" onclick={() => (vista = 'wizard')}>Nuevo tipo documental</Button>
 					</div>
+					{/if}
 				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
@@ -268,7 +339,7 @@
 									{verticalLabel ?? 'Ingresa una vertical de negocio'}
 								</Select.Trigger>
 								<Select.Content>
-									{#each verticales as v (v.value)}
+									{#each VERTICALES as v (v.value)}
 										<Select.Item value={v.value} label={v.label} />
 									{/each}
 								</Select.Content>
