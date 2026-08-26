@@ -42,6 +42,7 @@ no porque se hayan colado.
 | **Avisos de error y de `quality_alert`** | Modal de detalle | **El más importante de esta lista.** Sin ellos, un documento que falló se ve idéntico a uno que salió bien. Es la diferencia entre una pantalla que informa y una que miente por omisión. |
 | Etiqueta **"Finalizar"** | Pie del paso 3 del wizard | El paso 3 es un placeholder y no se sabe qué dice su pie en el diseño. Sin una etiqueta y sin habilitar el botón, la única salida del wizard era la X y se veía roto. |
 | **PNG** en el dropzone | Panel "Carga documental" | El frame dice `PDF, DOCX, XLSX, JPG, JPEG, TIFF`. Se agregó PNG porque **el 17% del corpus real de INEs del usuario son PNG** (93 de 548 archivos): una sexta parte de los documentos no se podía ni subir. **Esto cambia texto visible del frame** — es el caso que más conviene que el UX actualice. |
+| Texto **"Sin campos configurados"** | Tarjeta de la Biblioteca | Desde que el tipo documental se guarda al salir del paso 1, puede existir sin ningún campo. Un "0 campos" suelto se lee como que algo salió mal. |
 | Estado **"En cola"** | Filas de la Bandeja de preparación | Las lecturas de archivo se serializaron para no cargar N archivos completos a memoria a la vez. Una barra de progreso en 0% se ve trabada; "En cola" dice la verdad. |
 
 ## 3. Fidelidad pendiente por cuota de Figma

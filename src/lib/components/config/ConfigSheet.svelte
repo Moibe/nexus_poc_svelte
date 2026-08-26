@@ -119,13 +119,16 @@
 	function continuar() {
 		if (!canContinue) return;
 		// Si quedó un campo completo sin "Agregar", se agrega en vez de perderlo.
-		if (borrador.paso === 2) {
-			agregarCampoEnCaptura();
-			// El botón dice "Guardar": aquí es donde el tipo documental entra a la
-			// biblioteca. Si el usuario abandona el paso 3, el tipo ya quedó — con
-			// sus campos pero sin propiedades, que es un borrador legítimo.
-			guardarTipoDocumental();
-		}
+		if (borrador.paso === 2) agregarCampoEnCaptura();
+
+		// El tipo documental entra a la biblioteca al salir del PASO 1, no al
+		// final: en cuanto tiene nombre y descripción ya es un tipo documental.
+		// Los campos son configuración suya, no requisito para que exista.
+		//
+		// Volver a llamarla en el paso 2 no duplica: `guardarTipoDocumental`
+		// actualiza la entrada cuando el borrador ya trae `idGuardado`. Así los
+		// campos se agregan a la MISMA entrada que se creó un paso antes.
+		if (borrador.paso === 1 || borrador.paso === 2) guardarTipoDocumental();
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
 		} else {
@@ -254,8 +257,15 @@
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm font-medium text-foreground">{tipo.nombre}</p>
 										<p class="truncate text-xs text-muted-foreground">
-											{tipo.campos.length}
-											{tipo.campos.length === 1 ? 'campo' : 'campos'}
+											<!-- "Sin campos configurados" en vez de "0 campos": ahora un
+											     tipo puede entrar a la lista antes de tener ninguno, y un
+											     cero suelto se lee como que algo salió mal. -->
+											{#if tipo.campos.length === 0}
+												Sin campos configurados
+											{:else}
+												{tipo.campos.length}
+												{tipo.campos.length === 1 ? 'campo' : 'campos'}
+											{/if}
 											{#if etiquetaVertical(tipo.vertical)}
 												· {etiquetaVertical(tipo.vertical)}
 											{/if}
