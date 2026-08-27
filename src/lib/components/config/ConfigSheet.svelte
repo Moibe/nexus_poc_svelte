@@ -14,6 +14,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
 	import Minus from '@lucide/svelte/icons/minus';
+	import AlertCircle from '@lucide/svelte/icons/circle-alert';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
@@ -26,6 +27,7 @@
 		VERTICALES,
 		guardarBorrador,
 		limpiarBorrador,
+		nombreCampoDuplicado,
 		quitarCampo,
 		sincronizarTipoGuardado,
 		TIPOS_DE_DATO
@@ -65,8 +67,13 @@
 
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
 
-	// El formulario de arriba se puede "Agregar" solo cuando está completo.
-	const puedeAgregar = $derived(campoCompleto(borrador.campoEnCaptura));
+	const nombreDuplicado = $derived(
+		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
+	);
+
+	// El formulario se puede "Agregar" cuando está completo Y su nombre no choca
+	// con uno ya agregado.
+	const puedeAgregar = $derived(campoCompleto(borrador.campoEnCaptura) && !nombreDuplicado);
 
 	// Se puede pasar al paso 3 si ya hay campos en la lista, o si el formulario
 	// tiene uno completo listo para entrar. Lo segundo evita el caso cruel de
@@ -80,10 +87,12 @@
 				// guardado al salir del paso 1, así que exigir al menos uno aquí
 				// dejaría atrapado a quien creó el tipo sin campos a propósito.
 				//
-				// Lo único que sí bloquea es un formulario A MEDIAS: dejarlo pasar
-				// tiraría en silencio lo que la persona alcanzó a escribir. Vacío o
-				// completo, adelante; a medias, no.
-				? campoIntacto(borrador.campoEnCaptura) || campoCompleto(borrador.campoEnCaptura)
+				// Lo único que sí bloquea es un formulario que NO se va a poder
+				// guardar: a medias, o con el nombre repetido. Dejarlo pasar lo
+				// tiraría en silencio, porque `continuar()` intenta agregarlo y
+				// `agregarCampoEnCaptura` lo rechazaría sin que nadie se entere.
+				// Vacío o listo para agregar, adelante.
+				? campoIntacto(borrador.campoEnCaptura) || puedeAgregar
 				// Paso 3: habilitado. Es un placeholder sin nada que validar, y con el
 				// botón apagado la única salida del wizard era la X — se veía roto. El
 				// tipo documental ya quedó guardado en el paso 2, así que aquí solo se
@@ -409,11 +418,32 @@
 						<div class="grid gap-6 md:grid-cols-2">
 							<div class="space-y-2">
 								<Label for="campo-nombre">Nombre del campo *</Label>
-								<Input
-									id="campo-nombre"
-									bind:value={borrador.campoEnCaptura.nombre}
-									placeholder="Ingresa nombre de campo"
-								/>
+								<!-- El borde rojo lo pinta el propio Input a través de aria-invalid
+								     (trae `aria-invalid:border-destructive`), así que el atributo no es
+								     solo accesibilidad: es también lo que dispara el estilo. -->
+								<div class="relative">
+									<Input
+										id="campo-nombre"
+										bind:value={borrador.campoEnCaptura.nombre}
+										placeholder="Ingresa nombre de campo"
+										aria-invalid={nombreDuplicado}
+										aria-describedby={nombreDuplicado ? 'campo-nombre-error' : undefined}
+										class={nombreDuplicado ? 'pr-9' : undefined}
+									/>
+									{#if nombreDuplicado}
+										<AlertCircle
+											class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+										/>
+									{/if}
+								</div>
+								{#if nombreDuplicado}
+									<!-- Texto literal del frame. Mi versión anterior nombraba el campo
+									     en conflicto («Ya agregaste un campo llamado "curp"»), que ayuda
+									     cuando hay muchos, pero el diseño manda. -->
+									<p id="campo-nombre-error" class="text-xs text-destructive">
+										Ya existe un campo con este nombre. Utiliza uno diferente.
+									</p>
+								{/if}
 							</div>
 
 							<div class="space-y-2">

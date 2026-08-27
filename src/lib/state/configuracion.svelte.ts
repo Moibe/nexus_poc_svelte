@@ -176,12 +176,35 @@ export function hayBorrador(): boolean {
 	);
 }
 
+/**
+ * ¿Ya hay un campo con ese nombre?
+ *
+ * La comparación ignora mayúsculas y espacios de los extremos a propósito:
+ * `curp`, `CURP` y ` Curp ` son el MISMO campo para cualquiera que lea la
+ * pantalla, y dejarlos convivir produce dos `field_definition` que compiten por
+ * el mismo dato. Del lado de Document AI el nombre es la llave del `EntityType`,
+ * así que duplicarlo tampoco tiene sentido allá.
+ *
+ * Lo que NO se normaliza es el separador: `fecha nacimiento` y
+ * `fecha_nacimiento` se consideran distintos, porque ahí sí hay una decisión de
+ * nomenclatura que no nos toca adivinar.
+ */
+export function nombreCampoDuplicado(nombre: string, campos: CampoBorrador[]): boolean {
+	const n = nombre.trim().toLowerCase();
+	if (n === '') return false;
+	return campos.some((c) => c.nombre.trim().toLowerCase() === n);
+}
+
 /** Mueve el formulario a la lista y lo deja en blanco. No hace nada si el campo
  *  no está completo — el botón que lo llama ya viene deshabilitado en ese caso,
  *  esto es el segundo cinturón. */
 export function agregarCampoEnCaptura(): boolean {
 	const c = borradorTipoDocumental.campoEnCaptura;
 	if (!campoCompleto(c)) return false;
+	// Segundo cinturón: el botón ya viene deshabilitado, pero `continuar()`
+	// también llama a esta función para no perder un campo a medio capturar, y
+	// ahí sí podría colarse un duplicado.
+	if (nombreCampoDuplicado(c.nombre, borradorTipoDocumental.campos)) return false;
 	borradorTipoDocumental.campos.push({ ...$state.snapshot(c), id: idCampo() });
 	borradorTipoDocumental.campoEnCaptura = campoVacio();
 	return true;
