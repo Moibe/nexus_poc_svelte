@@ -36,6 +36,15 @@ export type CampoBorrador = {
 	id: string;
 	nombre: string;
 	tipoDato: string;
+	/**
+	 * Un valor de EJEMPLO que muestra la forma esperada del dato
+	 * (`POL-2026-00045871`). Opcional — el frame no lo marca con asterisco.
+	 *
+	 * Su destino natural en el diccionario es `field_definition.prompt_hint`:
+	 * es exactamente el tipo de pista que alimenta el prompt ensamblado. No es
+	 * una expresión regular ni una validación, es un ejemplo para el motor.
+	 */
+	valorEstructura: string;
 	descripcion: string;
 	obligatorio: boolean;
 };
@@ -69,7 +78,14 @@ function idCampo(): string {
 }
 
 export function campoVacio(): CampoBorrador {
-	return { id: idCampo(), nombre: '', tipoDato: '', descripcion: '', obligatorio: false };
+	return {
+		id: idCampo(),
+		nombre: '',
+		tipoDato: '',
+		valorEstructura: '',
+		descripcion: '',
+		obligatorio: false
+	};
 }
 
 // Función y no constante: `campoEnCaptura` es un objeto, y una constante
@@ -130,6 +146,7 @@ function leerCampo(c: unknown): CampoBorrador | null {
 		id: idCampo(),
 		nombre: typeof d.nombre === 'string' ? d.nombre : '',
 		tipoDato: typeof d.tipoDato === 'string' && VALORES_TIPO.includes(d.tipoDato) ? d.tipoDato : '',
+		valorEstructura: typeof d.valorEstructura === 'string' ? d.valorEstructura : '',
 		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
 		obligatorio: d.obligatorio === true
 	};
@@ -220,9 +237,18 @@ export function campoCompleto(c: CampoBorrador): boolean {
 	return c.nombre.trim() !== '' && c.tipoDato !== '' && c.descripcion.trim() !== '';
 }
 
-/** Un campo al que no se le ha tocado nada. Se ignoran al guardar. */
+/** Un campo al que no se le ha tocado nada. Se ignoran al guardar.
+ *
+ *  `valorEstructura` SÍ cuenta aquí aunque sea opcional: si alguien escribió un
+ *  ejemplo y nada más, el formulario no está intacto y no se debe tirar sin
+ *  avisar. Pero NO cuenta en `campoCompleto`, porque no es obligatorio. */
 export function campoIntacto(c: CampoBorrador): boolean {
-	return c.nombre.trim() === '' && c.tipoDato === '' && c.descripcion.trim() === '';
+	return (
+		c.nombre.trim() === '' &&
+		c.tipoDato === '' &&
+		c.valorEstructura.trim() === '' &&
+		c.descripcion.trim() === ''
+	);
 }
 
 export function guardarBorrador() {

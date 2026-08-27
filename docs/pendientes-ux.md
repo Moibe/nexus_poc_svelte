@@ -46,6 +46,8 @@ no porque se hayan colado.
 | Texto **"Sin campos configurados"** | Tarjeta de la Biblioteca | Desde que el tipo documental se guarda al salir del paso 1, puede existir sin ningún campo. Un "0 campos" suelto se lee como que algo salió mal. |
 | Estado **"En cola"** | Filas de la Bandeja de preparación | Las lecturas de archivo se serializaron para no cargar N archivos completos a memoria a la vez. Una barra de progreso en 0% se ve trabada; "En cola" dice la verdad. |
 
+| Placeholder **"Ingresa un valor de ejemplo"** | Campo "Valor de estructura", paso 2 | El screenshot del frame muestra un valor real (`POL-2026-00045871`), no un placeholder. Se eligió uno neutral siguiendo el patrón de los otros ("Ingresa nombre de campo") en vez de hardcodear un ejemplo de seguros en un campo genérico. |
+
 ## 3. Fidelidad pendiente por cuota de Figma
 
 El conector de Figma tiene límite mensual de llamadas en asiento de lectura, y
@@ -57,6 +59,12 @@ píxeles**:
   documentales agregados", la tarjeta por modelo (682×72) y la etiqueta
   "Administrador". El espaciado, tipografía fina y el contenido exacto de la
   tarjeta quedan pendientes de una pasada.
+- **Campo "Valor de estructura"** del paso 2. NO aparece en el volcado local
+  (`grep` de "estructura" da cero): se agregó al archivo de Figma después del
+  2026-08-24, cuando se tomó el volcado, y la cuota ya estaba agotada para pedir
+  el frame. Se implementó leyendo un screenshot: renglón propio, solo la columna
+  izquierda, sin asterisco. Su ancho exacto y el placeholder quedan pendientes de
+  verificar contra el frame.
 - **Submenú del sidebar** bajo "Biblioteca". El frame tiene un `listado` (282×38)
   con `space`, `line` y `submenu` — o sea una lista anidada con línea vertical,
   un renglón por modelo. **No se construyó**: sin ver el diseño había que

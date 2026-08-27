@@ -461,6 +461,21 @@
 							</div>
 						</div>
 
+						<!-- "Valor de estructura": renglón propio y solo la columna izquierda,
+						     como en el frame. SIN asterisco — es opcional. Es un valor de
+						     EJEMPLO que muestra la forma esperada del dato, no una validación:
+						     su destino en el diccionario es `field_definition.prompt_hint`. -->
+						<div class="mt-6 grid gap-6 md:grid-cols-2">
+							<div class="space-y-2">
+								<Label for="campo-estructura">Valor de estructura</Label>
+								<Input
+									id="campo-estructura"
+									bind:value={borrador.campoEnCaptura.valorEstructura}
+									placeholder="Ingresa un valor de ejemplo"
+								/>
+							</div>
+						</div>
+
 						<div class="mt-6 space-y-2">
 							<Label for="campo-desc">Descripción funcional *</Label>
 							<Textarea
