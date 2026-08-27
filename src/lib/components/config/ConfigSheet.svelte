@@ -12,6 +12,8 @@
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import * as Accordion from '$lib/components/ui/accordion/index.js';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
 	import Minus from '@lucide/svelte/icons/minus';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
@@ -30,7 +32,10 @@
 		nombreCampoDuplicado,
 		quitarCampo,
 		sincronizarTipoGuardado,
-		TIPOS_DE_DATO
+		CARDINALIDADES,
+		REGLAS_TRANSFORMACION,
+		TIPOS_DE_DATO,
+		UMBRALES_CONFIANZA
 	} from '$lib/state/configuracion.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -66,6 +71,8 @@
 	const verticalLabel = $derived(etiquetaVertical(borrador.vertical));
 
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
+	const etiquetaRegla = (valor: string) =>
+		REGLAS_TRANSFORMACION.find((r) => r.value === valor)?.label;
 
 	const nombreDuplicado = $derived(
 		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
@@ -108,18 +115,30 @@
 			? 'Continuar y agregar datos'
 			: borrador.paso === 2
 				? 'Guardar y agregar propiedades'
-				: 'Finalizar'
+				// "Guardar configuración" es el texto literal del frame del paso 3.
+				: 'Guardar configuración'
 	);
 
 	// Se persiste en cuanto cambia algo, no al picar "Continuar": lo que se
 	// quiere salvar es precisamente lo capturado cuando el usuario NO llegó a
 	// confirmar nada.
 	$effect(() => {
-		// Se leen los cuatro para que el efecto dependa de todos.
-		void [borrador.nombre, borrador.descripcion, borrador.vertical, borrador.paso];
-		// Recorrer los campos hace que el efecto dependa de cada propiedad de
-		// cada uno: sin esto, teclear dentro de una tarjeta no dispara el guardado.
-		for (const c of borrador.campos) void [c.nombre, c.tipoDato, c.descripcion, c.obligatorio];
+		// Se recorren TODAS las propiedades, en vez de enumerarlas a mano, para
+		// que el efecto dependa de cada una. La versión anterior listaba cuatro
+		// (`nombre`, `tipoDato`, `descripcion`, `obligatorio`) y al agregar las del
+		// paso 3 —umbral, regla, cardinalidad— y `valorEstructura`, esas quedaron
+		// FUERA de las dependencias: cambiarlas no disparaba el guardado y se
+		// perdían si se cerraba el wizard a media captura.
+		//
+		// Con el recorrido, cualquier propiedad que se agregue en el futuro queda
+		// cubierta sola. Es la diferencia entre una lista que hay que recordar
+		// actualizar y una que no puede desactualizarse.
+		const tocarTodo = (o: Record<string, unknown>) => {
+			for (const clave of Object.keys(o)) void o[clave];
+		};
+		tocarTodo(borrador as unknown as Record<string, unknown>);
+		tocarTodo(borrador.campoEnCaptura as unknown as Record<string, unknown>);
+		for (const c of borrador.campos) tocarTodo(c as unknown as Record<string, unknown>);
 
 		// untrack es OBLIGATORIO aquí, no una optimización: `guardarTipoDocumental`
 		// BUSCA la entrada dentro de `tiposDocumentales` (lectura) y luego le
@@ -177,9 +196,13 @@
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
 		} else {
-			// Fin del wizard: el borrador se limpia para que el próximo "Nuevo tipo
-			// documental" arranque en blanco. Lo capturado no se pierde — ya vive en
-			// la biblioteca.
+			// Fin del wizard. El guardado explícito es redundante con la
+			// sincronización en vivo, pero cuesta nada y cubre el caso de que esa
+			// sincronización se rompa alguna vez: lo último que hace el usuario no
+			// debería depender de un efecto.
+			guardarTipoDocumental();
+			// El borrador se limpia para que el próximo "Nuevo tipo documental"
+			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.
 			limpiarBorrador();
 			open = false;
 		}
@@ -557,12 +580,134 @@
 						</div>
 					{/if}
 				{:else}
-					<div class="flex h-full flex-col items-center justify-center text-center">
-						<p class="text-sm font-semibold text-foreground">{steps[borrador.paso - 1].title}</p>
-						<p class="mt-1 max-w-sm text-sm text-muted-foreground">
-							Esta sección aún no está disponible. Vuelve más tarde para configurarla.
-						</p>
-					</div>
+					<h3 class="text-xl font-semibold text-foreground">Propiedades de campo</h3>
+					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+						Personaliza las propiedades del campo para mejorar la precisión y calidad de la
+						extracción documental.
+					</p>
+
+					{#if borrador.campos.length === 0}
+						<!-- Estado vacío que el frame no contempla: ahí siempre hay campos.
+						     Puede pasar porque los campos son opcionales para avanzar, y sin
+						     esto la pantalla quedaría en blanco sin explicación. -->
+						<div class="mt-10 rounded-xl border border-dashed border-border p-8 text-center">
+							<p class="text-sm font-medium text-foreground">Todavía no hay campos que configurar</p>
+							<p class="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
+								Regresa al paso 2 y agrega al menos un campo de extracción para poder definir sus
+								propiedades.
+							</p>
+						</div>
+					{:else}
+						<Accordion.Root type="single" class="mt-8 flex max-w-3xl flex-col gap-3">
+							{#each borrador.campos as campo (campo.id)}
+								<Accordion.Item
+									value={campo.id}
+									class="rounded-xl border border-border bg-background px-4 last:border-b"
+								>
+									<Accordion.Trigger class="gap-3 hover:no-underline">
+										<span
+											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card font-mono text-xs text-primary"
+										>
+											{'{ }'}
+										</span>
+										<span class="min-w-0 flex-1 text-left">
+											<span class="block truncate text-sm font-medium text-foreground">
+												{campo.nombre}
+											</span>
+											{#if campo.descripcion.trim()}
+												<span class="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+													{campo.descripcion}
+												</span>
+											{/if}
+										</span>
+										<span
+											class="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground"
+										>
+											{etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
+										</span>
+									</Accordion.Trigger>
+
+									<!-- La línea vertical a la izquierda es el `line` de 22px del frame:
+									     ata visualmente el panel con su encabezado. -->
+									<Accordion.Content class="border-l border-border pb-4 pl-6 ml-4">
+										<div class="grid gap-6 md:grid-cols-2">
+											<div class="space-y-2">
+												<Label for="umbral-{campo.id}">Umbral de confianza *</Label>
+												<Select.Root type="single" bind:value={campo.umbralConfianza}>
+													<Select.Trigger id="umbral-{campo.id}" class="w-full">
+														{campo.umbralConfianza ? `${campo.umbralConfianza}%` : 'Selecciona un umbral'}
+													</Select.Trigger>
+													<Select.Content>
+														{#each UMBRALES_CONFIANZA as u (u.value)}
+															<Select.Item value={u.value} label={u.label} />
+														{/each}
+													</Select.Content>
+												</Select.Root>
+											</div>
+
+											<div class="space-y-2">
+												<Label for="regla-{campo.id}">Reglas de transformación</Label>
+												<Select.Root type="single" bind:value={campo.reglaTransformacion}>
+													<Select.Trigger id="regla-{campo.id}" class="w-full">
+														<span class="truncate">
+															{etiquetaRegla(campo.reglaTransformacion) ??
+																'Selecciona regla de transformación'}
+														</span>
+													</Select.Trigger>
+													<Select.Content>
+														{#each REGLAS_TRANSFORMACION as r (r.value)}
+															<Select.Item value={r.value} label={r.label} />
+														{/each}
+													</Select.Content>
+												</Select.Root>
+											</div>
+										</div>
+
+										<div class="mt-6 rounded-xl border border-border p-4">
+											<p class="text-sm font-medium text-foreground">Cardinalidad</p>
+											<RadioGroup.Root bind:value={campo.cardinalidad} class="mt-3 gap-0">
+												{#each CARDINALIDADES as c, i (c.value)}
+													{#if i > 0}
+														<div class="my-3 border-t border-border"></div>
+													{/if}
+													<div class="flex items-start gap-3">
+														<RadioGroup.Item
+															value={c.value}
+															id="card-{campo.id}-{c.value}"
+															class="mt-0.5"
+														/>
+														<Label
+															for="card-{campo.id}-{c.value}"
+															class="flex-1 cursor-pointer font-normal"
+														>
+															<span class="block text-sm text-foreground">{c.label}</span>
+															<span class="mt-1 block text-xs leading-relaxed text-muted-foreground">
+																{c.descripcion}
+															</span>
+														</Label>
+													</div>
+												{/each}
+											</RadioGroup.Root>
+										</div>
+
+										<!-- Mismo dato que el checkbox "Obligatorio" del paso 2: en el
+										     diseño aparece en las dos pantallas, así que se enlaza a la
+										     MISMA propiedad. Cambiarlo aquí lo cambia allá. -->
+										<div class="mt-6 flex items-center gap-2">
+											<Checkbox
+												id="obligatorio-{campo.id}"
+												checked={campo.obligatorio}
+												onCheckedChange={(v) => (campo.obligatorio = v === true)}
+											/>
+											<Label for="obligatorio-{campo.id}" class="font-normal text-muted-foreground">
+												Obligatorio
+											</Label>
+										</div>
+									</Accordion.Content>
+								</Accordion.Item>
+							{/each}
+						</Accordion.Root>
+					{/if}
 				{/if}
 			</div>
 		</div>

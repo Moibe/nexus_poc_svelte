@@ -31,6 +31,77 @@ export const TIPOS_DE_DATO = [
 
 const VALORES_TIPO = TIPOS_DE_DATO.map((t) => t.value) as readonly string[];
 
+/**
+ * Umbral de confianza por campo (paso 3). Debajo de él, el dato extraído
+ * debería rutearse a revisión humana en vez de darse por bueno.
+ *
+ * OJO, y esto está MEDIDO, no supuesto: dos corridas del mismo documento con la
+ * MISMA versión de modelo devuelven confianzas ligeramente distintas (98.74 vs
+ * 97.18 en campos idénticos). Un campo que quede pegado a su umbral va a rutear
+ * a revisión en una corrida y no en la siguiente, sin que nada haya cambiado.
+ * Conviene elegir umbrales con margen, no al filo. Ver la nota de la sección 2.7
+ * en nexus_back/docs/solicitudes-dba.md.
+ */
+export const UMBRALES_CONFIANZA = ['50', '60', '70', '80', '90', '100'].map((v) => ({
+	value: v,
+	label: `${v}%`
+}));
+
+/**
+ * Reglas de transformación del paso 3, tal como las lista el desplegable del
+ * diseño (frame `option 6`).
+ *
+ * Estas son reglas de NORMALIZACIÓN, y son distintas del `transform` que se le
+ * propuso al DBA en la sección 2.6 —`token_1` / `token_2`, que PARTE un valor
+ * compuesto. Son complementarias: una parte el dato, la otra lo limpia. El
+ * catálogo de `extractor_field_map.transform` va a tener que contemplar ambas
+ * familias.
+ *
+ * Dos de estas ya existen hardcodeadas en el back para INE: la normalización de
+ * fechas a ISO en `_valor_normalizado` y la limpieza de puntuación del domicilio
+ * en `_limpiar_ine`. Cuando esto se guarde en base, esas dos dejan de ser código
+ * fijo y pasan a ser configuración.
+ */
+export const REGLAS_TRANSFORMACION = [
+	{ value: 'fecha_iso', label: 'Normalización de fechas a ISO 8601' },
+	{ value: 'quitar_moneda', label: 'Eliminación de símbolos de moneda' },
+	{ value: 'cambiar_caja', label: 'Conversión a mayúsculas o minúsculas' },
+	{ value: 'trim_espacios', label: 'Trim de espacios' },
+	{ value: 'valor_canonico', label: 'Variantes textuales a valor canónico' }
+] as const;
+
+/**
+ * Cardinalidad. Junto con `obligatorio` forma exactamente las cuatro
+ * combinaciones del `occurrenceType` de Document AI, verificadas contra su
+ * discovery document:
+ *
+ *   obligatorio + único    → REQUIRED_ONCE
+ *   obligatorio + múltiple → REQUIRED_MULTIPLE
+ *   opcional    + único    → OPTIONAL_ONCE
+ *   opcional    + múltiple → OPTIONAL_MULTIPLE
+ *
+ * O sea que estos dos controles de la UI son, juntos, un solo campo del esquema
+ * del procesador. Es la correspondencia más limpia que hay entre el wizard y
+ * Document AI.
+ */
+export const CARDINALIDADES = [
+	{
+		value: 'unico',
+		label: 'Valor único (Single Value)',
+		descripcion:
+			'El dato aparece una sola vez en el documento. El sistema extraerá únicamente una coincidencia para este campo.'
+	},
+	{
+		value: 'multiple',
+		label: 'Múltiples valores (Multi Value)',
+		descripcion:
+			'El dato aparece varias veces en el documento. El sistema identificará y extraerá todas las coincidencias encontradas para este campo.'
+	}
+] as const;
+
+const VALORES_UMBRAL = UMBRALES_CONFIANZA.map((u) => u.value) as readonly string[];
+const VALORES_REGLA = REGLAS_TRANSFORMACION.map((r) => r.value) as readonly string[];
+
 export type CampoBorrador = {
 	/** Solo para la llave del #each; no viaja a la base. */
 	id: string;
@@ -47,6 +118,14 @@ export type CampoBorrador = {
 	valorEstructura: string;
 	descripcion: string;
 	obligatorio: boolean;
+
+	// ── Propiedades del paso 3 ──────────────────────────────────────────────
+	/** Debajo de este porcentaje, el dato debería ir a revisión humana. */
+	umbralConfianza: string;
+	/** Regla de normalización a aplicar. Vacío = ninguna. */
+	reglaTransformacion: string;
+	/** `unico` | `multiple`. Con `obligatorio` arma el occurrenceType. */
+	cardinalidad: string;
 };
 
 export type BorradorTipoDocumental = {
@@ -84,7 +163,12 @@ export function campoVacio(): CampoBorrador {
 		tipoDato: '',
 		valorEstructura: '',
 		descripcion: '',
-		obligatorio: false
+		obligatorio: false,
+		// 50% viene del frame, que muestra ese valor ya seleccionado. Es un
+		// default bajo: acepta casi cualquier lectura sin mandarla a revisión.
+		umbralConfianza: '50',
+		reglaTransformacion: '',
+		cardinalidad: 'unico'
 	};
 }
 
@@ -148,7 +232,16 @@ function leerCampo(c: unknown): CampoBorrador | null {
 		tipoDato: typeof d.tipoDato === 'string' && VALORES_TIPO.includes(d.tipoDato) ? d.tipoDato : '',
 		valorEstructura: typeof d.valorEstructura === 'string' ? d.valorEstructura : '',
 		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
-		obligatorio: d.obligatorio === true
+		obligatorio: d.obligatorio === true,
+		umbralConfianza:
+			typeof d.umbralConfianza === 'string' && VALORES_UMBRAL.includes(d.umbralConfianza)
+				? d.umbralConfianza
+				: '50',
+		reglaTransformacion:
+			typeof d.reglaTransformacion === 'string' && VALORES_REGLA.includes(d.reglaTransformacion)
+				? d.reglaTransformacion
+				: '',
+		cardinalidad: d.cardinalidad === 'multiple' ? 'multiple' : 'unico'
 	};
 }
 

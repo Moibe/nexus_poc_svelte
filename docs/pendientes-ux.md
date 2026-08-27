@@ -44,6 +44,7 @@ no porque se hayan colado.
 | **PNG** en el dropzone | Panel "Carga documental" | El frame dice `PDF, DOCX, XLSX, JPG, JPEG, TIFF`. Se agregó PNG porque **el 17% del corpus real de INEs del usuario son PNG** (93 de 548 archivos): una sexta parte de los documentos no se podía ni subir. **Esto cambia texto visible del frame** — es el caso que más conviene que el UX actualice. |
 | **Tarjeta clicable** para retomar un tipo documental, con flecha a la derecha | Biblioteca | El frame tiene ahí un botón de 82×38 (de HU038) y un ícono de menú; sin ellos no había forma de abrir un tipo ya guardado. Hacer clicable la fila completa no agrega elementos nuevos que revisar, y la flecha es la misma que ya usa el renglón "Biblioteca" del sidebar. |
 | Texto **"Sin campos configurados"** | Tarjeta de la Biblioteca | Desde que el tipo documental se guarda al salir del paso 1, puede existir sin ningún campo. Un "0 campos" suelto se lee como que algo salió mal. |
+| Estado vacío **"Todavía no hay campos que configurar"** | Paso 3 | El frame siempre muestra campos. Puede quedar vacío porque los campos son opcionales para avanzar; sin esto la pantalla quedaría en blanco sin explicación. |
 | Estado **"En cola"** | Filas de la Bandeja de preparación | Las lecturas de archivo se serializaron para no cargar N archivos completos a memoria a la vez. Una barra de progreso en 0% se ve trabada; "En cola" dice la verdad. |
 
 | Placeholder **"Ingresa un valor de ejemplo"** | Campo "Valor de estructura", paso 2 | El screenshot del frame muestra un valor real (`POL-2026-00045871`), no un placeholder. Se eligió uno neutral siguiendo el patrón de los otros ("Ingresa nombre de campo") en vez de hardcodear un ejemplo de seguros en un campo genérico. |
@@ -65,6 +66,9 @@ píxeles**:
   el frame. Se implementó leyendo un screenshot: renglón propio, solo la columna
   izquierda, sin asterisco. Su ancho exacto y el placeholder quedan pendientes de
   verificar contra el frame.
+- **Indentación del panel del acordeón** (paso 3). El frame tiene un `line` de
+  22px que ata visualmente el contenido con su encabezado. Se aproximó con un
+  borde izquierdo, pero sin poder comparar píxeles no está confirmado.
 - **Submenú del sidebar** bajo "Biblioteca". El frame tiene un `listado` (282×38)
   con `space`, `line` y `submenu` — o sea una lista anidada con línea vertical,
   un renglón por modelo. **No se construyó**: sin ver el diseño había que
@@ -72,10 +76,16 @@ píxeles**:
 
 ## 4. Pantallas del wizard sin construir
 
-- **Paso 3 · "Propiedades de campo"** (`1060:61283` describe el paso). Hoy es un
-  placeholder. Es donde deberían capturarse los valores permitidos de un campo de
-  tipo `Lista` — o sea `catalog_value` (2.3 del diccionario), que hoy nada
-  captura.
+- ~~**Paso 3 · "Propiedades de campo"**~~ — **CONSTRUIDO el 2026-08-27**
+  (frame `1070:62364`): acordeón de campos con umbral de confianza, regla de
+  transformación, cardinalidad y obligatorio. Dos cosas quedan pendientes ahí:
+  - **`Obligatorio` aparece en el paso 2 Y en el paso 3.** El diseño lo dibuja en
+    ambas pantallas. Se enlazó a la MISMA propiedad, así que cambiarlo en una lo
+    cambia en la otra — es la única lectura que no produce dos verdades. Vale
+    confirmarlo con el UX.
+  - Los **valores permitidos de un campo de tipo `Lista`** siguen sin capturarse.
+    Son `catalog_value` (2.3 del diccionario) y el frame del paso 3 no los
+    contempla: al elegir "Lista" no aparece nada donde escribirlos.
 - **HU038 · Activar versión para producción**. Mientras no exista, todo tipo
   documental guardado queda en estado `borrador` y nada se activa. Es coherente
   con el diccionario: activar exige validar que todo campo `required` tenga
