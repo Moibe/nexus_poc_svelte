@@ -185,7 +185,14 @@ export function campoVacio(): CampoBorrador {
 		tipoDato: '',
 		valorEstructura: '',
 		descripcion: '',
-		obligatorio: false,
+		// Obligatorio por default. Además de ser lo pedido, es lo que dicen los
+		// datos: en el procesador de INE, 15 de los 19 campos activos están
+		// marcados "Obligatoria una vez". El caso común es que el dato deba estar.
+		//
+		// Solo aplica a campos NUEVOS. `leerCampo` sigue leyendo `obligatorio`
+		// como venga de localStorage — cambiar el default no debe reescribir la
+		// decisión que alguien ya tomó sobre un campo existente.
+		obligatorio: true,
 		// 50% viene del frame, que muestra ese valor ya seleccionado. Es un
 		// default bajo: acepta casi cualquier lectura sin mandarla a revisión.
 		umbralConfianza: '50',
