@@ -114,9 +114,9 @@
 				: true
 	);
 
-	// "Finalizar" NO viene de Figma: el frame del paso 3 no está implementado y no
-	// sé qué dice su pie. Es una etiqueta honesta para un placeholder — cuando se
-	// construya el paso 3, se cambia por la del diseño.
+	// Las tres etiquetas son las literales del diseño. La del paso 3 decía
+	// "Finalizar" mientras ese paso era un placeholder; al construirlo se cambió
+	// por la del frame.
 	const etiquetaAvance = $derived(
 		borrador.paso === 1
 			? 'Continuar y agregar datos'
@@ -257,7 +257,22 @@
 </script>
 
 <Sheet.Root bind:open>
+	<!-- Escape y el clic fuera se interceptan para que hagan lo MISMO que la X:
+	     subir un nivel. Dejarlos cerrando del todo mientras la X regresaba a la
+	     Biblioteca era justo la inconsistencia que se acababa de quitar — el
+	     usuario no distingue "dismiss" por teclado de "dismiss" por botón.
+	     `preventDefault()` cancela el cierre que hace bits-ui por su cuenta y
+	     `cerrarNivel()` decide a dónde ir; desde la Biblioteca sí cierra, así que
+	     nunca queda uno atrapado. -->
 	<Sheet.Content
+		onEscapeKeydown={(e) => {
+			e.preventDefault();
+			cerrarNivel();
+		}}
+		onInteractOutside={(e) => {
+			e.preventDefault();
+			cerrarNivel();
+		}}
 		showCloseButton={false}
 		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[75%] data-[side=right]:xl:w-[70%]"
 	>
@@ -271,9 +286,8 @@
 			     era un `Sheet.Close` puro, así que a media captura de un tipo te
 			     sacaba hasta el Home — dos niveles de golpe, y para volver había que
 			     reabrir el módulo desde el engrane.
-			     Escape y el clic fuera SÍ siguen cerrando del todo, que es lo que
-			     cualquiera espera de un modal, y no pierden nada: el borrador queda
-			     guardado. -->
+			     Escape y el clic fuera hacen lo mismo que este botón: ver los
+			     manejadores de Sheet.Content. -->
 			<button
 				type="button"
 				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
