@@ -27,6 +27,7 @@
 		cargarTipoDocumental,
 		etiquetaVertical,
 		guardarTipoDocumental,
+		hayBorrador,
 		irAPaso,
 		pasoNavegable,
 		tiposDocumentales,
@@ -188,6 +189,17 @@
 	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
 	 *  picando su tarjeta en la lista, que es donde el usuario lo busca. */
 	function nuevoTipoDocumental() {
+		// RESCATE antes de limpiar. El diseño se apoya en un invariante: "todo lo
+		// capturado ya viajó a la biblioteca, así que limpiar no pierde nada". Eso
+		// es cierto para datos nuevos —el tipo se guarda al salir del paso 1— pero
+		// NO para un borrador escrito por una versión anterior a que existiera la
+		// biblioteca: ese llega con `idGuardado` en null y sin tarjeta que lo abra,
+		// así que este botón era su única affordance visible... y lo destruía. En
+		// la versión que escribió ese dato, este mismo botón era el que lo RETOMABA.
+		//
+		// `guardarTipoDocumental` no hace nada si no hay nombre, así que un
+		// borrador vacío se limpia como siempre.
+		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
 		vista = 'wizard';
 	}

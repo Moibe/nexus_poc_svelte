@@ -286,20 +286,44 @@ function leer(): BorradorTipoDocumental | null {
 		// una versión anterior de la app, o alguien desde la consola. Se valida
 		// campo por campo en vez de confiar en el JSON.
 		if (typeof datos !== 'object' || datos === null) return null;
+
+		const campos = Array.isArray(datos.campos)
+			? (datos.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
+			: [];
+		const paso =
+			Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1;
+		const pasoMaximoLeido =
+			Number.isInteger(datos.pasoMaximo) && datos.pasoMaximo >= 1 && datos.pasoMaximo <= 3
+				? (datos.pasoMaximo as number)
+				: 1;
+
 		return {
 			nombre: typeof datos.nombre === 'string' ? datos.nombre : '',
 			descripcion: typeof datos.descripcion === 'string' ? datos.descripcion : '',
 			vertical: typeof datos.vertical === 'string' ? datos.vertical : '',
 			campoEnCaptura: leerCampo(datos.campoEnCaptura) ?? campoVacio(),
-			campos: Array.isArray(datos.campos)
-				? (datos.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
-				: [],
+			campos,
 			idGuardado: typeof datos.idGuardado === 'string' ? datos.idGuardado : null,
-			paso: Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1,
-			pasoMaximo:
-				Number.isInteger(datos.pasoMaximo) && datos.pasoMaximo >= 1 && datos.pasoMaximo <= 3
-					? datos.pasoMaximo
-					: 1,
+			paso,
+			// `pasoMaximo` se DERIVA, no se lee suelto. Dos razones, las dos con
+			// consecuencias reales:
+			//
+			// 1. Un borrador viejo no trae la propiedad y caía en 1. Como el
+			//    $effect de ConfigSheet sincroniza el borrador hacia la biblioteca
+			//    AL MONTAR —sin que el usuario toque nada— ese 1 se escribía encima
+			//    del valor que `leerPasoMaximo` acababa de inferir para el tipo
+			//    guardado. La migración se anulaba sola, y peor: dejaba el 1
+			//    explícito en disco, así que la inferencia (que solo actúa cuando
+			//    la propiedad FALTA) ya nunca volvía a correr.
+			//
+			// 2. Invariante `pasoMaximo >= paso`. Leerlos por separado permitía
+			//    rehidratar pares que ningún escritor produce (paso 3 con máximo 1),
+			//    y ahí el sidebar anunciaba "Por configurar" el paso 2 mientras el
+			//    usuario estaba parado en el 3.
+			//
+			// El piso por `campos` es conservador: tener campos prueba que se
+			// visitó el paso 2, nada más. No se concede el 3 sin evidencia.
+			pasoMaximo: Math.max(pasoMaximoLeido, paso, campos.length > 0 ? 2 : 1),
 			actualizadoEn: typeof datos.actualizadoEn === 'string' ? datos.actualizadoEn : null
 		};
 	} catch {
