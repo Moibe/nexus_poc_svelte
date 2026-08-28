@@ -18,6 +18,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
@@ -53,6 +54,7 @@
 	//  - 'wizard': el alta de tipo documental en 3 pasos.
 	// Se entra siempre por 'biblioteca'; el wizard aparece al picar el botón.
 	let vista = $state<'biblioteca' | 'wizard'>('biblioteca');
+	let avisoExito = $state(false);
 
 	const steps = [
 		{
@@ -178,7 +180,10 @@
 	// borrador sobrevive, así que al volver a entrar al wizard los campos
 	// siguen llenos. Vaciarlo es una acción explícita ("Cancelar").
 	$effect(() => {
-		if (!open) vista = 'biblioteca';
+		if (!open) {
+			vista = 'biblioteca';
+			avisoExito = false;
+		}
 	});
 
 	/**
@@ -217,11 +222,15 @@
 		// borrador vacío se limpia como siempre.
 		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
+		avisoExito = false;
 		vista = 'wizard';
 	}
 
 	function abrirTipoDocumental(id: string) {
-		if (cargarTipoDocumental(id)) vista = 'wizard';
+		if (cargarTipoDocumental(id)) {
+			avisoExito = false;
+			vista = 'wizard';
+		}
 	}
 
 	function continuar() {
@@ -247,11 +256,12 @@
 			// sincronización en vivo, pero cuesta nada y cubre el caso de que esa
 			// sincronización se rompa alguna vez: lo último que hace el usuario no
 			// debería depender de un efecto.
-			guardarTipoDocumental();
+			const idEnBiblioteca = guardarTipoDocumental();
 			// El borrador se limpia para que el próximo "Nuevo tipo documental"
 			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.
 			limpiarBorrador();
-			open = false;
+			vista = 'biblioteca';
+			avisoExito = idEnBiblioteca !== null;
 		}
 	}
 </script>
@@ -337,6 +347,48 @@
 						</div>
 						<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
 					</div>
+
+					<!-- Submenú de la Biblioteca: un renglón por modelo, colgando en árbol.
+					     Es el frame `listado` (1077:65481), que hasta ahora estaba sin
+					     construir por no tener el diseño. Su geometría se respeta al pixel:
+
+					       · fila de 38px de alto (`listado`, 282x38)
+					       · el eje del árbol cae en x=44 — que es exactamente donde empieza
+					         el texto "Biblioteca" de arriba (icono de 32 + gap-3 de 12), así
+					         que el hijo queda alineado con el padre y no con su ícono
+					       · tramo vertical de 22px centrado en la fila (`line`, y=8 h=22)
+					       · guion horizontal de 11.5px a media altura (`line`, y=11 w=11.5)
+					       · la etiqueta arranca en x=19.5 respecto al eje (`text`, x=19.5)
+
+					     El tramo vertical va POR FILA, no corrido de arriba abajo: en el
+					     frame la línea vive dentro del renglón, así que con varios modelos
+					     quedan segmentos separados en vez de un eje continuo. Se deja como
+					     está el diseño; con un solo modelo las dos lecturas son idénticas y
+					     no hay con qué desempatar. Anotado en docs/pendientes-ux.md.
+
+					     El renglón es un botón porque retomar el modelo desde aquí es lo
+					     único que puede querer hacerse: en el frame es texto inerte, pero
+					     un árbol de navegación que no navega es un adorno. -->
+					{#if tiposDocumentales.length > 0}
+						<ul class="mt-4">
+							{#each tiposDocumentales as tipo (tipo.id)}
+								<li class="relative flex h-9.5 items-center pl-11">
+									<span
+										class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
+									></span>
+									<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
+									<button
+										type="button"
+										data-testid="rama-tipo"
+										class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
+										onclick={() => abrirTipoDocumental(tipo.id)}
+									>
+										{tipo.nombre}
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				{:else}
 					<p class="mb-4 text-sm font-semibold text-foreground">Nuevo tipo documental</p>
 					<ol class="space-y-6">
@@ -415,6 +467,7 @@
 								     misma que ya usa el renglón "Biblioteca" del sidebar. -->
 								<button
 									type="button"
+									data-testid="tarjeta-tipo"
 									class="flex w-full items-center gap-4 rounded-xl border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
 									onclick={() => abrirTipoDocumental(tipo.id)}
 								>
@@ -873,6 +926,24 @@
 					{/if}
 				{/if}
 			</div>
+		</div>
+
+		<div role="status" aria-live="polite">
+			{#if avisoExito && vista === 'biblioteca'}
+				<div
+					data-testid="aviso-exito"
+					class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
+				>
+					<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
+					<div class="min-w-0">
+						<p class="text-sm font-semibold text-green-700">Nuevo tipo documental agregado.</p>
+						<p class="mt-1 max-w-2xl text-xs text-green-600">
+							La configuración se completó con éxito. El modelo documental está listo para
+							activarse y ejecutar una prueba de procesamiento para validar su funcionamiento.
+						</p>
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		<!-- El pie solo existe en el wizard; la pantalla de entrada no lo tiene

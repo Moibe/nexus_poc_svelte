@@ -50,6 +50,8 @@ no porque se hayan colado.
 | **Escape y el clic fuera** hacen lo mismo que la X | Wizard del Módulo de configuración | Cambio pedido: que los tres gestos de salida coincidan. Antes Escape y el clic fuera cerraban del todo mientras la X subía un nivel — la misma inconsistencia que se acababa de quitar, por otra puerta. Nada se pierde: el borrador ya se persiste solo. Se hizo con `onEscapeKeydown` / `onInteractOutside` interceptados en `Sheet.Content`. **Nota para el UX**: "Guardar configuración", al terminar el paso 3, sí cierra hasta el Home. Es una acción de término, no de descarte, pero si se prefiere que caiga en la Biblioteca (para ver el modelo recién guardado, o encadenar otro) es un cambio de una línea. |
 | Botón **"Regresar"** en vez de **"Cancelar registro"** | Pie del wizard | Cambio pedido: retrocede un paso en lugar de salir. En el paso 1 regresa a la Biblioteca, que es la pantalla de la que se viene. Se repintó en **verde** (`text-green-600`, el mismo `--exito/exito-2` que usan "Listo" y "En configuración" en el sidebar). En el frame es rojo, pero ahí decía "Cancelar registro" y el rojo señalaba una acción destructiva; "Regresar" no lo es. |
 | **Títulos de paso navegables** (subrayado al pasar el cursor) | Sidebar del wizard | El frame los dibuja como texto inerte. Se volvieron clicables a pedido explícito, y solo los ya visitados. El subrayado en hover es la única señal visual que se agregó; el UX puede querer otra. |
+| **Las ramas del árbol son clicables** | Submenú de la Biblioteca | En el frame son texto inerte. Se hicieron botones porque retomar el modelo es lo único que puede querer hacerse desde ahí — un árbol de navegación que no navega es un adorno. Hace lo mismo que picar la tarjeta del cuerpo. |
+| **El eje del árbol queda segmentado** con varios modelos | Submenú de la Biblioteca | Fidelidad literal al frame, no una decisión: la línea vertical vive DENTRO del renglón (`line`, y=8, h=22 en una fila de 38), así que con N modelos salen N tramos de 22px separados por huecos de 16px, en vez de un eje continuo. Con un solo modelo las dos lecturas son idénticas y no hay con qué desempatar. **Conviene que el UX confirme** cuál quería: continuo es el idioma habitual de un árbol. |
 | Estado vacío **"Todavía no hay campos que configurar"** | Paso 3 | El frame siempre muestra campos. Puede quedar vacío porque los campos son opcionales para avanzar; sin esto la pantalla quedaría en blanco sin explicación. |
 | Estado **"En cola"** | Filas de la Bandeja de preparación | Las lecturas de archivo se serializaron para no cargar N archivos completos a memoria a la vez. Una barra de progreso en 0% se ve trabada; "En cola" dice la verdad. |
 
@@ -81,10 +83,11 @@ píxeles**:
 - **Indentación del panel del acordeón** (paso 3). El frame tiene un `line` de
   22px que ata visualmente el contenido con su encabezado. Se aproximó con un
   borde izquierdo, pero sin poder comparar píxeles no está confirmado.
-- **Submenú del sidebar** bajo "Biblioteca". El frame tiene un `listado` (282×38)
-  con `space`, `line` y `submenu` — o sea una lista anidada con línea vertical,
-  un renglón por modelo. **No se construyó**: sin ver el diseño había que
-  inventar demasiado.
+- ~~**Submenú del sidebar** bajo "Biblioteca"~~ — **CONSTRUIDO el 2026-08-28**
+  (frame `listado`, `1077:65481`). El usuario aportó la captura que faltaba. La
+  geometría se reprodujo al pixel y está verificada por prueba automatizada: eje
+  del árbol en x=44 (justo donde empieza el texto "Biblioteca", no su ícono),
+  fila de 38px, tramo vertical de 22px, guion de 11.5px, etiqueta en x=63.5.
 
 ## 4. Pantallas del wizard sin construir
 
@@ -107,6 +110,24 @@ píxeles**:
   marcaría el `transform` del mapeo. Ver la nota de la sección 2.6b en
   `nexus_back/docs/solicitudes-dba.md`: ahí hay una **tensión con la
   inmutabilidad** que conviene resolver en el diseño antes de construirla.
+
+## 4b. Desajustes detectados y NO corregidos
+
+Salieron al leer el volcado del frame `1077:65410` mientras se construía el
+submenú. No se tocaron porque nadie los pidió, pero están verificados:
+
+- **La etiqueta "Administrador" de la tarjeta está `hidden="true"` en el frame**,
+  igual que el ícono `logout-01` que la acompaña. La app sí la pinta. La captura
+  que compartió el usuario el 2026-08-28 tampoco la muestra: en su lugar van un
+  botón de estado y un menú `⋮`.
+- **El subtítulo de la tarjeta no coincide.** El frame dice
+  `Seguro de Autos | Precisión 0%`; la app dice `1 campo · Seguros`. Son dos
+  datos distintos: el frame muestra vertical + precisión del modelo, la app
+  muestra cuántos campos lleva. La precisión todavía no existe como dato.
+- **El botón "Nuevo tipo documental" está `hidden="true"`** en el frame de la
+  biblioteca poblada (`1077:65431`), donde vive al pie del sidebar. La app lo
+  pinta en el cuerpo, bajo la lista. Sin él no habría forma de crear el segundo
+  modelo.
 
 ## 5. Correcciones de fidelidad ya aplicadas
 
