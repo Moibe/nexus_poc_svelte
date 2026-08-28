@@ -16,10 +16,12 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
 	import Minus from '@lucide/svelte/icons/minus';
+	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
+		agregarValorLista,
 		campoCompleto,
 		campoIntacto,
 		cargarTipoDocumental,
@@ -31,7 +33,9 @@
 		limpiarBorrador,
 		nombreCampoDuplicado,
 		quitarCampo,
+		quitarValorLista,
 		sincronizarTipoGuardado,
+		valorListaDuplicado,
 		CARDINALIDADES,
 		REGLAS_TRANSFORMACION,
 		TIPOS_DE_DATO,
@@ -133,12 +137,22 @@
 		// Con el recorrido, cualquier propiedad que se agregue en el futuro queda
 		// cubierta sola. Es la diferencia entre una lista que hay que recordar
 		// actualizar y una que no puede desactualizarse.
-		const tocarTodo = (o: Record<string, unknown>) => {
-			for (const clave of Object.keys(o)) void o[clave];
+		// Recorrido PROFUNDO. La versión anterior leía `o[clave]` y con eso bastaba
+		// para escalares, pero de un arreglo solo leía la REFERENCIA — nunca su
+		// contenido. Consecuencia real: quitar un valor del listado de un campo
+		// `Lista` no disparaba el guardado (un `splice` no cambia la referencia),
+		// mientras que agregarlo sí, pero de rebote: `agregarValorLista` también
+		// limpia un campo de texto, y ESE sí estaba vigilado. Un guardado que
+		// funciona por efecto colateral es peor que uno que no funciona.
+		const tocar = (v: unknown) => {
+			if (Array.isArray(v)) {
+				void v.length;
+				for (const x of v) tocar(x);
+			} else if (v !== null && typeof v === 'object') {
+				for (const clave of Object.keys(v)) tocar((v as Record<string, unknown>)[clave]);
+			}
 		};
-		tocarTodo(borrador as unknown as Record<string, unknown>);
-		tocarTodo(borrador.campoEnCaptura as unknown as Record<string, unknown>);
-		for (const c of borrador.campos) tocarTodo(c as unknown as Record<string, unknown>);
+		tocar(borrador);
 
 		// untrack es OBLIGATORIO aquí, no una optimización: `guardarTipoDocumental`
 		// BUSCA la entrada dentro de `tiposDocumentales` (lectura) y luego le
@@ -662,6 +676,74 @@
 												</Select.Root>
 											</div>
 										</div>
+
+										{#if campo.tipoDato === 'lista'}
+											<!-- Solo para tipo "Lista": son los valores permitidos del
+											     campo, o sea `catalog_value` (2.3 del diccionario). Aparece
+											     entre las reglas y la cardinalidad, como en el frame. -->
+											{@const duplicado = valorListaDuplicado(
+												campo.valorListaEnCaptura,
+												campo.valoresLista
+											)}
+											{@const puedeAgregarValor =
+												campo.valorListaEnCaptura.trim() !== '' && !duplicado}
+
+											<div class="mt-6 space-y-2">
+												<Label for="listado-{campo.id}">Agregar listado</Label>
+												<Input
+													id="listado-{campo.id}"
+													bind:value={campo.valorListaEnCaptura}
+													placeholder="Ingresa un listado personalizado"
+													aria-invalid={duplicado}
+													onkeydown={(e) => {
+														// Enter agrega el valor: teclear una lista de diez
+														// elementos sin poder usar Enter es innecesariamente
+														// lento. No está en el frame, pero tampoco lo contradice.
+														if (e.key === 'Enter') {
+															e.preventDefault();
+															agregarValorLista(campo);
+														}
+													}}
+												/>
+												{#if duplicado}
+													<p class="text-xs text-destructive">
+														Ese valor ya está en el listado.
+													</p>
+												{/if}
+
+												<div class="flex justify-end">
+													<Button
+														variant="link"
+														class="h-auto gap-1.5 p-0 text-primary"
+														disabled={!puedeAgregarValor}
+														onclick={() => agregarValorLista(campo)}
+													>
+														<CirclePlus class="size-4" />
+														Agregar otro campo
+													</Button>
+												</div>
+
+												{#if campo.valoresLista.length > 0}
+													<div class="flex flex-wrap gap-2 pt-1">
+														{#each campo.valoresLista as valor (valor)}
+															<span
+																class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pr-1.5 pl-3 text-xs text-foreground"
+															>
+																{valor}
+																<button
+																	type="button"
+																	aria-label={`Quitar ${valor} del listado`}
+																	class="text-muted-foreground transition-colors hover:text-destructive"
+																	onclick={() => quitarValorLista(campo, valor)}
+																>
+																	<CircleX class="size-3.5" />
+																</button>
+															</span>
+														{/each}
+													</div>
+												{/if}
+											</div>
+										{/if}
 
 										<div class="mt-6 rounded-xl border border-border p-4">
 											<p class="text-sm font-medium text-foreground">Cardinalidad</p>

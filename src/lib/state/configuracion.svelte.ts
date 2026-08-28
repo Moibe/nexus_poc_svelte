@@ -126,6 +126,18 @@ export type CampoBorrador = {
 	reglaTransformacion: string;
 	/** `unico` | `multiple`. Con `obligatorio` arma el occurrenceType. */
 	cardinalidad: string;
+	/**
+	 * Valores permitidos cuando `tipoDato === 'lista'`. Su destino en el
+	 * diccionario es `catalog_value` (2.3), una fila por valor.
+	 *
+	 * NO se borran al cambiar el tipo de dato a otro: quedan guardados aunque la
+	 * sección deje de mostrarse. Tirar lo que alguien escribió porque tocó un
+	 * desplegable es peor que dejar un dato inerte, y si regresa a "Lista" los
+	 * encuentra donde los dejó.
+	 */
+	valoresLista: string[];
+	/** Lo que se está tecleando en "Agregar listado", antes de volverse chip. */
+	valorListaEnCaptura: string;
 };
 
 export type BorradorTipoDocumental = {
@@ -168,7 +180,9 @@ export function campoVacio(): CampoBorrador {
 		// default bajo: acepta casi cualquier lectura sin mandarla a revisión.
 		umbralConfianza: '50',
 		reglaTransformacion: '',
-		cardinalidad: 'unico'
+		cardinalidad: 'unico',
+		valoresLista: [],
+		valorListaEnCaptura: ''
 	};
 }
 
@@ -241,7 +255,12 @@ function leerCampo(c: unknown): CampoBorrador | null {
 			typeof d.reglaTransformacion === 'string' && VALORES_REGLA.includes(d.reglaTransformacion)
 				? d.reglaTransformacion
 				: '',
-		cardinalidad: d.cardinalidad === 'multiple' ? 'multiple' : 'unico'
+		cardinalidad: d.cardinalidad === 'multiple' ? 'multiple' : 'unico',
+		valoresLista: Array.isArray(d.valoresLista)
+			? d.valoresLista.filter((v: unknown): v is string => typeof v === 'string')
+			: [],
+		valorListaEnCaptura:
+			typeof d.valorListaEnCaptura === 'string' ? d.valorListaEnCaptura : ''
 	};
 }
 
@@ -573,4 +592,32 @@ export function cargarTipoDocumental(id: string): boolean {
 export function sincronizarTipoGuardado() {
 	if (!borradorTipoDocumental.idGuardado) return;
 	guardarTipoDocumental();
+}
+
+/**
+ * ¿Ese valor ya está en el listado del campo?
+ *
+ * Misma regla que con los nombres de campo: ignora mayúsculas y espacios de los
+ * extremos. `SUV` y `suv` serían el mismo valor de catálogo, y tenerlos dos
+ * veces no significa nada — `catalog_value` guardaría dos filas para un solo
+ * valor permitido.
+ */
+export function valorListaDuplicado(valor: string, valores: string[]): boolean {
+	const v = valor.trim().toLowerCase();
+	if (v === '') return false;
+	return valores.some((x) => x.trim().toLowerCase() === v);
+}
+
+/** Pasa lo tecleado en "Agregar listado" a la lista de chips. */
+export function agregarValorLista(campo: CampoBorrador): boolean {
+	const v = campo.valorListaEnCaptura.trim();
+	if (v === '' || valorListaDuplicado(v, campo.valoresLista)) return false;
+	campo.valoresLista.push(v);
+	campo.valorListaEnCaptura = '';
+	return true;
+}
+
+export function quitarValorLista(campo: CampoBorrador, valor: string) {
+	const i = campo.valoresLista.indexOf(valor);
+	if (i !== -1) campo.valoresLista.splice(i, 1);
 }
