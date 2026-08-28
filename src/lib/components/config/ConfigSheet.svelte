@@ -852,10 +852,12 @@
 		     (así está en Figma: ahí la única acción es el botón del centro). -->
 		{#if vista === 'wizard'}
 			<div class="flex items-center justify-between border-t border-border px-6 py-4">
-				<!-- Sigue en rojo (--error del frame) aunque ya no sea destructivo: solo
-				     se pidió cambiar texto y comportamiento. Vale revisarlo con el UX —
-				     el rojo señala peligro y "Regresar" no lo es. -->
-				<Button variant="link" class="h-auto p-0 text-destructive" onclick={regresar}>
+				<!-- Verde, no el rojo del frame: ahí era "Cancelar registro" y el rojo
+				     (--error) señalaba una acción destructiva. "Regresar" no lo es, y
+				     dejarlo rojo hacía dudar antes de picarlo. Se usa el mismo
+				     `text-green-600` que ya llevan "Listo" y "En configuración" en el
+				     sidebar, que es el verde de éxito del archivo (--exito/exito-2). -->
+				<Button variant="link" class="h-auto p-0 text-green-600" onclick={regresar}>
 					Regresar
 				</Button>
 				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
