@@ -47,9 +47,10 @@ no porque se hayan colado.
 | Aviso **"Ese valor ya está en el listado."** | Paso 3, campos tipo Lista | El frame no muestra validación ahí. Se agregó por consistencia con la de nombres de campo: dos valores iguales en un catálogo no significan nada, y deshabilitar el botón sin decir por qué confunde. |
 | **"Obligatorio" marcado por default** en campos nuevos | Paso 2 del wizard | Cambio pedido. El frame lo dibuja desmarcado. Coincide con los datos: 15 de los 19 campos activos del procesador de INE están marcados "Obligatoria una vez". Solo aplica a campos nuevos — un campo ya guardado como opcional conserva su valor. |
 | La **X del header sube un nivel** en vez de cerrar siempre | Wizard del Módulo de configuración | Cambio pedido: desde el wizard regresa a la Biblioteca; desde la Biblioteca sí cierra. Antes sacaba hasta el Home — dos niveles de golpe. |
-| **Escape y el clic fuera** hacen lo mismo que la X | Wizard del Módulo de configuración | Cambio pedido: que los tres gestos de salida coincidan. Antes Escape y el clic fuera cerraban del todo mientras la X subía un nivel — la misma inconsistencia que se acababa de quitar, por otra puerta. Nada se pierde: el borrador ya se persiste solo. Se hizo con `onEscapeKeydown` / `onInteractOutside` interceptados en `Sheet.Content`. **Nota para el UX**: "Guardar configuración", al terminar el paso 3, sí cierra hasta el Home. Es una acción de término, no de descarte, pero si se prefiere que caiga en la Biblioteca (para ver el modelo recién guardado, o encadenar otro) es un cambio de una línea. |
+| **Escape y el clic fuera** hacen lo mismo que la X | Wizard del Módulo de configuración | Cambio pedido: que los tres gestos de salida coincidan. Antes Escape y el clic fuera cerraban del todo mientras la X subía un nivel — la misma inconsistencia que se acababa de quitar, por otra puerta. Nada se pierde: el borrador ya se persiste solo. Se hizo con `onEscapeKeydown` / `onInteractOutside` interceptados en `Sheet.Content`. Al terminar el paso 3 el módulo tampoco cierra ya: cae en la Biblioteca, como pide el diseño del aviso de confirmación. |
 | Botón **"Regresar"** en vez de **"Cancelar registro"** | Pie del wizard | Cambio pedido: retrocede un paso en lugar de salir. En el paso 1 regresa a la Biblioteca, que es la pantalla de la que se viene. Se repintó en **verde** (`text-green-600`, el mismo `--exito/exito-2` que usan "Listo" y "En configuración" en el sidebar). En el frame es rojo, pero ahí decía "Cancelar registro" y el rojo señalaba una acción destructiva; "Regresar" no lo es. |
 | **Títulos de paso navegables** (subrayado al pasar el cursor) | Sidebar del wizard | El frame los dibuja como texto inerte. Se volvieron clicables a pedido explícito, y solo los ya visitados. El subrayado en hover es la única señal visual que se agregó; el UX puede querer otra. |
+| **Aviso de confirmación al terminar el alta** | Pie del Módulo de configuración | Cambio pedido, con captura del diseño. Es el primer aviso de CONFIRMACIÓN del proyecto —los dos que ya había (nombre de campo duplicado, valor repetido) son de validación—, el primer degradado y la primera región `aria-live`. Tres cosas que conviene que el UX mire: **(a) ubicación** — el frame lo pone debajo del modal, a unos dos tercios del ancho; aquí el panel es de altura completa, así que va al pie de la columna de contenido, alineado con "Modelos documentales agregados" (verificado: x=795 los dos). **(b) no se auto-oculta** — el frame no dibuja botón de cerrar ni nada que sugiera un temporizador; muere al navegar. **(c) solo se anuncia el ALTA** — al retomar un modelo y volver a guardarlo no aparece, porque "Nuevo tipo documental agregado." se contradiría con una lista que no creció. Si se quiere confirmar también la edición, hace falta copy propio. |
 | **Las ramas del árbol son clicables** | Submenú de la Biblioteca | En el frame son texto inerte. Se hicieron botones porque retomar el modelo es lo único que puede querer hacerse desde ahí — un árbol de navegación que no navega es un adorno. Hace lo mismo que picar la tarjeta del cuerpo. |
 | **El eje del árbol queda segmentado** con varios modelos | Submenú de la Biblioteca | Fidelidad literal al frame, no una decisión: la línea vertical vive DENTRO del renglón (`line`, y=8, h=22 en una fila de 38), así que con N modelos salen N tramos de 22px separados por huecos de 16px, en vez de un eje continuo. Con un solo modelo las dos lecturas son idénticas y no hay con qué desempatar. **Conviene que el UX confirme** cuál quería: continuo es el idioma habitual de un árbol. |
 | Estado vacío **"Todavía no hay campos que configurar"** | Paso 3 | El frame siempre muestra campos. Puede quedar vacío porque los campos son opcionales para avanzar; sin esto la pantalla quedaría en blanco sin explicación. |
@@ -110,6 +111,19 @@ píxeles**:
   marcaría el `transform` del mapeo. Ver la nota de la sección 2.6b en
   `nexus_back/docs/solicitudes-dba.md`: ahí hay una **tensión con la
   inmutabilidad** que conviene resolver en el diseño antes de construirla.
+
+## 3b. Bug corregido de paso
+
+Al construir el aviso salió un camino de **pérdida de datos silenciosa** que ya
+existía: en el paso 3 el botón está siempre habilitado, y desde el sidebar se
+salta a cualquier paso ya visitado. Bastaba con borrar el nombre en el paso 1,
+picar el título del 3 y "Guardar configuración": el borrador se destruía, la
+biblioteca conservaba el nombre viejo, y no aparecía ni aviso ni error.
+Reproducido en el navegador antes de tocar nada.
+
+Ahora, si no hay nombre, no se limpia nada y se devuelve al paso 1 — donde vive
+el campo que falta y donde el pie ya está deshabilitado hasta llenarlo, así que
+la pantalla lo explica sola sin inventar un mensaje que el diseño no tiene.
 
 ## 4b. Desajustes detectados y NO corregidos
 

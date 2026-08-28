@@ -55,6 +55,12 @@
 	// Se entra siempre por 'biblioteca'; el wizard aparece al picar el botón.
 	let vista = $state<'biblioteca' | 'wizard'>('biblioteca');
 	let avisoExito = $state(false);
+	// Si el wizard que está abierto es un ALTA o la edición de un modelo que ya
+	// existía. No se puede deducir al final: el tipo documental entra a la
+	// biblioteca al salir del PASO 1, así que para cuando se llega al 3 el
+	// borrador ya trae `idGuardado` puesto en los dos casos. El único momento en
+	// que se distinguen es al ENTRAR, que es donde se marca.
+	let altaEnCurso = $state(false);
 
 	const steps = [
 		{
@@ -223,12 +229,14 @@
 		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
 		avisoExito = false;
+		altaEnCurso = true;
 		vista = 'wizard';
 	}
 
 	function abrirTipoDocumental(id: string) {
 		if (cargarTipoDocumental(id)) {
 			avisoExito = false;
+			altaEnCurso = false;
 			vista = 'wizard';
 		}
 	}
@@ -257,11 +265,38 @@
 			// sincronización se rompa alguna vez: lo último que hace el usuario no
 			// debería depender de un efecto.
 			const idEnBiblioteca = guardarTipoDocumental();
+
+			// Sin nombre no hay nada que guardar: `guardarTipoDocumental` sale por
+			// su guarda y devuelve null. Se puede llegar aquí porque en el paso 3
+			// el botón está siempre habilitado y desde el sidebar se salta a
+			// cualquier paso ya visitado — basta con borrar el nombre en el 1 y
+			// picar el título del 3.
+			//
+			// Antes de esto, ese camino limpiaba el borrador igual: el usuario
+			// picaba "Guardar configuración", perdía lo capturado y no recibía ni
+			// aviso ni error. Ahora se devuelve al paso 1, que es donde vive el
+			// campo que falta, sin tocar nada de lo suyo; ahí el pie ya está
+			// deshabilitado hasta que lo llene, así que la pantalla explica sola
+			// qué falta y no hace falta inventar un mensaje que el diseño no tiene.
+			if (idEnBiblioteca === null) {
+				borrador.paso = 1;
+				return;
+			}
+
 			// El borrador se limpia para que el próximo "Nuevo tipo documental"
 			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.
 			limpiarBorrador();
 			vista = 'biblioteca';
-			avisoExito = idEnBiblioteca !== null;
+			// Solo se anuncia el ALTA. Al actualizar un modelo que ya existía no se
+			// dice nada: el texto del diseño habla de un tipo AGREGADO, y anunciarlo
+			// tras una edición se contradice con la lista de atrás, que sigue
+			// teniendo las mismas tarjetas. No hay copy aprobado para "actualizado":
+			// vale preguntárselo al UX.
+			//
+			// `guardarTipoDocumental` NO sirve para distinguirlos: devuelve el id
+			// tanto en la rama que hace `push` como en la que hace `Object.assign`.
+			avisoExito = altaEnCurso;
+			altaEnCurso = false;
 		}
 	}
 </script>
@@ -928,7 +963,22 @@
 			</div>
 		</div>
 
-		<div role="status" aria-live="polite">
+		<!-- El contenedor con role="status" está SIEMPRE montado, aunque esté vacío:
+		     una región `aria-live` que se monta junto con su texto no se anuncia —
+		     el lector de pantalla tiene que estar observándola de antes. Por eso la
+		     bandera controla la tarjeta de adentro y no este div. Vacío no mide
+		     nada, así que no separa nada.
+
+		     `pl-82.5` es el ancho del sidebar (la misma medida que su `w-82.5`), y
+		     con el `mx-8` de la tarjeta el aviso queda alineado exactamente con el
+		     título "Modelos documentales agregados". Sin ese padding el borde
+		     izquierdo caía en tierra de nadie: ni con el título ni con el sidebar,
+		     cruzando por debajo de la división en dos columnas. En el frame el
+		     aviso va debajo del modal entero y ocupa unos dos tercios; aquí el
+		     panel es de altura completa, así que se adapta al pie de la columna de
+		     contenido — que además es donde está el modelo que se acaba de
+		     agregar. Anotado en docs/pendientes-ux.md. -->
+		<div role="status" aria-live="polite" class="pl-82.5">
 			{#if avisoExito && vista === 'biblioteca'}
 				<div
 					data-testid="aviso-exito"
@@ -937,7 +987,11 @@
 					<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
 					<div class="min-w-0">
 						<p class="text-sm font-semibold text-green-700">Nuevo tipo documental agregado.</p>
-						<p class="mt-1 max-w-2xl text-xs text-green-600">
+						<!-- green-700 y no green-600: sobre `green-50`, el 600 a 12px da
+						     ~3.1:1 de contraste y AA pide 4.5:1 para texto normal. El 700
+						     llega a ~4.7:1 y además se parece más al verde apagado del
+						     frame que el 600, que sale demasiado vivo. -->
+						<p class="mt-1 max-w-2xl text-xs text-green-700">
 							La configuración se completó con éxito. El modelo documental está listo para
 							activarse y ejecutar una prueba de procesamiento para validar su funcionamiento.
 						</p>
