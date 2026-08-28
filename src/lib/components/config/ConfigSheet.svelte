@@ -181,9 +181,19 @@
 		if (!open) vista = 'biblioteca';
 	});
 
-	function cancelar() {
-		limpiarBorrador();
-		vista = 'biblioteca';
+	/**
+	 * "Regresar": retrocede un paso. Antes era "Cancelar registro" y borraba el
+	 * borrador — un nombre que además prometía de más, porque el tipo documental
+	 * ya vive en la biblioteca desde que sale del paso 1: cancelar el borrador no
+	 * cancelaba el registro.
+	 *
+	 * En el paso 1 no hay paso anterior, así que regresa a la Biblioteca: es la
+	 * pantalla de la que se viene. Nada se pierde — el borrador sigue guardado y
+	 * el tipo sigue en la lista.
+	 */
+	function regresar() {
+		if (borrador.paso > 1) borrador.paso -= 1;
+		else vista = 'biblioteca';
 	}
 
 	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
@@ -842,8 +852,11 @@
 		     (así está en Figma: ahí la única acción es el botón del centro). -->
 		{#if vista === 'wizard'}
 			<div class="flex items-center justify-between border-t border-border px-6 py-4">
-				<Button variant="link" class="h-auto p-0 text-destructive" onclick={cancelar}>
-					Cancelar registro
+				<!-- Sigue en rojo (--error del frame) aunque ya no sea destructivo: solo
+				     se pidió cambiar texto y comportamiento. Vale revisarlo con el UX —
+				     el rojo señala peligro y "Regresar" no lo es. -->
+				<Button variant="link" class="h-auto p-0 text-destructive" onclick={regresar}>
+					Regresar
 				</Button>
 				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
 			</div>
