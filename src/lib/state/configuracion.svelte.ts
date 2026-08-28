@@ -453,6 +453,35 @@ export type TipoDocumentalGuardado = {
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
 
+/**
+ * Hasta qué paso se configuró un tipo guardado — con MIGRACIÓN para los que se
+ * guardaron antes de que existiera `pasoMaximo`.
+ *
+ * El problema concreto que resuelve: un tipo guardado hace días no trae la
+ * propiedad. Leerlo como 1 hacía que, al retomarlo desde la biblioteca, los
+ * pasos 2 y 3 NO fueran navegables — aunque el tipo tuviera sus campos y sus
+ * propiedades ya definidas. Nada se perdía, pero la app se comportaba peor con
+ * datos viejos que con nuevos, y sin explicación visible.
+ *
+ * La inferencia solo se aplica cuando la propiedad FALTA. Un dato nuevo siempre
+ * trae su valor real, así que esto no relaja la regla de "solo se navega a lo
+ * ya visitado" — es una migración de una sola vez:
+ *
+ *   - Existe en la biblioteca → necesariamente salió del paso 1, así que ≥ 2.
+ *     Un tipo solo se guarda al pasar de ese paso.
+ *   - Tiene campos → el paso 3 tiene algo real que mostrar (el acordeón de esos
+ *     campos), así que se concede 3. Estos datos son anteriores a la función; la
+ *     alternativa era dejarlos artificialmente cerrados para siempre.
+ */
+function leerPasoMaximo(d: Record<string, unknown>): number {
+	const guardado = d.pasoMaximo;
+	if (Number.isInteger(guardado) && (guardado as number) >= 1 && (guardado as number) <= 3) {
+		return guardado as number;
+	}
+	const cuantosCampos = Array.isArray(d.campos) ? d.campos.length : 0;
+	return cuantosCampos > 0 ? 3 : 2;
+}
+
 let contadorTipo = 0;
 function idTipo(): string {
 	contadorTipo += 1;
@@ -477,10 +506,7 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 				campos: Array.isArray(d.campos)
 					? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
 					: [],
-				pasoMaximo:
-					Number.isInteger(d.pasoMaximo) && (d.pasoMaximo as number) >= 1 && (d.pasoMaximo as number) <= 3
-						? (d.pasoMaximo as number)
-						: 1,
+				pasoMaximo: leerPasoMaximo(d),
 				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
 				estado: 'borrador' as const
 			}));
