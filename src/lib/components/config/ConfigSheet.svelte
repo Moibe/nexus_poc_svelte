@@ -191,6 +191,12 @@
 	 * pantalla de la que se viene. Nada se pierde — el borrador sigue guardado y
 	 * el tipo sigue en la lista.
 	 */
+	/** La X del header. Sube un nivel en vez de cerrar de golpe. */
+	function cerrarNivel() {
+		if (vista === 'wizard') vista = 'biblioteca';
+		else open = false;
+	}
+
 	function regresar() {
 		if (borrador.paso > 1) borrador.paso -= 1;
 		else vista = 'biblioteca';
@@ -260,17 +266,24 @@
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
 				Modulo de configuración
 			</Sheet.Title>
-			<Sheet.Close>
-				{#snippet child({ props })}
-					<button
-						{...props}
-						class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
-					>
-						<CancelSquareIcon />
-						<span class="sr-only">Cerrar</span>
-					</button>
-				{/snippet}
-			</Sheet.Close>
+			<!-- La X sube UN NIVEL, no cierra siempre: estando en el wizard regresa a
+			     la Biblioteca; estando ya en la Biblioteca sí cierra el módulo. Antes
+			     era un `Sheet.Close` puro, así que a media captura de un tipo te
+			     sacaba hasta el Home — dos niveles de golpe, y para volver había que
+			     reabrir el módulo desde el engrane.
+			     Escape y el clic fuera SÍ siguen cerrando del todo, que es lo que
+			     cualquiera espera de un modal, y no pierden nada: el borrador queda
+			     guardado. -->
+			<button
+				type="button"
+				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+				onclick={cerrarNivel}
+			>
+				<CancelSquareIcon />
+				<span class="sr-only">
+					{vista === 'wizard' ? 'Volver al módulo de configuración' : 'Cerrar'}
+				</span>
+			</button>
 		</div>
 
 		<!-- header.modal -->
