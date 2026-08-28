@@ -154,6 +154,16 @@ export type BorradorTipoDocumental = {
 	idGuardado: string | null;
 	/** En qué paso del wizard se quedó (1-3). */
 	paso: number;
+	/**
+	 * El paso más avanzado al que se llegó **por el flujo normal**. Es lo que
+	 * habilita la navegación hacia atrás desde el sidebar: un paso solo se
+	 * puede picar si ya se visitó una vez.
+	 *
+	 * Un solo número alcanza porque el wizard es lineal: llegar al 3 implica
+	 * haber pasado por el 1 y el 2. Si algún día hubiera ramas, esto tendría
+	 * que volverse un conjunto de pasos visitados.
+	 */
+	pasoMaximo: number;
 	/** ISO-8601 de la última vez que se persistió, tal como venía al rehidratar.
 	 *  No se actualiza en memoria al guardar — el valor fresco va al payload. */
 	actualizadoEn: string | null;
@@ -198,6 +208,7 @@ function vacio(): BorradorTipoDocumental {
 		campoEnCaptura: campoVacio(),
 		idGuardado: null,
 		paso: 1,
+		pasoMaximo: 1,
 		actualizadoEn: null
 	};
 }
@@ -285,6 +296,10 @@ function leer(): BorradorTipoDocumental | null {
 				: [],
 			idGuardado: typeof datos.idGuardado === 'string' ? datos.idGuardado : null,
 			paso: Number.isInteger(datos.paso) && datos.paso >= 1 && datos.paso <= 3 ? datos.paso : 1,
+			pasoMaximo:
+				Number.isInteger(datos.pasoMaximo) && datos.pasoMaximo >= 1 && datos.pasoMaximo <= 3
+					? datos.pasoMaximo
+					: 1,
 			actualizadoEn: typeof datos.actualizadoEn === 'string' ? datos.actualizadoEn : null
 		};
 	} catch {
@@ -425,6 +440,9 @@ export type TipoDocumentalGuardado = {
 	descripcion: string;
 	vertical: string;
 	campos: CampoBorrador[];
+	/** Hasta qué paso se configuró. Al retomarlo, esos pasos quedan navegables
+	 *  sin tener que recorrer el wizard de nuevo. */
+	pasoMaximo: number;
 	/** ISO-8601 de cuándo se guardó por primera vez. */
 	guardadoEn: string;
 	/** Precursor de `config_version.status`. Hoy solo hay uno: nada se activa
@@ -459,6 +477,10 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 				campos: Array.isArray(d.campos)
 					? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
 					: [],
+				pasoMaximo:
+					Number.isInteger(d.pasoMaximo) && (d.pasoMaximo as number) >= 1 && (d.pasoMaximo as number) <= 3
+						? (d.pasoMaximo as number)
+						: 1,
 				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
 				estado: 'borrador' as const
 			}));
@@ -499,7 +521,8 @@ export function guardarTipoDocumental(): string | null {
 		nombre: b.nombre.trim(),
 		descripcion: b.descripcion.trim(),
 		vertical: b.vertical,
-		campos: $state.snapshot(b.campos) as CampoBorrador[]
+		campos: $state.snapshot(b.campos) as CampoBorrador[],
+		pasoMaximo: b.pasoMaximo
 	};
 
 	const existente = b.idGuardado
@@ -570,7 +593,11 @@ export function cargarTipoDocumental(id: string): boolean {
 		campos: tipo.campos.map((c) => ({ ...$state.snapshot(c), id: idCampo() })),
 		campoEnCaptura: campoVacio(),
 		idGuardado: tipo.id,
-		paso: 1
+		paso: 1,
+		// Se restaura para que los pasos que ya se configuraron sigan navegables:
+		// un tipo con propiedades definidas SÍ llegó al 3 por el flujo normal, y
+		// obligar a recorrerlo otra vez para volver ahí no tendría sentido.
+		pasoMaximo: tipo.pasoMaximo
 	});
 	guardarBorrador();
 	return true;
@@ -620,4 +647,18 @@ export function agregarValorLista(campo: CampoBorrador): boolean {
 export function quitarValorLista(campo: CampoBorrador, valor: string) {
 	const i = campo.valoresLista.indexOf(valor);
 	if (i !== -1) campo.valoresLista.splice(i, 1);
+}
+
+/** ¿Se puede navegar a ese paso desde el sidebar? Solo si ya se visitó. */
+export function pasoNavegable(n: number): boolean {
+	return n <= borradorTipoDocumental.pasoMaximo;
+}
+
+/** Salta a un paso ya visitado. No avanza: para eso está el botón del pie, que
+ *  es el que valida. Saltar hacia adelante sin validar dejaría pasar un paso 1
+ *  incompleto. */
+export function irAPaso(n: number): boolean {
+	if (!pasoNavegable(n)) return false;
+	borradorTipoDocumental.paso = n;
+	return true;
 }

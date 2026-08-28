@@ -46,6 +46,7 @@ no porque se hayan colado.
 | Texto **"Sin campos configurados"** | Tarjeta de la Biblioteca | Desde que el tipo documental se guarda al salir del paso 1, puede existir sin ningún campo. Un "0 campos" suelto se lee como que algo salió mal. |
 | **Enter** agrega el valor en "Agregar listado" | Paso 3, campos tipo Lista | Teclear diez valores sin poder usar Enter es innecesariamente lento. No está en el frame, pero tampoco lo contradice. |
 | Aviso **"Ese valor ya está en el listado."** | Paso 3, campos tipo Lista | El frame no muestra validación ahí. Se agregó por consistencia con la de nombres de campo: dos valores iguales en un catálogo no significan nada, y deshabilitar el botón sin decir por qué confunde. |
+| **Títulos de paso navegables** (subrayado al pasar el cursor) | Sidebar del wizard | El frame los dibuja como texto inerte. Se volvieron clicables a pedido explícito, y solo los ya visitados. El subrayado en hover es la única señal visual que se agregó; el UX puede querer otra. |
 | Estado vacío **"Todavía no hay campos que configurar"** | Paso 3 | El frame siempre muestra campos. Puede quedar vacío porque los campos son opcionales para avanzar; sin esto la pantalla quedaría en blanco sin explicación. |
 | Estado **"En cola"** | Filas de la Bandeja de preparación | Las lecturas de archivo se serializaron para no cargar N archivos completos a memoria a la vez. Una barra de progreso en 0% se ve trabada; "En cola" dice la verdad. |
 

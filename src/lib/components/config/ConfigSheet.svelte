@@ -27,6 +27,8 @@
 		cargarTipoDocumental,
 		etiquetaVertical,
 		guardarTipoDocumental,
+		irAPaso,
+		pasoNavegable,
 		tiposDocumentales,
 		VERTICALES,
 		guardarBorrador,
@@ -209,6 +211,9 @@
 		if (borrador.paso === 1 || borrador.paso === 2) guardarTipoDocumental();
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
+			// Solo crece: volver atrás desde el sidebar no debe cerrar pasos que ya
+			// se habían visitado.
+			borrador.pasoMaximo = Math.max(borrador.pasoMaximo, borrador.paso);
 		} else {
 			// Fin del wizard. El guardado explícito es redundante con la
 			// sincronización en vivo, pero cuesta nada y cubre el caso de que esa
@@ -288,7 +293,17 @@
 					<ol class="space-y-6">
 						{#each steps as step, i (step.title)}
 						{@const n = i + 1}
-						{@const state = n < borrador.paso ? 'completado' : n === borrador.paso ? 'activo' : 'pendiente'}
+						<!-- El estado se calcula contra `pasoMaximo`, no contra `paso`: al
+						     regresar al paso 1 desde el sidebar, los pasos 2 y 3 ya visitados
+						     deben seguir diciendo "Listo". Con `paso` volverían a "Por
+						     configurar" y se leería como si se hubiera perdido el avance. -->
+						{@const state =
+							n === borrador.paso
+								? 'activo'
+								: n <= borrador.pasoMaximo
+									? 'completado'
+									: 'pendiente'}
+						{@const navegable = pasoNavegable(n) && n !== borrador.paso}
 						<!-- El subrayado del paso activo va en el verde de éxito de Figma
 						     (--exito/exito-2 = #22c55e), no en el color de marca. -->
 						<li class={state === 'activo' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
@@ -307,7 +322,24 @@
 									<span class="text-xs font-medium text-muted-foreground">Por configurar</span>
 								{/if}
 							</div>
-							<p class="text-sm font-semibold text-foreground">{n}. {step.title}</p>
+							{#if navegable}
+								<!-- Solo los pasos YA VISITADOS son clicables, en cualquier
+								     dirección: si llegaste al 3 y volviste al 1, picar el 3 te
+								     regresa. Lo que no se puede es abrir uno al que nunca se llegó
+								     — saltar al 3 sin haber definido campos mostraría una pantalla
+								     que no tiene de qué hablar.
+								     Avanzar MÁS ALLÁ del máximo sigue siendo exclusivo del botón del
+								     pie, que es el que valida lo capturado antes de dejar pasar. -->
+								<button
+									type="button"
+									class="block text-left text-sm font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+									onclick={() => irAPaso(n)}
+								>
+									{n}. {step.title}
+								</button>
+							{:else}
+								<p class="text-sm font-semibold text-foreground">{n}. {step.title}</p>
+							{/if}
 								<p class="mt-1 text-sm text-muted-foreground">{step.description}</p>
 							</li>
 						{/each}
