@@ -19,6 +19,8 @@
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
+	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Plus from '@lucide/svelte/icons/plus';
 	import UsersRound from '@lucide/svelte/icons/users-round';
 	import Calendar from '@lucide/svelte/icons/calendar';
@@ -69,6 +71,23 @@
 	// borrador ya trae `idGuardado` puesto en los dos casos. El único momento en
 	// que se distinguen es al ENTRAR, que es donde se marca.
 	let altaEnCurso = $state(false);
+	// La activación en vuelo (id del tipo) y su error, si lo hubo. Vive aquí y
+	// no en el state global porque es efímero de esta pantalla: un spinner y un
+	// letrero, no datos del modelo.
+	let activandoId = $state<string | null>(null);
+	let errorActivacion = $state('');
+
+	async function activar(id: string) {
+		// Un solo vuelo a la vez: activar dos tipos en paralelo funcionaría,
+		// pero complica leer qué falló; y el guardia real contra duplicados
+		// vive en el back (busca por displayName antes de crear).
+		if (activandoId) return;
+		errorActivacion = '';
+		activandoId = id;
+		const r = await activarTipoDocumental(id);
+		activandoId = null;
+		if (!r.ok) errorActivacion = r.mensaje;
+	}
 
 	const steps = [
 		{
@@ -197,6 +216,7 @@
 		if (!open) {
 			vista = 'biblioteca';
 			avisoExito = false;
+			errorActivacion = '';
 		}
 	});
 
@@ -237,6 +257,7 @@
 		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
 		avisoExito = false;
+		errorActivacion = '';
 		altaEnCurso = true;
 		vista = 'wizard';
 	}
@@ -244,6 +265,7 @@
 	function abrirTipoDocumental(id: string) {
 		if (cargarTipoDocumental(id)) {
 			avisoExito = false;
+			errorActivacion = '';
 			altaEnCurso = false;
 			vista = 'wizard';
 		}
@@ -566,12 +588,21 @@
 										>
 											Activo
 										</span>
+									{:else if activandoId === tipo.id}
+										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
+										     tres llamadas reales a Google (crear el procesador, inicializar
+										     su dataset y subir el esquema), medidas en segundos. -->
+										<Button size="sm" disabled data-testid="activando-tipo" class="h-9.5 shrink-0 gap-2">
+											<LoaderCircle class="size-4 animate-spin" />
+											Validando configuración...
+										</Button>
 									{:else}
 										<Button
 											size="sm"
 											data-testid="activar-tipo"
 											class="h-9.5 w-20.5 shrink-0"
-											onclick={() => activarTipoDocumental(tipo.id)}>Activar</Button
+											disabled={activandoId !== null}
+											onclick={() => activar(tipo.id)}>Activar</Button
 										>
 									{/if}
 
@@ -1094,6 +1125,23 @@
 							La configuración se completó con éxito. El modelo documental está listo para
 							activarse y ejecutar una prueba de procesamiento para validar su funcionamiento.
 						</p>
+					</div>
+				</div>
+			{/if}
+			{#if errorActivacion && vista === 'biblioteca'}
+				<!-- Gemelo rojo del aviso de éxito: el frame trae un "Alert error"
+				     (1077:65797, 684x94) junto al Success. Sin poder ver sus píxeles
+				     (cuota de Figma), espeja el diseño del verde con la paleta roja.
+				     El texto del cuerpo es el error real del back, no uno genérico:
+				     "no se pudo" sin el porqué obliga a adivinar. -->
+				<div
+					data-testid="aviso-error"
+					class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-red-200 bg-linear-to-r from-red-50 to-rose-100/70 px-5 py-4"
+				>
+					<BadgeAlert class="size-5 shrink-0 fill-red-500 text-white" />
+					<div class="min-w-0">
+						<p class="text-sm font-semibold text-red-700">No se pudo activar el modelo.</p>
+						<p class="mt-1 max-w-2xl text-xs text-red-700">{errorActivacion}</p>
 					</div>
 				</div>
 			{/if}

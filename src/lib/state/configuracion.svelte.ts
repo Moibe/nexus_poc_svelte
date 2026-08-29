@@ -481,6 +481,13 @@ export type TipoDocumentalGuardado = {
 	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
 	 *  sección 2.6 del diccionario — esa validación necesita el back. */
 	estado: 'borrador' | 'activo';
+	/** Id del Custom Extractor de Document AI que "Activar" creó (o adoptó)
+	 *  para este tipo. Vacío mientras el tipo siga en borrador. */
+	procesadorId: string;
+	/** La versión foundation con la que nació el procesador. Se guarda para
+	 *  FIJARLA en cada extracción: la default de Google cambia sin aviso y la
+	 *  reproducibilidad ya nos mordió una vez. */
+	procesadorVersion: string;
 	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
 	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
 	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
@@ -549,6 +556,8 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 				// siquiera tenían el campo— cae en 'borrador', que es el estado
 				// seguro: un modelo mal leído no debe amanecer activo en producción.
 				estado: d.estado === 'activo' ? ('activo' as const) : ('borrador' as const),
+				procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
+				procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
 				ejemploDocumental: d.ejemploDocumental === true
 			}));
 	} catch {
@@ -604,6 +613,8 @@ export function guardarTipoDocumental(): string | null {
 			...datos,
 			guardadoEn: new Date().toISOString(),
 			estado: 'borrador',
+			procesadorId: '',
+			procesadorVersion: '',
 			ejemploDocumental: false
 		};
 		tiposDocumentales.push(nuevo);
@@ -615,24 +626,57 @@ export function guardarTipoDocumental(): string | null {
 }
 
 /**
- * Marca un modelo como activo. Es el botón "Activar" de la tarjeta (HU038).
+ * Activa un modelo: crea (o adopta) su Custom Extractor en Document AI, vía el
+ * back, y solo si Google respondió marca el estado local. Es el botón
+ * "Activar" de la tarjeta (HU038), y es LA operación del sistema: convierte la
+ * configuración capturada en un extractor zero-shot utilizable.
  *
- * Hoy solo cambia el estado local. Lo que el diccionario pide de verdad para
- * activar —validar que TODO campo `required` tenga mapeo, regla de integridad
- * #3 de la sección 2.6— necesita el back, que todavía no expone nada de esto.
- * Por eso no hay paso intermedio de "Validando configuración...": no habría
- * nada que validar y sería una animación decorativa mintiendo sobre trabajo
- * que nadie está haciendo.
+ * El orden importa: primero el procesador, después el estado. Al revés
+ * quedaría un tipo "activo" apuntando a nada si la llamada falla.
  *
- * Devuelve false si el id no existe o si ya estaba activo, para que quien
- * llame pueda distinguir "no hice nada" de "lo activé".
+ * Devuelve `{ ok, mensaje }` en vez de tirar: quien llama es un manejador de
+ * clic y el error tiene que llegar a la pantalla, no a la consola.
  */
-export function activarTipoDocumental(id: string): boolean {
+export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo || tipo.estado === 'activo') return false;
+	if (!tipo) return { ok: false, mensaje: 'Ese tipo documental ya no existe.' };
+	if (tipo.estado === 'activo') return { ok: true, mensaje: '' };
+
+	let respuesta: Response;
+	try {
+		respuesta = await fetch('/api/procesadores/activar', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				id: tipo.id,
+				nombre: tipo.nombre,
+				descripcion: tipo.descripcion,
+				campos: $state.snapshot(tipo.campos)
+			})
+		});
+	} catch {
+		return { ok: false, mensaje: 'No se pudo contactar al servidor. Revisa la conexión.' };
+	}
+
+	let datos: Record<string, unknown> = {};
+	try {
+		datos = await respuesta.json();
+	} catch {
+		/* un cuerpo ilegible cae al mensaje genérico de abajo */
+	}
+
+	if (!respuesta.ok) {
+		const mensaje =
+			typeof datos.mensaje === 'string' ? datos.mensaje : `Falló la activación (HTTP ${respuesta.status}).`;
+		return { ok: false, mensaje };
+	}
+
 	tipo.estado = 'activo';
+	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
+	tipo.procesadorVersion =
+		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
 	guardarBiblioteca();
-	return true;
+	return { ok: true, mensaje: '' };
 }
 
 /** El interruptor "Ejemplo documental" del menú de la tarjeta. */
