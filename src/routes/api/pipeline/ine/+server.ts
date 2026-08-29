@@ -12,7 +12,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
 /** Cada llamada a Document AI cuesta dinero. Este handler es hoy el único que
  *  puede dispararlas desde el navegador, así que el guardia de tamaño va aquí
@@ -81,6 +81,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		respuesta = await fetch(urlNexus('/ia/ine'), {
 			method: 'POST',
+			// Solo la llave: el Content-Type del multipart lo pone fetch, con su
+			// boundary. Fijarlo a mano aquí rompería el parseo del lado de FastAPI.
+			headers: cabecerasNexus(),
 			body: salida,
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});

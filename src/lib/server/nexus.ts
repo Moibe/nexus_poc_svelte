@@ -38,3 +38,20 @@ export function urlNexus(ruta: string): string {
  * holgura son para el ida y vuelta y el parseo.
  */
 export const TIMEOUT_MS = 130_000;
+
+/**
+ * Cabeceras que toda llamada a nexus_back debe llevar.
+ *
+ * La llave vive en el .env del SERVIDOR del front y viaja solo entre procesos
+ * (SvelteKit -> FastAPI); el navegador jamás la ve, que es todo el punto de
+ * este archivo bajo $lib/server/.
+ *
+ * Si la variable falta, se manda la petición SIN header y la API responde 401
+ * con un mensaje que dice exactamente qué configurar — mejor ese error, que es
+ * honesto y llega al usuario, que tronar aquí con un 500 anónimo.
+ */
+export function cabecerasNexus(extra?: HeadersInit): Headers {
+	const cabeceras = new Headers(extra);
+	if (env.NEXUS_API_KEY) cabeceras.set('x-api-key', env.NEXUS_API_KEY);
+	return cabeceras;
+}
