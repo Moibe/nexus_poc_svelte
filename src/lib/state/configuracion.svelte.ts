@@ -476,10 +476,15 @@ export type TipoDocumentalGuardado = {
 	pasoMaximo: number;
 	/** ISO-8601 de cuándo se guardó por primera vez. */
 	guardadoEn: string;
-	/** Precursor de `config_version.status`. Hoy solo hay uno: nada se activa
-	 *  todavía, porque activar exige validar que los campos requeridos tengan
-	 *  mapeo (regla de integridad #3 de la sección 2.6). */
-	estado: 'borrador';
+	/** Precursor de `config_version.status`. `activo` es lo que marca el botón
+	 *  "Activar" de la tarjeta (HU038). OJO: aquí NO se valida todavía que los
+	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
+	 *  sección 2.6 del diccionario — esa validación necesita el back. */
+	estado: 'borrador' | 'activo';
+	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
+	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
+	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
+	ejemploDocumental: boolean;
 };
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
@@ -539,7 +544,12 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 					: [],
 				pasoMaximo: leerPasoMaximo(d),
 				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
-				estado: 'borrador' as const
+				// Se acepta 'activo' solo si está escrito tal cual. Cualquier otra
+				// cosa —incluido lo que guardaron las versiones anteriores, que ni
+				// siquiera tenían el campo— cae en 'borrador', que es el estado
+				// seguro: un modelo mal leído no debe amanecer activo en producción.
+				estado: d.estado === 'activo' ? ('activo' as const) : ('borrador' as const),
+				ejemploDocumental: d.ejemploDocumental === true
 			}));
 	} catch {
 		return [];
@@ -593,7 +603,8 @@ export function guardarTipoDocumental(): string | null {
 			id: idTipo(),
 			...datos,
 			guardadoEn: new Date().toISOString(),
-			estado: 'borrador'
+			estado: 'borrador',
+			ejemploDocumental: false
 		};
 		tiposDocumentales.push(nuevo);
 		b.idGuardado = nuevo.id;
@@ -601,6 +612,35 @@ export function guardarTipoDocumental(): string | null {
 
 	guardarBiblioteca();
 	return b.idGuardado;
+}
+
+/**
+ * Marca un modelo como activo. Es el botón "Activar" de la tarjeta (HU038).
+ *
+ * Hoy solo cambia el estado local. Lo que el diccionario pide de verdad para
+ * activar —validar que TODO campo `required` tenga mapeo, regla de integridad
+ * #3 de la sección 2.6— necesita el back, que todavía no expone nada de esto.
+ * Por eso no hay paso intermedio de "Validando configuración...": no habría
+ * nada que validar y sería una animación decorativa mintiendo sobre trabajo
+ * que nadie está haciendo.
+ *
+ * Devuelve false si el id no existe o si ya estaba activo, para que quien
+ * llame pueda distinguir "no hice nada" de "lo activé".
+ */
+export function activarTipoDocumental(id: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo || tipo.estado === 'activo') return false;
+	tipo.estado = 'activo';
+	guardarBiblioteca();
+	return true;
+}
+
+/** El interruptor "Ejemplo documental" del menú de la tarjeta. */
+export function alternarEjemploDocumental(id: string, valor: boolean) {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo) return;
+	tipo.ejemploDocumental = valor;
+	guardarBiblioteca();
 }
 
 export function eliminarTipoDocumental(id: string) {

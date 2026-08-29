@@ -19,12 +19,20 @@
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
+	import Plus from '@lucide/svelte/icons/plus';
+	import UsersRound from '@lucide/svelte/icons/users-round';
+	import Calendar from '@lucide/svelte/icons/calendar';
+	import Clock from '@lucide/svelte/icons/clock';
+	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarValorLista,
 		campoCompleto,
 		campoIntacto,
+		activarTipoDocumental,
+		alternarEjemploDocumental,
 		cargarTipoDocumental,
 		etiquetaVertical,
 		guardarTipoDocumental,
@@ -495,55 +503,146 @@
 
 						<div class="mt-4 flex flex-col gap-3">
 							{#each tiposDocumentales as tipo (tipo.id)}
-								<!-- La tarjeta entera es el control para retomar el tipo. El frame
-								     tiene aquí un botón de 82x38 (de HU038) y un ícono de menú; sin
-								     esos, hacer clicable la fila completa es el gesto más obvio y no
-								     agrega elementos que el UX tendría que revisar. La flecha es la
-								     misma que ya usa el renglón "Biblioteca" del sidebar. -->
-								<button
-									type="button"
-									data-testid="tarjeta-tipo"
-									class="flex w-full items-center gap-4 rounded-xl border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
-									onclick={() => abrirTipoDocumental(tipo.id)}
+								<!-- Tarjeta del frame 1077:65410 (sección HU038). Sus medidas:
+								     botón de 82x38, caja de menú de 24x24 con el glifo de 12x12.
+
+								     Ya NO es un <button> entera. Ahora conviven aquí tres controles
+								     —retomar, Activar y el menú— y un <button> dentro de otro es
+								     HTML inválido: el navegador deshace el anidamiento y los clics
+								     dejan de llegar a quien deben. La zona clicable para retomar se
+								     acotó al ícono y los textos, que es lo que el usuario asocia con
+								     "abrir esto". De paso se arregló otra invalidez que venía de
+								     antes: había <div> y <p> dentro del <button>, y un botón solo
+								     admite contenido de frase. -->
+								<div
+									class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3"
 								>
-									<span
-										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+									<button
+										type="button"
+										data-testid="tarjeta-tipo"
+										class="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left transition-colors hover:opacity-80"
+										onclick={() => abrirTipoDocumental(tipo.id)}
 									>
-										<SetupIcon class="size-4" />
-									</span>
+										<span
+											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+										>
+											<SetupIcon class="size-4" />
+										</span>
 
-									<div class="min-w-0 flex-1">
-										<p class="truncate text-sm font-medium text-foreground">{tipo.nombre}</p>
-										<p class="truncate text-xs text-muted-foreground">
-											<!-- "Sin campos configurados" en vez de "0 campos": ahora un
-											     tipo puede entrar a la lista antes de tener ninguno, y un
-											     cero suelto se lee como que algo salió mal. -->
-											{#if tipo.campos.length === 0}
-												Sin campos configurados
-											{:else}
-												{tipo.campos.length}
-												{tipo.campos.length === 1 ? 'campo' : 'campos'}
-											{/if}
-											{#if etiquetaVertical(tipo.vertical)}
-												· {etiquetaVertical(tipo.vertical)}
-											{/if}
-										</p>
-									</div>
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm font-medium text-foreground"
+												>{tipo.nombre}</span
+											>
+											<span class="block truncate text-xs text-muted-foreground">
+												<!-- "Sin campos configurados" en vez de "0 campos": un tipo
+												     puede entrar a la lista antes de tener ninguno, y un cero
+												     suelto se lee como que algo salió mal. -->
+												{#if tipo.campos.length === 0}
+													Sin campos configurados
+												{:else}
+													{tipo.campos.length}
+													{tipo.campos.length === 1 ? 'campo' : 'campos'}
+												{/if}
+												{#if etiquetaVertical(tipo.vertical)}
+													· {etiquetaVertical(tipo.vertical)}
+												{/if}
+											</span>
+										</span>
+									</button>
 
-									<span class="shrink-0 text-xs text-muted-foreground">Administrador</span>
+									<!-- Los dos estados de la tarjeta están dibujados en el archivo: sin
+									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
+									     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
+									     se puede leer del volcado —es una instancia de componente— así
+									     que "Activo" es una suposición mía.
+									     NO se implementó el estado intermedio "Validando configuración..."
+									     que aparece en una de las capturas: no hay nada que validar sin
+									     el back, y una animación de espera sobre trabajo que nadie está
+									     haciendo es una mentira con spinner. -->
+									{#if tipo.estado === 'activo'}
+										<span
+											data-testid="insignia-activo"
+											class="flex h-5.5 w-14.75 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-medium text-green-700"
+										>
+											Activo
+										</span>
+									{:else}
+										<Button
+											size="sm"
+											data-testid="activar-tipo"
+											class="h-9.5 w-20.5 shrink-0"
+											onclick={() => activarTipoDocumental(tipo.id)}>Activar</Button
+										>
+									{/if}
 
-									<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<button
+													{...props}
+													type="button"
+													data-testid="menu-tipo"
+													aria-label="Más opciones de {tipo.nombre}"
+													class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+												>
+													<MoreVerticalIcon />
+												</button>
+											{/snippet}
+										</DropdownMenu.Trigger>
 
-									<!-- Aquí va, en el frame 1077:65410, un botón de 82x38 más un ícono
-									     de menú de 24x24. Ese botón es de HU038 ("Activar versión de
-									     Configuration Table para producción"), que todavía no existe, y
-									     no pude ver los píxeles del frame porque se agotó la cuota de
-									     Figma.
-									     Hubo aquí un botón de eliminar propio; se retiró el 2026-08-26
-									     por no estar en el diseño. `eliminarTipoDocumental()` sigue en
-									     el módulo de estado, probada y lista para cuando haya un control
-									     real. Ver docs/pendientes-ux.md. -->
-								</button>
+										<!-- El menú es el frame `settings` (1077:65931): 259x208, con 12px
+										     de padding y cuatro renglones de 235x46 pegados uno tras otro.
+										     Los rótulos no están en el volcado —son instancias de
+										     componente— así que salen de la captura que compartió el
+										     usuario. -->
+										<DropdownMenu.Content align="end" class="w-64.75 p-3">
+											<!-- Tres de los cuatro renglones van DESHABILITADOS: abren pantallas
+											     que no existen. "Historial de versiones" es un modal entero en el
+											     archivo (1077:66342) que no se ha construido, y "Crear nueva
+											     versión" y "Eventos" necesitan `config_version` y su bitácora, que
+											     viven en el back. En el frame se ven activos; dejarlos así, vivos y
+											     sin hacer nada, es peor mentira que atenuarlos. Se habilitan solos
+											     el día que haya a dónde ir. Anotado en docs/pendientes-ux.md. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled
+											>
+												<Plus class="size-4 text-muted-foreground" />
+												<span>Crear nueva versión</span>
+											</DropdownMenu.Item>
+
+											<!-- El interruptor es el indicador del renglón, no un control
+											     aparte: ver el porqué en dropdown-menu-switch-item.svelte.
+											     `closeOnSelect={false}` deja el menú abierto para poder ver
+											     el cambio. -->
+											<DropdownMenu.SwitchItem
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												closeOnSelect={false}
+												checked={tipo.ejemploDocumental}
+												onCheckedChange={(v) => alternarEjemploDocumental(tipo.id, v)}
+											>
+												<UsersRound class="size-4 text-muted-foreground" />
+												<span>Ejemplo documental</span>
+											</DropdownMenu.SwitchItem>
+
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled
+											>
+												<Calendar class="size-4 text-muted-foreground" />
+												<span>Historial de versiones</span>
+											</DropdownMenu.Item>
+
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled
+											>
+												<Clock class="size-4 text-muted-foreground" />
+												<span>Eventos</span>
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+								</div>
 							{/each}
 						</div>
 

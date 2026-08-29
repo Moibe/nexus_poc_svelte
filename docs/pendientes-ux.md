@@ -51,6 +51,11 @@ no porque se hayan colado.
 | Botón **"Regresar"** en vez de **"Cancelar registro"** | Pie del wizard | Cambio pedido: retrocede un paso en lugar de salir. En el paso 1 regresa a la Biblioteca, que es la pantalla de la que se viene. Se repintó en **verde** (`text-green-600`, el mismo `--exito/exito-2` que usan "Listo" y "En configuración" en el sidebar). En el frame es rojo, pero ahí decía "Cancelar registro" y el rojo señalaba una acción destructiva; "Regresar" no lo es. |
 | **Títulos de paso navegables** (subrayado al pasar el cursor) | Sidebar del wizard | El frame los dibuja como texto inerte. Se volvieron clicables a pedido explícito, y solo los ya visitados. El subrayado en hover es la única señal visual que se agregó; el UX puede querer otra. |
 | **Aviso de confirmación al terminar el alta** | Pie del Módulo de configuración | Cambio pedido, con captura del diseño. Es el primer aviso de CONFIRMACIÓN del proyecto —los dos que ya había (nombre de campo duplicado, valor repetido) son de validación—, el primer degradado y la primera región `aria-live`. Tres cosas que conviene que el UX mire: **(a) ubicación** — el frame lo pone debajo del modal, a unos dos tercios del ancho; aquí el panel es de altura completa, así que va al pie de la columna de contenido, alineado con "Modelos documentales agregados" (verificado: x=795 los dos). **(b) no se auto-oculta** — el frame no dibuja botón de cerrar ni nada que sugiera un temporizador; muere al navegar. **(c) solo se anuncia el ALTA** — al retomar un modelo y volver a guardarlo no aparece, porque "Nuevo tipo documental agregado." se contradiría con una lista que no creció. Si se quiere confirmar también la edición, hace falta copy propio. |
+| **"Activar" solo cambia el estado local** | Tarjeta de la Biblioteca | Cambio pedido. El botón (82×38, `1077:65581`) marca el modelo como `activo` y lo cambia por su insignia, que son los dos estados dibujados en el archivo. Lo que el diccionario pide de verdad para activar —validar que TODO campo `required` tenga mapeo, regla de integridad #3 de la §2.6— necesita el back. |
+| **Texto de la insignia: "Activo"** | Tarjeta de la Biblioteca | Es una **suposición**. El frame `1077:66268` la dibuja como `Badges` de 59×22, pero es una instancia de componente y el volcado no trae su texto. **Confirmar con el UX.** |
+| **No se construyó "Validando configuración…"** | Tarjeta de la Biblioteca | Aparece en una de las capturas, con spinner. Sin back no hay nada que validar, y una animación de espera sobre trabajo que nadie está haciendo es una mentira con spinner. |
+| **Tres de los cuatro renglones del menú van deshabilitados** | Menú `⋮` de la tarjeta | "Crear nueva versión" y "Eventos" necesitan `config_version` y su bitácora; "Historial de versiones" es un modal entero sin construir (`1077:66342`). En el frame se ven activos. Dejarlos vivos y sin efecto es peor mentira que atenuarlos: se encienden solos el día que haya a dónde ir. |
+| **"Ejemplo documental" se recuerda pero no hace nada** | Menú `⋮` de la tarjeta | El interruptor persiste por modelo para no mentir al reabrir el menú. Todavía no hay ejemplo que adjuntar ni a dónde mandarlo. |
 | **Las ramas del árbol son clicables** | Submenú de la Biblioteca | En el frame son texto inerte. Se hicieron botones porque retomar el modelo es lo único que puede querer hacerse desde ahí — un árbol de navegación que no navega es un adorno. Hace lo mismo que picar la tarjeta del cuerpo. |
 | **El eje del árbol queda segmentado** con varios modelos | Submenú de la Biblioteca | Fidelidad literal al frame, no una decisión: la línea vertical vive DENTRO del renglón (`line`, y=8, h=22 en una fila de 38), así que con N modelos salen N tramos de 22px separados por huecos de 16px, en vez de un eje continuo. Con un solo modelo las dos lecturas son idénticas y no hay con qué desempatar. **Conviene que el UX confirme** cuál quería: continuo es el idioma habitual de un árbol. |
 | Estado vacío **"Todavía no hay campos que configurar"** | Paso 3 | El frame siempre muestra campos. Puede quedar vacío porque los campos son opcionales para avanzar; sin esto la pantalla quedaría en blanco sin explicación. |
@@ -103,10 +108,14 @@ píxeles**:
     — **RESUELTO el 2026-08-27**: al elegir "Lista" aparece la sección "Agregar
     listado" con sus chips removibles. Son `catalog_value` (2.3 del diccionario),
     una fila por valor.
-- **HU038 · Activar versión para producción**. Mientras no exista, todo tipo
-  documental guardado queda en estado `borrador` y nada se activa. Es coherente
-  con el diccionario: activar exige validar que todo campo `required` tenga
-  mapeo (regla de integridad #3 de la sección 2.6).
+- **HU038 · Activar versión para producción** — **la tarjeta se construyó el
+  2026-08-28**: botón "Activar" (82×38), insignia del estado activado (59×22) y
+  menú `⋮` (259×208, cuatro renglones de 235×46), todo con la geometría del
+  frame verificada por prueba automatizada. Lo que **falta** es lo que hay
+  detrás: la validación real al activar (regla de integridad #3 de la §2.6, que
+  exige que todo campo `required` tenga mapeo, y que vive en el back), el
+  versionado `config_version` del que cuelgan "Crear nueva versión" e
+  "Historial de versiones", y la bitácora de "Eventos".
 - **HU039-041 · Calibración de campos extraídos**. Es la pantalla donde se
   marcaría el `transform` del mapeo. Ver la nota de la sección 2.6b en
   `nexus_back/docs/solicitudes-dba.md`: ahí hay una **tensión con la
@@ -130,10 +139,6 @@ la pantalla lo explica sola sin inventar un mensaje que el diseño no tiene.
 Salieron al leer el volcado del frame `1077:65410` mientras se construía el
 submenú. No se tocaron porque nadie los pidió, pero están verificados:
 
-- **La etiqueta "Administrador" de la tarjeta está `hidden="true"` en el frame**,
-  igual que el ícono `logout-01` que la acompaña. La app sí la pinta. La captura
-  que compartió el usuario el 2026-08-28 tampoco la muestra: en su lugar van un
-  botón de estado y un menú `⋮`.
 - **El subtítulo de la tarjeta no coincide.** El frame dice
   `Seguro de Autos | Precisión 0%`; la app dice `1 campo · Seguros`. Son dos
   datos distintos: el frame muestra vertical + precisión del modelo, la app
@@ -142,6 +147,10 @@ submenú. No se tocaron porque nadie los pidió, pero están verificados:
   biblioteca poblada (`1077:65431`), donde vive al pie del sidebar. La app lo
   pinta en el cuerpo, bajo la lista. Sin él no habría forma de crear el segundo
   modelo.
+
+*(La etiqueta "Administrador" salía también en esta lista. Se quitó el
+2026-08-28, junto con la flecha, al construirse el botón "Activar" y el menú `⋮`
+que el frame pone en ese mismo sitio.)*
 
 ## 5. Correcciones de fidelidad ya aplicadas
 

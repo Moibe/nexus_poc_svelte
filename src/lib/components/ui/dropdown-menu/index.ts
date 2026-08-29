@@ -13,17 +13,20 @@ import Shortcut from "./dropdown-menu-shortcut.svelte";
 import SubContent from "./dropdown-menu-sub-content.svelte";
 import SubTrigger from "./dropdown-menu-sub-trigger.svelte";
 import Sub from "./dropdown-menu-sub.svelte";
+import SwitchItem from "./dropdown-menu-switch-item.svelte";
 import Trigger from "./dropdown-menu-trigger.svelte";
 import Root from "./dropdown-menu.svelte";
 
 export {
 	CheckboxGroup,
 	CheckboxItem,
+	SwitchItem,
 	Content,
 	Portal,
 	Root as DropdownMenu,
 	CheckboxGroup as DropdownMenuCheckboxGroup,
 	CheckboxItem as DropdownMenuCheckboxItem,
+	SwitchItem as DropdownMenuSwitchItem,
 	Content as DropdownMenuContent,
 	Portal as DropdownMenuPortal,
 	Group as DropdownMenuGroup,
