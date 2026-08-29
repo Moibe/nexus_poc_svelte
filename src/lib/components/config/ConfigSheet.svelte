@@ -77,6 +77,26 @@
 	let activandoId = $state<string | null>(null);
 	let errorActivacion = $state('');
 
+	// La rama seleccionada en el árbol del sidebar. Es un FILTRO de la vista,
+	// no parte del modelo: por eso vive aquí y no se persiste. null = sin
+	// filtro, se listan todos.
+	let seleccionadoId = $state<string | null>(null);
+
+	// Lo que la columna derecha lista. Si el tipo seleccionado dejara de
+	// existir, el filtro produce lista vacía y se preferiría confundir: el
+	// derivado cae a "todos" en ese caso.
+	const tiposVisibles = $derived(
+		seleccionadoId && tiposDocumentales.some((t) => t.id === seleccionadoId)
+			? tiposDocumentales.filter((t) => t.id === seleccionadoId)
+			: tiposDocumentales
+	);
+
+	// Picar la rama ya seleccionada la des-selecciona: sin esto, la única
+	// forma de volver a ver todos sería el renglón "Biblioteca", y no es obvio.
+	function seleccionarRama(id: string) {
+		seleccionadoId = seleccionadoId === id ? null : id;
+	}
+
 	async function activar(id: string) {
 		// Un solo vuelo a la vez: activar dos tipos en paralelo funcionaría,
 		// pero complica leer qué falló; y el guardia real contra duplicados
@@ -217,6 +237,7 @@
 			vista = 'biblioteca';
 			avisoExito = false;
 			errorActivacion = '';
+			seleccionadoId = null;
 		}
 	});
 
@@ -258,6 +279,7 @@
 		limpiarBorrador();
 		avisoExito = false;
 		errorActivacion = '';
+		seleccionadoId = null;
 		altaEnCurso = true;
 		vista = 'wizard';
 	}
@@ -266,6 +288,7 @@
 		if (cargarTipoDocumental(id)) {
 			avisoExito = false;
 			errorActivacion = '';
+			seleccionadoId = null;
 			altaEnCurso = false;
 			vista = 'wizard';
 		}
@@ -397,21 +420,28 @@
 			>
 				{#if vista === 'biblioteca'}
 					<p class="text-xs text-foreground">Configuración</p>
-					<!-- Tarjeta "Biblioteca": el acceso al listado de modelos ya configurados -->
-					<div class="mt-6 flex items-center gap-3">
+					<!-- Tarjeta "Biblioteca": el padre del árbol. Picarla limpia el filtro
+					     — es el gesto natural de "ver todo lo que cuelga de aquí". Por ser
+					     botón, su contenido va en <span> (contenido de frase), no en <p>. -->
+					<button
+						type="button"
+						data-testid="raiz-biblioteca"
+						class="mt-6 flex w-full items-center gap-3 text-left"
+						onclick={() => (seleccionadoId = null)}
+					>
 						<span
 							class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
 						>
 							<ArchiveIcon />
 						</span>
-						<div class="min-w-0 flex-1">
-							<p class="text-sm font-medium text-foreground">Biblioteca</p>
-							<p class="mt-2 text-xs text-muted-foreground">
+						<span class="min-w-0 flex-1">
+							<span class="block text-sm font-medium text-foreground">Biblioteca</span>
+							<span class="mt-2 block text-xs text-muted-foreground">
 								Localiza tu listado de documentos configurados.
-							</p>
-						</div>
+							</span>
+						</span>
 						<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-					</div>
+					</button>
 
 					<!-- Submenú de la Biblioteca: un renglón por modelo, colgando en árbol.
 					     Es el frame `listado` (1077:65481), que hasta ahora estaba sin
@@ -431,9 +461,10 @@
 					     está el diseño; con un solo modelo las dos lecturas son idénticas y
 					     no hay con qué desempatar. Anotado en docs/pendientes-ux.md.
 
-					     El renglón es un botón porque retomar el modelo desde aquí es lo
-					     único que puede querer hacerse: en el frame es texto inerte, pero
-					     un árbol de navegación que no navega es un adorno. -->
+					     El renglón FILTRA la columna derecha: picar una rama deja visible
+					     solo su tarjeta, picarla de nuevo (o picar "Biblioteca") vuelve a
+					     mostrar todas. Retomar el modelo quedó solo en la tarjeta — un
+					     mismo gesto no debe filtrar y navegar a la vez. -->
 					{#if tiposDocumentales.length > 0}
 						<ul class="mt-4">
 							{#each tiposDocumentales as tipo (tipo.id)}
@@ -445,8 +476,12 @@
 									<button
 										type="button"
 										data-testid="rama-tipo"
-										class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
-										onclick={() => abrirTipoDocumental(tipo.id)}
+										aria-pressed={seleccionadoId === tipo.id}
+										class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
+										tipo.id
+											? 'text-primary'
+											: 'text-foreground hover:text-primary'}"
+										onclick={() => seleccionarRama(tipo.id)}
 									>
 										{tipo.nombre}
 									</button>
@@ -524,7 +559,7 @@
 						<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
 
 						<div class="mt-4 flex flex-col gap-3">
-							{#each tiposDocumentales as tipo (tipo.id)}
+							{#each tiposVisibles as tipo (tipo.id)}
 								<!-- Tarjeta del frame 1077:65410 (sección HU038). Sus medidas:
 								     botón de 82x38, caja de menú de 24x24 con el glifo de 12x12.
 
