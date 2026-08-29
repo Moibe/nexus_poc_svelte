@@ -82,17 +82,16 @@
 	// filtro, se listan todos.
 	let seleccionadoId = $state<string | null>(null);
 
-	// Lo que la columna derecha lista. Si el tipo seleccionado dejara de
-	// existir, el filtro produce lista vacía y se preferiría confundir: el
-	// derivado cae a "todos" en ese caso.
+	// Lo que la columna derecha lista. SIN selección no se lista nada: la
+	// lista aparece cuando se elige un modelo en el árbol (cambio pedido el
+	// 2026-08-28; antes el default eran todos). El área no queda muda — abajo
+	// hay una línea que dice qué hacer.
 	const tiposVisibles = $derived(
-		seleccionadoId && tiposDocumentales.some((t) => t.id === seleccionadoId)
-			? tiposDocumentales.filter((t) => t.id === seleccionadoId)
-			: tiposDocumentales
+		seleccionadoId ? tiposDocumentales.filter((t) => t.id === seleccionadoId) : []
 	);
 
-	// Picar la rama ya seleccionada la des-selecciona: sin esto, la única
-	// forma de volver a ver todos sería el renglón "Biblioteca", y no es obvio.
+	// Picar la rama ya seleccionada la des-selecciona y la lista vuelve a
+	// quedar vacía, igual que al entrar.
 	function seleccionarRama(id: string) {
 		seleccionadoId = seleccionadoId === id ? null : id;
 	}
@@ -340,6 +339,10 @@
 			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.
 			limpiarBorrador();
 			vista = 'biblioteca';
+			// El recién guardado queda seleccionado en el árbol: el aviso de
+			// éxito debe verse JUNTO a su tarjeta, no sobre un área vacía que
+			// obligaría a ir a buscarlo. Es además lo que muestra el diseño.
+			seleccionadoId = idEnBiblioteca;
 			// Solo se anuncia el ALTA. Al actualizar un modelo que ya existía no se
 			// dice nada: el texto del diseño habla de un tipo AGREGADO, y anunciarlo
 			// tras una edición se contradice con la lista de atrás, que sigue
@@ -557,6 +560,14 @@
 						     Figma— así que el espaciado y el detalle fino quedan pendientes
 						     de una pasada de fidelidad contra el frame. -->
 						<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
+
+						{#if tiposVisibles.length === 0}
+							<!-- Sin selección la lista es intencionalmente vacía, pero un área
+							     en blanco se lee como falla. Una línea dice qué hacer. -->
+							<p class="mt-4 text-sm text-muted-foreground" data-testid="pista-seleccion">
+								Selecciona un modelo en la Biblioteca para ver su detalle.
+							</p>
+						{/if}
 
 						<div class="mt-4 flex flex-col gap-3">
 							{#each tiposVisibles as tipo (tipo.id)}
