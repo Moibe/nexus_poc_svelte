@@ -25,6 +25,7 @@
 	import UsersRound from '@lucide/svelte/icons/users-round';
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import Clock from '@lucide/svelte/icons/clock';
+	import Lock from '@lucide/svelte/icons/lock';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
@@ -36,6 +37,7 @@
 		campoIntacto,
 		activarTipoDocumental,
 		alternarEjemploDocumental,
+		crearNuevaVersion,
 		cargarTipoDocumental,
 		etiquetaVersion,
 		etiquetaVertical,
@@ -141,6 +143,22 @@
 	// localStorage. Antes eran `$state` locales que se borraban al cerrar: si
 	// cerrabas la ventana —o se te iba un refresh— perdías la captura completa.
 	const borrador = borradorTipoDocumental;
+
+	// Si el borrador ABIERTO corresponde a un tipo `activo`. Reactivo a propósito:
+	// en cuanto `crearNuevaVersion` cambia el estado a 'borrador', esta bandera
+	// cae sola y el MISMO wizard abierto se vuelve editable — no hace falta
+	// cerrar y reabrir.
+	const tipoActivoAbierto = $derived(
+		borrador.idGuardado
+			? tiposDocumentales.find((t) => t.id === borrador.idGuardado)?.estado === 'activo'
+			: false
+	);
+
+	/** El botón "Crear nueva versión" de DENTRO del wizard (hay otro igual en el
+	 *  menú de la tarjeta, para quien todavía no entró). */
+	function desbloquearEdicion() {
+		if (borrador.idGuardado) crearNuevaVersion(borrador.idGuardado);
+	}
 
 	const verticalLabel = $derived(etiquetaVertical(borrador.vertical));
 
@@ -565,6 +583,37 @@
 			</aside>
 
 			<div class="flex-1 overflow-y-auto p-8">
+				<!-- Se declara una vez y se renderiza en los tres pasos del wizard
+				     (ver los tres `{@render bannerSoloLectura()}` de abajo): un snippet
+				     definido aquí es visible en cualquier rama hermana del if/elseif que
+				     sigue, así que no hace falta repetir el markup tres veces. Ámbar y no
+				     verde/rojo: no es ni éxito ni error, es un candado — un estado propio
+				     que merece su propio color, no un préstamo de los otros dos avisos. -->
+				{#snippet bannerSoloLectura()}
+					<div
+						data-testid="banner-solo-lectura"
+						class="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+					>
+						<Lock class="mt-0.5 size-4 shrink-0 text-amber-600" />
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-medium text-amber-900">Este modelo está activo.</p>
+							<p class="mt-0.5 text-xs text-amber-800">
+								Su configuración ya está publicada en Document AI y no se puede editar
+								directamente — es la garantía de que una extracción de hoy y una de mañana
+								den el mismo resultado. Para cambiar algo, crea una nueva versión.
+							</p>
+						</div>
+						<Button
+							size="sm"
+							variant="outline"
+							data-testid="desbloquear-edicion"
+							class="h-8 shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+							onclick={desbloquearEdicion}
+						>
+							Crear nueva versión
+						</Button>
+					</div>
+				{/snippet}
 				{#if vista === 'biblioteca'}
 					{#if tiposDocumentales.length > 0}
 						<!-- Biblioteca poblada. Estructura tomada del frame 1077:65410:
@@ -664,12 +713,16 @@
 											Validando configuración...
 										</Button>
 									{:else}
+										<!-- "Publicar cambios" y no "Activar" cuando ya se publicó antes
+										     (version > 0 solo ocurre tras una activación exitosa): decirle
+										     "Activar" a algo que ya estuvo vivo suena a que nunca lo estuvo. -->
 										<Button
 											size="sm"
 											data-testid="activar-tipo"
-											class="h-9.5 w-20.5 shrink-0"
+											class="h-9.5 shrink-0 {tipo.version > 0 ? 'px-3' : 'w-20.5'}"
 											disabled={activandoId !== null}
-											onclick={() => activar(tipo.id)}>Activar</Button
+											onclick={() => activar(tipo.id)}
+											>{tipo.version > 0 ? 'Publicar cambios' : 'Activar'}</Button
 										>
 									{/if}
 
@@ -694,16 +747,24 @@
 										     componente— así que salen de la captura que compartió el
 										     usuario. -->
 										<DropdownMenu.Content align="end" class="w-64.75 p-3">
-											<!-- Tres de los cuatro renglones van DESHABILITADOS: abren pantallas
-											     que no existen. "Historial de versiones" es un modal entero en el
-											     archivo (1077:66342) que no se ha construido, y "Crear nueva
-											     versión" y "Eventos" necesitan `config_version` y su bitácora, que
-											     viven en el back. En el frame se ven activos; dejarlos así, vivos y
-											     sin hacer nada, es peor mentira que atenuarlos. Se habilitan solos
-											     el día que haya a dónde ir. Anotado en docs/pendientes-ux.md. -->
+											<!-- "Crear nueva versión" es la ÚNICA puerta para editar un modelo
+											     ACTIVO (sección 2.6b: "corregir obliga a versión nueva, no hay
+											     atajo"). Por eso se habilita solo cuando `estado === 'activo'`: un
+											     borrador ya es editable sin pasar por aquí, así que el renglón no
+											     tendría nada que hacer. No toca Google —solo desbloquea el registro
+											     localmente— y de una vez ABRE el wizard, para no obligar a un
+											     segundo clic sobre la tarjeta.
+											     "Historial de versiones" y "Eventos" siguen deshabilitados: abren
+											     pantallas que no existen ("Historial..." es un modal entero sin
+											     construir, 1077:66342) y necesitan bitácora del back. Anotado en
+											     docs/pendientes-ux.md. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled
+												disabled={tipo.estado !== 'activo'}
+												onSelect={() => {
+													crearNuevaVersion(tipo.id);
+													abrirTipoDocumental(tipo.id);
+												}}
 											>
 												<Plus class="size-4 text-muted-foreground" />
 												<span>Crear nueva versión</span>
@@ -768,6 +829,7 @@
 					</div>
 					{/if}
 				{:else if borrador.paso === 1}
+					{#if tipoActivoAbierto}{@render bannerSoloLectura()}{/if}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Ingresa la información necesaria para registrar un nuevo tipo documental y continuar
@@ -780,6 +842,7 @@
 							<Input
 								id="nombre-tipo"
 								bind:value={borrador.nombre}
+								disabled={tipoActivoAbierto}
 								placeholder="Ingresa el nombre del tipo documental a configurar"
 							/>
 						</div>
@@ -790,13 +853,14 @@
 								id="descripcion-tipo"
 								bind:value={borrador.descripcion}
 								rows={3}
+								disabled={tipoActivoAbierto}
 								placeholder="Describe el propósito y contenido de este tipo documental."
 							/>
 						</div>
 
 						<div class="space-y-2">
 							<Label for="vertical-negocio">Vertical de negocio</Label>
-							<Select.Root type="single" bind:value={borrador.vertical}>
+							<Select.Root type="single" bind:value={borrador.vertical} disabled={tipoActivoAbierto}>
 								<Select.Trigger id="vertical-negocio" class="w-full">
 									{verticalLabel ?? 'Ingresa una vertical de negocio'}
 								</Select.Trigger>
@@ -809,6 +873,7 @@
 						</div>
 					</div>
 				{:else if borrador.paso === 2}
+					{#if tipoActivoAbierto}{@render bannerSoloLectura()}{/if}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo campo de extracción</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Completa la información requerida para agregar un nuevo campo al modelo documental y
@@ -816,7 +881,11 @@
 					</p>
 
 					<!-- El formulario de alta. Siempre en blanco: no es un elemento más de
-					     la lista, es el que da de alta. Así está en Figma (1067:62363). -->
+					     la lista, es el que da de alta. Así está en Figma (1067:62363).
+					     No existe en absoluto mientras el modelo esté activo: no hay campo
+					     nuevo que capturar si nada se puede publicar todavía, y mostrarlo
+					     deshabilitado solo agregaría controles muertos a la pantalla. -->
+					{#if !tipoActivoAbierto}
 					<div class="mt-8 max-w-3xl rounded-xl border border-border bg-background p-6">
 						<div class="grid gap-6 md:grid-cols-2">
 							<div class="space-y-2">
@@ -915,6 +984,7 @@
 							</Button>
 						</div>
 					</div>
+					{/if}
 
 					{#if borrador.campos.length > 0}
 						<h4 class="mt-8 text-xl font-semibold text-foreground">Campos agregados</h4>
@@ -947,19 +1017,22 @@
 										</div>
 									</div>
 
-									<button
-										type="button"
-										aria-label={`Quitar el campo ${campo.nombre}`}
-										class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
-										onclick={() => (campoAQuitar = { id: campo.id, nombre: campo.nombre })}
-									>
-										<Minus class="size-4" />
-									</button>
+									{#if !tipoActivoAbierto}
+										<button
+											type="button"
+											aria-label={`Quitar el campo ${campo.nombre}`}
+											class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+											onclick={() => (campoAQuitar = { id: campo.id, nombre: campo.nombre })}
+										>
+											<Minus class="size-4" />
+										</button>
+									{/if}
 								</div>
 							{/each}
 						</div>
 					{/if}
 				{:else}
+					{#if tipoActivoAbierto}{@render bannerSoloLectura()}{/if}
 					<h3 class="text-xl font-semibold text-foreground">Propiedades de campo</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Personaliza las propiedades del campo para mejorar la precisión y calidad de la
@@ -1013,7 +1086,11 @@
 										<div class="grid gap-6 md:grid-cols-2">
 											<div class="space-y-2">
 												<Label for="umbral-{campo.id}">Umbral de confianza *</Label>
-												<Select.Root type="single" bind:value={campo.umbralConfianza}>
+												<Select.Root
+													type="single"
+													bind:value={campo.umbralConfianza}
+													disabled={tipoActivoAbierto}
+												>
 													<Select.Trigger id="umbral-{campo.id}" class="w-full">
 														{campo.umbralConfianza ? `${campo.umbralConfianza}%` : 'Selecciona un umbral'}
 													</Select.Trigger>
@@ -1027,7 +1104,11 @@
 
 											<div class="space-y-2">
 												<Label for="regla-{campo.id}">Reglas de transformación</Label>
-												<Select.Root type="single" bind:value={campo.reglaTransformacion}>
+												<Select.Root
+													type="single"
+													bind:value={campo.reglaTransformacion}
+													disabled={tipoActivoAbierto}
+												>
 													<Select.Trigger id="regla-{campo.id}" class="w-full">
 														<span class="truncate">
 															{etiquetaRegla(campo.reglaTransformacion) ??
@@ -1055,39 +1136,46 @@
 												campo.valorListaEnCaptura.trim() !== '' && !duplicado}
 
 											<div class="mt-6 space-y-2">
-												<Label for="listado-{campo.id}">Agregar listado</Label>
-												<Input
-													id="listado-{campo.id}"
-													bind:value={campo.valorListaEnCaptura}
-													placeholder="Ingresa un listado personalizado"
-													aria-invalid={duplicado}
-													onkeydown={(e) => {
-														// Enter agrega el valor: teclear una lista de diez
-														// elementos sin poder usar Enter es innecesariamente
-														// lento. No está en el frame, pero tampoco lo contradice.
-														if (e.key === 'Enter') {
-															e.preventDefault();
-															agregarValorLista(campo);
-														}
-													}}
-												/>
-												{#if duplicado}
-													<p class="text-xs text-destructive">
-														Ese valor ya está en el listado.
-													</p>
-												{/if}
+												{#if !tipoActivoAbierto}
+													<Label for="listado-{campo.id}">Agregar listado</Label>
+													<Input
+														id="listado-{campo.id}"
+														bind:value={campo.valorListaEnCaptura}
+														placeholder="Ingresa un listado personalizado"
+														aria-invalid={duplicado}
+														onkeydown={(e) => {
+															// Enter agrega el valor: teclear una lista de diez
+															// elementos sin poder usar Enter es innecesariamente
+															// lento. No está en el frame, pero tampoco lo contradice.
+															if (e.key === 'Enter') {
+																e.preventDefault();
+																agregarValorLista(campo);
+															}
+														}}
+													/>
+													{#if duplicado}
+														<p class="text-xs text-destructive">
+															Ese valor ya está en el listado.
+														</p>
+													{/if}
 
-												<div class="flex justify-end">
-													<Button
-														variant="link"
-														class="h-auto gap-1.5 p-0 text-primary"
-														disabled={!puedeAgregarValor}
-														onclick={() => agregarValorLista(campo)}
-													>
-														<CirclePlus class="size-4" />
-														Agregar otro campo
-													</Button>
-												</div>
+													<div class="flex justify-end">
+														<Button
+															variant="link"
+															class="h-auto gap-1.5 p-0 text-primary"
+															disabled={!puedeAgregarValor}
+															onclick={() => agregarValorLista(campo)}
+														>
+															<CirclePlus class="size-4" />
+															Agregar otro campo
+														</Button>
+													</div>
+												{:else}
+													<!-- Sigue habiendo un "Agregar listado" para leer, pero de
+													     solo lectura en la práctica: no hay input que capturar
+													     porque no hay nada que hacer con lo capturado. -->
+													<Label>Valores permitidos</Label>
+												{/if}
 
 												{#if campo.valoresLista.length > 0}
 													<div class="flex flex-wrap gap-2 pt-1">
@@ -1096,14 +1184,16 @@
 																class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pr-1.5 pl-3 text-xs text-foreground"
 															>
 																{valor}
-																<button
-																	type="button"
-																	aria-label={`Quitar ${valor} del listado`}
-																	class="text-muted-foreground transition-colors hover:text-destructive"
-																	onclick={() => quitarValorLista(campo, valor)}
-																>
-																	<CircleX class="size-3.5" />
-																</button>
+																{#if !tipoActivoAbierto}
+																	<button
+																		type="button"
+																		aria-label={`Quitar ${valor} del listado`}
+																		class="text-muted-foreground transition-colors hover:text-destructive"
+																		onclick={() => quitarValorLista(campo, valor)}
+																	>
+																		<CircleX class="size-3.5" />
+																	</button>
+																{/if}
 															</span>
 														{/each}
 													</div>
@@ -1113,7 +1203,11 @@
 
 										<div class="mt-6 rounded-xl border border-border p-4">
 											<p class="text-sm font-medium text-foreground">Cardinalidad</p>
-											<RadioGroup.Root bind:value={campo.cardinalidad} class="mt-3 gap-0">
+											<RadioGroup.Root
+												bind:value={campo.cardinalidad}
+												disabled={tipoActivoAbierto}
+												class="mt-3 gap-0"
+											>
 												{#each CARDINALIDADES as c, i (c.value)}
 													{#if i > 0}
 														<div class="my-3 border-t border-border"></div>
@@ -1145,6 +1239,7 @@
 											<Checkbox
 												id="obligatorio-{campo.id}"
 												checked={campo.obligatorio}
+												disabled={tipoActivoAbierto}
 												onCheckedChange={(v) => (campo.obligatorio = v === true)}
 											/>
 											<Label for="obligatorio-{campo.id}" class="font-normal text-muted-foreground">
@@ -1226,7 +1321,17 @@
 				<Button variant="link" class="h-auto p-0 text-green-600" onclick={regresar}>
 					Regresar
 				</Button>
-				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
+				{#if tipoActivoAbierto}
+					<!-- Nada que guardar en un modelo congelado: el botón del pie deja de
+					     ser "avanzar" y se vuelve la misma puerta de desbloqueo del banner
+					     de arriba. Repetida a propósito — quien esté parado en el paso 3
+					     no debería tener que subir a buscarla. -->
+					<Button data-testid="desbloquear-edicion-pie" onclick={desbloquearEdicion}>
+						Crear nueva versión
+					</Button>
+				{:else}
+					<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
+				{/if}
 			</div>
 		{/if}
 	</Sheet.Content>

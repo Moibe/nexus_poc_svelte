@@ -710,6 +710,29 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 	return { ok: true, mensaje: '' };
 }
 
+/**
+ * Vuelve editable un tipo ACTIVO. Es la única puerta para corregir algo ya
+ * publicado — la sección 2.6b de solicitudes-dba.md ya lo especificaba para el
+ * mapeo: "Corregir un mapeo ya activo obliga a versión nueva. No hay atajo. Y
+ * eso es la garantía funcionando." Aquí "no hay atajo" se traduce en que NADA
+ * del wizard permite tocar un campo mientras `estado === 'activo'` — hay que
+ * pasar por esta función primero, de forma explícita.
+ *
+ * No crea una copia aparte: es el MISMO registro, que vuelve a `borrador` para
+ * poder tocarse. El procesador de Document AI sigue sirviendo la configuración
+ * YA PUBLICADA hasta que se vuelva a activar — esta función no toca Google.
+ *
+ * Devuelve false si el id no existe o si ya estaba en borrador (nada que
+ * desbloquear), para que quien llame pueda distinguir los casos si le importa.
+ */
+export function crearNuevaVersion(id: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo || tipo.estado !== 'activo') return false;
+	tipo.estado = 'borrador';
+	guardarBiblioteca();
+	return true;
+}
+
 /** El interruptor "Ejemplo documental" del menú de la tarjeta. */
 export function alternarEjemploDocumental(id: string, valor: boolean) {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
