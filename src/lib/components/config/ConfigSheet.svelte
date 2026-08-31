@@ -36,6 +36,7 @@
 		activarTipoDocumental,
 		alternarEjemploDocumental,
 		cargarTipoDocumental,
+		etiquetaVersion,
 		etiquetaVertical,
 		guardarTipoDocumental,
 		hayBorrador,
@@ -613,6 +614,14 @@
 												{/if}
 												{#if etiquetaVertical(tipo.vertical)}
 													· {etiquetaVertical(tipo.vertical)}
+												{/if}
+												<!-- La versión solo aparece cuando hay algo publicado, que es
+												     como lo dibuja el frame: la tarjeta sin activar no la lleva
+												     (`Seguro de Autos | Precisión 0%`) y la activada sí
+												     (`... | v0.0.2`). Antes de publicar no hay versión que
+												     mostrar, y un "versión: 0" se leería como un error. -->
+												{#if etiquetaVersion(tipo.version)}
+													· versión: {etiquetaVersion(tipo.version)}
 												{/if}
 											</span>
 										</span>

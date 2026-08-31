@@ -481,6 +481,13 @@ export type TipoDocumentalGuardado = {
 	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
 	 *  sección 2.6 del diccionario — esa validación necesita el back. */
 	estado: 'borrador' | 'activo';
+	/** Cuántas veces se ha PUBLICADO esta configuración a Document AI. 0 = nunca.
+	 *  Es el precursor de `config_version.version_no` del diccionario, y por eso
+	 *  cuenta activaciones y no ediciones: lo que versiona es lo que se publicó,
+	 *  no lo que se tecleó. En el frame de la tarjeta activada se muestra como
+	 *  `v0.0.2`; la no activada no lleva versión, que es coherente — no hay
+	 *  versión publicada hasta que se publica. */
+	version: number;
 	/** Id del Custom Extractor de Document AI que "Activar" creó (o adoptó)
 	 *  para este tipo. Vacío mientras el tipo siga en borrador. */
 	procesadorId: string;
@@ -556,6 +563,15 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 				// siquiera tenían el campo— cae en 'borrador', que es el estado
 				// seguro: un modelo mal leído no debe amanecer activo en producción.
 				estado: d.estado === 'activo' ? ('activo' as const) : ('borrador' as const),
+				// Lo guardado antes de que existiera este campo no trae `version`. Si
+				// ese tipo ya estaba activo, se le infiere 1: se publicó una vez,
+				// aunque nadie lo hubiera contado. Un borrador arranca en 0.
+				version:
+					Number.isInteger(d.version) && (d.version as number) >= 0
+						? (d.version as number)
+						: d.estado === 'activo'
+							? 1
+							: 0,
 				procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
 				procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
 				ejemploDocumental: d.ejemploDocumental === true
@@ -589,6 +605,17 @@ function guardarBiblioteca() {
  * usuario regresa a corregir un campo— dejaría dos tipos documentales iguales
  * en la lista.
  */
+/**
+ * La versión como la escribe el diseño: `0.0.2`. Se usa el tercer dígito porque
+ * cada publicación es un cambio de configuración, no de producto; los otros dos
+ * quedan libres para cuando haya criterio de qué es un cambio mayor.
+ * Devuelve '' si nunca se ha publicado, para que quien lo use no tenga que
+ * preguntar por el estado.
+ */
+export function etiquetaVersion(version: number): string {
+	return version > 0 ? `0.0.${version}` : '';
+}
+
 export function guardarTipoDocumental(): string | null {
 	const b = borradorTipoDocumental;
 	if (b.nombre.trim() === '') return null;
@@ -613,6 +640,7 @@ export function guardarTipoDocumental(): string | null {
 			...datos,
 			guardadoEn: new Date().toISOString(),
 			estado: 'borrador',
+			version: 0,
 			procesadorId: '',
 			procesadorVersion: '',
 			ejemploDocumental: false
@@ -672,6 +700,9 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 	}
 
 	tipo.estado = 'activo';
+	// Sube DESPUÉS de que Google confirmó, igual que el estado: una publicación
+	// que falló no gastó número de versión.
+	tipo.version += 1;
 	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
 	tipo.procesadorVersion =
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
