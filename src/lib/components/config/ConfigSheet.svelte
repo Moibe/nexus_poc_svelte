@@ -27,6 +27,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
@@ -77,6 +78,17 @@
 	// letrero, no datos del modelo.
 	let activandoId = $state<string | null>(null);
 	let errorActivacion = $state('');
+
+	// El campo que se está por quitar, mientras la confirmación está abierta.
+	// Se guarda el objeto y no solo el id porque el diálogo necesita el NOMBRE:
+	// un "¿seguro?" que no dice qué se va a borrar obliga a cerrarlo para ir a
+	// mirar, que es justo lo que la confirmación venía a evitar.
+	let campoAQuitar = $state<{ id: string; nombre: string } | null>(null);
+
+	function confirmarQuitarCampo() {
+		if (campoAQuitar) quitarCampo(campoAQuitar.id);
+		campoAQuitar = null;
+	}
 
 	// La rama seleccionada en el árbol del sidebar. Es un FILTRO de la vista,
 	// no parte del modelo: por eso vive aquí y no se persiste. null = sin
@@ -939,7 +951,7 @@
 										type="button"
 										aria-label={`Quitar el campo ${campo.nombre}`}
 										class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
-										onclick={() => quitarCampo(campo.id)}
+										onclick={() => (campoAQuitar = { id: campo.id, nombre: campo.nombre })}
 									>
 										<Minus class="size-4" />
 									</button>
@@ -1219,3 +1231,15 @@
 		{/if}
 	</Sheet.Content>
 </Sheet.Root>
+
+<!-- Vive FUERA del Sheet a propósito: se porta a sí mismo al <body> y sube a
+     z-60 para quedar encima del panel (z-50). Montarlo dentro del árbol del
+     Sheet lo ataría a la vista que lo disparó. -->
+<ConfirmarAccion
+	abierto={campoAQuitar !== null}
+	titulo="¿Quitar este campo?"
+	mensaje={`Se eliminará "${campoAQuitar?.nombre ?? ''}" de este tipo documental. Los campos agregados no se pueden editar, así que tendrías que volver a capturarlo desde cero.`}
+	etiquetaConfirmar="Sí, quitar"
+	onConfirmar={confirmarQuitarCampo}
+	onCerrar={() => (campoAQuitar = null)}
+/>
