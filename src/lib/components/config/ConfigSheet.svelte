@@ -1257,29 +1257,80 @@
 
 						<div class="mt-4 flex max-w-3xl flex-col gap-4">
 							{#each borrador.campos as campo (campo.id)}
+								<!-- Duplicado contra los DEMÁS campos, no contra la lista completa:
+								     de otro modo un campo editable se marcaría duplicado de sí mismo
+								     en cuanto se abriera el modo edición, sin haber tocado nada. -->
+								{@const nombreDuplicadoAqui =
+									!altaEnCurso &&
+									nombreCampoDuplicado(
+										campo.nombre,
+										borrador.campos.filter((c) => c.id !== campo.id)
+									)}
 								<div class="flex items-end gap-4">
 									<div class="grid flex-1 gap-4 md:grid-cols-2">
 										<div class="space-y-2">
 											<Label for="agregado-nombre-{campo.id}">Nombre del campo</Label>
-											<!-- readonly, no disabled: `disabled` los saca del orden de
-											     tabulación y del lector de pantalla, y este contenido sí
-											     hay que poder leerlo. La edición no existe en el diseño;
-											     para cambiar algo se quita y se vuelve a agregar. -->
-											<Input
-												id="agregado-nombre-{campo.id}"
-												value={campo.nombre}
-												readonly
-												class="bg-muted text-muted-foreground"
-											/>
+											{#if altaEnCurso}
+												<!-- readonly, no disabled: `disabled` los saca del orden de
+												     tabulación y del lector de pantalla, y este contenido sí
+												     hay que poder leerlo. En una alta nueva la edición no existe
+												     en el diseño; para cambiar algo se quita y se vuelve a
+												     agregar. En modo edición o "Crear nueva versión" (abajo) sí
+												     se puede tocar directo — a petición explícita del
+												     2026-09-02: ya se pasó por Editar/Crear nueva versión a
+												     propósito, así que no tiene sentido obligar a
+												     quitar-y-reagregar solo para corregir un nombre. -->
+												<Input
+													id="agregado-nombre-{campo.id}"
+													value={campo.nombre}
+													readonly
+													class="bg-muted text-muted-foreground"
+												/>
+											{:else}
+												<div class="relative">
+													<Input
+														id="agregado-nombre-{campo.id}"
+														bind:value={campo.nombre}
+														aria-invalid={nombreDuplicadoAqui}
+														aria-describedby={nombreDuplicadoAqui
+															? `agregado-nombre-${campo.id}-error`
+															: undefined}
+														class={nombreDuplicadoAqui ? 'pr-9' : undefined}
+													/>
+													{#if nombreDuplicadoAqui}
+														<AlertCircle
+															class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+														/>
+													{/if}
+												</div>
+												{#if nombreDuplicadoAqui}
+													<p id="agregado-nombre-{campo.id}-error" class="text-xs text-destructive">
+														Ya existe un campo con este nombre. Utiliza uno diferente.
+													</p>
+												{/if}
+											{/if}
 										</div>
 										<div class="space-y-2">
 											<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
-											<Input
-												id="agregado-tipo-{campo.id}"
-												value={etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
-												readonly
-												class="bg-muted text-muted-foreground"
-											/>
+											{#if altaEnCurso}
+												<Input
+													id="agregado-tipo-{campo.id}"
+													value={etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
+													readonly
+													class="bg-muted text-muted-foreground"
+												/>
+											{:else}
+												<Select.Root type="single" bind:value={campo.tipoDato}>
+													<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
+														{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
+													</Select.Trigger>
+													<Select.Content>
+														{#each TIPOS_DE_DATO as tipo (tipo.value)}
+															<Select.Item value={tipo.value} label={tipo.label} />
+														{/each}
+													</Select.Content>
+												</Select.Root>
+											{/if}
 										</div>
 									</div>
 
@@ -1591,7 +1642,9 @@
 <ConfirmarAccion
 	abierto={campoAQuitar !== null}
 	titulo="¿Quitar este campo?"
-	mensaje={`Se eliminará "${campoAQuitar?.nombre ?? ''}" de este tipo documental. Los campos agregados no se pueden editar, así que tendrías que volver a capturarlo desde cero.`}
+	mensaje={altaEnCurso
+		? `Se eliminará "${campoAQuitar?.nombre ?? ''}" de este tipo documental. Los campos agregados no se pueden editar en una alta nueva, así que tendrías que volver a capturarlo desde cero.`
+		: `Se eliminará "${campoAQuitar?.nombre ?? ''}" de este tipo documental. Esta acción no se puede deshacer.`}
 	etiquetaConfirmar="Sí, quitar"
 	onConfirmar={confirmarQuitarCampo}
 	onCerrar={() => (campoAQuitar = null)}
