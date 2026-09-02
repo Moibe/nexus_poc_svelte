@@ -6,7 +6,7 @@ Inventario de todo lo que **no** corresponde uno a uno con el archivo de Figma
 Sirve para dos cosas: que la revisión del UX sepa qué mirar y qué ignorar, y que
 nadie "arregle" más adelante una decisión que se tomó a propósito.
 
-Última actualización: **2026-09-02** ("Borrar" en un modelo activo pasó a ser "Archivar", no destructivo).
+Última actualización: **2026-09-02** (nueva pantalla "Calibración de campos extraídos" detrás de "Ejemplo documental").
 
 ---
 
@@ -44,6 +44,7 @@ se agregó porque se pidió.
 
 | Qué | Dónde | Cuándo | Detalle |
 |---|---|---|---|
+| Pantalla **"Calibración de campos extraídos"**, detrás de "Ejemplo documental" | Nueva `vista === 'calibracion'` del módulo | 2026-09-02 | "Ejemplo documental" dejó de ser un interruptor (`DropdownMenu.SwitchItem`) con efecto propio y pasó a ser una `DropdownMenu.Item` que navega aquí (`abrirCalibracion`). El interruptor que se sigue viendo en el menú es puramente decorativo: refleja `tipo.ejemploDocumental` pero ya no se toca desde ahí. **Sin frame de Figma** — se construyó leyendo una captura compartida, así que el detalle fino (tipografía, espaciado exacto) queda pendiente de una pasada si aparece el link. Alcance de ESTA iteración, a petición explícita: el árbol izquierdo ("Lista de campos documentales") se puebla con los campos REALES del tipo documental (nombre + hijos); el lado derecho ("Configurar ejemplos de extracción") es una réplica ESTÁTICA de la captura — los botones "Cargar ejemplo documental" nacen deshabilitados a propósito, igual que "Guardar configuración", porque no hay nada real detrás todavía. Qué hace y qué muestra ese lado queda para la siguiente conversación. `alternarEjemploDocumental()` sigue en el módulo de estado, sin usar, mismo trato que `crearNuevaVersion()`. |
 | Renglón **"Editar"**, arriba de "Crear nueva versión" | Menú `⋮` de la tarjeta | 2026-09-02 | Habilitado SOLO mientras el tipo documental sigue en borrador (nunca se activó, no existe su Custom Extractor). Hace lo mismo que picarle a la tarjeta: llama a `abrirTipoDocumental(tipo.id)`. En cuanto el modelo pasa a activo se deshabilita — a propósito, para no abrir una puerta trasera al mismo problema que resolvió el no-op de la sección 1b: editar un modelo activo puede divergir de Document AI en silencio. Cuando está deshabilitado, un tooltip (`$lib/components/ui/tooltip`, agregado con la CLI de shadcn-svelte) explica por qué al pasar el mouse — a diferencia del no-op de picarle a la tarjeta activa, aquí SÍ se pidió explicación explícita. |
 | Renglón **"Borrar" / "Archivar"**, con confirmación | Menú `⋮` de la tarjeta, debajo de "Eventos" | 2026-09-02 (agregado), **redefinido el mismo día** | Es UN solo renglón que cambia de texto y de comportamiento según el estado — nunca los dos a la vez. Ver el detalle abajo: se retiró la versión original ("Borrar funciona igual para un borrador que para un modelo activo") en la misma sesión en que se agregó, a pedido explícito. |
 

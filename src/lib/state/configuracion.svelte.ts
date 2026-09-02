@@ -746,7 +746,13 @@ export function crearNuevaVersion(id: string): boolean {
 	return true;
 }
 
-/** El interruptor "Ejemplo documental" del menú de la tarjeta. */
+/**
+ * SIN USAR desde el 2026-09-02: "Ejemplo documental" del menú dejó de ser un
+ * interruptor con efecto propio y pasó a abrir la pantalla de calibración
+ * (`abrirCalibracion` en `ConfigSheet.svelte`). Se deja lista por si esa
+ * pantalla termina necesitando marcar el campo de nuevo, mismo trato que
+ * `crearNuevaVersion()`.
+ */
 export function alternarEjemploDocumental(id: string, valor: boolean) {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo) return;

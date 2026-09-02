@@ -28,6 +28,9 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Archive from '@lucide/svelte/icons/archive';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -39,7 +42,6 @@
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
-		alternarEjemploDocumental,
 		archivarTipoDocumental,
 		eliminarTipoDocumental,
 		cargarTipoDocumental,
@@ -66,12 +68,16 @@
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	// El módulo tiene dos vistas, como en Figma:
+	// El módulo tiene tres vistas:
 	//  - 'biblioteca': la pantalla de entrada, con el listado de modelos (hoy
 	//    vacío) y el botón para arrancar uno nuevo.
 	//  - 'wizard': el alta de tipo documental en 3 pasos.
-	// Se entra siempre por 'biblioteca'; el wizard aparece al picar el botón.
-	let vista = $state<'biblioteca' | 'wizard'>('biblioteca');
+	//  - 'calibracion': "Ejemplo documental" del menú de la tarjeta (2026-09-02,
+	//    sin frame de Figma — se construyó desde una captura). Por ahora SOLO
+	//    puebla el árbol izquierdo con los campos reales del tipo; qué muestra y
+	//    qué hace el lado derecho queda para la siguiente conversación.
+	// Se entra siempre por 'biblioteca'.
+	let vista = $state<'biblioteca' | 'wizard' | 'calibracion'>('biblioteca');
 	let avisoExito = $state(false);
 	// Si el wizard que está abierto es un ALTA o la edición de un modelo que ya
 	// existía. No se puede deducir al final: el tipo documental entra a la
@@ -346,7 +352,7 @@
 	 */
 	/** La X del header. Sube un nivel en vez de cerrar de golpe. */
 	function cerrarNivel() {
-		if (vista === 'wizard') vista = 'biblioteca';
+		if (vista === 'wizard' || vista === 'calibracion') vista = 'biblioteca';
 		else open = false;
 	}
 
@@ -402,6 +408,29 @@
 			altaEnCurso = false;
 			vista = 'wizard';
 		}
+	}
+
+	// El tipo documental sobre el que se abrió "Ejemplo documental". Un id, no
+	// una copia del objeto: la pantalla de calibración lee `tiposDocumentales`
+	// en vivo a través de esto, igual que el resto del módulo.
+	let calibrandoId = $state<string | null>(null);
+	// Arranca expandido: en la captura que se compartió, el único tipo del
+	// árbol ya se ve desplegado con sus campos a la vista.
+	let calibracionExpandida = $state(true);
+	const tipoEnCalibracion = $derived(
+		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
+	);
+
+	/**
+	 * "Ejemplo documental" del menú de la tarjeta ya NO es un interruptor con
+	 * efecto propio — lleva a esta pantalla. El árbol izquierdo se puebla con
+	 * los campos REALES de este tipo documental; qué hace y qué muestra el
+	 * lado derecho todavía no está definido, queda para la próxima conversación.
+	 */
+	function abrirCalibracion(id: string) {
+		calibrandoId = id;
+		calibracionExpandida = true;
+		vista = 'calibracion';
 	}
 
 	function continuar() {
@@ -491,7 +520,7 @@
 		<!-- header . navigation -->
 		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
-				Modulo de configuración
+				{vista === 'calibracion' ? 'Configuración de tipo documental' : 'Modulo de configuración'}
 			</Sheet.Title>
 			<!-- La X sube UN NIVEL, no cierra siempre: estando en el wizard regresa a
 			     la Biblioteca; estando ya en la Biblioteca sí cierra el módulo. Antes
@@ -507,7 +536,9 @@
 			>
 				<CancelSquareIcon />
 				<span class="sr-only">
-					{vista === 'wizard' ? 'Volver al módulo de configuración' : 'Cerrar'}
+					{vista === 'wizard' || vista === 'calibracion'
+					? 'Volver al módulo de configuración'
+					: 'Cerrar'}
 				</span>
 			</button>
 		</div>
@@ -517,13 +548,25 @@
 			<span
 				class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"
 			>
-				<SetupIcon />
+				<!-- El ícono de "Calibración" es una aproximación: esta pantalla
+				     salió de una captura, sin link de Figma que confirmar contra
+				     píxeles reales (a diferencia del resto del módulo). -->
+				{#if vista === 'calibracion'}
+					<Sparkles class="size-4" />
+				{:else}
+					<SetupIcon />
+				{/if}
 			</span>
 			<div class="min-w-0 flex-1">
-				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
-				<Sheet.Description class="text-sm">
-					Configura la forma en que NexusDoc comprende tus documentos.
-				</Sheet.Description>
+				{#if vista === 'calibracion'}
+					<h2 class="text-lg font-medium text-foreground">Calibración de campos extraídos</h2>
+					<Sheet.Description class="text-sm">Carga tus documentos referencia</Sheet.Description>
+				{:else}
+					<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
+					<Sheet.Description class="text-sm">
+						Configura la forma en que NexusDoc comprende tus documentos.
+					</Sheet.Description>
+				{/if}
 			</div>
 		</div>
 
@@ -601,6 +644,56 @@
 									</button>
 								</li>
 							{/each}
+						</ul>
+					{/if}
+				{:else if vista === 'calibracion'}
+					<!-- Sin frame de Figma (ver el comentario del ícono, arriba): se
+					     construyó desde la captura que se compartió. El pedido concreto de
+					     esta iteración era ÚNICAMENTE esto — poblar el árbol con los campos
+					     reales del tipo — no el lado derecho, que queda para después. -->
+					<p class="text-xs text-foreground">Lista de campos documentales</p>
+					{#if tipoEnCalibracion}
+						<ul class="mt-4">
+							<li>
+								<button
+									type="button"
+									class="flex w-full items-center gap-3 text-left"
+									aria-expanded={calibracionExpandida}
+									onclick={() => (calibracionExpandida = !calibracionExpandida)}
+								>
+									<span
+										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+									>
+										<SetupIcon class="size-4" />
+									</span>
+									<span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+										{tipoEnCalibracion.nombre}
+									</span>
+									{#if calibracionExpandida}
+										<ChevronUp class="size-4 shrink-0 text-muted-foreground" />
+									{:else}
+										<ChevronDown class="size-4 shrink-0 text-muted-foreground" />
+									{/if}
+								</button>
+
+								{#if calibracionExpandida}
+									<!-- Mismo lenguaje visual que el árbol de la Biblioteca: eje a
+									     x=44 (pl-11), tramo vertical + guion horizontal por renglón. -->
+									<ul class="mt-2">
+										{#each tipoEnCalibracion.campos as campo (campo.id)}
+											<li class="relative flex h-9.5 items-center pl-11">
+												<span
+													class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
+												></span>
+												<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
+												<span class="ml-[19.5px] min-w-0 truncate text-sm text-muted-foreground">
+													{campo.nombre}
+												</span>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							</li>
 						</ul>
 					{/if}
 				{:else}
@@ -857,19 +950,30 @@
 												<span>Crear nueva versión</span>
 											</DropdownMenu.Item>
 
-											<!-- El interruptor es el indicador del renglón, no un control
-											     aparte: ver el porqué en dropdown-menu-switch-item.svelte.
-											     `closeOnSelect={false}` deja el menú abierto para poder ver
-											     el cambio. -->
-											<DropdownMenu.SwitchItem
+											<!-- Ya NO es un interruptor real (era `DropdownMenu.SwitchItem`):
+											     picarle en cualquier parte del renglón lleva a la pantalla de
+											     calibración (2026-09-02, a pedido explícito). El interruptor
+											     que se ve es puramente decorativo — refleja
+											     `tipo.ejemploDocumental` tal como quedó guardado, pero ya no se
+											     toca desde aquí ni dispara nada por sí solo. -->
+											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												closeOnSelect={false}
-												checked={tipo.ejemploDocumental}
-												onCheckedChange={(v) => alternarEjemploDocumental(tipo.id, v)}
+												onSelect={() => abrirCalibracion(tipo.id)}
 											>
 												<UsersRound class="size-4 text-muted-foreground" />
 												<span>Ejemplo documental</span>
-											</DropdownMenu.SwitchItem>
+												<span
+													class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tipo.ejemploDocumental
+														? 'bg-primary'
+														: 'bg-input'}"
+												>
+													<span
+														class="size-4 rounded-full bg-background shadow-sm transition-transform {tipo.ejemploDocumental
+															? 'translate-x-4.5'
+															: 'translate-x-0.5'}"
+													></span>
+												</span>
+											</DropdownMenu.Item>
 
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
@@ -944,6 +1048,33 @@
 						</div>
 						<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 					</div>
+					{/if}
+				{:else if vista === 'calibracion'}
+					<!-- Réplica de la captura compartida; sin frame de Figma que
+					     verificar. El pedido de esta iteración es solo el árbol de la
+					     izquierda — esto de aquí es la parte "todo lo demás", estática
+					     a propósito: qué hace cada botón se define en la siguiente
+					     conversación. Por eso "Cargar ejemplo documental" nace
+					     deshabilitado — mismo criterio que el resto del módulo: un
+					     control vivo sin nada detrás es peor que uno atenuado. -->
+					<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
+					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+						Carga y etiqueta un documento de ejemplo para asociar sus valores a los campos
+						configurados. Estos ejemplos ayudan al motor de IA a mejorar la precisión y el nivel de
+						confianza durante la extracción de información.
+					</p>
+
+					{#if tipoEnCalibracion}
+						<div class="mt-8 max-w-3xl">
+							{#each tipoEnCalibracion.campos as campo (campo.id)}
+								<div
+									class="flex items-center justify-between gap-4 border-b border-border py-4 last:border-0"
+								>
+									<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
+									<Button variant="outline" size="sm" disabled>Cargar ejemplo documental</Button>
+								</div>
+							{/each}
+						</div>
 					{/if}
 				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
@@ -1405,6 +1536,23 @@
 					Regresar
 				</Button>
 				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
+			</div>
+		{:else if vista === 'calibracion'}
+			<!-- "Guardar configuración" nace deshabilitado a propósito: todavía no
+			     hay nada real que guardar (el lado derecho es estático, ver el
+			     comentario de arriba) — mismo criterio que "Cargar ejemplo
+			     documental". "Cancelar configuración" sí funciona: salir de aquí
+			     siempre es válido, y ya lo cubren también la X, Escape y el clic
+			     fuera (`cerrarNivel`). -->
+			<div class="flex items-center justify-between border-t border-border px-6 py-4">
+				<Button
+					variant="link"
+					class="h-auto p-0 text-destructive"
+					onclick={() => (vista = 'biblioteca')}
+				>
+					Cancelar configuración
+				</Button>
+				<Button disabled>Guardar configuración</Button>
 			</div>
 		{/if}
 	</Sheet.Content>
