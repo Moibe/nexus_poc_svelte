@@ -822,8 +822,6 @@
 												<span>Eventos</span>
 											</DropdownMenu.Item>
 
-											<DropdownMenu.Separator class="my-2" />
-
 											<!-- El único renglón del menú que SIEMPRE está habilitado: borrar
 											     no depende de config_version ni de ninguna pantalla que falte
 											     construir. Funciona igual para un borrador que para un modelo
