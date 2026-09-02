@@ -465,6 +465,25 @@ export function limpiarBorrador() {
  * mientras no exista la base: inventar aquí la normalización sin poder probarla
  * contra SQL Server solo agregaría formas que después habría que corregir.
  */
+/**
+ * Una versión YA REEMPLAZADA de un tipo documental. Se guarda en cuanto
+ * `activarTipoDocumental` publica la SIGUIENTE — antes de eso no existe: no
+ * hay forma de reconstruir el historial de un tipo que ya se re-publicó
+ * ANTES del 2026-09-02, cuando esto se empezó a guardar.
+ *
+ * `campos` es una FOTO de cómo estaban en el momento de publicarse, no una
+ * referencia viva — si no se copiaran, editar el tipo después reescribiría
+ * también lo que este historial dice que tenía la versión vieja.
+ */
+export type VersionPublicada = {
+	version: number;
+	procesadorId: string;
+	procesadorVersion: string;
+	/** ISO-8601 de cuándo se publicó ESTA versión (no cuándo se reemplazó). */
+	publicadoEn: string;
+	campos: CampoBorrador[];
+};
+
 export type TipoDocumentalGuardado = {
 	id: string;
 	nombre: string;
@@ -505,6 +524,27 @@ export type TipoDocumentalGuardado = {
 	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
 	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
 	ejemploDocumental: boolean;
+	/** ISO-8601 de cuándo se publicó la versión VIGENTE (`version`, arriba).
+	 *  Es lo que pasa a `publicadoEn` en `historialVersiones` el día que esta
+	 *  versión se reemplace por una nueva. `null` mientras nunca se ha
+	 *  publicado, o si el tipo se guardó antes de que este campo existiera. */
+	activadoEn: string | null;
+	/** Versiones anteriores a la vigente, más reciente primero. Detrás de
+	 *  "Listar versiones anteriores" en la Biblioteca. Vacío para cualquier
+	 *  tipo que nunca se haya re-publicado. */
+	historialVersiones: VersionPublicada[];
+	/**
+	 * Foto de la versión vigente tomada por `crearNuevaVersion()` justo ANTES
+	 * de empezar a editarla — `activarTipoDocumental` la consume (la mueve a
+	 * `historialVersiones`) en cuanto la publicación siguiente tiene éxito, y
+	 * la deja en `null`.
+	 *
+	 * Sin esto no habría cómo archivar bien la versión vieja: para cuando
+	 * `activarTipoDocumental` se entera de que Google respondió, `campos` ya
+	 * se sobreescribió con lo recién editado en el wizard, y ya no quedaría
+	 * registro de qué tenía la versión que se está reemplazando.
+	 */
+	versionEnEdicion: VersionPublicada | null;
 };
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
@@ -542,6 +582,23 @@ let contadorTipo = 0;
 function idTipo(): string {
 	contadorTipo += 1;
 	return `tipo-${Date.now().toString(36)}-${contadorTipo}`;
+}
+
+/** Igual de defensivo que `leerCampo`: el contenido de localStorage no es de
+ *  fiar. Una entrada de historial sin `version` o `procesadorId` legibles no
+ *  sirve para nada — se descarta en vez de guardarse a medias. */
+function leerVersionPublicada(v: unknown): VersionPublicada | null {
+	if (typeof v !== 'object' || v === null) return null;
+	const d = v as Record<string, unknown>;
+	if (!Number.isInteger(d.version) || (d.version as number) < 0) return null;
+	if (typeof d.procesadorId !== 'string' || d.procesadorId === '') return null;
+	return {
+		version: d.version as number,
+		procesadorId: d.procesadorId,
+		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
+		publicadoEn: typeof d.publicadoEn === 'string' ? d.publicadoEn : new Date(0).toISOString(),
+		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : []
+	};
 }
 
 function leerBiblioteca(): TipoDocumentalGuardado[] {
@@ -586,7 +643,12 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 							: 0,
 				procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
 				procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
-				ejemploDocumental: d.ejemploDocumental === true
+				ejemploDocumental: d.ejemploDocumental === true,
+				activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
+				historialVersiones: Array.isArray(d.historialVersiones)
+					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
+					: [],
+				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion)
 			}));
 	} catch {
 		return [];
@@ -655,7 +717,10 @@ export function guardarTipoDocumental(): string | null {
 			version: 0,
 			procesadorId: '',
 			procesadorVersion: '',
-			ejemploDocumental: false
+			ejemploDocumental: false,
+			activadoEn: null,
+			historialVersiones: [],
+			versionEnEdicion: null
 		};
 		tiposDocumentales.push(nuevo);
 		b.idGuardado = nuevo.id;
@@ -715,6 +780,17 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 		return { ok: false, mensaje };
 	}
 
+	// La versión que se está reemplazando se archiva aquí, NO leyendo
+	// `tipo.campos` (ya se sobreescribió con lo recién editado) sino la foto
+	// que `crearNuevaVersion()` tomó antes de tocar nada. Sin `versionEnEdicion`
+	// —primera activación de un tipo que nunca fue "Crear nueva versión"— no
+	// hay nada que archivar. Va primero en el arreglo: "más reciente primero",
+	// igual que se van a listar.
+	if (tipo.versionEnEdicion) {
+		tipo.historialVersiones.unshift(tipo.versionEnEdicion);
+		tipo.versionEnEdicion = null;
+	}
+
 	tipo.estado = 'activo';
 	// Sube DESPUÉS de que Google confirmó, igual que el estado: una publicación
 	// que falló no gastó número de versión.
@@ -722,6 +798,7 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
 	tipo.procesadorVersion =
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
+	tipo.activadoEn = new Date().toISOString();
 	guardarBiblioteca();
 	return { ok: true, mensaje: '' };
 }
@@ -743,10 +820,24 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
  * No crea una copia aparte: es el MISMO registro, que vuelve a `borrador` para
  * poder tocarse. El procesador de Document AI sigue sirviendo la configuración
  * YA PUBLICADA hasta que se vuelva a activar — esta función no toca Google.
+ *
+ * Toma la FOTO de la versión vigente en `versionEnEdicion` antes de tocar
+ * nada — es el único momento en que `campos` todavía tiene lo que de verdad
+ * se publicó. `activarTipoDocumental` la archiva en `historialVersiones`
+ * cuando la publicación siguiente tiene éxito (y solo entonces: si se
+ * abandona la edición sin volver a publicar, la foto se queda pendiente sin
+ * duplicar nada).
  */
 export function crearNuevaVersion(id: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo || tipo.estado !== 'activo') return false;
+	tipo.versionEnEdicion = {
+		version: tipo.version,
+		procesadorId: tipo.procesadorId,
+		procesadorVersion: tipo.procesadorVersion,
+		publicadoEn: tipo.activadoEn ?? tipo.guardadoEn,
+		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
+	};
 	tipo.estado = 'borrador';
 	guardarBiblioteca();
 	return true;
