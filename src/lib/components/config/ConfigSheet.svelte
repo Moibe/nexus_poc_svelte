@@ -29,6 +29,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
 		borradorTipoDocumental,
@@ -768,14 +769,40 @@
 											     desde aquí: picarle a la tarjeta ya es un no-op a propósito (ver
 											     `abrirTipoDocumental`), y esto respeta la misma regla en vez de
 											     abrir una puerta trasera al mismo problema. -->
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled={tipo.estado === 'activo'}
-												onSelect={() => abrirTipoDocumental(tipo.id)}
-											>
-												<Pencil class="size-4 text-muted-foreground" />
-												<span>Editar</span>
-											</DropdownMenu.Item>
+											{#if tipo.estado === 'activo'}
+												<!-- El renglón deshabilitado es `pointer-events-none` (ver
+												     dropdown-menu-item.svelte), así que nunca recibiría el hover
+												     que abre el tooltip. El truco de siempre: el trigger real es
+												     el <span> que lo envuelve, no el ítem mismo. -->
+												<Tooltip.Provider>
+													<Tooltip.Root>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<span {...props} class="block">
+																	<DropdownMenu.Item
+																		class="h-11.5 gap-3 px-2 whitespace-nowrap"
+																		disabled
+																	>
+																		<Pencil class="size-4 text-muted-foreground" />
+																		<span>Editar</span>
+																	</DropdownMenu.Item>
+																</span>
+															{/snippet}
+														</Tooltip.Trigger>
+														<Tooltip.Content side="left">
+															No puedes editar un modelo que ya está activo.
+														</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											{:else}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() => abrirTipoDocumental(tipo.id)}
+												>
+													<Pencil class="size-4 text-muted-foreground" />
+													<span>Editar</span>
+												</DropdownMenu.Item>
+											{/if}
 
 											<!-- Tres de los cuatro renglones van DESHABILITADOS: abren pantallas
 											     que no existen. "Historial de versiones" es un modal entero en el
