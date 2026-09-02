@@ -27,6 +27,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Archive from '@lucide/svelte/icons/archive';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -39,6 +40,7 @@
 		campoIntacto,
 		activarTipoDocumental,
 		alternarEjemploDocumental,
+		archivarTipoDocumental,
 		eliminarTipoDocumental,
 		cargarTipoDocumental,
 		etiquetaVersion,
@@ -99,16 +101,42 @@
 		campoAQuitar = null;
 	}
 
-	// El tipo documental que se está por eliminar. Guarda también si estaba
-	// ACTIVO: el diálogo de confirmación necesita saberlo para advertir que
-	// esto también borra el Custom Extractor en Document AI — omitir esa
-	// advertencia cuando sí aplica sería dejar que alguien destruya un recurso
-	// real de GCP sin haberlo sabido de antemano.
-	let tipoAEliminar = $state<{ id: string; nombre: string; activo: boolean } | null>(null);
+	// El tipo documental que se está por eliminar. Guarda también si TIENE un
+	// procesador real (no si está "activo": un borrador nacido de una futura
+	// `crearNuevaVersion()` podría conservar su `procesadorId` aunque ya no
+	// esté activo — ver esa función). El diálogo de confirmación necesita
+	// saberlo para advertir que esto también borra el Custom Extractor en
+	// Document AI — omitir esa advertencia cuando sí aplica sería dejar que
+	// alguien destruya un recurso real de GCP sin haberlo sabido de antemano.
+	//
+	// Hoy, con el menú mostrando "Borrar" SOLO para tipos no-activos, este
+	// campo casi siempre es `false` — pero la función de abajo no depende de
+	// esa coincidencia, por si el día de mañana un borrador sí llega a
+	// tenerlo.
+	let tipoAEliminar = $state<{ id: string; nombre: string; tieneProcesador: boolean } | null>(
+		null
+	);
 	// El borrado en vuelo. Puede tardar unos segundos (borra también el
 	// dataset en Google), así que la tarjeta necesita mostrar algo mientras
 	// tanto — no es instantáneo como quitar un campo del borrador.
 	let eliminandoId = $state<string | null>(null);
+
+	// El tipo documental que se está por archivar (SIEMPRE uno activo: es la
+	// alternativa no destructiva a "Borrar" para ese caso). A diferencia de
+	// eliminar, es instantáneo y local — no hay `archivandoId` porque no hay
+	// nada que esperar.
+	let tipoAArchivar = $state<{ id: string; nombre: string } | null>(null);
+
+	function confirmarArchivarTipo() {
+		const objetivo = tipoAArchivar;
+		tipoAArchivar = null;
+		if (!objetivo) return;
+		archivarTipoDocumental(objetivo.id);
+		// Igual que al eliminar: si era el seleccionado, se limpia la selección
+		// para no dejar la columna derecha apuntando a un modelo que ya no se
+		// lista.
+		if (seleccionadoId === objetivo.id) seleccionadoId = null;
+	}
 
 	async function confirmarEliminarTipo() {
 		const objetivo = tipoAEliminar;
@@ -137,12 +165,19 @@
 	// filtro, se listan todos.
 	let seleccionadoId = $state<string | null>(null);
 
+	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
+	// (ver `archivarTipoDocumental`) sigue en `localStorage`, pero no debe
+	// listarse en el árbol ni en las tarjetas — es justo lo que "Archivar"
+	// promete. Todo lo que antes leía `tiposDocumentales` para RENDERIZAR usa
+	// esto en su lugar; el estado de verdad sigue siendo `tiposDocumentales`.
+	const tiposEnBiblioteca = $derived(tiposDocumentales.filter((t) => t.estado !== 'archivado'));
+
 	// Lo que la columna derecha lista. SIN selección no se lista nada: la
 	// lista aparece cuando se elige un modelo en el árbol (cambio pedido el
 	// 2026-08-28; antes el default eran todos). El área no queda muda — abajo
 	// hay una línea que dice qué hacer.
 	const tiposVisibles = $derived(
-		seleccionadoId ? tiposDocumentales.filter((t) => t.id === seleccionadoId) : []
+		seleccionadoId ? tiposEnBiblioteca.filter((t) => t.id === seleccionadoId) : []
 	);
 
 	// Picar la rama ya seleccionada la des-selecciona y la lista vuelve a
@@ -355,7 +390,10 @@
 	 */
 	function abrirTipoDocumental(id: string) {
 		const tipo = tiposDocumentales.find((t) => t.id === id);
-		if (tipo?.estado === 'activo') return;
+		// Lista de PERMITIDOS, no de bloqueados: con tres estados posibles ya no
+		// basta con negar 'activo' — un 'archivado' tampoco debe poder abrirse,
+		// aunque hoy nunca llegue aquí (no se lista en ningún lado clicable).
+		if (tipo?.estado !== 'borrador') return;
 		if (cargarTipoDocumental(id)) {
 			avisoExito = false;
 			tituloError = '';
@@ -541,9 +579,9 @@
 					     solo su tarjeta, picarla de nuevo (o picar "Biblioteca") vuelve a
 					     mostrar todas. Retomar el modelo quedó solo en la tarjeta — un
 					     mismo gesto no debe filtrar y navegar a la vez. -->
-					{#if tiposDocumentales.length > 0}
+					{#if tiposEnBiblioteca.length > 0}
 						<ul class="mt-4">
-							{#each tiposDocumentales as tipo (tipo.id)}
+							{#each tiposEnBiblioteca as tipo (tipo.id)}
 								<li class="relative flex h-9.5 items-center pl-11">
 									<span
 										class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
@@ -626,7 +664,7 @@
 
 			<div class="flex-1 overflow-y-auto p-8">
 				{#if vista === 'biblioteca'}
-					{#if tiposDocumentales.length > 0}
+					{#if tiposEnBiblioteca.length > 0}
 						<!-- Biblioteca poblada. Estructura tomada del frame 1077:65410:
 						     título "Modelos documentales agregados" y una tarjeta por
 						     modelo (682x72). No pude ver los píxeles —se agotó la cuota de
@@ -849,24 +887,35 @@
 												<span>Eventos</span>
 											</DropdownMenu.Item>
 
-											<!-- El único renglón del menú que SIEMPRE está habilitado: borrar
-											     no depende de config_version ni de ninguna pantalla que falte
-											     construir. Funciona igual para un borrador que para un modelo
-											     activo — la diferencia entre los dos la explica el diálogo de
-											     confirmación, no este ítem. -->
-											<DropdownMenu.Item
-												variant="destructive"
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() =>
-													(tipoAEliminar = {
-														id: tipo.id,
-														nombre: tipo.nombre,
-														activo: tipo.estado === 'activo'
-													})}
-											>
-												<Trash2 class="size-4" />
-												<span>Borrar</span>
-											</DropdownMenu.Item>
+											<!-- "Borrar" y "Archivar" son el MISMO renglón, nunca los dos a la
+											     vez: cambio pedido para que un modelo ACTIVO ya no se pueda
+											     borrar directamente desde aquí (perdería su Custom Extractor sin
+											     vuelta atrás) — para ese caso el renglón pasa a "Archivar", que
+											     no toca Document AI y solo saca el tipo de la Biblioteca. Solo un
+											     borrador (nunca activado) conserva el "Borrar" real. -->
+											{#if tipo.estado === 'activo'}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() => (tipoAArchivar = { id: tipo.id, nombre: tipo.nombre })}
+												>
+													<Archive class="size-4 text-muted-foreground" />
+													<span>Archivar</span>
+												</DropdownMenu.Item>
+											{:else}
+												<DropdownMenu.Item
+													variant="destructive"
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() =>
+														(tipoAEliminar = {
+															id: tipo.id,
+															nombre: tipo.nombre,
+															tieneProcesador: Boolean(tipo.procesadorId)
+														})}
+												>
+													<Trash2 class="size-4" />
+													<span>Borrar</span>
+												</DropdownMenu.Item>
+											{/if}
 										</DropdownMenu.Content>
 									</DropdownMenu.Root>
 								</div>
@@ -1373,17 +1422,32 @@
 	onCerrar={() => (campoAQuitar = null)}
 />
 
-<!-- El mensaje se bifurca en si el tipo estaba ACTIVO: ahí no solo se borra un
-     renglón de la Biblioteca, también se destruye el Custom Extractor real en
-     Document AI. Callarse esa parte dejaría confirmar a ciegas algo que toca
-     un recurso de GCP y no se puede deshacer. -->
+<!-- El mensaje se bifurca en si el tipo TIENE un procesador real (ver el
+     comentario de `tipoAEliminar` arriba): ahí no solo se borra un renglón de
+     la Biblioteca, también se destruye el Custom Extractor en Document AI.
+     Callarse esa parte dejaría confirmar a ciegas algo que toca un recurso de
+     GCP y no se puede deshacer. En la práctica, con "Borrar" mostrándose SOLO
+     para tipos no-activos, casi siempre cae en la rama simple. -->
 <ConfirmarAccion
 	abierto={tipoAEliminar !== null}
 	titulo="¿Borrar este tipo documental?"
-	mensaje={tipoAEliminar?.activo
+	mensaje={tipoAEliminar?.tieneProcesador
 		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca Y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
 		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.`}
 	etiquetaConfirmar="Sí, borrar"
 	onConfirmar={confirmarEliminarTipo}
 	onCerrar={() => (tipoAEliminar = null)}
+/>
+
+<!-- A diferencia de Borrar, archivar NO toca Google ni pierde el registro:
+     el mensaje lo dice explícitamente para que no se lea con la misma
+     gravedad que un borrado real. -->
+<ConfirmarAccion
+	abierto={tipoAArchivar !== null}
+	variante="neutral"
+	titulo="¿Archivar este tipo documental?"
+	mensaje={`"${tipoAArchivar?.nombre ?? ''}" dejará de listarse en la Biblioteca. Su Custom Extractor en Document AI NO se toca: sigue existiendo tal cual.`}
+	etiquetaConfirmar="Sí, archivar"
+	onConfirmar={confirmarArchivarTipo}
+	onCerrar={() => (tipoAArchivar = null)}
 />

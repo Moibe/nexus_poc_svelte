@@ -6,7 +6,7 @@ Inventario de todo lo que **no** corresponde uno a uno con el archivo de Figma
 Sirve para dos cosas: que la revisión del UX sepa qué mirar y qué ignorar, y que
 nadie "arregle" más adelante una decisión que se tomó a propósito.
 
-Última actualización: **2026-09-02** (agregado el renglón "Editar" del menú).
+Última actualización: **2026-09-02** ("Borrar" en un modelo activo pasó a ser "Archivar", no destructivo).
 
 ---
 
@@ -45,21 +45,59 @@ se agregó porque se pidió.
 | Qué | Dónde | Cuándo | Detalle |
 |---|---|---|---|
 | Renglón **"Editar"**, arriba de "Crear nueva versión" | Menú `⋮` de la tarjeta | 2026-09-02 | Habilitado SOLO mientras el tipo documental sigue en borrador (nunca se activó, no existe su Custom Extractor). Hace lo mismo que picarle a la tarjeta: llama a `abrirTipoDocumental(tipo.id)`. En cuanto el modelo pasa a activo se deshabilita — a propósito, para no abrir una puerta trasera al mismo problema que resolvió el no-op de la sección 1b: editar un modelo activo puede divergir de Document AI en silencio. Cuando está deshabilitado, un tooltip (`$lib/components/ui/tooltip`, agregado con la CLI de shadcn-svelte) explica por qué al pasar el mouse — a diferencia del no-op de picarle a la tarjeta activa, aquí SÍ se pidió explicación explícita. |
-| Renglón **"Borrar"**, con confirmación | Menú `⋮` de la tarjeta, debajo de "Eventos" | 2026-09-02 | El único renglón del menú que NO depende de `config_version` ni de ninguna pantalla sin construir: borrar funciona igual para un borrador que para un modelo activo. Separado de los otros cuatro con un `DropdownMenu.Separator`, en rojo (`variant="destructive"`), con el ícono `Trash2`. |
+| Renglón **"Borrar" / "Archivar"**, con confirmación | Menú `⋮` de la tarjeta, debajo de "Eventos" | 2026-09-02 (agregado), **redefinido el mismo día** | Es UN solo renglón que cambia de texto y de comportamiento según el estado — nunca los dos a la vez. Ver el detalle abajo: se retiró la versión original ("Borrar funciona igual para un borrador que para un modelo activo") en la misma sesión en que se agregó, a pedido explícito. |
 
-**Si el modelo ya estaba activo** (tiene `procesadorId`), borrar también destruye
-su Custom Extractor en Document AI — su dataset y su esquema con él,
-**irreversible**. El diálogo de confirmación lo advierte explícitamente en ese
-caso; para un borrador que nunca se publicó, el mensaje es más simple porque no
-hay nada que tocar en Google.
+**Diseño vigente** (el original, descrito más abajo por completo en la
+sub-sección "Retirado", quedó obsoleto el mismo día que se escribió):
 
-El orden importa y está deliberado: se borra primero en **Google**, y solo si
-eso funciona se borra de la Biblioteca. Al revés, un fallo en Document AI
-dejaría un procesador huérfano sin ningún registro local que lo señale — nadie
-volvería a saber que existe para limpiarlo. Con este orden, un fallo deja el
-tipo documental intacto y se puede reintentar sin duplicar nada (el borrado en
-Document AI ya es idempotente: si el procesador no existe, `eliminar_procesador`
-lo trata como éxito).
+- **Tipo en BORRADOR** (nunca activado): el renglón dice **"Borrar"** — rojo,
+  destructivo (`variant="destructive"`, ícono `Trash2`). Borra el registro de
+  la Biblioteca de verdad, sin dejar rastro. Si ese borrador tuviera además un
+  `procesadorId` real (hoy no alcanzable desde la UI — solo un borrador nacido
+  de la futura `crearNuevaVersion()` podría tenerlo, ver sección 1b — el
+  diálogo lo advierte y el borrado también destruye el Custom Extractor en
+  Document AI, irreversible).
+- **Tipo ACTIVO**: el renglón dice **"Archivar"** — neutral, sin rojo
+  (`ConfirmarAccion` ganó una prop `variante="neutral"` para esto: ícono
+  `Info` azul en vez de `TriangleAlert`, botón de confirmar en `variant="default"`
+  en vez de `"destructive"`). Llama a `archivarTipoDocumental()`, que:
+  - **NO** toca Document AI en absoluto — el Custom Extractor sigue vivo tal
+    cual, sin llamar a `disable` ni a nada.
+  - **NO** borra el registro de `localStorage` — solo le cambia `estado` a
+    `'archivado'`.
+  - Saca el tipo del árbol y de las tarjetas: `tiposEnBiblioteca` (un
+    `$derived` en `ConfigSheet.svelte`) filtra `estado !== 'archivado'` en
+    TODOS los puntos que antes leían `tiposDocumentales` directo para
+    renderizar.
+
+  Motivo del cambio: borrar un modelo activo destruye un recurso real de GCP
+  sin vuelta atrás, y para "solo quitarlo de la vista" eso es demasiado
+  costoso. Archivar es la vía segura para ese caso — **hoy no hay pantalla de
+  "Archivados"** para verlos ni un `desarchivarTipoDocumental()` para volver;
+  se agregan cuando se pidan. El registro no se pierde, solo deja de listarse.
+
+El orden de borrado real (para el caso "Borrar" con procesador) sigue
+deliberado: se borra primero en **Google**, y solo si eso funciona se borra de
+la Biblioteca. Al revés, un fallo en Document AI dejaría un procesador
+huérfano sin ningún registro local que lo señale — nadie volvería a saber que
+existe para limpiarlo. Con este orden, un fallo deja el tipo documental
+intacto y se puede reintentar sin duplicar nada (el borrado en Document AI ya
+es idempotente: si el procesador no existe, `eliminar_procesador` lo trata
+como éxito).
+
+<details>
+<summary>Diseño original de "Borrar" (retirado el mismo día, 2026-09-02)</summary>
+
+El primer diseño de "Borrar" era un único renglón siempre presente, para
+cualquier estado: para un modelo activo, borraba la Biblioteca Y el Custom
+Extractor en Document AI, con el diálogo advirtiendo "irreversible". Se
+retiró a pedido explícito el mismo día: destruir un procesador real solo para
+sacarlo de la vista era una consecuencia demasiado grave para lo que se
+pedía, y "Archivar" (arriba) la resuelve sin tocar Google.
+
+</details>
+
+
 
 ## 2. Sigue en la app y NO está en el diseño
 

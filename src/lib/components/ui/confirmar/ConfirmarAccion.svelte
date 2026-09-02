@@ -2,6 +2,7 @@
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Info from '@lucide/svelte/icons/info';
 
 	let {
 		abierto = false,
@@ -9,6 +10,7 @@
 		mensaje,
 		etiquetaConfirmar = 'Quitar',
 		etiquetaCancelar = 'Cancelar',
+		variante = 'destructivo',
 		onConfirmar,
 		onCerrar
 	}: {
@@ -17,6 +19,11 @@
 		mensaje: string;
 		etiquetaConfirmar?: string;
 		etiquetaCancelar?: string;
+		/** `destructivo` (default) es lo de siempre: algo se pierde y no vuelve.
+		 *  `neutral` es para confirmar algo reversible o que no destruye nada
+		 *  (p. ej. archivar) — mismo diálogo, sin el rojo ni el triángulo de
+		 *  alerta que prometerían una gravedad que esa acción no tiene. */
+		variante?: 'destructivo' | 'neutral';
 		onConfirmar: () => void;
 		/** Se llama al cerrar por CUALQUIER vía —Cancelar, Escape o confirmar—
 		 *  para que quien lo usa limpie el estado que lo abrió. Sin esto, `abierto`
@@ -60,9 +67,16 @@
 		>
 			<div class="flex items-start gap-3">
 				<span
-					class="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+					class="flex size-9 shrink-0 items-center justify-center rounded-full {variante ===
+					'destructivo'
+						? 'bg-destructive/10 text-destructive'
+						: 'bg-primary/10 text-primary'}"
 				>
-					<TriangleAlert class="size-4.5" />
+					{#if variante === 'destructivo'}
+						<TriangleAlert class="size-4.5" />
+					{:else}
+						<Info class="size-4.5" />
+					{/if}
 				</span>
 				<div class="min-w-0 flex-1">
 					<AlertDialogPrimitive.Title class="text-sm font-semibold text-foreground">
@@ -86,7 +100,12 @@
 				</AlertDialogPrimitive.Cancel>
 				<AlertDialogPrimitive.Action onclick={onConfirmar}>
 					{#snippet child({ props })}
-						<Button {...props} variant="destructive" size="sm" data-testid="confirmar-aceptar">
+						<Button
+							{...props}
+							variant={variante === 'destructivo' ? 'destructive' : 'default'}
+							size="sm"
+							data-testid="confirmar-aceptar"
+						>
 							{etiquetaConfirmar}
 						</Button>
 					{/snippet}

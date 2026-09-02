@@ -479,8 +479,14 @@ export type TipoDocumentalGuardado = {
 	/** Precursor de `config_version.status`. `activo` es lo que marca el botón
 	 *  "Activar" de la tarjeta (HU038). OJO: aquí NO se valida todavía que los
 	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
-	 *  sección 2.6 del diccionario — esa validación necesita el back. */
-	estado: 'borrador' | 'activo';
+	 *  sección 2.6 del diccionario — esa validación necesita el back.
+	 *
+	 *  `archivado` lo pone `archivarTipoDocumental()`: es la alternativa NO
+	 *  destructiva a "Borrar" para un modelo activo — no toca Document AI, solo
+	 *  saca el tipo de la Biblioteca. Todavía no hay pantalla de "Archivados"
+	 *  para verlos ni un camino de vuelta; el registro simplemente deja de
+	 *  listarse en el árbol y en las tarjetas. */
+	estado: 'borrador' | 'activo' | 'archivado';
 	/** Cuántas veces se ha PUBLICADO esta configuración a Document AI. 0 = nunca.
 	 *  Es el precursor de `config_version.version_no` del diccionario, y por eso
 	 *  cuenta activaciones y no ediciones: lo que versiona es lo que se publicó,
@@ -558,11 +564,17 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 					: [],
 				pasoMaximo: leerPasoMaximo(d),
 				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
-				// Se acepta 'activo' solo si está escrito tal cual. Cualquier otra
-				// cosa —incluido lo que guardaron las versiones anteriores, que ni
-				// siquiera tenían el campo— cae en 'borrador', que es el estado
-				// seguro: un modelo mal leído no debe amanecer activo en producción.
-				estado: d.estado === 'activo' ? ('activo' as const) : ('borrador' as const),
+				// Se acepta 'activo' o 'archivado' solo si están escritos tal cual.
+				// Cualquier otra cosa —incluido lo que guardaron las versiones
+				// anteriores, que ni siquiera tenían el campo— cae en 'borrador', que
+				// es el estado seguro: un modelo mal leído no debe amanecer activo en
+				// producción (ni, por la misma razón, oculto por error como archivado).
+				estado:
+					d.estado === 'activo'
+						? ('activo' as const)
+						: d.estado === 'archivado'
+							? ('archivado' as const)
+							: ('borrador' as const),
 				// Lo guardado antes de que existiera este campo no trae `version`. Si
 				// ese tipo ya estaba activo, se le infiere 1: se publicó una vez,
 				// aunque nadie lo hubiera contado. Un borrador arranca en 0.
@@ -740,6 +752,25 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
 	if (!tipo) return;
 	tipo.ejemploDocumental = valor;
 	guardarBiblioteca();
+}
+
+/**
+ * Archiva un tipo documental ACTIVO: lo saca de la Biblioteca sin tocar
+ * Document AI. A diferencia de `eliminarTipoDocumental`, no borra nada — ni
+ * el registro local ni el Custom Extractor, que sigue viviendo en Google
+ * exactamente como estaba. Es la alternativa NO destructiva a "Borrar" para
+ * un modelo activo, a pedido explícito: el registro se queda en
+ * `localStorage`, solo deja de listarse en el árbol y en las tarjetas.
+ *
+ * No hay todavía una pantalla de "Archivados" para verlos ni un
+ * `desarchivarTipoDocumental()` para volver — se agregan cuando se pidan.
+ */
+export function archivarTipoDocumental(id: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo) return false;
+	tipo.estado = 'archivado';
+	guardarBiblioteca();
+	return true;
 }
 
 /**
