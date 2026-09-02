@@ -6,7 +6,7 @@ Inventario de todo lo que **no** corresponde uno a uno con el archivo de Figma
 Sirve para dos cosas: que la revisión del UX sepa qué mirar y qué ignorar, y que
 nadie "arregle" más adelante una decisión que se tomó a propósito.
 
-Última actualización: **2026-09-02**.
+Última actualización: **2026-09-02** (agregado el renglón "Editar" del menú).
 
 ---
 
@@ -44,6 +44,7 @@ se agregó porque se pidió.
 
 | Qué | Dónde | Cuándo | Detalle |
 |---|---|---|---|
+| Renglón **"Editar"**, arriba de "Crear nueva versión" | Menú `⋮` de la tarjeta | 2026-09-02 | Habilitado SOLO mientras el tipo documental sigue en borrador (nunca se activó, no existe su Custom Extractor). Hace lo mismo que picarle a la tarjeta: llama a `abrirTipoDocumental(tipo.id)`. En cuanto el modelo pasa a activo se deshabilita — a propósito, para no abrir una puerta trasera al mismo problema que resolvió el no-op de la sección 1b: editar un modelo activo puede divergir de Document AI en silencio. |
 | Renglón **"Borrar"**, con confirmación | Menú `⋮` de la tarjeta, debajo de "Eventos" | 2026-09-02 | El único renglón del menú que NO depende de `config_version` ni de ninguna pantalla sin construir: borrar funciona igual para un borrador que para un modelo activo. Separado de los otros cuatro con un `DropdownMenu.Separator`, en rojo (`variant="destructive"`), con el ícono `Trash2`. |
 
 **Si el modelo ya estaba activo** (tiene `procesadorId`), borrar también destruye

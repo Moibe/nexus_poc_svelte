@@ -26,6 +26,7 @@
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
@@ -760,6 +761,22 @@
 										     componente— así que salen de la captura que compartió el
 										     usuario. -->
 										<DropdownMenu.Content align="end" class="w-64.75 p-3">
+											<!-- No está en el frame de Figma (1077:65931 solo trae los cuatro
+											     renglones de abajo): se agregó a petición explícita, para editar un
+											     tipo documental SOLO mientras nunca se ha activado (no existe el
+											     Custom Extractor todavía). Una vez activo, no hay nada que "editar"
+											     desde aquí: picarle a la tarjeta ya es un no-op a propósito (ver
+											     `abrirTipoDocumental`), y esto respeta la misma regla en vez de
+											     abrir una puerta trasera al mismo problema. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled={tipo.estado === 'activo'}
+												onSelect={() => abrirTipoDocumental(tipo.id)}
+											>
+												<Pencil class="size-4 text-muted-foreground" />
+												<span>Editar</span>
+											</DropdownMenu.Item>
+
 											<!-- Tres de los cuatro renglones van DESHABILITADOS: abren pantallas
 											     que no existen. "Historial de versiones" es un modal entero en el
 											     archivo (1077:66342) que no se ha construido, y "Crear nueva
