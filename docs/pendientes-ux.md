@@ -6,7 +6,7 @@ Inventario de todo lo que **no** corresponde uno a uno con el archivo de Figma
 Sirve para dos cosas: que la revisión del UX sepa qué mirar y qué ignorar, y que
 nadie "arregle" más adelante una decisión que se tomó a propósito.
 
-Última actualización: **2026-08-28**.
+Última actualización: **2026-09-02**.
 
 ---
 
@@ -18,12 +18,8 @@ vea la pantalla limpia. Todas son recuperables: el código de soporte sigue ahí
 | Qué | Dónde | Cuándo | Cómo devolverlo |
 |---|---|---|---|
 | Sección **"Campos extraídos"** — cada campo extraído con su valor y confianza individual | Modal "Detalle de documento" | 2026-08-25 | `camposDe()` sigue intacto en `$lib/types/ine`. Recuperar el bloque del historial y volver a importarlo con su `$derived`. Hay una nota en el propio componente. |
-| Botón de **eliminar** un tipo documental | Biblioteca del Módulo de configuración | 2026-08-26 | `eliminarTipoDocumental()` sigue en `$lib/state/configuracion.svelte`, probada. Solo falta el control. |
+| ~~Botón de **eliminar** un tipo documental~~ | Biblioteca del Módulo de configuración | 2026-08-26 | **RECONSTRUIDO el 2026-09-02**, a pedido explícito — ver la sección 2b de abajo. |
 | **×** para quitar una tarjeta de campo | Paso 2 del wizard | 2026-08-26 | Ya no aplica: al rehacer el paso 2 conforme al frame real, el diseño trae su propio botón de quitar en "Campos agregados". |
-
-**Consecuencia de haber quitado el de eliminar**: hoy un tipo documental guardado
-por error **no se puede borrar desde la UI**. Se limpia borrando la llave
-`nexusdoc:tipos-documentales:v1` desde las DevTools del navegador.
 
 ## 1b. Retirado por decisión explícita, no por diseño
 
@@ -37,8 +33,32 @@ pedido directo del usuario.
 
 En el frame `1077:65410` ese lugar lo ocupan un botón de 82×38 y un ícono de menú
 de 24×24. Ese botón pertenece a **HU038** ("Activar versión de Configuration
-Table para producción"), que todavía no se construye, así que no se sabe si el
-menú incluye "eliminar" o no.
+Table para producción"), que todavía no se construye, así que sigue sin saberse
+si su menú incluye "eliminar" o no — es una pregunta distinta de la de abajo, que
+ya quedó resuelta para el menú que SÍ existe.
+
+## 2b. Agregado por decisión explícita, no por diseño
+
+Mismo espíritu que la sección 1b, pero al revés: esto no viene de ningún frame,
+se agregó porque se pidió.
+
+| Qué | Dónde | Cuándo | Detalle |
+|---|---|---|---|
+| Renglón **"Borrar"**, con confirmación | Menú `⋮` de la tarjeta, debajo de "Eventos" | 2026-09-02 | El único renglón del menú que NO depende de `config_version` ni de ninguna pantalla sin construir: borrar funciona igual para un borrador que para un modelo activo. Separado de los otros cuatro con un `DropdownMenu.Separator`, en rojo (`variant="destructive"`), con el ícono `Trash2`. |
+
+**Si el modelo ya estaba activo** (tiene `procesadorId`), borrar también destruye
+su Custom Extractor en Document AI — su dataset y su esquema con él,
+**irreversible**. El diálogo de confirmación lo advierte explícitamente en ese
+caso; para un borrador que nunca se publicó, el mensaje es más simple porque no
+hay nada que tocar en Google.
+
+El orden importa y está deliberado: se borra primero en **Google**, y solo si
+eso funciona se borra de la Biblioteca. Al revés, un fallo en Document AI
+dejaría un procesador huérfano sin ningún registro local que lo señale — nadie
+volvería a saber que existe para limpiarlo. Con este orden, un fallo deja el
+tipo documental intacto y se puede reintentar sin duplicar nada (el borrado en
+Document AI ya es idempotente: si el procesador no existe, `eliminar_procesador`
+lo trata como éxito).
 
 ## 2. Sigue en la app y NO está en el diseño
 

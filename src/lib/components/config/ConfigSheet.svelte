@@ -25,6 +25,7 @@
 	import UsersRound from '@lucide/svelte/icons/users-round';
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import Clock from '@lucide/svelte/icons/clock';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
@@ -36,6 +37,7 @@
 		campoIntacto,
 		activarTipoDocumental,
 		alternarEjemploDocumental,
+		eliminarTipoDocumental,
 		cargarTipoDocumental,
 		etiquetaVersion,
 		etiquetaVertical,
@@ -77,6 +79,11 @@
 	// no en el state global porque es efímero de esta pantalla: un spinner y un
 	// letrero, no datos del modelo.
 	let activandoId = $state<string | null>(null);
+	// El aviso rojo lo comparten activar y eliminar — son la misma clase de
+	// evento ("una acción sobre el modelo falló") y un solo letrero evita tener
+	// dos bloques de markup casi idénticos. El título SÍ cambia según cuál de
+	// las dos fue: da contexto sin tener que repetirlo en el cuerpo.
+	let tituloError = $state('');
 	let errorActivacion = $state('');
 
 	// El campo que se está por quitar, mientras la confirmación está abierta.
@@ -88,6 +95,39 @@
 	function confirmarQuitarCampo() {
 		if (campoAQuitar) quitarCampo(campoAQuitar.id);
 		campoAQuitar = null;
+	}
+
+	// El tipo documental que se está por eliminar. Guarda también si estaba
+	// ACTIVO: el diálogo de confirmación necesita saberlo para advertir que
+	// esto también borra el Custom Extractor en Document AI — omitir esa
+	// advertencia cuando sí aplica sería dejar que alguien destruya un recurso
+	// real de GCP sin haberlo sabido de antemano.
+	let tipoAEliminar = $state<{ id: string; nombre: string; activo: boolean } | null>(null);
+	// El borrado en vuelo. Puede tardar unos segundos (borra también el
+	// dataset en Google), así que la tarjeta necesita mostrar algo mientras
+	// tanto — no es instantáneo como quitar un campo del borrador.
+	let eliminandoId = $state<string | null>(null);
+
+	async function confirmarEliminarTipo() {
+		const objetivo = tipoAEliminar;
+		tipoAEliminar = null;
+		if (!objetivo) return;
+		// Se limpia AL EMPEZAR, no solo al fallar: sin esto, un error de un
+		// intento anterior (de activar o de eliminar) se quedaba pegado en
+		// pantalla aunque este intento nuevo terminara bien.
+		errorActivacion = '';
+		eliminandoId = objetivo.id;
+		const r = await eliminarTipoDocumental(objetivo.id);
+		eliminandoId = null;
+		if (!r.ok) {
+			tituloError = 'No se pudo eliminar el modelo.';
+			errorActivacion = r.mensaje;
+			return;
+		}
+		// El tipo ya no existe: si era el seleccionado en el árbol, limpiar la
+		// selección para que la columna derecha vuelva al estado vacío con su
+		// pista, en vez de quedar en blanco sin explicación.
+		if (seleccionadoId === objetivo.id) seleccionadoId = null;
 	}
 
 	// La rama seleccionada en el árbol del sidebar. Es un FILTRO de la vista,
@@ -118,7 +158,10 @@
 		activandoId = id;
 		const r = await activarTipoDocumental(id);
 		activandoId = null;
-		if (!r.ok) errorActivacion = r.mensaje;
+		if (!r.ok) {
+			tituloError = 'No se pudo activar el modelo.';
+			errorActivacion = r.mensaje;
+		}
 	}
 
 	const steps = [
@@ -248,6 +291,7 @@
 		if (!open) {
 			vista = 'biblioteca';
 			avisoExito = false;
+			tituloError = '';
 			errorActivacion = '';
 			seleccionadoId = null;
 		}
@@ -290,6 +334,7 @@
 		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
 		avisoExito = false;
+		tituloError = '';
 		errorActivacion = '';
 		seleccionadoId = null;
 		altaEnCurso = true;
@@ -304,14 +349,14 @@
 	 * se retiró el mismo día a pedido explícito: por ahora no hay editing real
 	 * que ofrecer, así que ni la explicación ni la invitación tienen a dónde
 	 * llevar. `crearNuevaVersion()` sigue en el módulo de estado, sin usar,
-	 * lista para cuando exista esa pantalla — mismo patrón que
-	 * `eliminarTipoDocumental()`. Ver docs/pendientes-ux.md.
+	 * lista para cuando exista esa pantalla. Ver docs/pendientes-ux.md.
 	 */
 	function abrirTipoDocumental(id: string) {
 		const tipo = tiposDocumentales.find((t) => t.id === id);
 		if (tipo?.estado === 'activo') return;
 		if (cargarTipoDocumental(id)) {
 			avisoExito = false;
+			tituloError = '';
 			errorActivacion = '';
 			seleccionadoId = null;
 			altaEnCurso = false;
@@ -661,7 +706,14 @@
 									     que aparece en una de las capturas: no hay nada que validar sin
 									     el back, y una animación de espera sobre trabajo que nadie está
 									     haciendo es una mentira con spinner. -->
-									{#if tipo.estado === 'activo'}
+									{#if eliminandoId === tipo.id}
+										<!-- Va PRIMERO en el if/elseif: mientras se borra no importa si
+										     estaba activo o no, ese estado está a punto de dejar de existir. -->
+										<Button size="sm" disabled data-testid="eliminando-tipo" class="h-9.5 shrink-0 gap-2">
+											<LoaderCircle class="size-4 animate-spin" />
+											Eliminando...
+										</Button>
+									{:else if tipo.estado === 'activo'}
 										<span
 											data-testid="insignia-activo"
 											class="flex h-5.5 w-14.75 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-medium text-green-700"
@@ -694,7 +746,8 @@
 													type="button"
 													data-testid="menu-tipo"
 													aria-label="Más opciones de {tipo.nombre}"
-													class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+													disabled={eliminandoId === tipo.id}
+													class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted disabled:pointer-events-none disabled:opacity-50"
 												>
 													<MoreVerticalIcon />
 												</button>
@@ -750,6 +803,27 @@
 											>
 												<Clock class="size-4 text-muted-foreground" />
 												<span>Eventos</span>
+											</DropdownMenu.Item>
+
+											<DropdownMenu.Separator class="my-2" />
+
+											<!-- El único renglón del menú que SIEMPRE está habilitado: borrar
+											     no depende de config_version ni de ninguna pantalla que falte
+											     construir. Funciona igual para un borrador que para un modelo
+											     activo — la diferencia entre los dos la explica el diálogo de
+											     confirmación, no este ítem. -->
+											<DropdownMenu.Item
+												variant="destructive"
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												onSelect={() =>
+													(tipoAEliminar = {
+														id: tipo.id,
+														nombre: tipo.nombre,
+														activo: tipo.estado === 'activo'
+													})}
+											>
+												<Trash2 class="size-4" />
+												<span>Borrar</span>
 											</DropdownMenu.Item>
 										</DropdownMenu.Content>
 									</DropdownMenu.Root>
@@ -1220,7 +1294,7 @@
 				>
 					<BadgeAlert class="size-5 shrink-0 fill-red-500 text-white" />
 					<div class="min-w-0">
-						<p class="text-sm font-semibold text-red-700">No se pudo activar el modelo.</p>
+						<p class="text-sm font-semibold text-red-700">{tituloError}</p>
 						<p class="mt-1 max-w-2xl text-xs text-red-700">{errorActivacion}</p>
 					</div>
 				</div>
@@ -1255,4 +1329,19 @@
 	etiquetaConfirmar="Sí, quitar"
 	onConfirmar={confirmarQuitarCampo}
 	onCerrar={() => (campoAQuitar = null)}
+/>
+
+<!-- El mensaje se bifurca en si el tipo estaba ACTIVO: ahí no solo se borra un
+     renglón de la Biblioteca, también se destruye el Custom Extractor real en
+     Document AI. Callarse esa parte dejaría confirmar a ciegas algo que toca
+     un recurso de GCP y no se puede deshacer. -->
+<ConfirmarAccion
+	abierto={tipoAEliminar !== null}
+	titulo="¿Borrar este tipo documental?"
+	mensaje={tipoAEliminar?.activo
+		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca Y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
+		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.`}
+	etiquetaConfirmar="Sí, borrar"
+	onConfirmar={confirmarEliminarTipo}
+	onCerrar={() => (tipoAEliminar = null)}
 />

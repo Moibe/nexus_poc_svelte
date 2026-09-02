@@ -742,14 +742,54 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
 	guardarBiblioteca();
 }
 
-export function eliminarTipoDocumental(id: string) {
+/**
+ * Borra un tipo documental. Si ya tenía un procesador en Document AI
+ * (`procesadorId` no vacío), lo borra ALLÁ primero — nunca al revés.
+ *
+ * El orden es la parte que importa: si se borrara primero de la Biblioteca y
+ * el borrado en Google fallara después, quedaría un procesador huérfano en
+ * GCP sin ningún registro en la app que lo señale — nadie volvería a saber
+ * que existe para limpiarlo. Borrando primero en Google, un fallo deja el
+ * tipo documental intacto localmente y se puede reintentar.
+ *
+ * Devuelve `{ ok, mensaje }`, igual que `activarTipoDocumental`: quien llama
+ * es un manejador de clic y el error tiene que llegar a la pantalla.
+ */
+export async function eliminarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
+	const tipo = tiposDocumentales.find((tp) => tp.id === id);
+	if (!tipo) return { ok: false, mensaje: 'Ese tipo documental ya no existe.' };
+
+	if (tipo.procesadorId) {
+		let respuesta: Response;
+		try {
+			respuesta = await fetch(`/api/procesadores/${encodeURIComponent(tipo.procesadorId)}`, {
+				method: 'DELETE'
+			});
+		} catch {
+			return { ok: false, mensaje: 'No se pudo contactar al servidor. Revisa la conexión.' };
+		}
+		if (!respuesta.ok) {
+			let datos: Record<string, unknown> = {};
+			try {
+				datos = await respuesta.json();
+			} catch {
+				/* cae al mensaje genérico de abajo */
+			}
+			const mensaje =
+				typeof datos.mensaje === 'string'
+					? datos.mensaje
+					: `No se pudo borrar el procesador (HTTP ${respuesta.status}).`;
+			return { ok: false, mensaje };
+		}
+	}
+
 	const i = tiposDocumentales.findIndex((tp) => tp.id === id);
-	if (i === -1) return;
-	tiposDocumentales.splice(i, 1);
+	if (i !== -1) tiposDocumentales.splice(i, 1);
 	// Si se borró el que el borrador tenía asociado, se desliga para que un
 	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
 	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;
 	guardarBiblioteca();
+	return { ok: true, mensaje: '' };
 }
 
 /** Etiqueta legible de la vertical. Vive aquí y no en el componente porque la
