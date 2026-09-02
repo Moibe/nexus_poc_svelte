@@ -43,6 +43,7 @@
 		campoIntacto,
 		activarTipoDocumental,
 		archivarTipoDocumental,
+		crearNuevaVersion,
 		eliminarTipoDocumental,
 		cargarTipoDocumental,
 		etiquetaVersion,
@@ -391,8 +392,13 @@
 	 * candado explicando por qué y una invitación a "Crear nueva versión"— pero
 	 * se retiró el mismo día a pedido explícito: por ahora no hay editing real
 	 * que ofrecer, así que ni la explicación ni la invitación tienen a dónde
-	 * llevar. `crearNuevaVersion()` sigue en el módulo de estado, sin usar,
-	 * lista para cuando exista esa pantalla. Ver docs/pendientes-ux.md.
+	 * llevar. Ver docs/pendientes-ux.md.
+	 *
+	 * Eso sigue vigente para la TARJETA. `crearNuevaVersion()` ya no está sin
+	 * usar, eso sí: el menú (ver `iniciarNuevaVersion`, abajo) la llama
+	 * directamente. La diferencia es que ahí la acción es explícita —"Crear
+	 * nueva versión" dice exactamente lo que va a pasar—, mientras que picar la
+	 * tarjeta entera no lo es.
 	 */
 	function abrirTipoDocumental(id: string) {
 		const tipo = tiposDocumentales.find((t) => t.id === id);
@@ -401,6 +407,25 @@
 		// aunque hoy nunca llegue aquí (no se lista en ningún lado clicable).
 		if (tipo?.estado !== 'borrador') return;
 		if (cargarTipoDocumental(id)) {
+			avisoExito = false;
+			tituloError = '';
+			errorActivacion = '';
+			seleccionadoId = null;
+			altaEnCurso = false;
+			vista = 'wizard';
+		}
+	}
+
+	/**
+	 * "Crear nueva versión" del menú: SOLO para un modelo activo (arriba,
+	 * `abrirTipoDocumental` ya cubre el borrador). Regresa el tipo a borrador
+	 * —conservando sus campos, ver `crearNuevaVersion()`— y abre el wizard
+	 * para editar. El procesador NUEVO no se crea aquí: nace al publicar
+	 * (`activarTipoDocumental`), que para un tipo ya antes activo crea un
+	 * Custom Extractor propio en vez de adoptar el vigente.
+	 */
+	function iniciarNuevaVersion(id: string) {
+		if (crearNuevaVersion(id) && cargarTipoDocumental(id)) {
 			avisoExito = false;
 			tituloError = '';
 			errorActivacion = '';
@@ -935,16 +960,18 @@
 												</DropdownMenu.Item>
 											{/if}
 
-											<!-- Tres de los cuatro renglones van DESHABILITADOS: abren pantallas
-											     que no existen. "Historial de versiones" es un modal entero en el
-											     archivo (1077:66342) que no se ha construido, y "Crear nueva
-											     versión" y "Eventos" necesitan `config_version` y su bitácora, que
-											     viven en el back. En el frame se ven activos; dejarlos así, vivos y
-											     sin hacer nada, es peor mentira que atenuarlos. Se habilitan solos
-											     el día que haya a dónde ir. Anotado en docs/pendientes-ux.md. -->
+											<!-- "Crear nueva versión" es el reverso de "Editar": habilitado
+											     SOLO cuando el tipo ya está activo (ver `iniciarNuevaVersion`).
+											     "Historial de versiones" y "Eventos" (abajo) siguen
+											     deshabilitados: el primero es un modal entero sin construir
+											     (frame 1077:66342), el segundo necesita la bitácora que vive en
+											     el back. En el frame se ven activos los cuatro; dejarlos vivos y
+											     sin hacer nada es peor mentira que atenuarlos. Anotado en
+											     docs/pendientes-ux.md. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled
+												disabled={tipo.estado !== 'activo'}
+												onSelect={() => iniciarNuevaVersion(tipo.id)}
 											>
 												<Plus class="size-4 text-muted-foreground" />
 												<span>Crear nueva versión</span>

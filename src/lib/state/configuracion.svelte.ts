@@ -691,7 +691,11 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 				id: tipo.id,
 				nombre: tipo.nombre,
 				descripcion: tipo.descripcion,
-				campos: $state.snapshot(tipo.campos)
+				campos: $state.snapshot(tipo.campos),
+				// La versión YA publicada (0 = nunca). El back publica la SIGUIENTE
+				// como un procesador nuevo — nunca adopta el de una versión
+				// anterior. Ver `activar_tipo_documental` en nexus_back.
+				version: tipo.version
 			})
 		});
 	} catch {
@@ -728,11 +732,13 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
  * obliga a versión nueva; no hay atajo") — aquí generalizada a cualquier
  * campo, no solo el mapeo.
  *
- * SIN USAR todavía: se construyó, se le dio una tarjeta y un menú, y se retiró
- * el mismo día (2026-09-01) a pedido explícito — por ahora un modelo activo no
- * debe ofrecer ninguna vía de edición, ni con explicación ni con invitación.
- * Se deja lista para cuando exista esa pantalla, mismo trato que
- * `eliminarTipoDocumental()`.
+ * Detrás de "Crear nueva versión" del menú desde el 2026-09-02 (se llama
+ * desde `ConfigSheet.svelte`). Se había construido antes, con tarjeta y
+ * menú, y se retiró el mismo día (2026-09-01) a pedido explícito porque no
+ * había edición real que ofrecer; ahora sí la hay: el wizard vuelve a
+ * abrirse, y al publicar (`activarTipoDocumental`) el back crea un
+ * procesador GENUINAMENTE NUEVO en vez de adoptar el de la versión
+ * anterior — esa se queda viva sin tocarse.
  *
  * No crea una copia aparte: es el MISMO registro, que vuelve a `borrador` para
  * poder tocarse. El procesador de Document AI sigue sirviendo la configuración
