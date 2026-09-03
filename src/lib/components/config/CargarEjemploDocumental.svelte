@@ -65,7 +65,6 @@
 		zoom = 1;
 		modoRecorte = false;
 		recorte = null;
-		guardadoConfirmado = false;
 	}
 
 	async function cargarArchivo(f: File) {
@@ -164,14 +163,15 @@
 		recorte = null;
 	}
 
-	// "Guardado ✓" breve en vez de un toast aparte: silencioso sería peor —da
-	// la impresión de que el clic no hizo nada.
-	let guardadoConfirmado = $state(false);
+	// Cerrar el modal al guardar es la confirmación: vuelve a la lista de
+	// campos de "Calibración" de la que salió, mismo criterio que "Guardar
+	// configuración" del wizard (que regresa a la Biblioteca sin un toast
+	// aparte). Un mensaje de éxito flotando ENCIMA de un modal que ya se cerró
+	// no se alcanzaría a ver.
 	function guardarCopia() {
 		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
 		if (!guardarRecorteEjemplo(tipoId, campoNombre, recorte)) return;
-		guardadoConfirmado = true;
-		setTimeout(() => (guardadoConfirmado = false), 1500);
+		cerrar();
 	}
 
 	function iniciarEnLienzo(e: PointerEvent) {
@@ -424,7 +424,7 @@
 								onclick={guardarCopia}
 							>
 								<Save class="size-4" />
-								{guardadoConfirmado ? 'Guardado ✓' : 'Guardar'}
+								Guardar
 							</button>
 						{/if}
 					</div>
