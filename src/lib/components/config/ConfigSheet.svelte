@@ -999,27 +999,53 @@
 
 											<!-- Ya NO es un interruptor real (era `DropdownMenu.SwitchItem`):
 											     picarle en cualquier parte del renglón lleva a la pantalla de
-											     calibración (2026-09-02, a pedido explícito). El interruptor
-											     que se ve es puramente decorativo — refleja
-											     `tipo.ejemploDocumental` tal como quedó guardado, pero ya no se
-											     toca desde aquí ni dispara nada por sí solo. -->
+											     calibración (2026-09-02, a pedido explícito). El interruptor que
+											     se ve es puramente decorativo y SIEMPRE se pinta apagado (cambio
+											     pedido el 2026-09-03): activarlo de verdad todavía no existe, así
+											     que mostrarlo prendido sería mentir sobre un estado que no hace
+											     nada. Al pasar el mouse por encima, un tooltip dice "Activar" —
+											     adelanta la acción futura sin dispararla todavía, por ahora nada
+											     más que eso. `tipo.ejemploDocumental` se sigue guardando
+											     (default `false`), pero ninguna pantalla vuelve a leerlo. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												onSelect={() => abrirCalibracion(tipo.id)}
 											>
 												<UsersRound class="size-4 text-muted-foreground" />
 												<span>Ejemplo documental</span>
-												<span
-													class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tipo.ejemploDocumental
-														? 'bg-primary'
-														: 'bg-input'}"
-												>
-													<span
-														class="size-4 rounded-full bg-background shadow-sm transition-transform {tipo.ejemploDocumental
-															? 'translate-x-4.5'
-															: 'translate-x-0.5'}"
-													></span>
-												</span>
+												<Tooltip.Provider>
+													<Tooltip.Root>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<span
+																	{...props}
+																	class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-input"
+																>
+																	<span
+																		class="size-4 translate-x-0.5 rounded-full bg-background shadow-sm"
+																	></span>
+																</span>
+															{/snippet}
+														</Tooltip.Trigger>
+														<!-- pointer-events-none! (con important -- ver abajo): a
+														     diferencia del tooltip de "Editar" (que envuelve un
+														     renglón YA deshabilitado, sin nada que tapar), este vive
+														     sobre un renglón que SÍ se puede picar. Sin esto, el
+														     tooltip abierto se interponía entre el mouse y el renglón
+														     y se tragaba el clic -- confirmado con Playwright
+														     (`elementFromPoint` sobre el renglón daba el tooltip, no
+														     el `menuitem`). El `!important` es obligatorio y no
+														     cosmético: `TooltipPrimitive.Content` de bits-ui fija
+														     `pointer-events: auto` como ESTILO INLINE (para que el
+														     tooltip mismo se pueda hover, un requisito de
+														     accesibilidad) — un inline style le gana a cualquier clase
+														     normal sin importar el orden, así que una `pointer-events-none`
+														     sin el modificador de Tailwind v4 no hace nada aquí. -->
+														<Tooltip.Content side="left" class="pointer-events-none!"
+															>Activar</Tooltip.Content
+														>
+													</Tooltip.Root>
+												</Tooltip.Provider>
 											</DropdownMenu.Item>
 
 											<!-- Habilitado SOLO con historial real (mismo criterio que
