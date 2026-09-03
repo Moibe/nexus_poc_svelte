@@ -35,6 +35,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import CargarEjemploDocumental from './CargarEjemploDocumental.svelte';
 	import { formatearFecha } from '$lib/state/bandeja.svelte';
 	import {
 		borradorTipoDocumental,
@@ -456,6 +457,11 @@
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
+
+	// El modal de "Cargar ejemplo documental" (subir + recortar). No hace
+	// falta saber PARA QUÉ CAMPO se abrió todavía: hoy no guarda ni asocia
+	// nada, es pura interacción visual — ver CargarEjemploDocumental.svelte.
+	let modalEjemploAbierto = $state(false);
 
 	/**
 	 * "Ejemplo documental" del menú de la tarjeta ya NO es un interruptor con
@@ -1145,12 +1151,13 @@
 					{/if}
 				{:else if vista === 'calibracion'}
 					<!-- Réplica de la captura compartida; sin frame de Figma que
-					     verificar. El pedido de esta iteración es solo el árbol de la
-					     izquierda — esto de aquí es la parte "todo lo demás", estática
-					     a propósito: qué hace cada botón se define en la siguiente
-					     conversación. Por eso "Cargar ejemplo documental" nace
-					     deshabilitado — mismo criterio que el resto del módulo: un
-					     control vivo sin nada detrás es peor que uno atenuado. -->
+					     verificar. El pedido de esta iteración es el árbol de la
+					     izquierda — esto de aquí seguía siendo la parte "todo lo demás".
+					     "Cargar ejemplo documental" ya deja de ser estático (2026-09-02):
+					     abre `CargarEjemploDocumental`, que sube un PDF o imagen y permite
+					     dibujar un recorte sobre él. Lo que pasa CON ese recorte —OCR,
+					     asociarlo a este campo, un menú propio— sigue sin definirse, así
+					     que hoy no hace nada al soltarlo. -->
 					<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Carga y etiqueta un documento de ejemplo para asociar sus valores a los campos
@@ -1165,7 +1172,13 @@
 									class="flex items-center justify-between gap-4 border-b border-border py-4 last:border-0"
 								>
 									<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
-									<Button variant="outline" size="sm" disabled>Cargar ejemplo documental</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onclick={() => (modalEjemploAbierto = true)}
+									>
+										Cargar ejemplo documental
+									</Button>
 								</div>
 							{/each}
 						</div>
@@ -1745,4 +1758,9 @@
 	etiquetaConfirmar="Sí, archivar"
 	onConfirmar={confirmarArchivarTipo}
 	onCerrar={() => (tipoAArchivar = null)}
+/>
+
+<CargarEjemploDocumental
+	abierto={modalEjemploAbierto}
+	onCerrar={() => (modalEjemploAbierto = false)}
 />
