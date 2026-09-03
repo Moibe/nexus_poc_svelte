@@ -36,7 +36,8 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarEjemploDocumental from './CargarEjemploDocumental.svelte';
-	import { formatearFecha } from '$lib/state/bandeja.svelte';
+	import HistorialVersiones from './HistorialVersiones.svelte';
+	import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
@@ -174,15 +175,10 @@
 	// filtro, se listan todos.
 	let seleccionadoId = $state<string | null>(null);
 
-	// "Listar versiones anteriores" del tipo seleccionado. Se apaga solo al
-	// cambiar de selección —con un efecto, no a mano en cada sitio que toca
-	// `seleccionadoId`— para no arrastrar el historial de un modelo a la
-	// tarjeta de otro.
-	let mostrarHistorial = $state(false);
-	$effect(() => {
-		seleccionadoId;
-		mostrarHistorial = false;
-	});
+	// El tipo cuyo "Historial de versiones" está abierto (null = modal
+	// cerrado). Vive en el propio objeto, no en un id: `HistorialVersiones.svelte`
+	// solo lee, no necesita buscarlo de vuelta en `tiposDocumentales`.
+	let historialTipo = $state<TipoDocumentalGuardado | null>(null);
 
 	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
 	// (ver `archivarTipoDocumental`) sigue en `localStorage`, pero no debe
@@ -807,24 +803,7 @@
 						     modelo (682x72). No pude ver los píxeles —se agotó la cuota de
 						     Figma— así que el espaciado y el detalle fino quedan pendientes
 						     de una pasada de fidelidad contra el frame. -->
-						<div class="flex items-center justify-between gap-4">
-							<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
-							<!-- Sin frame de Figma: se agregó a pedido explícito (2026-09-02).
-							     Solo aparece con un modelo seleccionado que SÍ tenga versiones
-							     anteriores que listar — mostrarlo sin nada detrás sería un
-							     control vivo sin efecto, lo mismo que se evita en el resto del
-							     módulo. -->
-							{#if tiposVisibles[0]?.historialVersiones?.length}
-								<button
-									type="button"
-									data-testid="toggle-historial"
-									class="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
-									onclick={() => (mostrarHistorial = !mostrarHistorial)}
-								>
-									{mostrarHistorial ? 'Ocultar' : 'Listar'} versiones anteriores
-								</button>
-							{/if}
-						</div>
+						<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
 
 						{#if tiposVisibles.length === 0}
 							<!-- Sin selección la lista es intencionalmente vacía, pero un área
@@ -998,12 +977,10 @@
 
 											<!-- "Crear nueva versión" es el reverso de "Editar": habilitado
 											     SOLO cuando el tipo ya está activo (ver `iniciarNuevaVersion`).
-											     "Historial de versiones" y "Eventos" (abajo) siguen
-											     deshabilitados: el primero es un modal entero sin construir
-											     (frame 1077:66342), el segundo necesita la bitácora que vive en
-											     el back. En el frame se ven activos los cuatro; dejarlos vivos y
-											     sin hacer nada es peor mentira que atenuarlos. Anotado en
-											     docs/pendientes-ux.md. -->
+											     "Eventos" (abajo) sigue deshabilitado: necesita la bitácora que
+											     vive en el back. En el frame se ven activos los cuatro; dejarlos
+											     vivos y sin hacer nada es peor mentira que atenuarlos. Anotado
+											     en docs/pendientes-ux.md. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												disabled={tipo.estado !== 'activo'}
@@ -1038,9 +1015,17 @@
 												</span>
 											</DropdownMenu.Item>
 
+											<!-- Habilitado SOLO con historial real (mismo criterio que
+											     "Crear nueva versión"): un tipo que nunca se ha re-publicado
+											     no tiene ninguna versión anterior que mostrar. Abre el modal
+											     del frame 1077:66342, construido el 2026-09-03 — reemplaza al
+											     link "Listar versiones anteriores" que se había puesto junto
+											     al encabezado de la Biblioteca (nunca llegó a verse en
+											     producción; este menú es más descubrible). -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled
+												disabled={!tipo.historialVersiones.length}
+												onSelect={() => (historialTipo = tipo)}
 											>
 												<Calendar class="size-4 text-muted-foreground" />
 												<span>Historial de versiones</span>
@@ -1088,45 +1073,6 @@
 								</div>
 							{/each}
 						</div>
-
-						{#if mostrarHistorial && tiposVisibles[0]}
-							<!-- Solo lectura a propósito: no hay ninguna acción real que
-							     ofrecer sobre un procesador que ya no es el vigente (no se
-							     reactiva, no se edita, no se borra desde aquí). El nombre y el
-							     ícono repiten los de la tarjeta de arriba para que se lea como
-							     "esto mismo, antes" y no como un modelo aparte. -->
-							<div class="mt-3 flex flex-col gap-3">
-								{#each tiposVisibles[0].historialVersiones as version (version.version)}
-									<div
-										class="flex items-center gap-4 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3"
-									>
-										<span
-											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground"
-										>
-											<SetupIcon class="size-4" />
-										</span>
-										<span class="min-w-0 flex-1">
-											<span class="flex items-center gap-2">
-												<span class="truncate text-sm font-medium text-muted-foreground">
-													{tiposVisibles[0].nombre}
-												</span>
-												<span
-													class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-												>
-													{etiquetaVersion(version.version)}
-												</span>
-											</span>
-											<span class="mt-1 block truncate text-xs text-muted-foreground">
-												{version.campos.length === 0
-													? 'Sin campos configurados'
-													: `${version.campos.length} ${version.campos.length === 1 ? 'campo' : 'campos'}`}
-												· Publicada el {formatearFecha(new Date(version.publicadoEn))}
-											</span>
-										</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
 
 						<div class="mt-8">
 							<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
@@ -1770,4 +1716,10 @@
 	tipoId={calibrandoId}
 	campoNombre={campoEjemploNombre}
 	onCerrar={() => (modalEjemploAbierto = false)}
+/>
+
+<HistorialVersiones
+	abierto={historialTipo !== null}
+	tipo={historialTipo}
+	onCerrar={() => (historialTipo = null)}
 />
