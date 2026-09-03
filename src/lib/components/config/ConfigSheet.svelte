@@ -175,9 +175,11 @@
 	// filtro, se listan todos.
 	let seleccionadoId = $state<string | null>(null);
 
-	// El tipo cuyo "Historial de versiones" está abierto (null = modal
-	// cerrado). Vive en el propio objeto, no en un id: `HistorialVersiones.svelte`
-	// solo lee, no necesita buscarlo de vuelta en `tiposDocumentales`.
+	// El tipo cuyo "Historial de versiones" está desplegado EN LÍNEA bajo su
+	// tarjeta (null = nada desplegado). Vive en el propio objeto, no en un id:
+	// `HistorialVersiones.svelte` solo lee, no necesita buscarlo de vuelta en
+	// `tiposDocumentales`. Cambio pedido el 2026-09-03: la primera versión
+	// abría un modal; se pidió la misma lista pero sin overlay, ahí mismo.
 	let historialTipo = $state<TipoDocumentalGuardado | null>(null);
 
 	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
@@ -1017,15 +1019,17 @@
 
 											<!-- Habilitado SOLO con historial real (mismo criterio que
 											     "Crear nueva versión"): un tipo que nunca se ha re-publicado
-											     no tiene ninguna versión anterior que mostrar. Abre el modal
-											     del frame 1077:66342, construido el 2026-09-03 — reemplaza al
-											     link "Listar versiones anteriores" que se había puesto junto
-											     al encabezado de la Biblioteca (nunca llegó a verse en
-											     producción; este menú es más descubrible). -->
+											     no tiene ninguna versión anterior que mostrar. Despliega
+											     `HistorialVersiones` (frame 1077:66342) EN LÍNEA bajo esta
+											     misma tarjeta — reemplaza al link "Listar versiones
+											     anteriores" que se había puesto junto al encabezado de la
+											     Biblioteca (nunca llegó a verse en producción; este menú es
+											     más descubrible). Toggle: volver a picarlo lo oculta. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												disabled={!tipo.historialVersiones.length}
-												onSelect={() => (historialTipo = tipo)}
+												onSelect={() =>
+													(historialTipo = historialTipo?.id === tipo.id ? null : tipo)}
 											>
 												<Calendar class="size-4 text-muted-foreground" />
 												<span>Historial de versiones</span>
@@ -1071,6 +1075,10 @@
 										</DropdownMenu.Content>
 									</DropdownMenu.Root>
 								</div>
+
+								{#if historialTipo?.id === tipo.id}
+									<HistorialVersiones {tipo} onCerrar={() => (historialTipo = null)} />
+								{/if}
 							{/each}
 						</div>
 
@@ -1716,10 +1724,4 @@
 	tipoId={calibrandoId}
 	campoNombre={campoEjemploNombre}
 	onCerrar={() => (modalEjemploAbierto = false)}
-/>
-
-<HistorialVersiones
-	abierto={historialTipo !== null}
-	tipo={historialTipo}
-	onCerrar={() => (historialTipo = null)}
 />
