@@ -75,6 +75,17 @@
 	// ── Render de PDF (página 1) ────────────────────────────────────────────
 	// pdfjs-dist se importa DINÁMICO: es una librería pesada que la mayoría de
 	// las aperturas de este modal (las que suben una imagen) no necesita nunca.
+	//
+	// OJO con la versión mayor en package.json: pdfjs-dist@6 exige Node >=22,
+	// y el server de CSI corre Node 20.19.5 — medido en carne propia, el primer
+	// deploy con pdfjs-dist@6 murió en `npm ci` con EBADENGINE y dejó el front
+	// en el build viejo, en silencio (el webhook responde 200 igual, haya
+	// fallado el build o no — hay que verificar el bundle servido, no solo el
+	// código de respuesta del hook). Se fijó en pdfjs-dist@4, que solo pide
+	// Node >=20 y no lleva la CVE de ejecución de JS arbitraria que sí tiene
+	// pdfjs-dist@5.6.83–6.2.107 (GHSA-hq66-cqwq-w95j) — relevante aquí porque
+	// este modal renderiza justo el tipo de archivo que esa CVE explota. NO
+	// subir de mayor sin antes confirmar la versión de Node del server.
 	let canvasEl = $state<HTMLCanvasElement>();
 
 	async function renderizarPdf(f: File) {
@@ -97,7 +108,7 @@
 			if (!canvas || !ctx) return;
 			canvas.width = viewport.width;
 			canvas.height = viewport.height;
-			await pagina.render({ canvasContext: ctx, viewport, canvas }).promise;
+			await pagina.render({ canvasContext: ctx, viewport }).promise;
 		} catch {
 			errorCarga = 'No se pudo mostrar este PDF. Intenta con otro archivo.';
 			esPdf = false;
