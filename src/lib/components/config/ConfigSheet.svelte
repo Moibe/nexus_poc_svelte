@@ -11,6 +11,7 @@
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
+	import Save from '@lucide/svelte/icons/save';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
@@ -109,6 +110,30 @@
 	function confirmarQuitarCampo() {
 		if (campoAQuitar) quitarCampo(campoAQuitar.id);
 		campoAQuitar = null;
+	}
+
+	// Si el formulario de "Nuevo campo de extracción" del paso 2 está abierto.
+	// Cambio pedido el 2026-09-03: antes quedaba SIEMPRE visible y "Agregar
+	// otro campo" guardaba Y lo dejaba listo para el siguiente, dos cosas a la
+	// vez bajo un solo botón — ambiguo. Ahora "Guardar" hace SOLO eso: el
+	// campo se guarda y el formulario se oculta; para agregar otro hay que
+	// picar el botón "Agregar campo" que aparece en su lugar. Vive aquí, no en
+	// `borrador` (persistido): es un estado de la PANTALLA, no del dato.
+	//
+	// Arranca en `true` porque ese es el estado real al entrar a un alta
+	// nueva (sin campos, nada que mostrar salvo el formulario) — las tres
+	// puertas de entrada al wizard (`nuevoTipoDocumental`, `abrirTipoDocumental`,
+	// `iniciarNuevaVersion`) lo vuelven a fijar explícitamente según si el
+	// tipo que se abre ya trae campos o no.
+	let mostrarFormularioCampo = $state(true);
+
+	/** "Guardar" del formulario de captura del paso 2: guarda el campo Y
+	 *  oculta el formulario (ver `mostrarFormularioCampo`). `agregarCampoEnCaptura`
+	 *  ya deja `campoEnCaptura` en blanco, así que reabrirlo con "Agregar
+	 *  campo" siempre arranca limpio. */
+	function guardarCampoEnCaptura() {
+		agregarCampoEnCaptura();
+		mostrarFormularioCampo = false;
 	}
 
 	// El tipo documental que se está por eliminar. Guarda también si TIENE un
@@ -397,6 +422,9 @@
 		errorActivacion = '';
 		seleccionadoId = null;
 		altaEnCurso = true;
+		// Alta nueva: siempre en blanco, así que siempre hay que mostrar el
+		// formulario del paso 2 — no hay campos que listar todavía.
+		mostrarFormularioCampo = true;
 		vista = 'wizard';
 	}
 
@@ -427,6 +455,9 @@
 			errorActivacion = '';
 			seleccionadoId = null;
 			altaEnCurso = false;
+			// Ya cargado el borrador: si trae campos, el paso 2 arranca con la
+			// lista a la vista y el formulario oculto, no al revés.
+			mostrarFormularioCampo = borrador.campos.length === 0;
 			vista = 'wizard';
 		}
 	}
@@ -446,6 +477,10 @@
 			errorActivacion = '';
 			seleccionadoId = null;
 			altaEnCurso = false;
+			// Mismo criterio que `abrirTipoDocumental`: conserva sus campos
+			// (`crearNuevaVersion` los copia), así que el formulario arranca
+			// oculto salvo que de verdad no traiga ninguno.
+			mostrarFormularioCampo = borrador.campos.length === 0;
 			vista = 'wizard';
 		}
 	}
@@ -1221,106 +1256,131 @@
 						mejorar la precisión de la extracción automática.
 					</p>
 
-					<!-- El formulario de alta. Siempre en blanco: no es un elemento más de
-					     la lista, es el que da de alta. Así está en Figma (1067:62363). -->
-					<div class="mt-8 max-w-3xl rounded-xl border border-border bg-background p-6">
-						<div class="grid gap-6 md:grid-cols-2">
-							<div class="space-y-2">
-								<Label for="campo-nombre">Nombre del campo *</Label>
-								<!-- El borde rojo lo pinta el propio Input a través de aria-invalid
-								     (trae `aria-invalid:border-destructive`), así que el atributo no es
-								     solo accesibilidad: es también lo que dispara el estilo. -->
-								<div class="relative">
-									<Input
-										id="campo-nombre"
-										bind:value={borrador.campoEnCaptura.nombre}
-										placeholder="Ingresa nombre de campo"
-										aria-invalid={nombreDuplicado}
-										aria-describedby={nombreDuplicado ? 'campo-nombre-error' : undefined}
-										class={nombreDuplicado ? 'pr-9' : undefined}
-									/>
-									{#if nombreDuplicado}
-										<AlertCircle
-											class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+					{#if mostrarFormularioCampo}
+						<!-- El formulario de alta. Ya NO queda siempre visible (cambio del
+						     2026-09-03, ver `mostrarFormularioCampo`): se muestra para dar de
+						     alta UN campo a la vez y se oculta al guardarlo. Así está en
+						     Figma (1067:62363) para el caso "formulario abierto". -->
+						<div class="mt-8 max-w-3xl rounded-xl border border-border bg-background p-6">
+							<div class="grid gap-6 md:grid-cols-2">
+								<div class="space-y-2">
+									<Label for="campo-nombre">Nombre del campo *</Label>
+									<!-- El borde rojo lo pinta el propio Input a través de aria-invalid
+									     (trae `aria-invalid:border-destructive`), así que el atributo no es
+									     solo accesibilidad: es también lo que dispara el estilo. -->
+									<div class="relative">
+										<Input
+											id="campo-nombre"
+											bind:value={borrador.campoEnCaptura.nombre}
+											placeholder="Ingresa nombre de campo"
+											aria-invalid={nombreDuplicado}
+											aria-describedby={nombreDuplicado ? 'campo-nombre-error' : undefined}
+											class={nombreDuplicado ? 'pr-9' : undefined}
 										/>
+										{#if nombreDuplicado}
+											<AlertCircle
+												class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+											/>
+										{/if}
+									</div>
+									{#if nombreDuplicado}
+										<!-- Texto literal del frame. Mi versión anterior nombraba el campo
+										     en conflicto («Ya agregaste un campo llamado "curp"»), que ayuda
+										     cuando hay muchos, pero el diseño manda. -->
+										<p id="campo-nombre-error" class="text-xs text-destructive">
+											Ya existe un campo con este nombre. Utiliza uno diferente.
+										</p>
 									{/if}
 								</div>
-								{#if nombreDuplicado}
-									<!-- Texto literal del frame. Mi versión anterior nombraba el campo
-									     en conflicto («Ya agregaste un campo llamado "curp"»), que ayuda
-									     cuando hay muchos, pero el diseño manda. -->
-									<p id="campo-nombre-error" class="text-xs text-destructive">
-										Ya existe un campo con este nombre. Utiliza uno diferente.
-									</p>
-								{/if}
+
+								<div class="space-y-2">
+									<Label for="campo-tipo">Tipo de dato *</Label>
+									<Select.Root type="single" bind:value={borrador.campoEnCaptura.tipoDato}>
+										<Select.Trigger id="campo-tipo" class="w-full">
+											{etiquetaTipo(borrador.campoEnCaptura.tipoDato) ?? 'Selecciona un tipo de campo'}
+										</Select.Trigger>
+										<Select.Content>
+											{#each TIPOS_DE_DATO as tipo (tipo.value)}
+												<Select.Item value={tipo.value} label={tipo.label} />
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
 							</div>
 
-							<div class="space-y-2">
-								<Label for="campo-tipo">Tipo de dato *</Label>
-								<Select.Root type="single" bind:value={borrador.campoEnCaptura.tipoDato}>
-									<Select.Trigger id="campo-tipo" class="w-full">
-										{etiquetaTipo(borrador.campoEnCaptura.tipoDato) ?? 'Selecciona un tipo de campo'}
-									</Select.Trigger>
-									<Select.Content>
-										{#each TIPOS_DE_DATO as tipo (tipo.value)}
-											<Select.Item value={tipo.value} label={tipo.label} />
-										{/each}
-									</Select.Content>
-								</Select.Root>
+							<!-- "Valor de estructura": renglón propio y solo la columna izquierda,
+							     como en el frame. SIN asterisco — es opcional. Es un valor de
+							     EJEMPLO que muestra la forma esperada del dato, no una validación:
+							     su destino en el diccionario es `field_definition.prompt_hint`. -->
+							<div class="mt-6 grid gap-6 md:grid-cols-2">
+								<div class="space-y-2">
+									<Label for="campo-estructura">Valor de estructura</Label>
+									<Input
+										id="campo-estructura"
+										bind:value={borrador.campoEnCaptura.valorEstructura}
+										placeholder="Ingresa un valor de ejemplo"
+									/>
+								</div>
 							</div>
-						</div>
 
-						<!-- "Valor de estructura": renglón propio y solo la columna izquierda,
-						     como en el frame. SIN asterisco — es opcional. Es un valor de
-						     EJEMPLO que muestra la forma esperada del dato, no una validación:
-						     su destino en el diccionario es `field_definition.prompt_hint`. -->
-						<div class="mt-6 grid gap-6 md:grid-cols-2">
-							<div class="space-y-2">
-								<Label for="campo-estructura">Valor de estructura</Label>
-								<Input
-									id="campo-estructura"
-									bind:value={borrador.campoEnCaptura.valorEstructura}
-									placeholder="Ingresa un valor de ejemplo"
+							<div class="mt-6 space-y-2">
+								<Label for="campo-desc">Descripción funcional *</Label>
+								<Textarea
+									id="campo-desc"
+									bind:value={borrador.campoEnCaptura.descripcion}
+									rows={3}
+									placeholder="Describe qué información representa este campo y cómo debe interpretarse durante la extracción."
 								/>
 							</div>
-						</div>
 
-						<div class="mt-6 space-y-2">
-							<Label for="campo-desc">Descripción funcional *</Label>
-							<Textarea
-								id="campo-desc"
-								bind:value={borrador.campoEnCaptura.descripcion}
-								rows={3}
-								placeholder="Describe qué información representa este campo y cómo debe interpretarse durante la extracción."
-							/>
-						</div>
+							<div class="mt-6 flex items-center justify-between gap-4">
+								<div class="flex items-center gap-2">
+									<Checkbox
+										id="campo-obligatorio"
+										checked={borrador.campoEnCaptura.obligatorio}
+										onCheckedChange={(v) => (borrador.campoEnCaptura.obligatorio = v === true)}
+									/>
+									<Label for="campo-obligatorio" class="font-normal text-muted-foreground">
+										Obligatorio
+									</Label>
+								</div>
 
-						<div class="mt-6 flex items-center justify-between gap-4">
-							<div class="flex items-center gap-2">
-								<Checkbox
-									id="campo-obligatorio"
-									checked={borrador.campoEnCaptura.obligatorio}
-									onCheckedChange={(v) => (borrador.campoEnCaptura.obligatorio = v === true)}
-								/>
-								<Label for="campo-obligatorio" class="font-normal text-muted-foreground">
-									Obligatorio
-								</Label>
+								<!-- Deshabilitado mientras el campo esté incompleto: es el único
+								     camino para que se pueda guardar, y dejarlo picar sin efecto
+								     visible se siente como que la app se tragó el clic. Ya NO
+								     dice "Agregar otro campo" (cambio del 2026-09-03): ese texto
+								     mezclaba dos ideas en un solo botón — guardar ESTE campo, y
+								     dejar listo el formulario para el siguiente. "Guardar" hace
+								     solo lo primero; lo segundo ahora es explícito, ver el botón
+								     "Agregar campo" de más abajo. -->
+								<Button
+									variant="link"
+									class="h-auto gap-1.5 p-0 text-primary"
+									disabled={!puedeAgregar}
+									onclick={guardarCampoEnCaptura}
+								>
+									<Save class="size-4" />
+									Guardar
+								</Button>
 							</div>
-
-							<!-- Deshabilitado mientras el campo esté incompleto: es el único
-							     camino para que entre a la lista, y dejarlo picar sin efecto
-							     visible se siente como que la app se tragó el clic. -->
-							<Button
-								variant="link"
-								class="h-auto gap-1.5 p-0 text-primary"
-								disabled={!puedeAgregar}
-								onclick={agregarCampoEnCaptura}
+						</div>
+					{:else}
+						<!-- Reemplaza al formulario mientras está oculto (ver
+						     `mostrarFormularioCampo`): es el único camino para agregar un
+						     campo MÁS después del primero. -->
+						<button
+							type="button"
+							class="mt-8 flex max-w-3xl items-center gap-3 rounded-xl border border-dashed border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+							onclick={() => (mostrarFormularioCampo = true)}
+						>
+							<span
+								class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
 							>
 								<CirclePlus class="size-4" />
-								Agregar otro campo
-							</Button>
-						</div>
-					</div>
+							</span>
+							<span class="text-sm font-medium text-foreground">Agregar campo</span>
+						</button>
+					{/if}
 
 					{#if borrador.campos.length > 0}
 						<h4 class="mt-8 text-xl font-semibold text-foreground">Campos agregados</h4>
