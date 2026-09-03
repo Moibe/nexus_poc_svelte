@@ -253,24 +253,29 @@
 	// con uno ya agregado.
 	const puedeAgregar = $derived(campoCompleto(borrador.campoEnCaptura) && !nombreDuplicado);
 
-	// Se puede pasar al paso 3 si ya hay campos en la lista, o si el formulario
-	// tiene uno completo listo para entrar. Lo segundo evita el caso cruel de
-	// haber llenado el último campo y que el botón esté apagado por no haber
-	// picado "Agregar" — al guardar se agrega solo.
+	// Si al picar "continuar" va a EXISTIR al menos un campo — ya agregado, o
+	// completo en el formulario y listo para entrar (`continuar()` lo agrega
+	// solo). Nombrado aparte porque el aviso de "agrega al menos un campo" de
+	// abajo debe mostrarse exactamente cuando esto es falso, ni antes ni
+	// después.
+	const hayCampoAlAvanzar = $derived(borrador.campos.length > 0 || puedeAgregar);
+
+	// Se puede pasar al paso 3 si va a quedar al menos un campo (cambio
+	// pedido el 2026-09-03: antes los campos eran opcionales para avanzar,
+	// a propósito, para no atrapar a quien quería un tipo documental sin
+	// campos — pero un tipo sin campos no tiene nada que activar ni que
+	// mapear, así que se revirtió esa decisión).
 	const canContinue = $derived(
 		borrador.paso === 1
 			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
 			: borrador.paso === 2
-				// Los campos son OPCIONALES para avanzar: el tipo documental ya quedó
-				// guardado al salir del paso 1, así que exigir al menos uno aquí
-				// dejaría atrapado a quien creó el tipo sin campos a propósito.
-				//
-				// Lo único que sí bloquea es un formulario que NO se va a poder
-				// guardar: a medias, o con el nombre repetido. Dejarlo pasar lo
+				// Dos condiciones independientes: (a) el formulario de captura no
+				// debe estar a medias ni con el nombre repetido — dejarlo pasar
 				// tiraría en silencio, porque `continuar()` intenta agregarlo y
-				// `agregarCampoEnCaptura` lo rechazaría sin que nadie se entere.
-				// Vacío o listo para agregar, adelante.
-				? campoIntacto(borrador.campoEnCaptura) || puedeAgregar
+				// `agregarCampoEnCaptura` lo rechazaría sin que nadie se entere; (b)
+				// al final tiene que quedar al menos un campo, ver
+				// `hayCampoAlAvanzar`.
+				? (campoIntacto(borrador.campoEnCaptura) || puedeAgregar) && hayCampoAlAvanzar
 				// Paso 3: habilitado. Es un placeholder sin nada que validar, y con el
 				// botón apagado la única salida del wizard era la X — se veía roto. El
 				// tipo documental ya quedó guardado en el paso 2, así que aquí solo se
@@ -1384,6 +1389,16 @@
 								</div>
 							{/each}
 						</div>
+					{:else if !puedeAgregar}
+						<!-- Se muestra EXACTAMENTE cuando `hayCampoAlAvanzar` es falso —
+						     mismo momento en que "Guardar y agregar propiedades" está
+						     deshabilitado. En cuanto el formulario de arriba queda listo
+						     para entrar, este aviso desaparece y el botón se habilita a la
+						     vez: no hay ventana en la que uno diga una cosa y el otro
+						     otra. -->
+						<p class="mt-4 max-w-3xl text-xs text-muted-foreground">
+							Agrega al menos un campo de extracción para poder continuar al siguiente paso.
+						</p>
 					{/if}
 				{:else}
 					<h3 class="text-xl font-semibold text-foreground">Propiedades de campo</h3>
@@ -1394,7 +1409,11 @@
 
 					{#if borrador.campos.length === 0}
 						<!-- Estado vacío que el frame no contempla: ahí siempre hay campos.
-						     Puede pasar porque los campos son opcionales para avanzar, y sin
+						     Desde el 2026-09-03 el botón del paso 2 ya NO deja avanzar sin
+						     campos, así que por el flujo normal esto no debería verse — pero
+						     el sidebar salta a cualquier paso ya visitado sin pasar por ese
+						     botón, así que sigue siendo alcanzable: llegar al 3 con campos,
+						     volver al 2 y quitarlos todos, y picar "3." desde el sidebar. Sin
 						     esto la pantalla quedaría en blanco sin explicación. -->
 						<div class="mt-10 rounded-xl border border-dashed border-border p-8 text-center">
 							<p class="text-sm font-medium text-foreground">Todavía no hay campos que configurar</p>
