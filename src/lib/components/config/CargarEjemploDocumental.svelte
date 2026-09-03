@@ -7,12 +7,25 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Crop from '@lucide/svelte/icons/crop';
+	import Save from '@lucide/svelte/icons/save';
+	import { guardarRecorteEjemplo, type Recorte } from '$lib/state/configuracion.svelte';
 
 	let {
 		abierto = false,
+		tipoId = null,
+		campoNombre = null,
 		onCerrar
 	}: {
 		abierto?: boolean;
+		/** A qué tipo documental y campo pertenece el "Cargar ejemplo
+		 *  documental" que abrió este modal — es lo que "Guardar" necesita para
+		 *  saber DÓNDE persistir las 4 coordenadas. El campo se identifica por
+		 *  NOMBRE, no por id (ver `guardarRecorteEjemplo`: el id de un campo no
+		 *  sobrevive un refresh, el nombre sí). `null` no debería pasar en la
+		 *  práctica (el botón siempre vive dentro de un campo real), pero se
+		 *  cubre por si acaso: "Guardar" simplemente no hace nada sin ambos. */
+		tipoId?: string | null;
+		campoNombre?: string | null;
 		onCerrar: () => void;
 	} = $props();
 
@@ -52,6 +65,7 @@
 		zoom = 1;
 		modoRecorte = false;
 		recorte = null;
+		guardadoConfirmado = false;
 	}
 
 	async function cargarArchivo(f: File) {
@@ -123,10 +137,9 @@
 
 	// ── Recorte: dibujar / mover / redimensionar un rectángulo ──────────────
 	// Todo en PORCENTAJE del contenedor, no en píxeles: así el rectángulo se
-	// mantiene correcto sin importar el zoom. No pasa nada al soltar —ni OCR,
-	// ni asociarlo a un campo— eso y el menú que lo acompañará quedan para
-	// cuando se platique esa parte.
-	type Recorte = { x: number; y: number; w: number; h: number };
+	// mantiene correcto sin importar el zoom. Dibujarlo y moverlo/redimensionarlo
+	// sigue sin disparar nada por sí solo —eso sigue para cuando se platique el
+	// menú completo—, pero "Guardar" (abajo) sí persiste las 4 coordenadas.
 	let modoRecorte = $state(false);
 	let recorte = $state<Recorte | null>(null);
 	let contenedorEl = $state<HTMLDivElement>();
@@ -149,6 +162,16 @@
 	function cancelarRecorte() {
 		modoRecorte = false;
 		recorte = null;
+	}
+
+	// "Guardado ✓" breve en vez de un toast aparte: silencioso sería peor —da
+	// la impresión de que el clic no hizo nada.
+	let guardadoConfirmado = $state(false);
+	function guardarCopia() {
+		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
+		if (!guardarRecorteEjemplo(tipoId, campoNombre, recorte)) return;
+		guardadoConfirmado = true;
+		setTimeout(() => (guardadoConfirmado = false), 1500);
 	}
 
 	function iniciarEnLienzo(e: PointerEvent) {
@@ -392,6 +415,16 @@
 								onclick={cancelarRecorte}
 							>
 								Cancelar
+							</button>
+							<button
+								type="button"
+								data-testid="boton-guardar-recorte"
+								disabled={!recorte || recorte.w === 0 || recorte.h === 0}
+								class="flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
+								onclick={guardarCopia}
+							>
+								<Save class="size-4" />
+								{guardadoConfirmado ? 'Guardado ✓' : 'Guardar'}
 							</button>
 						{/if}
 					</div>

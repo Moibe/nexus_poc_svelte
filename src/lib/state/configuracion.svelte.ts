@@ -475,6 +475,11 @@ export function limpiarBorrador() {
  * referencia viva — si no se copiaran, editar el tipo después reescribiría
  * también lo que este historial dice que tenía la versión vieja.
  */
+/** Un rectángulo de recorte sobre un documento de ejemplo, en PORCENTAJE del
+ *  contenedor (no píxeles) — así sobrevive al zoom y al tamaño real del
+ *  archivo subido. Ver `guardarRecorteEjemplo` y `CargarEjemploDocumental.svelte`. */
+export type Recorte = { x: number; y: number; w: number; h: number };
+
 export type VersionPublicada = {
 	version: number;
 	procesadorId: string;
@@ -545,6 +550,15 @@ export type TipoDocumentalGuardado = {
 	 * registro de qué tenía la versión que se está reemplazando.
 	 */
 	versionEnEdicion: VersionPublicada | null;
+	/** Recorte de ejemplo guardado por campo — indexado por NOMBRE del campo,
+	 *  no por `campo.id` (que se regenera en cada lectura de la Biblioteca; el
+	 *  nombre es lo único de un campo que sobrevive un refresh). Detrás de
+	 *  "Guardar" en `CargarEjemploDocumental.svelte`. En porcentaje del
+	 *  documento de ejemplo, no en píxeles, para no depender del tamaño con
+	 *  el que se subió esa imagen o PDF. Vacío mientras nadie guarde ninguno;
+	 *  qué se hace con esto además de guardarlo (mostrarlo de vuelta, asociarlo
+	 *  a OCR) queda para cuando se platique. */
+	recortesEjemplo: Record<string, Recorte>;
 };
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
@@ -601,6 +615,26 @@ function leerVersionPublicada(v: unknown): VersionPublicada | null {
 	};
 }
 
+function esRecorteValido(r: unknown): r is Recorte {
+	if (typeof r !== 'object' || r === null) return false;
+	const d = r as Record<string, unknown>;
+	return (['x', 'y', 'w', 'h'] as const).every(
+		(clave) => typeof d[clave] === 'number' && Number.isFinite(d[clave])
+	);
+}
+
+/** Solo se conservan las entradas con forma válida — un objeto corrupto (o de
+ *  una versión futura con otro formato) no debe tumbar la lectura de TODO el
+ *  tipo documental, solo perderse esa entrada suya. */
+function leerRecortesEjemplo(d: unknown): Record<string, Recorte> {
+	if (typeof d !== 'object' || d === null) return {};
+	const resultado: Record<string, Recorte> = {};
+	for (const [nombreCampo, r] of Object.entries(d as Record<string, unknown>)) {
+		if (esRecorteValido(r)) resultado[nombreCampo] = r;
+	}
+	return resultado;
+}
+
 function leerBiblioteca(): TipoDocumentalGuardado[] {
 	const store = almacen();
 	if (!store) return [];
@@ -648,7 +682,8 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 				historialVersiones: Array.isArray(d.historialVersiones)
 					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 					: [],
-				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion)
+				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion),
+				recortesEjemplo: leerRecortesEjemplo(d.recortesEjemplo)
 			}));
 	} catch {
 		return [];
@@ -720,7 +755,8 @@ export function guardarTipoDocumental(): string | null {
 			ejemploDocumental: false,
 			activadoEn: null,
 			historialVersiones: [],
-			versionEnEdicion: null
+			versionEnEdicion: null,
+			recortesEjemplo: {}
 		};
 		tiposDocumentales.push(nuevo);
 		b.idGuardado = nuevo.id;
@@ -872,6 +908,31 @@ export function archivarTipoDocumental(id: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo) return false;
 	tipo.estado = 'archivado';
+	guardarBiblioteca();
+	return true;
+}
+
+/**
+ * "Guardar" del modal de recorte (`CargarEjemploDocumental.svelte`): persiste
+ * las 4 coordenadas del rectángulo para ESE campo del tipo documental.
+ * Sobreescribe si ya había uno guardado — solo importa el más reciente, no
+ * hay historial de recortes.
+ *
+ * Se indexa por NOMBRE del campo, no por `campo.id`: `leerCampo()` REGENERA
+ * los ids de campo en cada lectura de la Biblioteca (a propósito, para que
+ * dos pestañas escribiendo no choquen con ids repetidos — ver su comentario),
+ * así que un id es estable solo mientras dura la pestaña, nunca entre
+ * refrescos. Medido en carne propia: guardar por id dejaba el recorte
+ * huérfano en cuanto la página se recargaba una sola vez. El nombre, en
+ * cambio, ya es único dentro de un tipo documental (`nombreCampoDuplicado`
+ * lo exige), así que sirve de llave estable sin inventar nada nuevo — el
+ * único costo es que renombrar un campo (modo edición) huerfana su recorte,
+ * un caso mucho más raro que "alguien refrescó la página".
+ */
+export function guardarRecorteEjemplo(idTipo: string, nombreCampo: string, recorte: Recorte): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
+	if (!tipo) return false;
+	tipo.recortesEjemplo[nombreCampo] = { ...recorte };
 	guardarBiblioteca();
 	return true;
 }

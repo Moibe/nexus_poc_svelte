@@ -458,10 +458,12 @@
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
 
-	// El modal de "Cargar ejemplo documental" (subir + recortar). No hace
-	// falta saber PARA QUÉ CAMPO se abrió todavía: hoy no guarda ni asocia
-	// nada, es pura interacción visual — ver CargarEjemploDocumental.svelte.
+	// El modal de "Cargar ejemplo documental" (subir + recortar). Desde que
+	// "Guardar" persiste el recorte, sí hace falta saber para qué campo se
+	// abrió — por NOMBRE, no por id (ver el comentario de `recortesEjemplo`
+	// en configuracion.svelte.ts: el id de un campo no sobrevive un refresh).
 	let modalEjemploAbierto = $state(false);
+	let campoEjemploNombre = $state<string | null>(null);
 
 	/**
 	 * "Ejemplo documental" del menú de la tarjeta ya NO es un interruptor con
@@ -1175,7 +1177,10 @@
 									<Button
 										variant="outline"
 										size="sm"
-										onclick={() => (modalEjemploAbierto = true)}
+										onclick={() => {
+											campoEjemploNombre = campo.nombre;
+											modalEjemploAbierto = true;
+										}}
 									>
 										Cargar ejemplo documental
 									</Button>
@@ -1762,5 +1767,7 @@
 
 <CargarEjemploDocumental
 	abierto={modalEjemploAbierto}
+	tipoId={calibrandoId}
+	campoNombre={campoEjemploNombre}
 	onCerrar={() => (modalEjemploAbierto = false)}
 />
