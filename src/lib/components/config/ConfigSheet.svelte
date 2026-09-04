@@ -120,16 +120,28 @@
 	}
 
 	// El recorte que se está por quitar en Calibración, mientras la
-	// confirmación está abierta — a diferencia de `borrarDocumentoEjemploCompartido`
-	// (que borra TODOS los recortes sin preguntar, ver su comentario), este SÍ
-	// pide confirmar (cambio pedido el 2026-09-04): dejar un campo sin recorte
-	// asignado es una decisión que vale la pena confirmar, a diferencia de
-	// simplemente rehacerlo.
+	// confirmación está abierta: dejar un campo sin recorte asignado es una
+	// decisión que vale la pena confirmar, a diferencia de simplemente
+	// rehacerlo (que ya cubre "Editar" sin pasar por aquí).
 	let recorteAQuitar = $state<{ idTipo: string; nombreCampo: string } | null>(null);
 
 	function confirmarQuitarRecorte() {
 		if (recorteAQuitar) borrarRecorteEjemplo(recorteAQuitar.idTipo, recorteAQuitar.nombreCampo);
 		recorteAQuitar = null;
+	}
+
+	// Igual que arriba, pero para el documento de ejemplo compartido — con
+	// más razón todavía: se lleva en cascada los recortes de TODOS los
+	// campos, no solo el de uno (cambio pedido el 2026-09-04, junto con
+	// quitar el botón de basura duplicado que vivía junto a "Cargar ejemplo
+	// documental" — quedó solo el de la tarjeta del archivo). No hace falta
+	// guardar más que un booleano: solo hay un documento por tipo, y
+	// `tipoEnCalibracion` ya identifica cuál mientras la pantalla sigue abierta.
+	let documentoEjemploAQuitar = $state(false);
+
+	function confirmarQuitarDocumentoEjemplo() {
+		if (tipoEnCalibracion) borrarDocumentoEjemploCompartido(tipoEnCalibracion.id);
+		documentoEjemploAQuitar = false;
 	}
 
 	// Si el formulario de "Nuevo campo de extracción" del paso 2 está abierto.
@@ -1224,34 +1236,27 @@
 					{#if tipoEnCalibracion}
 						<div class="mt-8 max-w-3xl">
 							<div class="border-b border-border pb-4">
-								<div class="flex items-center gap-2">
-									<!-- Deshabilitado con un documento ya subido: para reemplazarlo
-									     hay que quitarlo primero (el botón rojo de al lado, o el de
-									     la tarjeta de abajo) — quitarlo también vacía los recortes
-									     de todos los campos, ver `borrarDocumentoEjemploCompartido`. -->
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={Boolean(tipoEnCalibracion.documentoEjemplo)}
-										onclick={() => (modalDocumentoAbierto = true)}
-									>
-										Cargar ejemplo documental
-									</Button>
-									{#if tipoEnCalibracion.documentoEjemplo}
-										<button
-											type="button"
-											aria-label="Borrar el documento de ejemplo"
-											class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
-											onclick={() => borrarDocumentoEjemploCompartido(tipoEnCalibracion.id)}
-										>
-											<Trash2 class="size-3.5" />
-										</button>
-									{/if}
-								</div>
+								<!-- Deshabilitado con un documento ya subido: para reemplazarlo
+								     hay que quitarlo primero (el botón de la tarjeta de abajo) —
+								     quitarlo también vacía los recortes de todos los campos, ver
+								     `borrarDocumentoEjemploCompartido`. -->
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={Boolean(tipoEnCalibracion.documentoEjemplo)}
+									onclick={() => (modalDocumentoAbierto = true)}
+								>
+									Cargar ejemplo documental
+								</Button>
 
 								{#if tipoEnCalibracion.documentoEjemplo}
 									<!-- Mismo lenguaje visual que las tarjetas de archivo de
-									     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar). -->
+									     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar).
+									     El botón de basura vivía ANTES duplicado —uno aquí, otro
+									     junto a "Cargar ejemplo documental"— con la misma función;
+									     se dejó solo este (cambio pedido el 2026-09-04), y ahora
+									     pide confirmar antes de borrar, dado lo destructivo que es
+									     (se lleva los recortes de TODOS los campos). -->
 									<div
 										class="mt-4 flex max-w-lg items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
 									>
@@ -1273,10 +1278,10 @@
 										<button
 											type="button"
 											aria-label="Quitar el documento de ejemplo"
-											class="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
-											onclick={() => borrarDocumentoEjemploCompartido(tipoEnCalibracion.id)}
+											class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+											onclick={() => (documentoEjemploAQuitar = true)}
 										>
-											<Minus class="size-4" />
+											<Trash2 class="size-3.5" />
 										</button>
 									</div>
 								{/if}
@@ -2007,6 +2012,17 @@
 	etiquetaConfirmar="Sí, quitar"
 	onConfirmar={confirmarQuitarRecorte}
 	onCerrar={() => (recorteAQuitar = null)}
+/>
+
+<!-- Más grave que quitar un solo recorte: esto se lleva TODOS los de este
+     tipo documental de un golpe, el mensaje lo dice explícito. -->
+<ConfirmarAccion
+	abierto={documentoEjemploAQuitar}
+	titulo="¿Quitar el documento de ejemplo?"
+	mensaje={`Se quitará "${tipoEnCalibracion?.documentoEjemplo?.nombre ?? ''}" junto con TODOS los recortes ya guardados sobre él, en todos los campos. Esta acción no se puede deshacer.`}
+	etiquetaConfirmar="Sí, quitar"
+	onConfirmar={confirmarQuitarDocumentoEjemplo}
+	onCerrar={() => (documentoEjemploAQuitar = false)}
 />
 
 <CargarDocumentoEjemplo
