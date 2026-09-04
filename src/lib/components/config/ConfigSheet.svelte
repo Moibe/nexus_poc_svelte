@@ -13,7 +13,6 @@
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Save from '@lucide/svelte/icons/save';
-	import X from '@lucide/svelte/icons/x';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
@@ -1209,24 +1208,40 @@
 								<div class="border-b border-border py-4 last:border-0">
 									<div class="flex items-center justify-between gap-4">
 										<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
-										<!-- Deshabilitado con un ejemplo ya guardado: para reemplazarlo
-										     hay que quitarlo primero (la X de la tarjeta de abajo), no
-										     sobreescribirlo directo. Esto también resuelve un pendiente
-										     que quedó documentado el 2026-09-02 ("reabrirlo siempre
-										     arranca en el dropzone... ni con el recorte ya guardado
-										     mostrado de vuelta"): ahora ese caso ya no es alcanzable
-										     desde la UI. -->
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={Boolean(ejemplo)}
-											onclick={() => {
-												campoEjemploNombre = campo.nombre;
-												modalEjemploAbierto = true;
-											}}
-										>
-											Cargar ejemplo documental
-										</Button>
+										<div class="flex items-center gap-2">
+											<!-- Deshabilitado con un ejemplo ya guardado: para reemplazarlo
+											     hay que quitarlo primero (el botón rojo de al lado, o el
+											     de la tarjeta de abajo), no sobreescribirlo directo. Esto
+											     también resuelve un pendiente que quedó documentado el
+											     2026-09-02 ("reabrirlo siempre arranca en el dropzone... ni
+											     con el recorte ya guardado mostrado de vuelta"): ahora ese
+											     caso ya no es alcanzable desde la UI. -->
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={Boolean(ejemplo)}
+												onclick={() => {
+													campoEjemploNombre = campo.nombre;
+													modalEjemploAbierto = true;
+												}}
+											>
+												Cargar ejemplo documental
+											</Button>
+											{#if ejemplo}
+												<!-- Réplica del Figma: con un ejemplo ya guardado, un
+												     segundo botón rojo junto al de arriba borra ese ejemplo
+												     sin tener que bajar hasta la tarjeta del archivo. Mismo
+												     `borrarRecorteEjemplo()` que la X de la tarjeta. -->
+												<button
+													type="button"
+													aria-label={`Borrar el ejemplo de ${campo.nombre}`}
+													class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+													onclick={() => borrarRecorteEjemplo(tipoEnCalibracion.id, campo.nombre)}
+												>
+													<Trash2 class="size-3.5" />
+												</button>
+											{/if}
+										</div>
 									</div>
 
 									{#if ejemplo}
@@ -1255,10 +1270,10 @@
 												<button
 													type="button"
 													aria-label={`Quitar el ejemplo de ${campo.nombre}`}
-													class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+													class="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
 													onclick={() => borrarRecorteEjemplo(tipoEnCalibracion.id, campo.nombre)}
 												>
-													<X class="size-3.5" />
+													<Minus class="size-4" />
 												</button>
 											</div>
 
