@@ -2020,5 +2020,8 @@
 	tipoId={calibrandoId}
 	campoNombre={campoRecorteNombre}
 	documento={tipoEnCalibracion?.documentoEjemplo ?? null}
+	recorteExistente={(campoRecorteNombre &&
+		tipoEnCalibracion?.recortesEjemplo[campoRecorteNombre]?.recorte) ||
+		null}
 	onCerrar={() => (modalRecorteAbierto = false)}
 />

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
@@ -16,6 +17,7 @@
 		tipoId = null,
 		campoNombre = null,
 		documento = null,
+		recorteExistente = null,
 		onCerrar
 	}: {
 		abierto?: boolean;
@@ -30,11 +32,16 @@
 		 *  en la práctica: el botón que abre este modal viene deshabilitado sin
 		 *  documento subido. */
 		documento?: DocumentoEjemploCompartido | null;
+		/** El recorte YA GUARDADO para este campo, si "Editar" es lo que abrió
+		 *  el modal (`null` cuando es la primera vez que se recorta). Se usa
+		 *  solo para PRECARGAR el rectángulo al entrar — no para nada más. */
+		recorteExistente?: Recorte | null;
 		onCerrar: () => void;
 	} = $props();
 
-	// Reinicia el recorte y el zoom al cerrar — reabrir debe empezar siempre en
-	// blanco, nunca con el rectángulo de la vez anterior todavía puesto.
+	// Al cerrar, se limpia todo — lo que se muestre la PRÓXIMA vez que se abra
+	// lo decide el efecto de más abajo (en blanco si es la primera vez que se
+	// recorta el campo, o con el rectángulo ya guardado si es "Editar").
 	// `modoRecorte` se reinicia a `true`, no a `false` (cambio pedido): la
 	// herramienta de recorte debe estar YA ACTIVA la próxima vez que se entre
 	// a esta pantalla, para poder dibujar el rectángulo directo sobre el
@@ -58,6 +65,21 @@
 	// que activar "Recortar" a mano cada vez.
 	let modoRecorte = $state(true);
 	let recorte = $state<Recorte | null>(null);
+
+	// Precarga el rectángulo ya guardado al ABRIR — "Editar" (2026-09-04)
+	// debe mostrar lo que había, no arrancar en blanco. Se dispara solo en la
+	// transición false→true de `abierto` (por eso el `untrack` alrededor de
+	// `recorteExistente`): si dependiera también de `recorteExistente`, un
+	// recálculo de esa prop mientras el modal sigue abierto podría pisar un
+	// rectángulo que el usuario ya esté arrastrando.
+	$effect(() => {
+		if (abierto) {
+			untrack(() => {
+				recorte = recorteExistente ? { ...recorteExistente } : null;
+			});
+		}
+	});
+
 	let contenedorEl = $state<HTMLDivElement>();
 	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
 	// imagen original tal cual) — a diferencia del modal de carga, aquí ya no
