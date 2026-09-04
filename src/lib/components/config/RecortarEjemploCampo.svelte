@@ -275,9 +275,15 @@
 							/>
 
 							{#if recorte}
+								<!-- El rectángulo YA DIBUJADO se puede volver a arrastrar por su
+								     cuerpo para reposicionarlo (`iniciarMover`, con
+								     `stopPropagation()` para no disparar `iniciarEnLienzo` del
+								     contenedor y empezar uno nuevo encima). `cursor-move` es solo
+								     la señal visual de que se puede agarrar — a pedido explícito,
+								     porque sin ella no era obvio que ya funcionaba. -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
-									class="absolute border-2 border-primary bg-primary/10"
+									class="absolute cursor-move border-2 border-primary bg-primary/10"
 									style="left:{recorte.x}%; top:{recorte.y}%; width:{recorte.w}%; height:{recorte.h}%;"
 									onpointerdown={iniciarMover}
 								>
