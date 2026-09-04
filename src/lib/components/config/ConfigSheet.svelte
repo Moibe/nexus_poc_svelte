@@ -1500,7 +1500,7 @@
 						     campo MÁS después del primero. -->
 						<button
 							type="button"
-							class="mt-8 flex max-w-3xl items-center gap-3 rounded-xl border border-dashed border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+							class="mt-8 flex max-w-3xl items-center gap-3 rounded-xl border border-dashed border-border px-6 py-2.5 text-left transition-colors hover:border-primary hover:bg-primary/5"
 							onclick={() => (mostrarFormularioCampo = true)}
 						>
 							<span
