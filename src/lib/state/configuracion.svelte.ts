@@ -1071,18 +1071,13 @@ export function guardarRecorteEjemplo(
 }
 
 /**
- * Quita el ejemplo guardado de un campo — su recorte vuelve a estar
- * disponible para rehacerse sobre el mismo documento compartido. Sin
- * confirmación: rehacer un recorte cuesta segundos, no amerita el mismo
- * peso que borrar un tipo documental entero.
- *
- * Sin usar desde la UI desde el 2026-09-04: el botón de borrar por campo se
- * reemplazó por un ícono de "Editar" que reabre el modal de recorte —
- * `guardarRecorteEjemplo` ya sobreescribe el anterior, así que no hace falta
- * un paso de borrado aparte para reemplazar un recorte. La única forma de
- * quitar un recorte hoy es `borrarDocumentoEjemploCompartido`, que se lleva
- * TODOS los recortes del tipo (no solo uno). Se deja documentada por si se
- * pide de vuelta un borrado por campo individual.
+ * Quita el ejemplo guardado de un campo — vuelve a quedar sin recorte
+ * asignado, disponible para recortarse de nuevo sobre el mismo documento
+ * compartido. A diferencia de `borrarDocumentoEjemploCompartido` (que
+ * también llama a esto, en cascada, para cada campo), este SÍ pasa por una
+ * confirmación en la UI (`ConfirmarAccion`, botón de basura junto al lápiz
+ * de "Editar") — cambio pedido el 2026-09-04: la función en sí no valida
+ * nada, la confirmación es responsabilidad de quien la llama.
  */
 export function borrarRecorteEjemplo(idTipo: string, nombreCampo: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);

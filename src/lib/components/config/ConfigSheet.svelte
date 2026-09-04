@@ -49,6 +49,7 @@
 		agregarValorLista,
 		alternarEjemploDocumental,
 		borrarDocumentoEjemploCompartido,
+		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
@@ -116,6 +117,19 @@
 	function confirmarQuitarCampo() {
 		if (campoAQuitar) quitarCampo(campoAQuitar.id);
 		campoAQuitar = null;
+	}
+
+	// El recorte que se está por quitar en Calibración, mientras la
+	// confirmación está abierta — a diferencia de `borrarDocumentoEjemploCompartido`
+	// (que borra TODOS los recortes sin preguntar, ver su comentario), este SÍ
+	// pide confirmar (cambio pedido el 2026-09-04): dejar un campo sin recorte
+	// asignado es una decisión que vale la pena confirmar, a diferencia de
+	// simplemente rehacerlo.
+	let recorteAQuitar = $state<{ idTipo: string; nombreCampo: string } | null>(null);
+
+	function confirmarQuitarRecorte() {
+		if (recorteAQuitar) borrarRecorteEjemplo(recorteAQuitar.idTipo, recorteAQuitar.nombreCampo);
+		recorteAQuitar = null;
 	}
 
 	// Si el formulario de "Nuevo campo de extracción" del paso 2 está abierto.
@@ -1277,11 +1291,13 @@
 											{#if ejemplo}
 												<!-- Réplica del Figma: con un recorte ya guardado, el
 												     botón deja de ser "Recortar" (deshabilitado) + un
-												     "borrar" aparte, y pasa a ser un solo ícono de lápiz
-												     que reabre el mismo modal para rehacer el recorte —
+												     "borrar" aparte, y pasa a ser un ícono de lápiz que
+												     reabre el mismo modal para rehacer el recorte —
 												     `guardarRecorteEjemplo` ya sobreescribe el anterior,
 												     así que "editar" y "recortar de nuevo" son la misma
-												     operación. -->
+												     operación. Junto a él, un botón de basura para poder
+												     dejar el campo SIN recorte asignado (a diferencia de
+												     "editar", esto sí pide confirmar). -->
 												<button
 													type="button"
 													aria-label={`Editar el recorte de ${campo.nombre}`}
@@ -1292,6 +1308,15 @@
 													}}
 												>
 													<Pencil class="size-4" />
+												</button>
+												<button
+													type="button"
+													aria-label={`Quitar el recorte de ${campo.nombre}`}
+													class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+													onclick={() =>
+														(recorteAQuitar = { idTipo: tipoEnCalibracion.id, nombreCampo: campo.nombre })}
+												>
+													<Trash2 class="size-4" />
 												</button>
 											{:else}
 												<!-- Deshabilitado sin documento de ejemplo: nada sobre
@@ -1968,6 +1993,20 @@
 	etiquetaConfirmar="Sí, archivar"
 	onConfirmar={confirmarArchivarTipo}
 	onCerrar={() => (tipoAArchivar = null)}
+/>
+
+<!-- A diferencia de quitar el documento compartido (que se lleva TODOS los
+     recortes sin preguntar), quitar el de UN SOLO campo sí se confirma —
+     cambio pedido el 2026-09-04: es una decisión más deliberada (dejar ese
+     campo sin recorte asignado) que simplemente rehacerlo, que ya cubre
+     "Editar" sin pasar por aquí. -->
+<ConfirmarAccion
+	abierto={recorteAQuitar !== null}
+	titulo="¿Quitar este recorte?"
+	mensaje={`Se quitará el recorte guardado para "${recorteAQuitar?.nombreCampo ?? ''}". El campo se queda sin ejemplo asignado hasta que se recorte de nuevo sobre el mismo documento.`}
+	etiquetaConfirmar="Sí, quitar"
+	onConfirmar={confirmarQuitarRecorte}
+	onCerrar={() => (recorteAQuitar = null)}
 />
 
 <CargarDocumentoEjemplo
