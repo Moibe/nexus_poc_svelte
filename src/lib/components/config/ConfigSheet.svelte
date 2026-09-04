@@ -49,7 +49,6 @@
 		agregarValorLista,
 		alternarEjemploDocumental,
 		borrarDocumentoEjemploCompartido,
-		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
@@ -1275,33 +1274,39 @@
 									<div class="flex items-center justify-between gap-4">
 										<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
 										<div class="flex items-center gap-2">
-											<!-- Deshabilitado sin documento de ejemplo (nada sobre qué
-											     recortar) o con un recorte ya guardado (hay que quitarlo
-											     primero, mismo criterio que el documento de arriba). -->
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={!tipoEnCalibracion.documentoEjemplo || Boolean(ejemplo)}
-												onclick={() => {
-													campoRecorteNombre = campo.nombre;
-													modalRecorteAbierto = true;
-												}}
-											>
-												Recortar
-											</Button>
 											{#if ejemplo}
-												<!-- Réplica del Figma: con un recorte ya guardado, un
-												     segundo botón rojo junto al de arriba lo borra sin
-												     tener que bajar hasta la imagen. Mismo
-												     `borrarRecorteEjemplo()` que el de abajo. -->
+												<!-- Réplica del Figma: con un recorte ya guardado, el
+												     botón deja de ser "Recortar" (deshabilitado) + un
+												     "borrar" aparte, y pasa a ser un solo ícono de lápiz
+												     que reabre el mismo modal para rehacer el recorte —
+												     `guardarRecorteEjemplo` ya sobreescribe el anterior,
+												     así que "editar" y "recortar de nuevo" son la misma
+												     operación. -->
 												<button
 													type="button"
-													aria-label={`Borrar el ejemplo de ${campo.nombre}`}
-													class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
-													onclick={() => borrarRecorteEjemplo(tipoEnCalibracion.id, campo.nombre)}
+													aria-label={`Editar el recorte de ${campo.nombre}`}
+													class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+													onclick={() => {
+														campoRecorteNombre = campo.nombre;
+														modalRecorteAbierto = true;
+													}}
 												>
-													<Trash2 class="size-3.5" />
+													<Pencil class="size-4" />
 												</button>
+											{:else}
+												<!-- Deshabilitado sin documento de ejemplo: nada sobre
+												     qué recortar todavía. -->
+												<Button
+													variant="outline"
+													size="sm"
+													disabled={!tipoEnCalibracion.documentoEjemplo}
+													onclick={() => {
+														campoRecorteNombre = campo.nombre;
+														modalRecorteAbierto = true;
+													}}
+												>
+													Recortar
+												</Button>
 											{/if}
 										</div>
 									</div>
