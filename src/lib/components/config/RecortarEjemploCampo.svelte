@@ -9,7 +9,7 @@
 	import {
 		guardarRecorteEjemplo,
 		type Recorte,
-		type DocumentoEjemploCompartido
+		type DocumentoEjemploInstancia
 	} from '$lib/state/configuracion.svelte';
 
 	let {
@@ -26,15 +26,17 @@
 		 *  `guardarRecorteEjemplo`: el id de un campo no sobrevive un refresh). */
 		tipoId?: string | null;
 		campoNombre?: string | null;
-		/** El documento de ejemplo YA SUBIDO para este tipo documental (2026-09-04:
-		 *  es compartido por todos los campos) — este modal ya no sube nada, solo
-		 *  recorta sobre lo que `documentoEjemplo` traiga. `null` no debería pasar
-		 *  en la práctica: el botón que abre este modal viene deshabilitado sin
-		 *  documento subido. */
-		documento?: DocumentoEjemploCompartido | null;
-		/** El recorte YA GUARDADO para este campo, si "Editar" es lo que abrió
-		 *  el modal (`null` cuando es la primera vez que se recorta). Se usa
-		 *  solo para PRECARGAR el rectángulo al entrar — no para nada más. */
+		/** La instancia de documento YA SUBIDA sobre la que se recorta — un tipo
+		 *  documental puede tener varias (2026-09-04); esta es la que esté
+		 *  SELECCIONADA en Calibración en ese momento (`ConfigSheet.svelte`
+		 *  decide cuál). Este modal ya no sube nada, solo recorta sobre lo que
+		 *  traiga. `null` no debería pasar en la práctica: el botón que abre
+		 *  este modal viene deshabilitado sin ninguna instancia seleccionada. */
+		documento?: DocumentoEjemploInstancia | null;
+		/** El recorte YA GUARDADO para este (documento, campo), si "Editar" es
+		 *  lo que abrió el modal (`null` cuando es la primera vez que se
+		 *  recorta esa combinación). Se usa solo para PRECARGAR el rectángulo
+		 *  al entrar — no para nada más. */
 		recorteExistente?: Recorte | null;
 		onCerrar: () => void;
 	} = $props();
@@ -138,10 +140,10 @@
 	// campos de "Calibración" de la que salió, mismo criterio que "Guardar
 	// configuración" del wizard.
 	function guardarCopia() {
-		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
+		if (!tipoId || !documento || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
 		const imagenDataUrl = generarImagenRecorte(recorte);
 		if (!imagenDataUrl) return;
-		const guardado = guardarRecorteEjemplo(tipoId, campoNombre, { recorte, imagenDataUrl });
+		const guardado = guardarRecorteEjemplo(tipoId, documento.id, campoNombre, { recorte, imagenDataUrl });
 		if (!guardado) return;
 		cerrar();
 	}

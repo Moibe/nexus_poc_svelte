@@ -6,19 +6,24 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Save from '@lucide/svelte/icons/save';
-	import { guardarDocumentoEjemploCompartido } from '$lib/state/configuracion.svelte';
+	import { agregarDocumentoEjemplo } from '$lib/state/configuracion.svelte';
 
 	let {
 		abierto = false,
 		tipoId = null,
+		onGuardado,
 		onCerrar
 	}: {
 		abierto?: boolean;
-		/** A qué tipo documental pertenece el documento que se está subiendo —
-		 *  desde el 2026-09-04 es UN documento por tipo, compartido por todos
-		 *  sus campos, no uno por campo. `null` no debería pasar en la
-		 *  práctica: "Guardar" simplemente no hace nada sin él. */
+		/** A qué tipo documental pertenece el documento que se está subiendo.
+		 *  Un tipo puede tener VARIAS instancias (2026-09-04): esto solo AGREGA
+		 *  una más, nunca sobreescribe. `null` no debería pasar en la práctica:
+		 *  "Guardar" simplemente no hace nada sin él. */
 		tipoId?: string | null;
+		/** Se llama justo después de agregar la instancia, con su id — lo usa
+		 *  `ConfigSheet.svelte` para dejarla seleccionada de inmediato en vez de
+		 *  obligar a un segundo clic para elegirla. */
+		onGuardado?: (idDocumento: string) => void;
 		onCerrar: () => void;
 	} = $props();
 
@@ -137,7 +142,7 @@
 		try {
 			const dataUrl = esPdf ? (canvasEl?.toDataURL('image/png') ?? null) : await archivoADataUrl(archivo);
 			if (!dataUrl) return;
-			const guardado = guardarDocumentoEjemploCompartido(tipoId, {
+			const idNuevo = agregarDocumentoEjemplo(tipoId, {
 				nombre: archivo.name,
 				tipo: esPdf
 					? 'PDF'
@@ -145,7 +150,8 @@
 				tamanoBytes: archivo.size,
 				dataUrl
 			});
-			if (!guardado) return;
+			if (!idNuevo) return;
+			onGuardado?.(idNuevo);
 			cerrar();
 		} finally {
 			guardando = false;

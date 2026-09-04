@@ -481,19 +481,27 @@ export function limpiarBorrador() {
 export type Recorte = { x: number; y: number; w: number; h: number };
 
 /**
- * El documento de ejemplo, compartido por TODOS los campos de un tipo
- * documental (2026-09-04) — antes cada campo subía el suyo por separado.
- * Se sube una sola vez desde `CargarDocumentoEjemplo.svelte`; cada campo
- * después dibuja su propio recorte sobre ESTE MISMO documento, sin volver a
- * pedir el archivo. Es más fiel además a cómo etiqueta Document AI: un
- * documento, varias anotaciones sobre él.
+ * UNA instancia de documento de ejemplo — un tipo documental puede tener
+ * VARIAS (2026-09-04, a pedido explícito: "varias instancias... a cada uno
+ * hacerle sus recortamientos"), cada una con sus propios recortes por campo.
+ * Antes de esto hubo dos diseños más simples, los dos superados: uno por
+ * CAMPO (2026-09-02/03) y luego uno SOLO compartido por todo el tipo
+ * (2026-09-04, misma mañana) — ver la fila de `pendientes-ux.md` de cada uno.
+ *
+ * Se sube desde `CargarDocumentoEjemplo.svelte`; cada campo dibuja su
+ * recorte sobre la instancia que esté SELECCIONADA en ese momento en
+ * Calibración (`ConfigSheet.svelte` guarda cuál con `documentoSeleccionadoId`,
+ * un estado de pantalla, no de este módulo). Varias instancias es más fiel
+ * además a cómo se etiqueta en Document AI: varios documentos de ejemplo en
+ * el Dataset, cada uno con sus propias anotaciones.
  *
  * `dataUrl` es el documento YA RENDERIZADO como raster (PNG del `<canvas>`
  * si era PDF, o el archivo original leído tal cual si ya era imagen) — nunca
  * un blob URL: tiene que sobrevivir un refresh de la página para que
  * recortar un campo nuevo días después no obligue a resubir el archivo.
  */
-export type DocumentoEjemploCompartido = {
+export type DocumentoEjemploInstancia = {
+	id: string;
 	nombre: string;
 	tipo: string;
 	tamanoBytes: number;
@@ -504,13 +512,12 @@ export type DocumentoEjemploCompartido = {
 
 /**
  * Lo que "Guardar" persiste desde `RecortarEjemploCampo.svelte` para UN
- * campo (2026-09-03, recortado de metadata de documento el 2026-09-04: esa
- * metadata ahora vive una sola vez en `DocumentoEjemploCompartido`, no
- * repetida por campo).
+ * campo, sobre UNA instancia de documento — ver `TipoDocumentalGuardado.recortesPorDocumento`
+ * para cómo se indexan las dos dimensiones (documento × campo).
  *
  * `imagenDataUrl` es el recorte YA HECHO — los píxeles reales dentro de
- * `recorte`, cortados del documento compartido y exportados como data URL —
- * no un texto. A propósito: en este punto nunca corrió ningún OCR sobre el
+ * `recorte`, cortados de esa instancia y exportados como data URL — no un
+ * texto. A propósito: en este punto nunca corrió ningún OCR sobre el
  * documento, así que mostrar un "texto extraído" sería inventar un resultado
  * que no existe. La imagen sí es honesta: es prueba de qué se seleccionó,
  * nada más. `recorte` (las 4 coordenadas) se conserva aparte porque sigue
@@ -594,20 +601,25 @@ export type TipoDocumentalGuardado = {
 	 * registro de qué tenía la versión que se está reemplazando.
 	 */
 	versionEnEdicion: VersionPublicada | null;
-	/** El documento de ejemplo compartido por todos los campos (2026-09-04).
-	 *  `null` mientras nadie lo suba. Ver `DocumentoEjemploCompartido`: al
-	 *  quitarlo con `borrarDocumentoEjemploCompartido` también se vacía
-	 *  `recortesEjemplo` completo — un recorte sin su documento de origen no
-	 *  significa nada. */
-	documentoEjemplo: DocumentoEjemploCompartido | null;
-	/** Ejemplo de extracción guardado por campo — indexado por NOMBRE del
-	 *  campo, no por `campo.id` (que se regenera en cada lectura de la
-	 *  Biblioteca; el nombre es lo único de un campo que sobrevive un
-	 *  refresh). Detrás de "Guardar" en `RecortarEjemploCampo.svelte`.
-	 *  Vacío mientras nadie guarde ninguno. Ver `EjemploGuardado`: incluye el
-	 *  recorte YA HECHO como imagen, no un texto extraído — mostrarlo de
-	 *  vuelta en Calibración es justo lo que ya hace. */
-	recortesEjemplo: Record<string, EjemploGuardado>;
+	/** Los documentos de ejemplo de este tipo — VARIOS desde el 2026-09-04
+	 *  (antes uno solo, compartido por todos los campos; antes de eso, uno
+	 *  por campo). Vacío mientras nadie suba ninguno. Ver
+	 *  `DocumentoEjemploInstancia` y `agregarDocumentoEjemplo`. Quitar una
+	 *  instancia con `borrarDocumentoEjemplo` también vacía sus propios
+	 *  recortes en `recortesPorDocumento` — un recorte sin su documento de
+	 *  origen no significa nada — pero deja intactas las demás instancias. */
+	documentosEjemplo: DocumentoEjemploInstancia[];
+	/**
+	 * Ejemplo de extracción guardado por (documento × campo) — dos niveles:
+	 * `recortesPorDocumento[idDocumento][nombreCampo]`. El nivel de campo se
+	 * indexa por NOMBRE, no por `campo.id` (que se regenera en cada lectura
+	 * de la Biblioteca; el nombre es lo único de un campo que sobrevive un
+	 * refresh) — mismo criterio que ya regía cuando solo había un documento.
+	 * Detrás de "Guardar" en `RecortarEjemploCampo.svelte`. Ver
+	 * `EjemploGuardado`: incluye el recorte YA HECHO como imagen, no un texto
+	 * extraído — mostrarlo de vuelta en Calibración es justo lo que ya hace.
+	 */
+	recortesPorDocumento: Record<string, Record<string, EjemploGuardado>>;
 };
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
@@ -645,6 +657,12 @@ let contadorTipo = 0;
 function idTipo(): string {
 	contadorTipo += 1;
 	return `tipo-${Date.now().toString(36)}-${contadorTipo}`;
+}
+
+let contadorDocumentoEjemplo = 0;
+function idDocumentoEjemplo(): string {
+	contadorDocumentoEjemplo += 1;
+	return `doc-ejemplo-${Date.now().toString(36)}-${contadorDocumentoEjemplo}`;
 }
 
 /** Igual de defensivo que `leerCampo`: el contenido de localStorage no es de
@@ -686,16 +704,15 @@ function esEjemploValido(e: unknown): e is EjemploGuardado {
  * una versión futura con otro formato) no debe tumbar la lectura de TODO el
  * tipo documental, solo perderse esa entrada suya.
  *
- * Esto también migra en silencio dos formatos VIEJOS: el del 2026-09-02
- * (un `Recorte` suelto, solo `{x,y,w,h}`) y el del 2026-09-03 (`EjemploGuardado`
- * con un `documento` propio por campo, retirado el 2026-09-04 al volverse el
- * documento compartido) — ninguno de los dos pasa `esEjemploValido` tal como
- * quedó y se descarta. No hay forma de reconstruir la imagen que faltaba a
- * partir de solo 4 coordenadas, así que perder esas entradas viejas es el
- * costo real de la migración — aceptable en esta etapa del PoC, sin datos de
- * producción en juego.
+ * Esto también migra en silencio los formatos VIEJOS: el del 2026-09-02 (un
+ * `Recorte` suelto, solo `{x,y,w,h}`) y el del 2026-09-03 (`EjemploGuardado`
+ * con un `documento` propio por campo) — ninguno pasa `esEjemploValido` tal
+ * como quedó y se descarta. No hay forma de reconstruir la imagen que
+ * faltaba a partir de solo 4 coordenadas, así que perder esas entradas
+ * viejas es el costo real de cada migración — aceptable en esta etapa del
+ * PoC, sin datos de producción en juego.
  */
-function leerRecortesEjemplo(d: unknown): Record<string, EjemploGuardado> {
+function leerRecortesDeUnDocumento(d: unknown): Record<string, EjemploGuardado> {
 	if (typeof d !== 'object' || d === null) return {};
 	const resultado: Record<string, EjemploGuardado> = {};
 	for (const [nombreCampo, e] of Object.entries(d as Record<string, unknown>)) {
@@ -704,12 +721,32 @@ function leerRecortesEjemplo(d: unknown): Record<string, EjemploGuardado> {
 	return resultado;
 }
 
+/**
+ * Envuelve `leerRecortesDeUnDocumento` para el nivel de arriba (por id de
+ * documento) — migra en silencio, además de los formatos de
+ * `leerRecortesDeUnDocumento`, el del 2026-09-04 con un solo nivel
+ * (`recortesEjemplo` plano, de cuando solo existía UN documento compartido):
+ * ese formato no tiene forma de saber a qué documento pertenecía cada
+ * recorte una vez que varias instancias son posibles, así que también se
+ * descarta — mismo costo aceptado que las migraciones anteriores.
+ */
+function leerRecortesPorDocumento(d: unknown): Record<string, Record<string, EjemploGuardado>> {
+	if (typeof d !== 'object' || d === null) return {};
+	const resultado: Record<string, Record<string, EjemploGuardado>> = {};
+	for (const [idDocumento, porCampo] of Object.entries(d as Record<string, unknown>)) {
+		resultado[idDocumento] = leerRecortesDeUnDocumento(porCampo);
+	}
+	return resultado;
+}
+
 /** Igual de defensivo que `esEjemploValido`: `dataUrl` vacío no sirve de nada
  *  (no habría de dónde recortar), así que se trata como si no existiera. */
-function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploCompartido {
+function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploInstancia {
 	if (typeof d !== 'object' || d === null) return false;
 	const o = d as Record<string, unknown>;
 	return (
+		typeof o.id === 'string' &&
+		o.id !== '' &&
 		typeof o.nombre === 'string' &&
 		typeof o.tipo === 'string' &&
 		typeof o.tamanoBytes === 'number' &&
@@ -719,8 +756,17 @@ function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploCompartido {
 	);
 }
 
-function leerDocumentoEjemplo(d: unknown): DocumentoEjemploCompartido | null {
-	return esDocumentoEjemploValido(d) ? d : null;
+/**
+ * Migra en silencio el formato VIEJO de un solo documento (2026-09-04, antes
+ * de esta misma mañana): un objeto suelto en vez de un arreglo, sin `id` —
+ * como ya no hay forma de saber si ese documento debería ser el primero de
+ * varios o no, y tampoco tiene el `id` que ahora exige `recortesPorDocumento`
+ * para asociarle recortes, se descarta igual que las demás migraciones de
+ * esta pantalla.
+ */
+function leerDocumentosEjemplo(d: unknown): DocumentoEjemploInstancia[] {
+	if (!Array.isArray(d)) return [];
+	return d.filter(esDocumentoEjemploValido);
 }
 
 function leerBiblioteca(): TipoDocumentalGuardado[] {
@@ -771,8 +817,8 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 					: [],
 				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion),
-				documentoEjemplo: leerDocumentoEjemplo(d.documentoEjemplo),
-				recortesEjemplo: leerRecortesEjemplo(d.recortesEjemplo)
+				documentosEjemplo: leerDocumentosEjemplo(d.documentosEjemplo),
+				recortesPorDocumento: leerRecortesPorDocumento(d.recortesPorDocumento)
 			}));
 	} catch {
 		return [];
@@ -845,8 +891,8 @@ export function guardarTipoDocumental(): string | null {
 			activadoEn: null,
 			historialVersiones: [],
 			versionEnEdicion: null,
-			documentoEjemplo: null,
-			recortesEjemplo: {}
+			documentosEjemplo: [],
+			recortesPorDocumento: {}
 		};
 		tiposDocumentales.push(nuevo);
 		b.idGuardado = nuevo.id;
@@ -1005,36 +1051,44 @@ export function archivarTipoDocumental(id: string): boolean {
 }
 
 /**
- * "Guardar" de `CargarDocumentoEjemplo.svelte` (2026-09-04): sube el
- * documento de ejemplo COMPARTIDO por todos los campos del tipo documental.
- * Sobreescribe si ya había uno — en la práctica no debería pasar, porque la
- * UI obliga a quitarlo primero (`borrarDocumentoEjemploCompartido`) antes de
- * dejar subir otro.
+ * "Guardar" de `CargarDocumentoEjemplo.svelte`: agrega una instancia MÁS al
+ * arreglo de documentos de ejemplo del tipo documental (2026-09-04: pueden
+ * ser varias, cada una con sus propios recortes — antes de esto era UN
+ * documento compartido, y antes de eso uno por campo). Nunca sobreescribe:
+ * cada llamada agrega una entrada nueva con su propio id.
+ *
+ * Devuelve el id de la instancia recién creada (o `null` si el tipo no
+ * existe) para que quien llama pueda seleccionarla de inmediato — es lo que
+ * hace `ConfigSheet.svelte` para dejar la instancia recién subida lista para
+ * recortar sin un paso extra de "selecciónala tú".
  */
-export function guardarDocumentoEjemploCompartido(
+export function agregarDocumentoEjemplo(
 	idTipo: string,
 	documento: { nombre: string; tipo: string; tamanoBytes: number; dataUrl: string }
-): boolean {
+): string | null {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
-	if (!tipo) return false;
-	tipo.documentoEjemplo = { ...documento, guardadoEn: new Date().toISOString() };
+	if (!tipo) return null;
+	const id = idDocumentoEjemplo();
+	tipo.documentosEjemplo.push({ ...documento, id, guardadoEn: new Date().toISOString() });
 	guardarBiblioteca();
-	return true;
+	return id;
 }
 
 /**
- * Quita el documento de ejemplo compartido — y con él, TODOS los recortes
- * por campo que se hubieran hecho sobre ese documento: un recorte guarda
- * solo sus 4 coordenadas más la imagen ya cortada, no una referencia al
- * documento de origen, así que sin ese documento esas coordenadas ya no
- * significan nada recuperable. Sin confirmación, mismo criterio que
- * `borrarRecorteEjemplo`: rehacer esto cuesta segundos.
+ * Quita UNA instancia de documento de ejemplo — y con ella, TODOS los
+ * recortes por campo que se hubieran hecho sobre ESA instancia en particular
+ * (`recortesPorDocumento[idDocumento]` completo): un recorte guarda solo sus
+ * 4 coordenadas más la imagen ya cortada, no una referencia al documento de
+ * origen, así que sin esa instancia esas coordenadas ya no significan nada
+ * recuperable. Las DEMÁS instancias del tipo (y sus recortes) no se tocan.
  */
-export function borrarDocumentoEjemploCompartido(idTipo: string): boolean {
+export function borrarDocumentoEjemplo(idTipo: string, idDocumento: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	tipo.documentoEjemplo = null;
-	tipo.recortesEjemplo = {};
+	const i = tipo.documentosEjemplo.findIndex((d) => d.id === idDocumento);
+	if (i === -1) return false;
+	tipo.documentosEjemplo.splice(i, 1);
+	delete tipo.recortesPorDocumento[idDocumento];
 	guardarBiblioteca();
 	return true;
 }
@@ -1042,12 +1096,11 @@ export function borrarDocumentoEjemploCompartido(idTipo: string): boolean {
 /**
  * "Guardar" del modal de recorte (`RecortarEjemploCampo.svelte`): persiste
  * el recorte (coordenadas + la imagen YA RECORTADA, ver `EjemploGuardado`)
- * para ESE campo del tipo documental — siempre sobre el documento compartido
- * que ya se haya subido con `guardarDocumentoEjemploCompartido`. Sobreescribe
- * si ya había uno guardado — solo importa el más reciente, no hay historial
- * de recortes.
+ * para ESE campo, sobre ESA instancia de documento. Sobreescribe si ya había
+ * uno guardado para ese mismo par (documento, campo) — solo importa el más
+ * reciente, no hay historial de recortes.
  *
- * Se indexa por NOMBRE del campo, no por `campo.id`: `leerCampo()` REGENERA
+ * El campo se indexa por NOMBRE, no por `campo.id`: `leerCampo()` REGENERA
  * los ids de campo en cada lectura de la Biblioteca (a propósito, para que
  * dos pestañas escribiendo no choquen con ids repetidos — ver su comentario),
  * así que un id es estable solo mientras dura la pestaña, nunca entre
@@ -1060,29 +1113,35 @@ export function borrarDocumentoEjemploCompartido(idTipo: string): boolean {
  */
 export function guardarRecorteEjemplo(
 	idTipo: string,
+	idDocumento: string,
 	nombreCampo: string,
 	ejemplo: { recorte: Recorte; imagenDataUrl: string }
 ): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	tipo.recortesEjemplo[nombreCampo] = { ...ejemplo, guardadoEn: new Date().toISOString() };
+	if (!tipo.recortesPorDocumento[idDocumento]) tipo.recortesPorDocumento[idDocumento] = {};
+	tipo.recortesPorDocumento[idDocumento][nombreCampo] = {
+		...ejemplo,
+		guardadoEn: new Date().toISOString()
+	};
 	guardarBiblioteca();
 	return true;
 }
 
 /**
- * Quita el ejemplo guardado de un campo — vuelve a quedar sin recorte
- * asignado, disponible para recortarse de nuevo sobre el mismo documento
- * compartido. A diferencia de `borrarDocumentoEjemploCompartido` (que
- * también llama a esto, en cascada, para cada campo), este SÍ pasa por una
+ * Quita el ejemplo guardado de un campo para UNA instancia de documento en
+ * particular — vuelve a quedar sin recorte asignado en ESA instancia,
+ * disponible para recortarse de nuevo; las demás instancias no se tocan. A
+ * diferencia de `borrarDocumentoEjemplo` (que también llama a esto, en
+ * cascada, para cada campo de esa instancia), este SÍ pasa por una
  * confirmación en la UI (`ConfirmarAccion`, botón de basura junto al lápiz
- * de "Editar") — cambio pedido el 2026-09-04: la función en sí no valida
- * nada, la confirmación es responsabilidad de quien la llama.
+ * de "Editar") — la función en sí no valida nada, la confirmación es
+ * responsabilidad de quien la llama.
  */
-export function borrarRecorteEjemplo(idTipo: string, nombreCampo: string): boolean {
+export function borrarRecorteEjemplo(idTipo: string, idDocumento: string, nombreCampo: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	delete tipo.recortesEjemplo[nombreCampo];
+	delete tipo.recortesPorDocumento[idDocumento]?.[nombreCampo];
 	guardarBiblioteca();
 	return true;
 }

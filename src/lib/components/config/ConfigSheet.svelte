@@ -48,7 +48,7 @@
 		agregarCampoEnCaptura,
 		agregarValorLista,
 		alternarEjemploDocumental,
-		borrarDocumentoEjemploCompartido,
+		borrarDocumentoEjemplo,
 		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
@@ -122,26 +122,40 @@
 	// El recorte que se está por quitar en Calibración, mientras la
 	// confirmación está abierta: dejar un campo sin recorte asignado es una
 	// decisión que vale la pena confirmar, a diferencia de simplemente
-	// rehacerlo (que ya cubre "Editar" sin pasar por aquí).
-	let recorteAQuitar = $state<{ idTipo: string; nombreCampo: string } | null>(null);
+	// rehacerlo (que ya cubre "Editar" sin pasar por aquí). Necesita el id
+	// de la instancia de documento, no solo el del tipo: desde el 2026-09-04
+	// un tipo puede tener VARIAS, cada una con sus propios recortes.
+	let recorteAQuitar = $state<{
+		idTipo: string;
+		idDocumento: string;
+		nombreCampo: string;
+	} | null>(null);
 
 	function confirmarQuitarRecorte() {
-		if (recorteAQuitar) borrarRecorteEjemplo(recorteAQuitar.idTipo, recorteAQuitar.nombreCampo);
+		if (recorteAQuitar) {
+			borrarRecorteEjemplo(recorteAQuitar.idTipo, recorteAQuitar.idDocumento, recorteAQuitar.nombreCampo);
+		}
 		recorteAQuitar = null;
 	}
 
-	// Igual que arriba, pero para el documento de ejemplo compartido — con
-	// más razón todavía: se lleva en cascada los recortes de TODOS los
-	// campos, no solo el de uno (cambio pedido el 2026-09-04, junto con
-	// quitar el botón de basura duplicado que vivía junto a "Cargar ejemplo
-	// documental" — quedó solo el de la tarjeta del archivo). No hace falta
-	// guardar más que un booleano: solo hay un documento por tipo, y
-	// `tipoEnCalibracion` ya identifica cuál mientras la pantalla sigue abierta.
-	let documentoEjemploAQuitar = $state(false);
+	// Igual que arriba, pero para UNA instancia completa de documento de
+	// ejemplo — con más razón todavía: se lleva en cascada los recortes de
+	// TODOS los campos de ESA instancia, no solo el de uno. Guarda el id de
+	// la instancia (no un booleano): desde el 2026-09-04 puede haber varias
+	// a la vez, hay que saber cuál se está por borrar.
+	let documentoAQuitar = $state<string | null>(null);
 
 	function confirmarQuitarDocumentoEjemplo() {
-		if (tipoEnCalibracion) borrarDocumentoEjemploCompartido(tipoEnCalibracion.id);
-		documentoEjemploAQuitar = false;
+		if (tipoEnCalibracion && documentoAQuitar) {
+			borrarDocumentoEjemplo(tipoEnCalibracion.id, documentoAQuitar);
+			// Si la instancia borrada era la seleccionada, la selección pasa a
+			// la primera que quede (o a ninguna si ya no queda ninguna) — sin
+			// esto, la pantalla se quedaría "mirando" un id que ya no existe.
+			if (documentoSeleccionadoId === documentoAQuitar) {
+				documentoSeleccionadoId = tipoEnCalibracion.documentosEjemplo[0]?.id ?? null;
+			}
+		}
+		documentoAQuitar = null;
 	}
 
 	// Si el formulario de "Nuevo campo de extracción" del paso 2 está abierto.
@@ -527,14 +541,26 @@
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
+	// Qué instancia de documento está activa en el selector de arriba —
+	// desde el 2026-09-04 un tipo puede tener VARIAS, y los campos de abajo
+	// se recortan siempre sobre la que esté aquí. `abrirCalibracion` la fija
+	// a la primera que haya (o a ninguna) cada vez que se entra a esta
+	// pantalla; agregar o quitar una instancia también la actualiza — ver
+	// esos puntos para no dejarla apuntando a un id que ya no existe.
+	let documentoSeleccionadoId = $state<string | null>(null);
+	const documentoSeleccionado = $derived(
+		documentoSeleccionadoId
+			? (tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentoSeleccionadoId) ?? null)
+			: null
+	);
 
-	// El modal de "Cargar ejemplo documental" — desde el 2026-09-04 sube UN
-	// documento compartido por todo el tipo, no uno por campo.
+	// El modal de "Cargar ejemplo documental" — AGREGA una instancia más a
+	// `documentosEjemplo` del tipo (2026-09-04: pueden ser varias).
 	let modalDocumentoAbierto = $state(false);
-	// El modal de recorte por campo, sobre el documento ya subido. Hace falta
-	// saber para qué campo se abrió — por NOMBRE, no por id (ver el comentario
-	// de `recortesEjemplo` en configuracion.svelte.ts: el id de un campo no
-	// sobrevive un refresh).
+	// El modal de recorte por campo, sobre la instancia SELECCIONADA. Hace
+	// falta saber para qué campo se abrió — por NOMBRE, no por id (ver el
+	// comentario de `recortesPorDocumento` en configuracion.svelte.ts: el id
+	// de un campo no sobrevive un refresh).
 	let modalRecorteAbierto = $state(false);
 	let campoRecorteNombre = $state<string | null>(null);
 
@@ -548,6 +574,10 @@
 		calibrandoId = id;
 		calibracionExpandida = true;
 		vista = 'calibracion';
+		// Arranca en la primera instancia que haya, para no aterrizar en un
+		// selector vacío si ya existen documentos de una visita anterior.
+		documentoSeleccionadoId =
+			tiposDocumentales.find((t) => t.id === id)?.documentosEjemplo[0]?.id ?? null;
 	}
 
 	function continuar() {
@@ -1222,144 +1252,168 @@
 					<!-- Réplica de la captura compartida; sin frame de Figma que
 					     verificar. El pedido de esta iteración es el árbol de la
 					     izquierda — esto de aquí seguía siendo la parte "todo lo demás".
-					     Cambio grande el 2026-09-04: el documento de ejemplo se sube UNA
-					     vez por tipo documental (`CargarDocumentoEjemplo`), no una vez por
-					     campo — cada campo solo recorta sobre ese mismo documento
-					     (`RecortarEjemploCampo`), sin volver a pedir el archivo. -->
+					     Cambio grande el 2026-09-04 (segunda ronda, misma mañana): un
+					     tipo documental puede tener VARIAS instancias de documento de
+					     ejemplo (`documentosEjemplo`), cada una con sus propios recortes
+					     por campo (`recortesPorDocumento`) — antes de esto era UN
+					     documento compartido por todo el tipo, y antes de eso uno por
+					     campo. El selector de chips de abajo elige cuál instancia está
+					     activa; los campos siempre recortan sobre ESA. -->
 					<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-						Carga y etiqueta un documento de ejemplo para asociar sus valores a los campos
+						Carga y etiqueta uno o más documentos de ejemplo para asociar sus valores a los campos
 						configurados. Estos ejemplos ayudan al motor de IA a mejorar la precisión y el nivel de
 						confianza durante la extracción de información.
 					</p>
 
 					{#if tipoEnCalibracion}
 						<div class="mt-8 max-w-3xl">
-							<div class="border-b border-border pb-4">
-								<!-- Deshabilitado con un documento ya subido: para reemplazarlo
-								     hay que quitarlo primero (el botón de la tarjeta de abajo) —
-								     quitarlo también vacía los recortes de todos los campos, ver
-								     `borrarDocumentoEjemploCompartido`. -->
-								<Button
-									variant="outline"
-									size="sm"
-									disabled={Boolean(tipoEnCalibracion.documentoEjemplo)}
-									onclick={() => (modalDocumentoAbierto = true)}
-								>
-									Cargar ejemplo documental
-								</Button>
-
-								{#if tipoEnCalibracion.documentoEjemplo}
-									<!-- Mismo lenguaje visual que las tarjetas de archivo de
-									     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar).
-									     El botón de basura vivía ANTES duplicado —uno aquí, otro
-									     junto a "Cargar ejemplo documental"— con la misma función;
-									     se dejó solo este (cambio pedido el 2026-09-04), y ahora
-									     pide confirmar antes de borrar, dado lo destructivo que es
-									     (se lleva los recortes de TODOS los campos). -->
-									<div
-										class="mt-4 flex max-w-lg items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+							<!-- Selector de instancias: un chip por documento ya subido,
+							     más un "+" para agregar otro. Sin frame de Figma — no hay
+							     mockup de esta parte, se diseñó desde cero para el pedido
+							     de "varias instancias". -->
+							<div class="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+								{#each tipoEnCalibracion.documentosEjemplo as doc (doc.id)}
+									<button
+										type="button"
+										aria-pressed={documentoSeleccionadoId === doc.id}
+										class="max-w-48 truncate rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {documentoSeleccionadoId ===
+										doc.id
+											? 'border-primary bg-primary/10 text-primary'
+											: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
+										onclick={() => (documentoSeleccionadoId = doc.id)}
 									>
-										<span
-											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-										>
-											<FileIcon />
-										</span>
-										<div class="min-w-0 flex-1">
-											<p class="truncate text-sm font-medium text-foreground">
-												{tipoEnCalibracion.documentoEjemplo.nombre}
-											</p>
-											<p class="text-xs text-muted-foreground">
-												{tipoEnCalibracion.documentoEjemplo.tipo} · {formatearTamano(
-													tipoEnCalibracion.documentoEjemplo.tamanoBytes
-												)}
-											</p>
-										</div>
-										<button
-											type="button"
-											aria-label="Quitar el documento de ejemplo"
-											class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
-											onclick={() => (documentoEjemploAQuitar = true)}
-										>
-											<Trash2 class="size-3.5" />
-										</button>
-									</div>
+										{doc.nombre}
+									</button>
+								{/each}
+								{#if tipoEnCalibracion.documentosEjemplo.length === 0}
+									<!-- Sin ningún documento todavía: el botón con texto es más
+									     descubrible que un "+" suelto — mismo criterio que el
+									     resto del módulo para la primera acción de una lista
+									     vacía (ver "Nuevo tipo documental", "Agregar campo"). -->
+									<Button variant="outline" size="sm" onclick={() => (modalDocumentoAbierto = true)}>
+										Cargar ejemplo documental
+									</Button>
+								{:else}
+									<button
+										type="button"
+										aria-label="Agregar otro documento de ejemplo"
+										class="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+										onclick={() => (modalDocumentoAbierto = true)}
+									>
+										<CirclePlus class="size-4" />
+									</button>
 								{/if}
 							</div>
 
-							{#each tipoEnCalibracion.campos as campo (campo.id)}
-								{@const ejemplo = tipoEnCalibracion.recortesEjemplo[campo.nombre]}
-								<div class="border-b border-border py-4 last:border-0">
-									<div class="flex items-center justify-between gap-4">
-										<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
-										<div class="flex items-center gap-2">
-											{#if ejemplo}
-												<!-- Réplica del Figma: con un recorte ya guardado, el
-												     botón deja de ser "Recortar" (deshabilitado) + un
-												     "borrar" aparte, y pasa a ser un ícono de lápiz que
-												     reabre el mismo modal para rehacer el recorte —
-												     `guardarRecorteEjemplo` ya sobreescribe el anterior,
-												     así que "editar" y "recortar de nuevo" son la misma
-												     operación. Junto a él, un botón de basura para poder
-												     dejar el campo SIN recorte asignado (a diferencia de
-												     "editar", esto sí pide confirmar). -->
-												<button
-													type="button"
-													aria-label={`Editar el recorte de ${campo.nombre}`}
-													class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
-													onclick={() => {
-														campoRecorteNombre = campo.nombre;
-														modalRecorteAbierto = true;
-													}}
-												>
-													<Pencil class="size-4" />
-												</button>
-												<button
-													type="button"
-													aria-label={`Quitar el recorte de ${campo.nombre}`}
-													class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
-													onclick={() =>
-														(recorteAQuitar = { idTipo: tipoEnCalibracion.id, nombreCampo: campo.nombre })}
-												>
-													<Trash2 class="size-4" />
-												</button>
-											{:else}
-												<!-- Deshabilitado sin documento de ejemplo: nada sobre
-												     qué recortar todavía. -->
-												<Button
-													variant="outline"
-													size="sm"
-													disabled={!tipoEnCalibracion.documentoEjemplo}
-													onclick={() => {
-														campoRecorteNombre = campo.nombre;
-														modalRecorteAbierto = true;
-													}}
-												>
-													Recortar
-												</Button>
-											{/if}
-										</div>
+							{#if documentoSeleccionado}
+								{@const doc = documentoSeleccionado}
+								<!-- Mismo lenguaje visual que las tarjetas de archivo de
+								     `DocumentoRow.svelte` (icono + nombre + subtítulo +
+								     quitar), ahora para la instancia SELECCIONADA nada más. -->
+								<div
+									class="mt-4 flex max-w-lg items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+								>
+									<span
+										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
+									>
+										<FileIcon />
+									</span>
+									<div class="min-w-0 flex-1">
+										<p class="truncate text-sm font-medium text-foreground">{doc.nombre}</p>
+										<p class="text-xs text-muted-foreground">
+											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}
+										</p>
 									</div>
-
-									{#if ejemplo}
-										<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
-										     el recorte YA HECHO como imagen — nunca un texto, porque
-										     aquí no corrió ningún OCR todavía. El documento de origen
-										     ya se muestra una sola vez arriba (2026-09-04), así que
-										     aquí no se repite su tarjeta. -->
-										<div class="mt-4 max-w-lg">
-											<p class="mb-2 text-xs font-medium text-muted-foreground">
-												Texto seleccionado
-											</p>
-											<img
-												src={ejemplo.imagenDataUrl}
-												alt={`Recorte guardado para ${campo.nombre}`}
-												class="max-h-40 max-w-full rounded-lg border border-border object-contain"
-											/>
-										</div>
-									{/if}
+									<button
+										type="button"
+										aria-label={`Quitar el documento "${doc.nombre}"`}
+										class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+										onclick={() => (documentoAQuitar = doc.id)}
+									>
+										<Trash2 class="size-3.5" />
+									</button>
 								</div>
-							{/each}
+
+								{#each tipoEnCalibracion.campos as campo (campo.id)}
+									{@const ejemplo = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]}
+									<div class="border-b border-border py-4 last:border-0">
+										<div class="flex items-center justify-between gap-4">
+											<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
+											<div class="flex items-center gap-2">
+												{#if ejemplo}
+													<!-- Réplica del Figma: con un recorte ya guardado, el
+													     botón deja de ser "Recortar" y pasa a ser un ícono
+													     de lápiz que reabre el mismo modal para rehacer el
+													     recorte — `guardarRecorteEjemplo` ya sobreescribe
+													     el anterior, así que "editar" y "recortar de nuevo"
+													     son la misma operación. Junto a él, un botón de
+													     basura para poder dejar el campo SIN recorte
+													     asignado EN ESTA INSTANCIA (a diferencia de
+													     "editar", esto sí pide confirmar). -->
+													<button
+														type="button"
+														aria-label={`Editar el recorte de ${campo.nombre}`}
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+														onclick={() => {
+															campoRecorteNombre = campo.nombre;
+															modalRecorteAbierto = true;
+														}}
+													>
+														<Pencil class="size-4" />
+													</button>
+													<button
+														type="button"
+														aria-label={`Quitar el recorte de ${campo.nombre}`}
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+														onclick={() =>
+															(recorteAQuitar = {
+																idTipo: tipoEnCalibracion.id,
+																idDocumento: doc.id,
+																nombreCampo: campo.nombre
+															})}
+													>
+														<Trash2 class="size-4" />
+													</button>
+												{:else}
+													<Button
+														variant="outline"
+														size="sm"
+														onclick={() => {
+															campoRecorteNombre = campo.nombre;
+															modalRecorteAbierto = true;
+														}}
+													>
+														Recortar
+													</Button>
+												{/if}
+											</div>
+										</div>
+
+										{#if ejemplo}
+											<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
+											     el recorte YA HECHO como imagen — nunca un texto, porque
+											     aquí no corrió ningún OCR todavía. El documento de origen
+											     ya se muestra arriba (una vez por instancia seleccionada),
+											     así que aquí no se repite su tarjeta. -->
+											<div class="mt-4 max-w-lg">
+												<p class="mb-2 text-xs font-medium text-muted-foreground">
+													Texto seleccionado
+												</p>
+												<img
+													src={ejemplo.imagenDataUrl}
+													alt={`Recorte guardado para ${campo.nombre}`}
+													class="max-h-40 max-w-full rounded-lg border border-border object-contain"
+												/>
+											</div>
+										{/if}
+									</div>
+								{/each}
+							{:else}
+								<p class="mt-6 text-sm text-muted-foreground">
+									Agrega un documento de ejemplo para empezar a recortar sus campos.
+								</p>
+							{/if}
 						</div>
 					{/if}
 				{:else if borrador.paso === 1}
@@ -2014,20 +2068,22 @@
 	onCerrar={() => (recorteAQuitar = null)}
 />
 
-<!-- Más grave que quitar un solo recorte: esto se lleva TODOS los de este
-     tipo documental de un golpe, el mensaje lo dice explícito. -->
+<!-- Más grave que quitar un solo recorte: esto se lleva TODOS los de ESTA
+     instancia de un golpe, el mensaje lo dice explícito — las demás
+     instancias del tipo (si hay) no se tocan. -->
 <ConfirmarAccion
-	abierto={documentoEjemploAQuitar}
-	titulo="¿Quitar el documento de ejemplo?"
-	mensaje={`Se quitará "${tipoEnCalibracion?.documentoEjemplo?.nombre ?? ''}" junto con TODOS los recortes ya guardados sobre él, en todos los campos. Esta acción no se puede deshacer.`}
+	abierto={documentoAQuitar !== null}
+	titulo="¿Quitar este documento de ejemplo?"
+	mensaje={`Se quitará "${tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentoAQuitar)?.nombre ?? ''}" junto con TODOS los recortes ya guardados sobre él, en todos los campos. Esta acción no se puede deshacer.`}
 	etiquetaConfirmar="Sí, quitar"
 	onConfirmar={confirmarQuitarDocumentoEjemplo}
-	onCerrar={() => (documentoEjemploAQuitar = false)}
+	onCerrar={() => (documentoAQuitar = null)}
 />
 
 <CargarDocumentoEjemplo
 	abierto={modalDocumentoAbierto}
 	tipoId={calibrandoId}
+	onGuardado={(idNuevo) => (documentoSeleccionadoId = idNuevo)}
 	onCerrar={() => (modalDocumentoAbierto = false)}
 />
 
@@ -2035,9 +2091,10 @@
 	abierto={modalRecorteAbierto}
 	tipoId={calibrandoId}
 	campoNombre={campoRecorteNombre}
-	documento={tipoEnCalibracion?.documentoEjemplo ?? null}
+	documento={documentoSeleccionado}
 	recorteExistente={(campoRecorteNombre &&
-		tipoEnCalibracion?.recortesEjemplo[campoRecorteNombre]?.recorte) ||
+		documentoSeleccionado &&
+		tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte) ||
 		null}
 	onCerrar={() => (modalRecorteAbierto = false)}
 />
