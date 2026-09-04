@@ -1,139 +1,45 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
-	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Crop from '@lucide/svelte/icons/crop';
 	import Save from '@lucide/svelte/icons/save';
-	import { guardarRecorteEjemplo, type Recorte } from '$lib/state/configuracion.svelte';
+	import {
+		guardarRecorteEjemplo,
+		type Recorte,
+		type DocumentoEjemploCompartido
+	} from '$lib/state/configuracion.svelte';
 
 	let {
 		abierto = false,
 		tipoId = null,
 		campoNombre = null,
+		documento = null,
 		onCerrar
 	}: {
 		abierto?: boolean;
-		/** A qué tipo documental y campo pertenece el "Cargar ejemplo
-		 *  documental" que abrió este modal — es lo que "Guardar" necesita para
-		 *  saber DÓNDE persistir las 4 coordenadas. El campo se identifica por
-		 *  NOMBRE, no por id (ver `guardarRecorteEjemplo`: el id de un campo no
-		 *  sobrevive un refresh, el nombre sí). `null` no debería pasar en la
-		 *  práctica (el botón siempre vive dentro de un campo real), pero se
-		 *  cubre por si acaso: "Guardar" simplemente no hace nada sin ambos. */
+		/** A qué tipo documental y campo pertenece el recorte que "Guardar" va a
+		 *  persistir. El campo se identifica por NOMBRE, no por id (ver
+		 *  `guardarRecorteEjemplo`: el id de un campo no sobrevive un refresh). */
 		tipoId?: string | null;
 		campoNombre?: string | null;
+		/** El documento de ejemplo YA SUBIDO para este tipo documental (2026-09-04:
+		 *  es compartido por todos los campos) — este modal ya no sube nada, solo
+		 *  recorta sobre lo que `documentoEjemplo` traiga. `null` no debería pasar
+		 *  en la práctica: el botón que abre este modal viene deshabilitado sin
+		 *  documento subido. */
+		documento?: DocumentoEjemploCompartido | null;
 		onCerrar: () => void;
 	} = $props();
 
-	// Reinicia TODO al cerrar — reabrir debe empezar siempre desde el dropzone,
-	// nunca con el documento de la vez anterior todavía puesto.
+	// Reinicia el recorte y el zoom al cerrar — reabrir debe empezar siempre en
+	// blanco, nunca con el rectángulo de la vez anterior todavía puesto.
 	function cerrar() {
-		limpiarArchivo();
-		onCerrar();
-	}
-
-	// ── Selección de archivo (mismo patrón que CargaDocumentalPanel) ───────────
-	let fileInput = $state<HTMLInputElement>();
-	let files = $state<FileList | null>(null);
-	let arrastrando = $state(false);
-	let archivo = $state<File | null>(null);
-	let urlImagen = $state<string | null>(null);
-	let esPdf = $state(false);
-	let cargandoPdf = $state(false);
-	let errorCarga = $state('');
-
-	$effect(() => {
-		if (files && files.length > 0) {
-			cargarArchivo(files[0]);
-			files = null;
-			// Igual que en CargaDocumentalPanel: sin esto, elegir el MISMO archivo
-			// dos veces seguidas no dispara `change` la segunda vez.
-			if (fileInput) fileInput.value = '';
-		}
-	});
-
-	function limpiarArchivo() {
-		if (urlImagen) URL.revokeObjectURL(urlImagen);
-		archivo = null;
-		urlImagen = null;
-		esPdf = false;
-		errorCarga = '';
-		zoom = 1;
 		modoRecorte = false;
 		recorte = null;
-	}
-
-	async function cargarArchivo(f: File) {
-		limpiarArchivo();
-		archivo = f;
-		esPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
-		if (esPdf) {
-			await renderizarPdf(f);
-		} else {
-			urlImagen = URL.createObjectURL(f);
-		}
-	}
-
-	function manejarDrop(evento: DragEvent) {
-		evento.preventDefault();
-		arrastrando = false;
-		const soltado = evento.dataTransfer?.files?.[0];
-		if (soltado) cargarArchivo(soltado);
-	}
-
-	// ── Render de PDF (página 1) ────────────────────────────────────────────
-	// pdfjs-dist se importa DINÁMICO: es una librería pesada que la mayoría de
-	// las aperturas de este modal (las que suben una imagen) no necesita nunca.
-	//
-	// OJO con la versión mayor en package.json: pdfjs-dist@6 exige Node >=22,
-	// y el server de CSI corre Node 20.19.5 — medido en carne propia, el primer
-	// deploy con pdfjs-dist@6 murió en `npm ci` con EBADENGINE y dejó el front
-	// en el build viejo, en silencio (el webhook responde 200 igual, haya
-	// fallado el build o no — hay que verificar el bundle servido, no solo el
-	// código de respuesta del hook). Se fijó en pdfjs-dist@4, que solo pide
-	// Node >=20 y no lleva la CVE de ejecución de JS arbitraria que sí tiene
-	// pdfjs-dist@5.6.83–6.2.107 (GHSA-hq66-cqwq-w95j) — relevante aquí porque
-	// este modal renderiza justo el tipo de archivo que esa CVE explota. NO
-	// subir de mayor sin antes confirmar la versión de Node del server.
-	let canvasEl = $state<HTMLCanvasElement>();
-	// Solo para el caso imagen: hace falta una referencia al <img> para leer su
-	// resolución REAL (`naturalWidth/Height`) al recortar — la que ocupa en
-	// pantalla puede ser menor por el `max-w-full`. El PDF no la necesita:
-	// `canvasEl.width/height` YA son su resolución real, se fijan a mano en
-	// `renderizarPdf`.
-	let imgEl = $state<HTMLImageElement>();
-
-	async function renderizarPdf(f: File) {
-		cargandoPdf = true;
-		try {
-			const pdfjsLib = await import('pdfjs-dist');
-			// Vite empaqueta el worker como asset aparte y resuelve su URL real en
-			// build — es el patrón recomendado por pdfjs-dist para bundlers ESM.
-			pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-				'pdfjs-dist/build/pdf.worker.min.mjs',
-				import.meta.url
-			).href;
-			const buffer = await f.arrayBuffer();
-			const documento = await pdfjsLib.getDocument({ data: buffer }).promise;
-			const pagina = await documento.getPage(1);
-			const viewport = pagina.getViewport({ scale: 1.75 });
-			await tick(); // el <canvas> nace con el {#if esPdf}; hay que esperar a que exista
-			const canvas = canvasEl;
-			const ctx = canvas?.getContext('2d');
-			if (!canvas || !ctx) return;
-			canvas.width = viewport.width;
-			canvas.height = viewport.height;
-			await pagina.render({ canvasContext: ctx, viewport }).promise;
-		} catch {
-			errorCarga = 'No se pudo mostrar este PDF. Intenta con otro archivo.';
-			esPdf = false;
-		} finally {
-			cargandoPdf = false;
-		}
+		zoom = 1;
+		onCerrar();
 	}
 
 	// ── Zoom ─────────────────────────────────────────────────────────────────
@@ -142,12 +48,14 @@
 
 	// ── Recorte: dibujar / mover / redimensionar un rectángulo ──────────────
 	// Todo en PORCENTAJE del contenedor, no en píxeles: así el rectángulo se
-	// mantiene correcto sin importar el zoom. Dibujarlo y moverlo/redimensionarlo
-	// sigue sin disparar nada por sí solo —eso sigue para cuando se platique el
-	// menú completo—, pero "Guardar" (abajo) sí persiste las 4 coordenadas.
+	// mantiene correcto sin importar el zoom.
 	let modoRecorte = $state(false);
 	let recorte = $state<Recorte | null>(null);
 	let contenedorEl = $state<HTMLDivElement>();
+	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
+	// imagen original tal cual) — a diferencia del modal de carga, aquí ya no
+	// hace falta distinguir PDF de imagen: siempre se muestra como `<img>`.
+	let imgEl = $state<HTMLImageElement>();
 	let arrastre: 'nuevo' | 'mover' | 'nw' | 'ne' | 'sw' | 'se' | null = null;
 	let inicioPuntero = { x: 0, y: 0 };
 	let recorteAlIniciar: Recorte | null = null;
@@ -174,29 +82,16 @@
 	 * PNG. Es lo que "Guardar" persiste como prueba de qué se seleccionó — a
 	 * propósito NO un texto: en este punto nunca corrió ningún OCR sobre el
 	 * documento, así que mostrar un "texto extraído" sería inventar un
-	 * resultado que no existe. PNG y no JPEG porque el contenido típico
-	 * (texto sobre fondo claro, alto contraste) comprime igual o mejor sin
-	 * pérdida, y aquí sí importa que se vea nítido.
+	 * resultado que no existe.
 	 *
-	 * Dibuja directo desde el <canvas> del PDF o el <img> de la imagen —
-	 * ambos ya están completamente cargados para cuando existe un `recorte`
-	 * que guardar, así que no hace falta esperar nada más.
+	 * Lee de `imgEl.naturalWidth/Height` (NO el tamaño mostrado en pantalla,
+	 * que puede ser menor por el `max-w-full`) para mapear el porcentaje del
+	 * recorte a los píxeles reales del documento compartido.
 	 */
 	function generarImagenRecorte(r: Recorte): string | null {
-		let fuente: CanvasImageSource;
-		let anchoFuente: number;
-		let altoFuente: number;
-		if (esPdf && canvasEl) {
-			fuente = canvasEl;
-			anchoFuente = canvasEl.width;
-			altoFuente = canvasEl.height;
-		} else if (imgEl && imgEl.naturalWidth > 0) {
-			fuente = imgEl;
-			anchoFuente = imgEl.naturalWidth;
-			altoFuente = imgEl.naturalHeight;
-		} else {
-			return null;
-		}
+		if (!imgEl || imgEl.naturalWidth === 0) return null;
+		const anchoFuente = imgEl.naturalWidth;
+		const altoFuente = imgEl.naturalHeight;
 		const sx = (r.x / 100) * anchoFuente;
 		const sy = (r.y / 100) * altoFuente;
 		const sw = (r.w / 100) * anchoFuente;
@@ -206,28 +101,18 @@
 		destino.height = Math.max(1, Math.round(sh));
 		const ctx = destino.getContext('2d');
 		if (!ctx) return null;
-		ctx.drawImage(fuente, sx, sy, sw, sh, 0, 0, destino.width, destino.height);
+		ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, destino.width, destino.height);
 		return destino.toDataURL('image/png');
 	}
 
 	// Cerrar el modal al guardar es la confirmación: vuelve a la lista de
 	// campos de "Calibración" de la que salió, mismo criterio que "Guardar
-	// configuración" del wizard (que regresa a la Biblioteca sin un toast
-	// aparte). Un mensaje de éxito flotando ENCIMA de un modal que ya se cerró
-	// no se alcanzaría a ver.
+	// configuración" del wizard.
 	function guardarCopia() {
-		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0 || !archivo) return;
+		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
 		const imagenDataUrl = generarImagenRecorte(recorte);
 		if (!imagenDataUrl) return;
-		const guardado = guardarRecorteEjemplo(tipoId, campoNombre, {
-			recorte,
-			documento: {
-				nombre: archivo.name,
-				tipo: esPdf ? 'PDF' : (archivo.type.split('/')[1] ?? archivo.name.split('.').pop() ?? '').toUpperCase(),
-				tamanoBytes: archivo.size
-			},
-			imagenDataUrl
-		});
+		const guardado = guardarRecorteEjemplo(tipoId, campoNombre, { recorte, imagenDataUrl });
 		if (!guardado) return;
 		cerrar();
 	}
@@ -321,18 +206,17 @@
 			class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/40"
 		/>
 		<DialogPrimitive.Content
-			data-testid="modal-ejemplo-documental"
+			data-testid="modal-recortar-ejemplo"
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[88vh] w-[92vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-lg"
 		>
 			<div class="flex items-center gap-3 border-b border-border px-6 py-4">
 				<div class="min-w-0 flex-1">
 					<DialogPrimitive.Title class="truncate text-sm font-medium text-foreground">
-						{archivo?.name ?? 'Cargar ejemplo documental'}
+						{documento?.nombre ?? 'Recortar ejemplo'}
 					</DialogPrimitive.Title>
 					<DialogPrimitive.Description class="mt-1 text-xs text-muted-foreground">
 						Utiliza la herramienta de recorte para seleccionar en el documento la información que
-						se necesita extraer y leer. El texto reconocido por OCR se mostrará automáticamente
-						para su revisión.
+						se necesita extraer para "{campoNombre}".
 					</DialogPrimitive.Description>
 				</div>
 				<DialogPrimitive.Close aria-label="Cerrar" onclick={cerrar}>
@@ -341,49 +225,7 @@
 			</div>
 
 			<div class="relative min-h-0 flex-1 overflow-auto bg-muted/40 p-6">
-				{#if !archivo}
-					<!-- Mismo lenguaje visual que "Carga documental" del home, con el
-					     alcance recortado a lo que aquí aplica: un solo archivo, y solo
-					     los tipos que se pueden RENDERIZAR para recortar sobre ellos
-					     (PDF e imagen — un DOCX/XLSX no tiene una página que mostrar). -->
-					<button
-						type="button"
-						class={[
-							'flex h-64 w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-4 transition-colors',
-							arrastrando ? 'border-primary bg-muted' : 'border-border bg-background'
-						]}
-						onclick={() => fileInput?.click()}
-						ondragover={(e) => {
-							e.preventDefault();
-							arrastrando = true;
-						}}
-						ondragleave={() => (arrastrando = false)}
-						ondrop={manejarDrop}
-					>
-						<span class="flex size-8 items-center justify-center rounded-lg border border-border bg-card">
-							<FolderLibraryIcon />
-						</span>
-						<div class="flex flex-col items-center gap-0.5 text-center">
-							<p class="text-sm font-medium text-foreground">
-								Arrastra y suelta tu documento de ejemplo aquí o selecciona un archivo
-							</p>
-							<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG | Max 20 MB</p>
-						</div>
-						<input
-							bind:this={fileInput}
-							bind:files
-							type="file"
-							class="hidden"
-							accept=".pdf,.jpg,.jpeg,.png"
-						/>
-						<span class="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-secondary-foreground">
-							Buscar archivo
-						</span>
-					</button>
-					{#if errorCarga}
-						<p class="mt-3 text-center text-xs text-destructive">{errorCarga}</p>
-					{/if}
-				{:else}
+				{#if documento}
 					<div class="flex justify-center pb-16">
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -395,17 +237,13 @@
 							onpointerup={terminarPuntero}
 							onpointercancel={terminarPuntero}
 						>
-							{#if esPdf}
-								<canvas bind:this={canvasEl} class="block max-w-full"></canvas>
-							{:else if urlImagen}
-								<img bind:this={imgEl} src={urlImagen} alt="Documento de ejemplo" class="block max-w-full select-none" draggable="false" />
-							{/if}
-
-							{#if cargandoPdf}
-								<div class="absolute inset-0 flex items-center justify-center bg-white/70">
-									<p class="text-sm text-muted-foreground">Cargando documento…</p>
-								</div>
-							{/if}
+							<img
+								bind:this={imgEl}
+								src={documento.dataUrl}
+								alt="Documento de ejemplo"
+								class="block max-w-full select-none"
+								draggable="false"
+							/>
 
 							{#if recorte}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -430,8 +268,7 @@
 						</div>
 					</div>
 
-					<!-- Barra flotante: mismo lugar y forma que la captura compartida.
-					     Sin frame de Figma. -->
+					<!-- Barra flotante: mismo lugar y forma que el resto del módulo. -->
 					<div
 						class="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#0f172a] px-2 py-2 text-white shadow-lg"
 					>

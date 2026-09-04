@@ -37,7 +37,8 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import CargarEjemploDocumental from './CargarEjemploDocumental.svelte';
+	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
+	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
@@ -46,6 +47,7 @@
 		agregarCampoEnCaptura,
 		agregarValorLista,
 		alternarEjemploDocumental,
+		borrarDocumentoEjemploCompartido,
 		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
@@ -500,12 +502,15 @@
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
 
-	// El modal de "Cargar ejemplo documental" (subir + recortar). Desde que
-	// "Guardar" persiste el recorte, sí hace falta saber para qué campo se
-	// abrió — por NOMBRE, no por id (ver el comentario de `recortesEjemplo`
-	// en configuracion.svelte.ts: el id de un campo no sobrevive un refresh).
-	let modalEjemploAbierto = $state(false);
-	let campoEjemploNombre = $state<string | null>(null);
+	// El modal de "Cargar ejemplo documental" — desde el 2026-09-04 sube UN
+	// documento compartido por todo el tipo, no uno por campo.
+	let modalDocumentoAbierto = $state(false);
+	// El modal de recorte por campo, sobre el documento ya subido. Hace falta
+	// saber para qué campo se abrió — por NOMBRE, no por id (ver el comentario
+	// de `recortesEjemplo` en configuracion.svelte.ts: el id de un campo no
+	// sobrevive un refresh).
+	let modalRecorteAbierto = $state(false);
+	let campoRecorteNombre = $state<string | null>(null);
 
 	/**
 	 * "Ejemplo documental" del menú de la tarjeta ya NO es un interruptor con
@@ -1191,9 +1196,10 @@
 					<!-- Réplica de la captura compartida; sin frame de Figma que
 					     verificar. El pedido de esta iteración es el árbol de la
 					     izquierda — esto de aquí seguía siendo la parte "todo lo demás".
-					     "Cargar ejemplo documental" ya deja de ser estático (2026-09-02):
-					     abre `CargarEjemploDocumental`, que sube un PDF o imagen y permite
-					     dibujar un recorte sobre él. -->
+					     Cambio grande el 2026-09-04: el documento de ejemplo se sube UNA
+					     vez por tipo documental (`CargarDocumentoEjemplo`), no una vez por
+					     campo — cada campo solo recorta sobre ese mismo documento
+					     (`RecortarEjemploCampo`), sin volver a pedir el archivo. -->
 					<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Carga y etiqueta un documento de ejemplo para asociar sus valores a los campos
@@ -1203,35 +1209,90 @@
 
 					{#if tipoEnCalibracion}
 						<div class="mt-8 max-w-3xl">
+							<div class="border-b border-border pb-4">
+								<div class="flex items-center gap-2">
+									<!-- Deshabilitado con un documento ya subido: para reemplazarlo
+									     hay que quitarlo primero (el botón rojo de al lado, o el de
+									     la tarjeta de abajo) — quitarlo también vacía los recortes
+									     de todos los campos, ver `borrarDocumentoEjemploCompartido`. -->
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={Boolean(tipoEnCalibracion.documentoEjemplo)}
+										onclick={() => (modalDocumentoAbierto = true)}
+									>
+										Cargar ejemplo documental
+									</Button>
+									{#if tipoEnCalibracion.documentoEjemplo}
+										<button
+											type="button"
+											aria-label="Borrar el documento de ejemplo"
+											class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+											onclick={() => borrarDocumentoEjemploCompartido(tipoEnCalibracion.id)}
+										>
+											<Trash2 class="size-3.5" />
+										</button>
+									{/if}
+								</div>
+
+								{#if tipoEnCalibracion.documentoEjemplo}
+									<!-- Mismo lenguaje visual que las tarjetas de archivo de
+									     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar). -->
+									<div
+										class="mt-4 flex max-w-lg items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+									>
+										<span
+											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
+										>
+											<FileIcon />
+										</span>
+										<div class="min-w-0 flex-1">
+											<p class="truncate text-sm font-medium text-foreground">
+												{tipoEnCalibracion.documentoEjemplo.nombre}
+											</p>
+											<p class="text-xs text-muted-foreground">
+												{tipoEnCalibracion.documentoEjemplo.tipo} · {formatearTamano(
+													tipoEnCalibracion.documentoEjemplo.tamanoBytes
+												)}
+											</p>
+										</div>
+										<button
+											type="button"
+											aria-label="Quitar el documento de ejemplo"
+											class="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+											onclick={() => borrarDocumentoEjemploCompartido(tipoEnCalibracion.id)}
+										>
+											<Minus class="size-4" />
+										</button>
+									</div>
+								{/if}
+							</div>
+
 							{#each tipoEnCalibracion.campos as campo (campo.id)}
 								{@const ejemplo = tipoEnCalibracion.recortesEjemplo[campo.nombre]}
 								<div class="border-b border-border py-4 last:border-0">
 									<div class="flex items-center justify-between gap-4">
 										<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
 										<div class="flex items-center gap-2">
-											<!-- Deshabilitado con un ejemplo ya guardado: para reemplazarlo
-											     hay que quitarlo primero (el botón rojo de al lado, o el
-											     de la tarjeta de abajo), no sobreescribirlo directo. Esto
-											     también resuelve un pendiente que quedó documentado el
-											     2026-09-02 ("reabrirlo siempre arranca en el dropzone... ni
-											     con el recorte ya guardado mostrado de vuelta"): ahora ese
-											     caso ya no es alcanzable desde la UI. -->
+											<!-- Deshabilitado sin documento de ejemplo (nada sobre qué
+											     recortar) o con un recorte ya guardado (hay que quitarlo
+											     primero, mismo criterio que el documento de arriba). -->
 											<Button
 												variant="outline"
 												size="sm"
-												disabled={Boolean(ejemplo)}
+												disabled={!tipoEnCalibracion.documentoEjemplo || Boolean(ejemplo)}
 												onclick={() => {
-													campoEjemploNombre = campo.nombre;
-													modalEjemploAbierto = true;
+													campoRecorteNombre = campo.nombre;
+													modalRecorteAbierto = true;
 												}}
 											>
-												Cargar ejemplo documental
+												Recortar
 											</Button>
 											{#if ejemplo}
-												<!-- Réplica del Figma: con un ejemplo ya guardado, un
-												     segundo botón rojo junto al de arriba borra ese ejemplo
-												     sin tener que bajar hasta la tarjeta del archivo. Mismo
-												     `borrarRecorteEjemplo()` que la X de la tarjeta. -->
+												<!-- Réplica del Figma: con un recorte ya guardado, un
+												     segundo botón rojo junto al de arriba lo borra sin
+												     tener que bajar hasta la imagen. Mismo
+												     `borrarRecorteEjemplo()` que el de abajo. -->
 												<button
 													type="button"
 													aria-label={`Borrar el ejemplo de ${campo.nombre}`}
@@ -1246,47 +1307,19 @@
 
 									{#if ejemplo}
 										<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
-										     de qué documento salió, y el recorte YA HECHO como imagen —
-										     nunca un texto, porque aquí no corrió ningún OCR todavía.
-										     Mismo lenguaje visual que las tarjetas de archivo de
-										     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar). -->
-										<div class="mt-4 flex max-w-lg flex-col gap-3">
-											<div
-												class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
-											>
-												<span
-													class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-												>
-													<FileIcon />
-												</span>
-												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm font-medium text-foreground">
-														{ejemplo.documento.nombre}
-													</p>
-													<p class="text-xs text-muted-foreground">
-														{ejemplo.documento.tipo} · {formatearTamano(ejemplo.documento.tamanoBytes)}
-													</p>
-												</div>
-												<button
-													type="button"
-													aria-label={`Quitar el ejemplo de ${campo.nombre}`}
-													class="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
-													onclick={() => borrarRecorteEjemplo(tipoEnCalibracion.id, campo.nombre)}
-												>
-													<Minus class="size-4" />
-												</button>
-											</div>
-
-											<div>
-												<p class="mb-2 text-xs font-medium text-muted-foreground">
-													Texto seleccionado
-												</p>
-												<img
-													src={ejemplo.imagenDataUrl}
-													alt={`Recorte guardado para ${campo.nombre}`}
-													class="max-h-40 max-w-full rounded-lg border border-border object-contain"
-												/>
-											</div>
+										     el recorte YA HECHO como imagen — nunca un texto, porque
+										     aquí no corrió ningún OCR todavía. El documento de origen
+										     ya se muestra una sola vez arriba (2026-09-04), así que
+										     aquí no se repite su tarjeta. -->
+										<div class="mt-4 max-w-lg">
+											<p class="mb-2 text-xs font-medium text-muted-foreground">
+												Texto seleccionado
+											</p>
+											<img
+												src={ejemplo.imagenDataUrl}
+												alt={`Recorte guardado para ${campo.nombre}`}
+												class="max-h-40 max-w-full rounded-lg border border-border object-contain"
+											/>
 										</div>
 									{/if}
 								</div>
@@ -1909,9 +1942,16 @@
 	onCerrar={() => (tipoAArchivar = null)}
 />
 
-<CargarEjemploDocumental
-	abierto={modalEjemploAbierto}
+<CargarDocumentoEjemplo
+	abierto={modalDocumentoAbierto}
 	tipoId={calibrandoId}
-	campoNombre={campoEjemploNombre}
-	onCerrar={() => (modalEjemploAbierto = false)}
+	onCerrar={() => (modalDocumentoAbierto = false)}
+/>
+
+<RecortarEjemploCampo
+	abierto={modalRecorteAbierto}
+	tipoId={calibrandoId}
+	campoNombre={campoRecorteNombre}
+	documento={tipoEnCalibracion?.documentoEjemplo ?? null}
+	onCerrar={() => (modalRecorteAbierto = false)}
 />

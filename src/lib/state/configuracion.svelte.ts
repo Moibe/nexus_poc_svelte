@@ -481,24 +481,44 @@ export function limpiarBorrador() {
 export type Recorte = { x: number; y: number; w: number; h: number };
 
 /**
- * Lo que "Guardar" persiste desde `CargarEjemploDocumental.svelte` (2026-09-03).
+ * El documento de ejemplo, compartido por TODOS los campos de un tipo
+ * documental (2026-09-04) — antes cada campo subía el suyo por separado.
+ * Se sube una sola vez desde `CargarDocumentoEjemplo.svelte`; cada campo
+ * después dibuja su propio recorte sobre ESTE MISMO documento, sin volver a
+ * pedir el archivo. Es más fiel además a cómo etiqueta Document AI: un
+ * documento, varias anotaciones sobre él.
+ *
+ * `dataUrl` es el documento YA RENDERIZADO como raster (PNG del `<canvas>`
+ * si era PDF, o el archivo original leído tal cual si ya era imagen) — nunca
+ * un blob URL: tiene que sobrevivir un refresh de la página para que
+ * recortar un campo nuevo días después no obligue a resubir el archivo.
+ */
+export type DocumentoEjemploCompartido = {
+	nombre: string;
+	tipo: string;
+	tamanoBytes: number;
+	dataUrl: string;
+	/** ISO-8601 de cuándo se guardó este documento. */
+	guardadoEn: string;
+};
+
+/**
+ * Lo que "Guardar" persiste desde `RecortarEjemploCampo.svelte` para UN
+ * campo (2026-09-03, recortado de metadata de documento el 2026-09-04: esa
+ * metadata ahora vive una sola vez en `DocumentoEjemploCompartido`, no
+ * repetida por campo).
  *
  * `imagenDataUrl` es el recorte YA HECHO — los píxeles reales dentro de
- * `recorte`, cortados de un `<canvas>`/`<img>` y exportados como data URL —
+ * `recorte`, cortados del documento compartido y exportados como data URL —
  * no un texto. A propósito: en este punto nunca corrió ningún OCR sobre el
  * documento, así que mostrar un "texto extraído" sería inventar un resultado
  * que no existe. La imagen sí es honesta: es prueba de qué se seleccionó,
  * nada más. `recorte` (las 4 coordenadas) se conserva aparte porque sigue
- * siendo el dato que un futuro pipeline de extracción real necesitaría —la
+ * siendo el dato que un futuro pipeline de extracción real necesitaría — la
  * imagen es solo para esta pantalla.
- *
- * El archivo ORIGINAL no se guarda completo (sería demasiado para
- * localStorage y aquí no hace falta): `documento` es solo metadata para
- * mostrarla de vuelta (nombre/tipo/tamaño), no el archivo en sí.
  */
 export type EjemploGuardado = {
 	recorte: Recorte;
-	documento: { nombre: string; tipo: string; tamanoBytes: number };
 	imagenDataUrl: string;
 	/** ISO-8601 de cuándo se guardó este ejemplo. */
 	guardadoEn: string;
@@ -574,10 +594,16 @@ export type TipoDocumentalGuardado = {
 	 * registro de qué tenía la versión que se está reemplazando.
 	 */
 	versionEnEdicion: VersionPublicada | null;
+	/** El documento de ejemplo compartido por todos los campos (2026-09-04).
+	 *  `null` mientras nadie lo suba. Ver `DocumentoEjemploCompartido`: al
+	 *  quitarlo con `borrarDocumentoEjemploCompartido` también se vacía
+	 *  `recortesEjemplo` completo — un recorte sin su documento de origen no
+	 *  significa nada. */
+	documentoEjemplo: DocumentoEjemploCompartido | null;
 	/** Ejemplo de extracción guardado por campo — indexado por NOMBRE del
 	 *  campo, no por `campo.id` (que se regenera en cada lectura de la
 	 *  Biblioteca; el nombre es lo único de un campo que sobrevive un
-	 *  refresh). Detrás de "Guardar" en `CargarEjemploDocumental.svelte`.
+	 *  refresh). Detrás de "Guardar" en `RecortarEjemploCampo.svelte`.
 	 *  Vacío mientras nadie guarde ninguno. Ver `EjemploGuardado`: incluye el
 	 *  recorte YA HECHO como imagen, no un texto extraído — mostrarlo de
 	 *  vuelta en Calibración es justo lo que ya hace. */
@@ -652,13 +678,7 @@ function esEjemploValido(e: unknown): e is EjemploGuardado {
 	if (!esRecorteValido(d.recorte)) return false;
 	if (typeof d.imagenDataUrl !== 'string' || d.imagenDataUrl === '') return false;
 	if (typeof d.guardadoEn !== 'string') return false;
-	if (typeof d.documento !== 'object' || d.documento === null) return false;
-	const doc = d.documento as Record<string, unknown>;
-	return (
-		typeof doc.nombre === 'string' &&
-		typeof doc.tipo === 'string' &&
-		typeof doc.tamanoBytes === 'number'
-	);
+	return true;
 }
 
 /**
@@ -666,13 +686,14 @@ function esEjemploValido(e: unknown): e is EjemploGuardado {
  * una versión futura con otro formato) no debe tumbar la lectura de TODO el
  * tipo documental, solo perderse esa entrada suya.
  *
- * Esto también migra en silencio el formato VIEJO (2026-09-03, antes de que
- * existiera `EjemploGuardado`): un `Recorte` suelto —solo `{x,y,w,h}`, sin
- * imagen ni documento— ya no pasa `esEjemploValido` y se descarta. No hay
- * forma de reconstruir la imagen que faltaba a partir de solo 4 coordenadas
- * (el archivo original nunca se guardó), así que perder esas entradas viejas
- * es el costo real de la migración — aceptable en esta etapa del PoC, sin
- * datos de producción en juego.
+ * Esto también migra en silencio dos formatos VIEJOS: el del 2026-09-02
+ * (un `Recorte` suelto, solo `{x,y,w,h}`) y el del 2026-09-03 (`EjemploGuardado`
+ * con un `documento` propio por campo, retirado el 2026-09-04 al volverse el
+ * documento compartido) — ninguno de los dos pasa `esEjemploValido` tal como
+ * quedó y se descarta. No hay forma de reconstruir la imagen que faltaba a
+ * partir de solo 4 coordenadas, así que perder esas entradas viejas es el
+ * costo real de la migración — aceptable en esta etapa del PoC, sin datos de
+ * producción en juego.
  */
 function leerRecortesEjemplo(d: unknown): Record<string, EjemploGuardado> {
 	if (typeof d !== 'object' || d === null) return {};
@@ -681,6 +702,25 @@ function leerRecortesEjemplo(d: unknown): Record<string, EjemploGuardado> {
 		if (esEjemploValido(e)) resultado[nombreCampo] = e;
 	}
 	return resultado;
+}
+
+/** Igual de defensivo que `esEjemploValido`: `dataUrl` vacío no sirve de nada
+ *  (no habría de dónde recortar), así que se trata como si no existiera. */
+function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploCompartido {
+	if (typeof d !== 'object' || d === null) return false;
+	const o = d as Record<string, unknown>;
+	return (
+		typeof o.nombre === 'string' &&
+		typeof o.tipo === 'string' &&
+		typeof o.tamanoBytes === 'number' &&
+		typeof o.dataUrl === 'string' &&
+		o.dataUrl !== '' &&
+		typeof o.guardadoEn === 'string'
+	);
+}
+
+function leerDocumentoEjemplo(d: unknown): DocumentoEjemploCompartido | null {
+	return esDocumentoEjemploValido(d) ? d : null;
 }
 
 function leerBiblioteca(): TipoDocumentalGuardado[] {
@@ -731,6 +771,7 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 					: [],
 				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion),
+				documentoEjemplo: leerDocumentoEjemplo(d.documentoEjemplo),
 				recortesEjemplo: leerRecortesEjemplo(d.recortesEjemplo)
 			}));
 	} catch {
@@ -804,6 +845,7 @@ export function guardarTipoDocumental(): string | null {
 			activadoEn: null,
 			historialVersiones: [],
 			versionEnEdicion: null,
+			documentoEjemplo: null,
 			recortesEjemplo: {}
 		};
 		tiposDocumentales.push(nuevo);
@@ -963,11 +1005,47 @@ export function archivarTipoDocumental(id: string): boolean {
 }
 
 /**
- * "Guardar" del modal de recorte (`CargarEjemploDocumental.svelte`): persiste
- * el ejemplo completo (recorte + metadata del documento + la imagen YA
- * RECORTADA, ver `EjemploGuardado`) para ESE campo del tipo documental.
- * Sobreescribe si ya había uno guardado — solo importa el más reciente, no
- * hay historial de recortes.
+ * "Guardar" de `CargarDocumentoEjemplo.svelte` (2026-09-04): sube el
+ * documento de ejemplo COMPARTIDO por todos los campos del tipo documental.
+ * Sobreescribe si ya había uno — en la práctica no debería pasar, porque la
+ * UI obliga a quitarlo primero (`borrarDocumentoEjemploCompartido`) antes de
+ * dejar subir otro.
+ */
+export function guardarDocumentoEjemploCompartido(
+	idTipo: string,
+	documento: { nombre: string; tipo: string; tamanoBytes: number; dataUrl: string }
+): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
+	if (!tipo) return false;
+	tipo.documentoEjemplo = { ...documento, guardadoEn: new Date().toISOString() };
+	guardarBiblioteca();
+	return true;
+}
+
+/**
+ * Quita el documento de ejemplo compartido — y con él, TODOS los recortes
+ * por campo que se hubieran hecho sobre ese documento: un recorte guarda
+ * solo sus 4 coordenadas más la imagen ya cortada, no una referencia al
+ * documento de origen, así que sin ese documento esas coordenadas ya no
+ * significan nada recuperable. Sin confirmación, mismo criterio que
+ * `borrarRecorteEjemplo`: rehacer esto cuesta segundos.
+ */
+export function borrarDocumentoEjemploCompartido(idTipo: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
+	if (!tipo) return false;
+	tipo.documentoEjemplo = null;
+	tipo.recortesEjemplo = {};
+	guardarBiblioteca();
+	return true;
+}
+
+/**
+ * "Guardar" del modal de recorte (`RecortarEjemploCampo.svelte`): persiste
+ * el recorte (coordenadas + la imagen YA RECORTADA, ver `EjemploGuardado`)
+ * para ESE campo del tipo documental — siempre sobre el documento compartido
+ * que ya se haya subido con `guardarDocumentoEjemploCompartido`. Sobreescribe
+ * si ya había uno guardado — solo importa el más reciente, no hay historial
+ * de recortes.
  *
  * Se indexa por NOMBRE del campo, no por `campo.id`: `leerCampo()` REGENERA
  * los ids de campo en cada lectura de la Biblioteca (a propósito, para que
@@ -983,7 +1061,7 @@ export function archivarTipoDocumental(id: string): boolean {
 export function guardarRecorteEjemplo(
 	idTipo: string,
 	nombreCampo: string,
-	ejemplo: { recorte: Recorte; documento: EjemploGuardado['documento']; imagenDataUrl: string }
+	ejemplo: { recorte: Recorte; imagenDataUrl: string }
 ): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
@@ -992,9 +1070,10 @@ export function guardarRecorteEjemplo(
 	return true;
 }
 
-/** Quita el ejemplo guardado de un campo — "Cargar ejemplo documental" vuelve
- *  a estar disponible para él. Sin confirmación: rehacer un recorte cuesta
- *  segundos, no amerita el mismo peso que borrar un tipo documental entero. */
+/** Quita el ejemplo guardado de un campo — su recorte vuelve a estar
+ *  disponible para rehacerse sobre el mismo documento compartido. Sin
+ *  confirmación: rehacer un recorte cuesta segundos, no amerita el mismo
+ *  peso que borrar un tipo documental entero. */
 export function borrarRecorteEjemplo(idTipo: string, nombreCampo: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
