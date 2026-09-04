@@ -1279,7 +1279,7 @@
 
 											<div>
 												<p class="mb-2 text-xs font-medium text-muted-foreground">
-													Recorte guardado
+													Texto seleccionado
 												</p>
 												<img
 													src={ejemplo.imagenDataUrl}
