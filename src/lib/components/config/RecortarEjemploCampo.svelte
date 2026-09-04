@@ -35,8 +35,12 @@
 
 	// Reinicia el recorte y el zoom al cerrar — reabrir debe empezar siempre en
 	// blanco, nunca con el rectángulo de la vez anterior todavía puesto.
+	// `modoRecorte` se reinicia a `true`, no a `false` (cambio pedido): la
+	// herramienta de recorte debe estar YA ACTIVA la próxima vez que se entre
+	// a esta pantalla, para poder dibujar el rectángulo directo sobre el
+	// documento sin picar antes "Recortar".
 	function cerrar() {
-		modoRecorte = false;
+		modoRecorte = true;
 		recorte = null;
 		zoom = 1;
 		onCerrar();
@@ -49,7 +53,10 @@
 	// ── Recorte: dibujar / mover / redimensionar un rectángulo ──────────────
 	// Todo en PORCENTAJE del contenedor, no en píxeles: así el rectángulo se
 	// mantiene correcto sin importar el zoom.
-	let modoRecorte = $state(false);
+	// Arranca en `true` (cambio pedido): al entrar a recortar un campo, la
+	// herramienta ya está lista para dibujar con el primer clic, sin tener
+	// que activar "Recortar" a mano cada vez.
+	let modoRecorte = $state(true);
 	let recorte = $state<Recorte | null>(null);
 	let contenedorEl = $state<HTMLDivElement>();
 	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
