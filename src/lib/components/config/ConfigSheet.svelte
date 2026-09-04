@@ -46,6 +46,7 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarValorLista,
+		alternarEjemploDocumental,
 		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
@@ -1036,16 +1037,14 @@
 												<span>Crear nueva versión</span>
 											</DropdownMenu.Item>
 
-											<!-- Ya NO es un interruptor real (era `DropdownMenu.SwitchItem`):
-											     picarle en cualquier parte del renglón lleva a la pantalla de
-											     calibración (2026-09-02, a pedido explícito). El interruptor que
-											     se ve es puramente decorativo y SIEMPRE se pinta apagado (cambio
-											     pedido el 2026-09-03): activarlo de verdad todavía no existe, así
-											     que mostrarlo prendido sería mentir sobre un estado que no hace
-											     nada. Al pasar el mouse por encima, un tooltip dice "Activar" —
-											     adelanta la acción futura sin dispararla todavía, por ahora nada
-											     más que eso. `tipo.ejemploDocumental` se sigue guardando
-											     (default `false`), pero ninguna pantalla vuelve a leerlo. -->
+											<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
+											     (2026-09-02). El switch, en cambio, ya NO es decorativo
+											     (cambio pedido el 2026-09-03): ahora es un interruptor real
+											     de "estoy listo" — un estado local, reversible, SIN ningún
+											     envío detrás todavía. `stopPropagation()` en su propio click
+											     evita que también dispare el `onSelect` del `Item` (que
+											     abriría Calibración además de alternar el switch); verificado
+											     con Playwright que ambos gestos quedan independientes. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												onSelect={() => abrirCalibracion(tipo.id)}
@@ -1056,14 +1055,28 @@
 													<Tooltip.Root>
 														<Tooltip.Trigger>
 															{#snippet child({ props })}
-																<span
+																<button
 																	{...props}
-																	class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-input"
+																	type="button"
+																	role="switch"
+																	aria-checked={tipo.ejemploDocumental}
+																	aria-label={tipo.ejemploDocumental
+																		? `Quitar la marca de listo de ${tipo.nombre}`
+																		: `Marcar ${tipo.nombre} como listo`}
+																	class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tipo.ejemploDocumental
+																		? 'bg-primary'
+																		: 'bg-input'}"
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		alternarEjemploDocumental(tipo.id, !tipo.ejemploDocumental);
+																	}}
 																>
 																	<span
-																		class="size-4 translate-x-0.5 rounded-full bg-background shadow-sm"
+																		class="size-4 rounded-full bg-background shadow-sm transition-transform {tipo.ejemploDocumental
+																			? 'translate-x-4.5'
+																			: 'translate-x-0.5'}"
 																	></span>
-																</span>
+																</button>
 															{/snippet}
 														</Tooltip.Trigger>
 														<!-- pointer-events-none! (con important -- ver abajo): a
@@ -1080,9 +1093,9 @@
 														     accesibilidad) — un inline style le gana a cualquier clase
 														     normal sin importar el orden, así que una `pointer-events-none`
 														     sin el modificador de Tailwind v4 no hace nada aquí. -->
-														<Tooltip.Content side="left" class="pointer-events-none!"
-															>Activar</Tooltip.Content
-														>
+														<Tooltip.Content side="left" class="pointer-events-none!">
+															{tipo.ejemploDocumental ? 'Quitar la marca de listo' : 'Marcar como listo'}
+														</Tooltip.Content>
 													</Tooltip.Root>
 												</Tooltip.Provider>
 											</DropdownMenu.Item>

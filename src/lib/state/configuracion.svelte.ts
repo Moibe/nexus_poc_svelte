@@ -928,11 +928,13 @@ export function crearNuevaVersion(id: string): boolean {
 }
 
 /**
- * SIN USAR desde el 2026-09-02: "Ejemplo documental" del menú dejó de ser un
- * interruptor con efecto propio y pasó a abrir la pantalla de calibración
- * (`abrirCalibracion` en `ConfigSheet.svelte`). Se deja lista por si esa
- * pantalla termina necesitando marcar el campo de nuevo, mismo trato que
- * `crearNuevaVersion()`.
+ * El switch "Ejemplo documental" del menú `⋮` — vuelve a estar en uso desde
+ * el 2026-09-03, con un significado nuevo: "estoy listo" (una marca local,
+ * reversible, del usuario). Picar el texto/ícono del renglón sigue abriendo
+ * Calibración (`abrirCalibracion`); el switch en sí NO dispara ningún envío
+ * todavía — eso es a propósito, queda pendiente de que se defina qué lo va
+ * a provocar. Apagarlo NO deshace nada que se haya enviado a Document AI
+ * (cuando exista ese envío): es solo la marca local la que se quita.
  */
 export function alternarEjemploDocumental(id: string, valor: boolean) {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
