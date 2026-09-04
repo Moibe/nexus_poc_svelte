@@ -33,6 +33,7 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Info from '@lucide/svelte/icons/info';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -1461,6 +1462,17 @@
 									<Label for="campo-obligatorio" class="font-normal text-muted-foreground">
 										Obligatorio
 									</Label>
+									<Tooltip.Provider>
+										<Tooltip.Root>
+											<Tooltip.Trigger>
+												<Info class="size-3.5 text-muted-foreground" />
+												<span class="sr-only">Qué significa "Obligatorio"</span>
+											</Tooltip.Trigger>
+											<Tooltip.Content side="top" class="max-w-64">
+												Selecciona "Obligatorio" si el campo SIEMPRE aparece en el documento.
+											</Tooltip.Content>
+										</Tooltip.Root>
+									</Tooltip.Provider>
 								</div>
 
 								<!-- Deshabilitado mientras el campo esté incompleto: es el único
@@ -1799,6 +1811,17 @@
 											<Label for="obligatorio-{campo.id}" class="font-normal text-muted-foreground">
 												Obligatorio
 											</Label>
+											<Tooltip.Provider>
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														<Info class="size-3.5 text-muted-foreground" />
+														<span class="sr-only">Qué significa "Obligatorio"</span>
+													</Tooltip.Trigger>
+													<Tooltip.Content side="top" class="max-w-64">
+														Selecciona "Obligatorio" si el campo SIEMPRE aparece en el documento.
+													</Tooltip.Content>
+												</Tooltip.Root>
+											</Tooltip.Provider>
 										</div>
 									</Accordion.Content>
 								</Accordion.Item>
