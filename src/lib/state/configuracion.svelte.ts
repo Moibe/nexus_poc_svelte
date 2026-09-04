@@ -480,6 +480,30 @@ export function limpiarBorrador() {
  *  archivo subido. Ver `guardarRecorteEjemplo` y `CargarEjemploDocumental.svelte`. */
 export type Recorte = { x: number; y: number; w: number; h: number };
 
+/**
+ * Lo que "Guardar" persiste desde `CargarEjemploDocumental.svelte` (2026-09-03).
+ *
+ * `imagenDataUrl` es el recorte YA HECHO — los píxeles reales dentro de
+ * `recorte`, cortados de un `<canvas>`/`<img>` y exportados como data URL —
+ * no un texto. A propósito: en este punto nunca corrió ningún OCR sobre el
+ * documento, así que mostrar un "texto extraído" sería inventar un resultado
+ * que no existe. La imagen sí es honesta: es prueba de qué se seleccionó,
+ * nada más. `recorte` (las 4 coordenadas) se conserva aparte porque sigue
+ * siendo el dato que un futuro pipeline de extracción real necesitaría —la
+ * imagen es solo para esta pantalla.
+ *
+ * El archivo ORIGINAL no se guarda completo (sería demasiado para
+ * localStorage y aquí no hace falta): `documento` es solo metadata para
+ * mostrarla de vuelta (nombre/tipo/tamaño), no el archivo en sí.
+ */
+export type EjemploGuardado = {
+	recorte: Recorte;
+	documento: { nombre: string; tipo: string; tamanoBytes: number };
+	imagenDataUrl: string;
+	/** ISO-8601 de cuándo se guardó este ejemplo. */
+	guardadoEn: string;
+};
+
 export type VersionPublicada = {
 	version: number;
 	procesadorId: string;
@@ -550,15 +574,14 @@ export type TipoDocumentalGuardado = {
 	 * registro de qué tenía la versión que se está reemplazando.
 	 */
 	versionEnEdicion: VersionPublicada | null;
-	/** Recorte de ejemplo guardado por campo — indexado por NOMBRE del campo,
-	 *  no por `campo.id` (que se regenera en cada lectura de la Biblioteca; el
-	 *  nombre es lo único de un campo que sobrevive un refresh). Detrás de
-	 *  "Guardar" en `CargarEjemploDocumental.svelte`. En porcentaje del
-	 *  documento de ejemplo, no en píxeles, para no depender del tamaño con
-	 *  el que se subió esa imagen o PDF. Vacío mientras nadie guarde ninguno;
-	 *  qué se hace con esto además de guardarlo (mostrarlo de vuelta, asociarlo
-	 *  a OCR) queda para cuando se platique. */
-	recortesEjemplo: Record<string, Recorte>;
+	/** Ejemplo de extracción guardado por campo — indexado por NOMBRE del
+	 *  campo, no por `campo.id` (que se regenera en cada lectura de la
+	 *  Biblioteca; el nombre es lo único de un campo que sobrevive un
+	 *  refresh). Detrás de "Guardar" en `CargarEjemploDocumental.svelte`.
+	 *  Vacío mientras nadie guarde ninguno. Ver `EjemploGuardado`: incluye el
+	 *  recorte YA HECHO como imagen, no un texto extraído — mostrarlo de
+	 *  vuelta en Calibración es justo lo que ya hace. */
+	recortesEjemplo: Record<string, EjemploGuardado>;
 };
 
 const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
@@ -623,14 +646,39 @@ function esRecorteValido(r: unknown): r is Recorte {
 	);
 }
 
-/** Solo se conservan las entradas con forma válida — un objeto corrupto (o de
- *  una versión futura con otro formato) no debe tumbar la lectura de TODO el
- *  tipo documental, solo perderse esa entrada suya. */
-function leerRecortesEjemplo(d: unknown): Record<string, Recorte> {
+function esEjemploValido(e: unknown): e is EjemploGuardado {
+	if (typeof e !== 'object' || e === null) return false;
+	const d = e as Record<string, unknown>;
+	if (!esRecorteValido(d.recorte)) return false;
+	if (typeof d.imagenDataUrl !== 'string' || d.imagenDataUrl === '') return false;
+	if (typeof d.guardadoEn !== 'string') return false;
+	if (typeof d.documento !== 'object' || d.documento === null) return false;
+	const doc = d.documento as Record<string, unknown>;
+	return (
+		typeof doc.nombre === 'string' &&
+		typeof doc.tipo === 'string' &&
+		typeof doc.tamanoBytes === 'number'
+	);
+}
+
+/**
+ * Solo se conservan las entradas con forma válida — un objeto corrupto (o de
+ * una versión futura con otro formato) no debe tumbar la lectura de TODO el
+ * tipo documental, solo perderse esa entrada suya.
+ *
+ * Esto también migra en silencio el formato VIEJO (2026-09-03, antes de que
+ * existiera `EjemploGuardado`): un `Recorte` suelto —solo `{x,y,w,h}`, sin
+ * imagen ni documento— ya no pasa `esEjemploValido` y se descarta. No hay
+ * forma de reconstruir la imagen que faltaba a partir de solo 4 coordenadas
+ * (el archivo original nunca se guardó), así que perder esas entradas viejas
+ * es el costo real de la migración — aceptable en esta etapa del PoC, sin
+ * datos de producción en juego.
+ */
+function leerRecortesEjemplo(d: unknown): Record<string, EjemploGuardado> {
 	if (typeof d !== 'object' || d === null) return {};
-	const resultado: Record<string, Recorte> = {};
-	for (const [nombreCampo, r] of Object.entries(d as Record<string, unknown>)) {
-		if (esRecorteValido(r)) resultado[nombreCampo] = r;
+	const resultado: Record<string, EjemploGuardado> = {};
+	for (const [nombreCampo, e] of Object.entries(d as Record<string, unknown>)) {
+		if (esEjemploValido(e)) resultado[nombreCampo] = e;
 	}
 	return resultado;
 }
@@ -914,7 +962,8 @@ export function archivarTipoDocumental(id: string): boolean {
 
 /**
  * "Guardar" del modal de recorte (`CargarEjemploDocumental.svelte`): persiste
- * las 4 coordenadas del rectángulo para ESE campo del tipo documental.
+ * el ejemplo completo (recorte + metadata del documento + la imagen YA
+ * RECORTADA, ver `EjemploGuardado`) para ESE campo del tipo documental.
  * Sobreescribe si ya había uno guardado — solo importa el más reciente, no
  * hay historial de recortes.
  *
@@ -926,13 +975,28 @@ export function archivarTipoDocumental(id: string): boolean {
  * huérfano en cuanto la página se recargaba una sola vez. El nombre, en
  * cambio, ya es único dentro de un tipo documental (`nombreCampoDuplicado`
  * lo exige), así que sirve de llave estable sin inventar nada nuevo — el
- * único costo es que renombrar un campo (modo edición) huerfana su recorte,
+ * único costo es que renombrar un campo (modo edición) huerfana su ejemplo,
  * un caso mucho más raro que "alguien refrescó la página".
  */
-export function guardarRecorteEjemplo(idTipo: string, nombreCampo: string, recorte: Recorte): boolean {
+export function guardarRecorteEjemplo(
+	idTipo: string,
+	nombreCampo: string,
+	ejemplo: { recorte: Recorte; documento: EjemploGuardado['documento']; imagenDataUrl: string }
+): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	tipo.recortesEjemplo[nombreCampo] = { ...recorte };
+	tipo.recortesEjemplo[nombreCampo] = { ...ejemplo, guardadoEn: new Date().toISOString() };
+	guardarBiblioteca();
+	return true;
+}
+
+/** Quita el ejemplo guardado de un campo — "Cargar ejemplo documental" vuelve
+ *  a estar disponible para él. Sin confirmación: rehacer un recorte cuesta
+ *  segundos, no amerita el mismo peso que borrar un tipo documental entero. */
+export function borrarRecorteEjemplo(idTipo: string, nombreCampo: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
+	if (!tipo) return false;
+	delete tipo.recortesEjemplo[nombreCampo];
 	guardarBiblioteca();
 	return true;
 }

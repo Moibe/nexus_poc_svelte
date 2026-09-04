@@ -10,8 +10,10 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
+	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Save from '@lucide/svelte/icons/save';
+	import X from '@lucide/svelte/icons/x';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
@@ -38,11 +40,13 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarEjemploDocumental from './CargarEjemploDocumental.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
+	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarValorLista,
+		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
@@ -1177,9 +1181,7 @@
 					     izquierda — esto de aquí seguía siendo la parte "todo lo demás".
 					     "Cargar ejemplo documental" ya deja de ser estático (2026-09-02):
 					     abre `CargarEjemploDocumental`, que sube un PDF o imagen y permite
-					     dibujar un recorte sobre él. Lo que pasa CON ese recorte —OCR,
-					     asociarlo a este campo, un menú propio— sigue sin definirse, así
-					     que hoy no hace nada al soltarlo. -->
+					     dibujar un recorte sobre él. -->
 					<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 						Carga y etiqueta un documento de ejemplo para asociar sus valores a los campos
@@ -1190,20 +1192,75 @@
 					{#if tipoEnCalibracion}
 						<div class="mt-8 max-w-3xl">
 							{#each tipoEnCalibracion.campos as campo (campo.id)}
-								<div
-									class="flex items-center justify-between gap-4 border-b border-border py-4 last:border-0"
-								>
-									<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
-									<Button
-										variant="outline"
-										size="sm"
-										onclick={() => {
-											campoEjemploNombre = campo.nombre;
-											modalEjemploAbierto = true;
-										}}
-									>
-										Cargar ejemplo documental
-									</Button>
+								{@const ejemplo = tipoEnCalibracion.recortesEjemplo[campo.nombre]}
+								<div class="border-b border-border py-4 last:border-0">
+									<div class="flex items-center justify-between gap-4">
+										<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
+										<!-- Deshabilitado con un ejemplo ya guardado: para reemplazarlo
+										     hay que quitarlo primero (la X de la tarjeta de abajo), no
+										     sobreescribirlo directo. Esto también resuelve un pendiente
+										     que quedó documentado el 2026-09-02 ("reabrirlo siempre
+										     arranca en el dropzone... ni con el recorte ya guardado
+										     mostrado de vuelta"): ahora ese caso ya no es alcanzable
+										     desde la UI. -->
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={Boolean(ejemplo)}
+											onclick={() => {
+												campoEjemploNombre = campo.nombre;
+												modalEjemploAbierto = true;
+											}}
+										>
+											Cargar ejemplo documental
+										</Button>
+									</div>
+
+									{#if ejemplo}
+										<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
+										     de qué documento salió, y el recorte YA HECHO como imagen —
+										     nunca un texto, porque aquí no corrió ningún OCR todavía.
+										     Mismo lenguaje visual que las tarjetas de archivo de
+										     `DocumentoRow.svelte` (icono + nombre + subtítulo + quitar). -->
+										<div class="mt-4 flex max-w-lg flex-col gap-3">
+											<div
+												class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+											>
+												<span
+													class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
+												>
+													<FileIcon />
+												</span>
+												<div class="min-w-0 flex-1">
+													<p class="truncate text-sm font-medium text-foreground">
+														{ejemplo.documento.nombre}
+													</p>
+													<p class="text-xs text-muted-foreground">
+														{ejemplo.documento.tipo} · {formatearTamano(ejemplo.documento.tamanoBytes)}
+													</p>
+												</div>
+												<button
+													type="button"
+													aria-label={`Quitar el ejemplo de ${campo.nombre}`}
+													class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+													onclick={() => borrarRecorteEjemplo(tipoEnCalibracion.id, campo.nombre)}
+												>
+													<X class="size-3.5" />
+												</button>
+											</div>
+
+											<div>
+												<p class="mb-2 text-xs font-medium text-muted-foreground">
+													Recorte guardado
+												</p>
+												<img
+													src={ejemplo.imagenDataUrl}
+													alt={`Recorte guardado para ${campo.nombre}`}
+													class="max-h-40 max-w-full rounded-lg border border-border object-contain"
+												/>
+											</div>
+										</div>
+									{/if}
 								</div>
 							{/each}
 						</div>

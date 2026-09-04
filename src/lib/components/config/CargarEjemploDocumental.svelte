@@ -100,6 +100,12 @@
 	// este modal renderiza justo el tipo de archivo que esa CVE explota. NO
 	// subir de mayor sin antes confirmar la versión de Node del server.
 	let canvasEl = $state<HTMLCanvasElement>();
+	// Solo para el caso imagen: hace falta una referencia al <img> para leer su
+	// resolución REAL (`naturalWidth/Height`) al recortar — la que ocupa en
+	// pantalla puede ser menor por el `max-w-full`. El PDF no la necesita:
+	// `canvasEl.width/height` YA son su resolución real, se fijan a mano en
+	// `renderizarPdf`.
+	let imgEl = $state<HTMLImageElement>();
 
 	async function renderizarPdf(f: File) {
 		cargandoPdf = true;
@@ -163,14 +169,66 @@
 		recorte = null;
 	}
 
+	/**
+	 * Recorta los píxeles REALES dentro de `r` y los devuelve como data URL
+	 * PNG. Es lo que "Guardar" persiste como prueba de qué se seleccionó — a
+	 * propósito NO un texto: en este punto nunca corrió ningún OCR sobre el
+	 * documento, así que mostrar un "texto extraído" sería inventar un
+	 * resultado que no existe. PNG y no JPEG porque el contenido típico
+	 * (texto sobre fondo claro, alto contraste) comprime igual o mejor sin
+	 * pérdida, y aquí sí importa que se vea nítido.
+	 *
+	 * Dibuja directo desde el <canvas> del PDF o el <img> de la imagen —
+	 * ambos ya están completamente cargados para cuando existe un `recorte`
+	 * que guardar, así que no hace falta esperar nada más.
+	 */
+	function generarImagenRecorte(r: Recorte): string | null {
+		let fuente: CanvasImageSource;
+		let anchoFuente: number;
+		let altoFuente: number;
+		if (esPdf && canvasEl) {
+			fuente = canvasEl;
+			anchoFuente = canvasEl.width;
+			altoFuente = canvasEl.height;
+		} else if (imgEl && imgEl.naturalWidth > 0) {
+			fuente = imgEl;
+			anchoFuente = imgEl.naturalWidth;
+			altoFuente = imgEl.naturalHeight;
+		} else {
+			return null;
+		}
+		const sx = (r.x / 100) * anchoFuente;
+		const sy = (r.y / 100) * altoFuente;
+		const sw = (r.w / 100) * anchoFuente;
+		const sh = (r.h / 100) * altoFuente;
+		const destino = document.createElement('canvas');
+		destino.width = Math.max(1, Math.round(sw));
+		destino.height = Math.max(1, Math.round(sh));
+		const ctx = destino.getContext('2d');
+		if (!ctx) return null;
+		ctx.drawImage(fuente, sx, sy, sw, sh, 0, 0, destino.width, destino.height);
+		return destino.toDataURL('image/png');
+	}
+
 	// Cerrar el modal al guardar es la confirmación: vuelve a la lista de
 	// campos de "Calibración" de la que salió, mismo criterio que "Guardar
 	// configuración" del wizard (que regresa a la Biblioteca sin un toast
 	// aparte). Un mensaje de éxito flotando ENCIMA de un modal que ya se cerró
 	// no se alcanzaría a ver.
 	function guardarCopia() {
-		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
-		if (!guardarRecorteEjemplo(tipoId, campoNombre, recorte)) return;
+		if (!tipoId || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0 || !archivo) return;
+		const imagenDataUrl = generarImagenRecorte(recorte);
+		if (!imagenDataUrl) return;
+		const guardado = guardarRecorteEjemplo(tipoId, campoNombre, {
+			recorte,
+			documento: {
+				nombre: archivo.name,
+				tipo: esPdf ? 'PDF' : (archivo.type.split('/')[1] ?? archivo.name.split('.').pop() ?? '').toUpperCase(),
+				tamanoBytes: archivo.size
+			},
+			imagenDataUrl
+		});
+		if (!guardado) return;
 		cerrar();
 	}
 
@@ -340,7 +398,7 @@
 							{#if esPdf}
 								<canvas bind:this={canvasEl} class="block max-w-full"></canvas>
 							{:else if urlImagen}
-								<img src={urlImagen} alt="Documento de ejemplo" class="block max-w-full select-none" draggable="false" />
+								<img bind:this={imgEl} src={urlImagen} alt="Documento de ejemplo" class="block max-w-full select-none" draggable="false" />
 							{/if}
 
 							{#if cargandoPdf}
