@@ -1356,14 +1356,26 @@
 										Cargar ejemplo documental
 									</Button>
 								{:else}
-									<button
-										type="button"
-										aria-label="Agregar otro documento de ejemplo"
-										class="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-										onclick={() => (modalDocumentoAbierto = true)}
-									>
-										<CirclePlus class="size-4" />
-									</button>
+									<Tooltip.Provider>
+										<Tooltip.Root>
+											<Tooltip.Trigger>
+												{#snippet child({ props })}
+													<button
+														{...props}
+														type="button"
+														aria-label="Agregar otro documento de ejemplo"
+														class="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+														onclick={() => (modalDocumentoAbierto = true)}
+													>
+														<CirclePlus class="size-4" />
+													</button>
+												{/snippet}
+											</Tooltip.Trigger>
+											<Tooltip.Content side="top">
+												Puedes agregar más ejemplos documentales.
+											</Tooltip.Content>
+										</Tooltip.Root>
+									</Tooltip.Provider>
 								{/if}
 							</div>
 
