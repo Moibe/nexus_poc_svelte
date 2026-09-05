@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import LogoMark from '$lib/components/icons/LogoMark.svelte';
+	import nexusLogo from '$lib/assets/nexus-logo.png';
 	import DashboardCircleIcon from '$lib/components/icons/DashboardCircleIcon.svelte';
 	import UserStatusIcon from '$lib/components/icons/UserStatusIcon.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -45,11 +45,8 @@
 <header class="sticky top-0 z-40 border-b border-border bg-white">
 	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-6 px-6">
 		<div class="flex items-center gap-6">
-			<a href="/" class="flex items-center gap-1">
-				<span class="flex size-6 items-center justify-center rounded-md bg-primary p-1.5">
-					<LogoMark />
-				</span>
-				<span class="text-xs font-semibold text-foreground">NexusDoc AI</span>
+			<a href="/" class="flex items-center">
+				<img src={nexusLogo} alt="NexusDoc AI" class="h-9 w-auto" />
 			</a>
 
 			<nav class="flex items-center gap-2">
