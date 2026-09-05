@@ -99,9 +99,12 @@
 		};
 	}
 
-	function alternarRecorte() {
-		modoRecorte = !modoRecorte;
-		if (!modoRecorte) recorte = null;
+	/** "Recortar" ya NO alterna (cambio pedido el 2026-09-05): solo ACTIVA el
+	 *  modo recorte, nunca lo apaga — picarlo de nuevo con el modo ya activo
+	 *  no hace nada. Para salir del modo recorte (y borrar el rectángulo a
+	 *  medias) está "Cancelar", que sigue siendo el único camino de apagarlo. */
+	function activarRecorte() {
+		modoRecorte = true;
 	}
 	function cancelarRecorte() {
 		modoRecorte = false;
@@ -335,7 +338,7 @@
 							class="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors {modoRecorte
 								? 'bg-white/15'
 								: 'hover:bg-white/10'}"
-							onclick={alternarRecorte}
+							onclick={activarRecorte}
 						>
 							<Crop class="size-4" />
 							Recortar
