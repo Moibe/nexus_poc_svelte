@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -576,6 +577,22 @@
 	// Arranca expandido: en la captura que se compartió, el único tipo del
 	// árbol ya se ve desplegado con sus campos a la vista.
 	let calibracionExpandida = $state(true);
+	// Qué campos, dentro de Calibración, tienen su recorte YA GUARDADO
+	// desplegado (imagen + "Texto seleccionado") — a pedido explícito
+	// (2026-09-04) arrancan TODOS replegados; se guarda por NOMBRE de campo,
+	// mismo criterio que `recortesPorDocumento`. No se resetea al cambiar de
+	// instancia de documento: es una preferencia de la pantalla, no del dato.
+	// `SvelteSet`, no un `Set` plano: `$state` no intercepta los métodos
+	// mutantes (`.add`/`.delete`) de las clases nativas Set/Map, solo la
+	// reasignación de la variable — sin esto, alternar un campo no
+	// refrescaba la pantalla (medido en carne propia con una prueba que
+	// picaba el chevron y no pasaba nada).
+	let camposExpandidos = new SvelteSet<string>();
+
+	function alternarExpandidoCampo(nombreCampo: string) {
+		if (camposExpandidos.has(nombreCampo)) camposExpandidos.delete(nombreCampo);
+		else camposExpandidos.add(nombreCampo);
+	}
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
@@ -1419,6 +1436,24 @@
 													>
 														<Trash2 class="size-4" />
 													</button>
+													<!-- Replegado por default (cambio pedido el 2026-09-04):
+													     el recorte ya guardado no se muestra solo hasta picar
+													     este chevron. -->
+													<button
+														type="button"
+														aria-label={camposExpandidos.has(campo.nombre)
+															? `Ocultar el recorte de ${campo.nombre}`
+															: `Mostrar el recorte de ${campo.nombre}`}
+														aria-expanded={camposExpandidos.has(campo.nombre)}
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+														onclick={() => alternarExpandidoCampo(campo.nombre)}
+													>
+														{#if camposExpandidos.has(campo.nombre)}
+															<ChevronUp class="size-4" />
+														{:else}
+															<ChevronDown class="size-4" />
+														{/if}
+													</button>
 												{:else}
 													<Button
 														variant="outline"
@@ -1434,7 +1469,7 @@
 											</div>
 										</div>
 
-										{#if ejemplo}
+										{#if ejemplo && camposExpandidos.has(campo.nombre)}
 											<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
 											     el recorte YA HECHO como imagen — nunca un texto, porque
 											     aquí no corrió ningún OCR todavía. El documento de origen
