@@ -1990,12 +1990,16 @@
 				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
 			</div>
 		{:else if vista === 'calibracion'}
-			<!-- "Guardar configuración" nace deshabilitado a propósito: todavía no
-			     hay nada real que guardar (el lado derecho es estático, ver el
-			     comentario de arriba) — mismo criterio que "Cargar ejemplo
-			     documental". "Cancelar configuración" sí funciona: salir de aquí
-			     siempre es válido, y ya lo cubren también la X, Escape y el clic
-			     fuera (`cerrarNivel`). -->
+			<!-- "Guardar configuración" nacía deshabilitado (cuando el lado
+			     derecho todavía era estático); habilitado desde el 2026-09-04 a
+			     pedido explícito. Cada acción de esta pantalla (subir un
+			     documento, guardar/editar/quitar un recorte) ya persiste sola en
+			     cuanto ocurre — no hay nada "pendiente" que este botón tenga que
+			     empujar — así que su función es la misma que "Cancelar
+			     configuración" en cuanto a navegación (salir de Calibración,
+			     mismo destino que la X, Escape y el clic fuera vía
+			     `cerrarNivel`), pero como la acción AFIRMATIVA de "ya terminé de
+			     configurar los ejemplos", en vez de la de salida. -->
 			<div class="flex items-center justify-between border-t border-border px-6 py-4">
 				<Button
 					variant="link"
@@ -2004,7 +2008,7 @@
 				>
 					Cancelar configuración
 				</Button>
-				<Button disabled>Guardar configuración</Button>
+				<Button onclick={() => (vista = 'biblioteca')}>Guardar configuración</Button>
 			</div>
 		{/if}
 	</Sheet.Content>
