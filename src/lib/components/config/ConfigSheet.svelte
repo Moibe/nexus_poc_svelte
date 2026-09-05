@@ -30,6 +30,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Scissors from '@lucide/svelte/icons/scissors';
 	import Archive from '@lucide/svelte/icons/archive';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
@@ -1467,16 +1468,21 @@
 														{/if}
 													</button>
 												{:else}
-													<Button
-														variant="outline"
-														size="sm"
+													<!-- Ícono, no botón con texto (cambio pedido el
+													     2026-09-05): misma concordancia visual que el
+													     lápiz de "Editar" y la basura de "Quitar" — mismo
+													     tamaño, mismo `bg-primary/10`, mismo radio. -->
+													<button
+														type="button"
+														aria-label={`Recortar ${campo.nombre}`}
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
 														onclick={() => {
 															campoRecorteNombre = campo.nombre;
 															modalRecorteAbierto = true;
 														}}
 													>
-														Recortar
-													</Button>
+														<Scissors class="size-4" />
+													</button>
 												{/if}
 											</div>
 										</div>
