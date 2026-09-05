@@ -40,6 +40,7 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
+	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
@@ -156,6 +157,43 @@
 			}
 		}
 		documentoAQuitar = null;
+	}
+
+	/** Cuántas instancias de documento de ejemplo (`documentosEjemplo`) se
+	 *  recomienda tener antes de marcar un tipo como "listo" — copia tal cual
+	 *  del mockup compartido. Un "ejemplo" es una INSTANCIA subida (ver
+	 *  `documentosEjemplo` en configuracion.svelte.ts), tenga o no ya
+	 *  recortes hechos sobre ella: el nombre que ya usa el propio estado
+	 *  ("documentos de EJEMPLO") es lo que fija esta lectura. */
+	const MINIMO_EJEMPLOS_RECOMENDADO = 3;
+
+	// El tipo sobre el que se picó el switch mientras el aviso de "pocos
+	// ejemplos" está abierto — se necesita el id (para activar) y el nombre
+	// (si algún día el aviso lo muestra), igual que `campoAQuitar` de arriba.
+	let tipoPocosEjemplos = $state<{ id: string; nombre: string } | null>(null);
+
+	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
+	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
+	 *  con menos de `MINIMO_EJEMPLOS_RECOMENDADO` instancias abre el aviso en
+	 *  vez de activar de una vez — el usuario decide ahí si seguir o ir
+	 *  primero a Calibración. */
+	function intentarAlternarEjemploDocumental(tipo: TipoDocumentalGuardado) {
+		const activando = !tipo.ejemploDocumental;
+		if (activando && tipo.documentosEjemplo.length < MINIMO_EJEMPLOS_RECOMENDADO) {
+			tipoPocosEjemplos = { id: tipo.id, nombre: tipo.nombre };
+			return;
+		}
+		alternarEjemploDocumental(tipo.id, activando);
+	}
+
+	function confirmarActivacionConPocosEjemplos() {
+		if (tipoPocosEjemplos) alternarEjemploDocumental(tipoPocosEjemplos.id, true);
+		tipoPocosEjemplos = null;
+	}
+
+	function irACalibracionDesdeAviso() {
+		if (tipoPocosEjemplos) abrirCalibracion(tipoPocosEjemplos.id);
+		tipoPocosEjemplos = null;
 	}
 
 	// Si el formulario de "Nuevo campo de extracción" del paso 2 está abierto.
@@ -1104,7 +1142,13 @@
 											     envío detrás todavía. `stopPropagation()` en su propio click
 											     evita que también dispare el `onSelect` del `Item` (que
 											     abriría Calibración además de alternar el switch); verificado
-											     con Playwright que ambos gestos quedan independientes. -->
+											     con Playwright que ambos gestos quedan independientes.
+											     Prenderlo (no apagarlo) pasa primero por
+											     `intentarAlternarEjemploDocumental` (2026-09-04): con menos
+											     de `MINIMO_EJEMPLOS_RECOMENDADO` documentos de ejemplo abre
+											     un aviso en vez de activar directo — ver
+											     `RecomendacionEjemplos.svelte`, montado al final del
+											     archivo. -->
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												onSelect={() => abrirCalibracion(tipo.id)}
@@ -1128,7 +1172,7 @@
 																		: 'bg-input'}"
 																	onclick={(e) => {
 																		e.stopPropagation();
-																		alternarEjemploDocumental(tipo.id, !tipo.ejemploDocumental);
+																		intentarAlternarEjemploDocumental(tipo);
 																	}}
 																>
 																	<span
@@ -2101,4 +2145,11 @@
 		tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte) ||
 		null}
 	onCerrar={() => (modalRecorteAbierto = false)}
+/>
+
+<RecomendacionEjemplos
+	abierto={tipoPocosEjemplos !== null}
+	onAgregarMas={irACalibracionDesdeAviso}
+	onContinuar={confirmarActivacionConPocosEjemplos}
+	onCerrar={() => (tipoPocosEjemplos = null)}
 />
