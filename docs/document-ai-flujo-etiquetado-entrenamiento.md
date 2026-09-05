@@ -107,6 +107,50 @@ Y esto no es cuestión de segundos ni minutos:
 para el camino GenAI/fine-tuning. La documentación del modelo custom clásico
 (no-GenAI) no da ningún número concreto, solo dice "espera a que termine".
 
+### 2.1. ¿El dataset acepta más documentos mientras un entrenamiento corre? (2026-09-05)
+
+**No hay una frase explícita en la documentación oficial que responda esto ni
+en un sentido ni en el otro.** Se revisó específicamente `training-overview`,
+`create-dataset`, `label-documents`, `manage-processor-versions`, la
+referencia REST de `processorVersions.train` (incluido el mensaje
+`InputData`), `dataset.importDocuments`, y el enum `State` del recurso
+`Dataset` — ninguna dice "el dataset se bloquea durante el entrenamiento" ni
+"puedes seguir importando sin problema". _Esto es una ambigüedad real de la
+fuente, no algo que se deba asumir en ningún sentido._
+
+Evidencia indirecta que apunta (sin confirmarlo del todo) a que **sí se puede
+seguir subiendo, pero esos documentos nuevos no entran al entrenamiento ya en
+curso**:
+
+- `trainingDocuments`/`testDocuments` en el request de `TrainProcessorVersion`
+  se describen como *"The documents used for training the new version"* /
+  *"The documents used for testing the trained version"* — tipados como
+  `BatchDocumentsInputConfig`, es decir, más cercano a un conjunto capturado
+  en ese momento que a un filtro que se re-evalúa en vivo mientras la
+  operación corre. _Confianza: media_ — la página no lo declara así de forma
+  explícita para este escenario, se infiere del tipo de dato.
+- Ya sabíamos que *"Documents that are auto-labeled, unlabeled, or unassigned
+  are excluded from training and evaluation"* — lo que entra al entrenamiento
+  se decide por el estado de cada documento (etiquetado + asignado a
+  train/test) al momento de darle "Start training", no por algo que sigue
+  creciendo dinámicamente durante el LRO.
+- El recurso `Dataset` tiene su propio enum `State`
+  (`UNINITIALIZED`/`INITIALIZING`/`INITIALIZED`) y no existe ahí ningún
+  estado tipo "bloqueado"/"entrenando" — si Google bloqueara el dataset
+  formalmente durante el entrenamiento, este sería el lugar lógico para
+  reflejarlo. _Confianza: media_ — el enum podría ser para otro propósito
+  (inicialización única) y no cubrir este caso.
+- Se buscó explícitamente algún error documentado tipo "ya hay una operación
+  de entrenamiento en curso, no se puede importar" y no se encontró ninguno.
+
+**Conclusión honesta:** lo más probable, por diseño de la API, es que subir
+documentos nuevos al dataset mientras un entrenamiento corre SÍ funcione —
+simplemente esos documentos no formarán parte de ESE entrenamiento (que ya
+"tomó su foto" de qué estaba etiquetado/asignado), pero sí quedarán
+disponibles para el siguiente "Train new version". Pero esto es una inferencia
+razonada a partir de piezas indirectas, **no una cita textual de Google que lo
+confirme.**
+
 ---
 
 ## 3. Desplegar — el paso que faltaba en la investigación anterior
