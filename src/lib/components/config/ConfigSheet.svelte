@@ -601,6 +601,12 @@
 		else camposExpandidos.add(nombreCampo);
 	}
 
+	// Ver el documento completo con TODOS sus recortes superpuestos (pedido
+	// explícito 2026-09-05) — solo un booleano, no un Set: nunca hay más de un
+	// documento "seleccionado" a la vez en esta pantalla (el selector de chips
+	// ya se encarga de eso), así que no hace falta llevarlo por id.
+	let documentoCompletoExpandido = $state(false);
+
 	// Qué tarjetas de "Modelos documentales agregados" tienen su detalle
 	// (descripción + lista de campos) desplegado — para verlo sin entrar al
 	// modo edición. Mismo criterio de `camposExpandidos`: arranca replegado y
@@ -1551,7 +1557,60 @@
 									>
 										<Trash2 class="size-3.5" />
 									</button>
+									<!-- Ver el documento completo con todos sus recortes ya
+										     marcados encima (pedido explícito 2026-09-05) — sin salir
+										     de Calibración ni abrir el modal de recorte, que es de
+										     edición, no de vista. -->
+									<button
+										type="button"
+										aria-label={documentoCompletoExpandido
+											? 'Ocultar el documento completo'
+											: 'Ver el documento completo con sus recortes'}
+										aria-expanded={documentoCompletoExpandido}
+										class="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										onclick={() => (documentoCompletoExpandido = !documentoCompletoExpandido)}
+									>
+										{#if documentoCompletoExpandido}
+											<ChevronUp class="size-4" />
+										{:else}
+											<ChevronDown class="size-4" />
+										{/if}
+									</button>
 								</div>
+
+								{#if documentoCompletoExpandido}
+									<!-- Cada campo con recorte GUARDADO para ESTE documento se
+										     dibuja encima, en las mismas coordenadas porcentuales con
+										     las que se guardó (idéntico a como `RecortarEjemploCampo`
+										     dibuja el rectángulo mientras se edita) — aquí es de solo
+										     lectura, sin manijas de arrastrar/redimensionar, más una
+										     etiqueta con el nombre del campo para saber cuál es cuál. -->
+									<div class="mt-3 max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-4">
+										<div class="relative inline-block border border-border bg-white shadow-sm">
+											<img
+												src={doc.dataUrl}
+												alt={`Documento completo de ${doc.nombre}, con los recortes marcados`}
+												class="block max-w-full"
+											/>
+											{#each tipoEnCalibracion.campos as campo (campo.id)}
+												{@const r = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]
+													?.recorte}
+												{#if r}
+													<div
+														class="absolute border-2 border-primary bg-primary/10"
+														style="left:{r.x}%; top:{r.y}%; width:{r.w}%; height:{r.h}%;"
+													>
+														<span
+															class="absolute -top-5 left-0 truncate rounded bg-primary px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
+														>
+															{campo.nombre}
+														</span>
+													</div>
+												{/if}
+											{/each}
+										</div>
+									</div>
+								{/if}
 
 								{#each tipoEnCalibracion.campos as campo (campo.id)}
 									{@const ejemplo = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]}
