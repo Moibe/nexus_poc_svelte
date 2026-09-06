@@ -12,12 +12,28 @@
 		type DocumentoEjemploInstancia
 	} from '$lib/state/configuracion.svelte';
 
+	// Paleta de colores para los overlays de "otros recortes" (solo lectura,
+	// ver `otrosRecortes` abajo) — uno por campo, distintos entre sí y del
+	// azul primario que ya usa el rectángulo ACTIVO. Cíclica vía
+	// `i % PALETA_OTROS_RECORTES.length` si hay más campos que colores.
+	const PALETA_OTROS_RECORTES = [
+		{ borde: 'border-amber-500', relleno: 'bg-amber-500/10', etiqueta: 'bg-amber-500' },
+		{ borde: 'border-emerald-500', relleno: 'bg-emerald-500/10', etiqueta: 'bg-emerald-500' },
+		{ borde: 'border-rose-500', relleno: 'bg-rose-500/10', etiqueta: 'bg-rose-500' },
+		{ borde: 'border-violet-500', relleno: 'bg-violet-500/10', etiqueta: 'bg-violet-500' },
+		{ borde: 'border-cyan-500', relleno: 'bg-cyan-500/10', etiqueta: 'bg-cyan-500' },
+		{ borde: 'border-fuchsia-500', relleno: 'bg-fuchsia-500/10', etiqueta: 'bg-fuchsia-500' },
+		{ borde: 'border-lime-600', relleno: 'bg-lime-500/10', etiqueta: 'bg-lime-600' },
+		{ borde: 'border-orange-500', relleno: 'bg-orange-500/10', etiqueta: 'bg-orange-500' }
+	] as const;
+
 	let {
 		abierto = false,
 		tipoId = null,
 		campoNombre = null,
 		documento = null,
 		recorteExistente = null,
+		otrosRecortes = [],
 		onCerrar
 	}: {
 		abierto?: boolean;
@@ -38,6 +54,12 @@
 		 *  recorta esa combinación). Se usa solo para PRECARGAR el rectángulo
 		 *  al entrar — no para nada más. */
 		recorteExistente?: Recorte | null;
+		/** Los recortes YA GUARDADOS de los DEMÁS campos de este mismo
+		 *  documento (nunca incluye el campo que se está editando aquí) — solo
+		 *  para dar contexto visual mientras se recorta uno nuevo. De SOLO
+		 *  LECTURA: se dibujan sin manijas ni arrastre, y no deben interferir
+		 *  con el rectángulo activo (ver `pointer-events-none` en el markup). */
+		otrosRecortes?: { nombreCampo: string; recorte: Recorte }[];
 		onCerrar: () => void;
 	} = $props();
 
@@ -278,6 +300,27 @@
 								class="block max-w-full select-none"
 								draggable="false"
 							/>
+
+							<!-- Recortes YA GUARDADOS de los OTROS campos de este mismo
+							     documento — solo contexto visual, de SOLO LECTURA.
+							     `pointer-events-none` es OBLIGATORIO: sin él, estos overlays
+							     interceptarían los clics/arrastres del lienzo y del
+							     rectángulo activo, rompiendo el dibujo/movimiento/
+							     redimensionado de arriba. Va ANTES del bloque `{#if recorte}`
+							     para que el rectángulo activo quede visualmente por encima. -->
+							{#each otrosRecortes as otro, i (otro.nombreCampo)}
+								{@const color = PALETA_OTROS_RECORTES[i % PALETA_OTROS_RECORTES.length]}
+								<div
+									class="absolute pointer-events-none border-2 {color.borde} {color.relleno}"
+									style="left:{otro.recorte.x}%; top:{otro.recorte.y}%; width:{otro.recorte.w}%; height:{otro.recorte.h}%;"
+								>
+									<span
+										class="absolute -top-5 left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
+									>
+										{otro.nombreCampo}
+									</span>
+								</div>
+							{/each}
 
 							{#if recorte}
 								<!-- El rectángulo YA DIBUJADO se puede volver a arrastrar por su

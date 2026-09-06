@@ -48,7 +48,7 @@
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
-	import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
+	import type { TipoDocumentalGuardado, Recorte } from '$lib/state/configuracion.svelte';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
@@ -658,6 +658,25 @@
 	// de un campo no sobrevive un refresh).
 	let modalRecorteAbierto = $state(false);
 	let campoRecorteNombre = $state<string | null>(null);
+
+	// Los recortes YA GUARDADOS de los DEMÁS campos (todos menos
+	// `campoRecorteNombre`) para la instancia de documento seleccionada — se le
+	// pasan a `RecortarEjemploCampo` solo como contexto visual de solo lectura
+	// mientras se recorta el campo actual. `null` en `tipoEnCalibracion` o en
+	// `documentoSeleccionado` (nada en calibración, o ninguna instancia
+	// seleccionada todavía) se resuelve a `[]`, sin nada que dibujar.
+	const otrosRecortesDelDocumento = $derived.by(() => {
+		if (!tipoEnCalibracion || !documentoSeleccionado) return [];
+		const recortesDelDoc = tipoEnCalibracion.recortesPorDocumento[documentoSeleccionado.id];
+		if (!recortesDelDoc) return [];
+		const otros: { nombreCampo: string; recorte: Recorte }[] = [];
+		for (const campo of tipoEnCalibracion.campos) {
+			if (campo.nombre === campoRecorteNombre) continue;
+			const ejemplo = recortesDelDoc[campo.nombre];
+			if (ejemplo) otros.push({ nombreCampo: campo.nombre, recorte: ejemplo.recorte });
+		}
+		return otros;
+	});
 
 	/**
 	 * "Ejemplo documental" del menú de la tarjeta ya NO es un interruptor con
@@ -2514,6 +2533,7 @@
 		documentoSeleccionado &&
 		tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte) ||
 		null}
+	otrosRecortes={otrosRecortesDelDocumento}
 	onCerrar={() => (modalRecorteAbierto = false)}
 />
 
