@@ -1525,11 +1525,28 @@
 										onclick={() => (documentoSeleccionadoId = doc.id)}
 									>
 										{#if todosEtiquetados}
-											<span
-												class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-amber-400"
-											>
-												<Check class="size-2.5 text-white" aria-hidden="true" />
-											</span>
+											<!-- Tooltip vía snippet `child` (renderiza un <span>, no el
+											     <button> por default de Tooltip.Trigger): esto YA está
+											     dentro de un <button> (todo el chip), y un botón dentro
+											     de otro es HTML inválido — el navegador deshace el
+											     anidamiento y los clics dejan de llegar a quien deben,
+											     mismo motivo documentado en la tarjeta de "Modelos
+											     documentales agregados". -->
+											<Tooltip.Provider>
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														{#snippet child({ props })}
+															<span
+																{...props}
+																class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-amber-400"
+															>
+																<Check class="size-2.5 text-white" aria-hidden="true" />
+															</span>
+														{/snippet}
+													</Tooltip.Trigger>
+													<Tooltip.Content side="top">Etiquetado al 100%</Tooltip.Content>
+												</Tooltip.Root>
+											</Tooltip.Provider>
 											<span class="sr-only">Todos los campos etiquetados —</span>
 										{:else if tieneRecortes}
 											<Check class="size-3.5 shrink-0 text-green-600" aria-hidden="true" />
