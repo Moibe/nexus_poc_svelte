@@ -889,28 +889,26 @@
 										idSobreRama = null;
 									}}
 								>
+									<GripVertical
+										class="absolute top-1/2 left-6 size-3.5 -translate-y-1/2 shrink-0 cursor-grab text-muted-foreground/60"
+										aria-hidden="true"
+									/>
 									<span
 										class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
 									></span>
 									<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-									<span class="ml-[19.5px] flex min-w-0 items-center gap-1">
-										<GripVertical
-											class="size-3.5 shrink-0 cursor-grab text-muted-foreground/60"
-											aria-hidden="true"
-										/>
-										<button
-											type="button"
-											data-testid="rama-tipo"
-											aria-pressed={seleccionadoId === tipo.id}
-											class="min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
-											tipo.id
-												? 'text-primary'
-												: 'text-foreground hover:text-primary'}"
-											onclick={() => seleccionarRama(tipo.id)}
-										>
-											{tipo.nombre}
-										</button>
-									</span>
+									<button
+										type="button"
+										data-testid="rama-tipo"
+										aria-pressed={seleccionadoId === tipo.id}
+										class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
+										tipo.id
+											? 'text-primary'
+											: 'text-foreground hover:text-primary'}"
+										onclick={() => seleccionarRama(tipo.id)}
+									>
+										{tipo.nombre}
+									</button>
 								</li>
 							{/each}
 						</ul>
