@@ -63,7 +63,7 @@
 		/>
 		<AlertDialogPrimitive.Content
 			data-testid="confirmar-accion"
-			class="fixed top-1/2 left-1/2 z-60 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background px-6 pt-8 pb-6 shadow-lg"
 		>
 			<div class="flex items-start gap-3">
 				<span
