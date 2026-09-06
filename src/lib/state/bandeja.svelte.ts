@@ -37,6 +37,23 @@ export type DocumentoEnBandeja = {
 	archivo: File;
 };
 
+/**
+ * Un archivo recién elegido/soltado que TODAVÍA no entra a la bandeja ni al
+ * pipeline: solo se quedó en el primer panel ("Carga documental") esperando a
+ * que el usuario confirme con "Subir documentos" (o lo descarte con
+ * "Cancelar"). Sin campo `estado`: mientras es pendiente el único estado
+ * posible es "Pendiente de carga", así que no hace falta modelarlo como enum.
+ */
+export type ArchivoPendienteDeCarga = {
+	id: string;
+	nombre: string;
+	extension: string;
+	tamanioBytes: number;
+	agregadoEn: Date;
+	seleccionado: boolean;
+	archivo: File;
+};
+
 // Mismas restricciones que ya anuncia la UI del dropzone. Centralizadas aquí
 // porque drag&drop no respeta el atributo `accept` del <input> (eso solo
 // filtra el diálogo nativo de selección), así que hace falta validar en
@@ -78,6 +95,11 @@ function calcularHash(buffer: ArrayBuffer): string {
 }
 
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
+
+/** Archivos elegidos/soltados en "Carga documental" que esperan confirmación
+ *  ("Subir documentos") antes de pasar a `documentosEnBandeja`. Ver
+ *  `ArchivoPendienteDeCarga`. */
+export const archivosPendientesDeCarga = $state<ArchivoPendienteDeCarga[]>([]);
 
 /**
  * Cola de lectura de archivos: se procesa UNO A LA VEZ.
@@ -127,29 +149,69 @@ async function drenarCola() {
  */
 const huellasProcesadas = new Set<string>();
 
-export function agregarArchivos(files: FileList) {
+/** Valida y encola archivos en el primer panel ("Carga documental") como
+ *  pendientes de carga. NO toca `documentosEnBandeja` ni la cola de lectura
+ *  todavía — eso solo pasa cuando el usuario confirma con
+ *  `confirmarCargaPendiente` (botón "Subir documentos"). */
+export function agregarArchivosPendientes(files: FileList) {
 	for (const file of Array.from(files)) {
 		const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
 		if (!EXTENSIONES_PERMITIDAS.includes(extension)) continue;
 		if (file.size > TAMANO_MAXIMO_BYTES) continue;
 
-		const id = generarId();
-		documentosEnBandeja.push({
-			id,
+		archivosPendientesDeCarga.push({
+			id: generarId(),
 			nombre: file.name,
 			extension: extension.toUpperCase(),
 			tamanioBytes: file.size,
+			agregadoEn: new Date(),
+			seleccionado: false,
+			archivo: file
+		});
+	}
+}
+
+export function alternarSeleccionPendiente(id: string) {
+	const archivo = archivosPendientesDeCarga.find((a) => a.id === id);
+	if (archivo) archivo.seleccionado = !archivo.seleccionado;
+}
+
+export function quitarArchivoPendiente(id: string) {
+	const indice = archivosPendientesDeCarga.findIndex((a) => a.id === id);
+	if (indice !== -1) archivosPendientesDeCarga.splice(indice, 1);
+}
+
+/** "Cancelar": descarta TODOS los pendientes sin subir nada. Sin
+ *  confirmación — nada se subió ni se persistió todavía, así que rehacer esto
+ *  cuesta segundos (mismo criterio que otras acciones no-destructivas-de-
+ *  verdad ya usado en este proyecto). */
+export function cancelarCargaPendiente() {
+	archivosPendientesDeCarga.splice(0, archivosPendientesDeCarga.length);
+}
+
+/** "Subir documentos": mueve TODOS los pendientes a la bandeja de preparación
+ *  de una sola vez, arrancando recién ahí su lectura/hash. */
+export function confirmarCargaPendiente() {
+	for (const pendiente of archivosPendientesDeCarga) {
+		const { id, archivo } = pendiente;
+		const extensionEnMinusculas = pendiente.extension.toLowerCase();
+		documentosEnBandeja.push({
+			id,
+			nombre: pendiente.nombre,
+			extension: pendiente.extension,
+			tamanioBytes: pendiente.tamanioBytes,
 			origen: 'Manual',
 			agregadoEn: new Date(),
 			estado: 'en_cola',
 			progreso: 0,
 			hashSha256: null,
 			seleccionado: false,
-			archivo: file
+			archivo
 		});
-		colaDeLectura.push(() => procesarArchivo(id, file, extension));
-		drenarCola();
+		colaDeLectura.push(() => procesarArchivo(id, archivo, extensionEnMinusculas));
 	}
+	archivosPendientesDeCarga.splice(0, archivosPendientesDeCarga.length);
+	drenarCola();
 }
 
 // La animación de progreso y el cálculo del hash corren en paralelo, pero solo

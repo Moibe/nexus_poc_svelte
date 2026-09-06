@@ -1,9 +1,16 @@
 <script lang="ts">
 	import EmptyState from './EmptyState.svelte';
+	import ArchivoPendienteRow from './ArchivoPendienteRow.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import ArrowDownIcon from '$lib/components/icons/ArrowDownIcon.svelte';
-	import { agregarArchivos } from '$lib/state/bandeja.svelte';
+	import {
+		agregarArchivosPendientes,
+		archivosPendientesDeCarga,
+		cancelarCargaPendiente,
+		confirmarCargaPendiente
+	} from '$lib/state/bandeja.svelte';
 
 	let fileInput = $state<HTMLInputElement>();
 	let files = $state<FileList | null>(null);
@@ -15,7 +22,7 @@
 	// contador de "N archivos seleccionados").
 	$effect(() => {
 		if (files && files.length > 0) {
-			agregarArchivos(files);
+			agregarArchivosPendientes(files);
 			files = null;
 			// Limpiar el estado NO limpia el <input>: su `value` sigue guardando la
 			// ruta del archivo elegido, y el navegador solo dispara `change` cuando
@@ -34,7 +41,7 @@
 		evento.preventDefault();
 		arrastrando = false;
 		const soltados = evento.dataTransfer?.files;
-		if (soltados && soltados.length > 0) agregarArchivos(soltados);
+		if (soltados && soltados.length > 0) agregarArchivosPendientes(soltados);
 	}
 </script>
 
@@ -89,11 +96,39 @@
 		</span>
 	</button>
 
-	<div class="flex flex-1 items-center justify-center">
-		<EmptyState
-			icon={ClockBadgeIcon}
-			title="Tu área de carga está lista"
-			description="Agrega documentos para iniciar el procesamiento, lectura y validación inteligente dentro de NexusDoc."
-		/>
-	</div>
+	{#if archivosPendientesDeCarga.length === 0}
+		<div class="flex flex-1 items-center justify-center">
+			<EmptyState
+				icon={ClockBadgeIcon}
+				title="Tu área de carga está lista"
+				description="Agrega documentos para iniciar el procesamiento, lectura y validación inteligente dentro de NexusDoc."
+			/>
+		</div>
+	{:else}
+		<div class="flex min-h-0 flex-1 flex-col gap-2.5">
+			<div class="flex flex-col gap-2">
+				<p class="text-xs text-muted-foreground">
+					{archivosPendientesDeCarga.length} | Pendiente de carga
+				</p>
+				<div class="border-t border-border"></div>
+			</div>
+
+			<div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+				{#each archivosPendientesDeCarga as archivo (archivo.id)}
+					<ArchivoPendienteRow {archivo} />
+				{/each}
+			</div>
+
+			<div class="flex items-center justify-end gap-3">
+				<Button
+					variant="link"
+					class="h-auto p-0 text-destructive"
+					onclick={cancelarCargaPendiente}
+				>
+					Cancelar
+				</Button>
+				<Button onclick={confirmarCargaPendiente}>Subir documentos</Button>
+			</div>
+		</div>
+	{/if}
 </div>
