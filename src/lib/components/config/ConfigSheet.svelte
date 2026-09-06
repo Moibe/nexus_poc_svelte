@@ -1562,7 +1562,7 @@
 																			? `Ocultar el recorte de ${campo.nombre}`
 																			: `Mostrar el recorte de ${campo.nombre}`}
 																		aria-expanded={camposExpandidos.has(campo.nombre)}
-																		class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+																		class="flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
 																		onclick={() => alternarExpandidoCampo(campo.nombre)}
 																	>
 																		{#if camposExpandidos.has(campo.nombre)}
@@ -1591,7 +1591,7 @@
 																		{...props}
 																		type="button"
 																		aria-label={`Editar el recorte de ${campo.nombre}`}
-																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
 																		onclick={() => {
 																			campoRecorteNombre = campo.nombre;
 																			modalRecorteAbierto = true;
@@ -1616,7 +1616,7 @@
 																		{...props}
 																		type="button"
 																		aria-label={`Quitar el recorte de ${campo.nombre}`}
-																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
 																		onclick={() =>
 																			(recorteAQuitar = {
 																				idTipo: tipoEnCalibracion.id,
@@ -1649,7 +1649,7 @@
 																			type="button"
 																			aria-label={`Aún no hay recorte que ver de ${campo.nombre}`}
 																			disabled
-																			class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+																			class="flex size-8 shrink-0 items-center justify-center text-muted-foreground/50"
 																		>
 																			<Eye class="size-4" />
 																		</button>
@@ -1672,7 +1672,7 @@
 																		{...props}
 																		type="button"
 																		aria-label={`Recortar ${campo.nombre}`}
-																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
 																		onclick={() => {
 																			campoRecorteNombre = campo.nombre;
 																			modalRecorteAbierto = true;
@@ -1701,7 +1701,7 @@
 																			type="button"
 																			aria-label={`Aún no hay recorte que quitar de ${campo.nombre}`}
 																			disabled
-																			class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+																			class="flex size-8 shrink-0 items-center justify-center text-muted-foreground/50"
 																		>
 																			<Trash2 class="size-4" />
 																		</button>
