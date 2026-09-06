@@ -355,6 +355,8 @@
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label;
 	const etiquetaRegla = (valor: string) =>
 		REGLAS_TRANSFORMACION.find((r) => r.value === valor)?.label;
+	const etiquetaCardinalidad = (valor: string) =>
+		CARDINALIDADES.find((c) => c.value === valor)?.label;
 
 	const nombreDuplicado = $derived(
 		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
@@ -593,6 +595,18 @@
 	function alternarExpandidoCampo(nombreCampo: string) {
 		if (camposExpandidos.has(nombreCampo)) camposExpandidos.delete(nombreCampo);
 		else camposExpandidos.add(nombreCampo);
+	}
+
+	// Qué tarjetas de "Modelos documentales agregados" tienen su detalle
+	// (descripción + lista de campos) desplegado — para verlo sin entrar al
+	// modo edición. Mismo criterio de `camposExpandidos`: arranca replegado y
+	// usa `SvelteSet` por la misma razón (los métodos de un Set nativo no son
+	// reactivos bajo `$state`).
+	let tiposExpandidos = new SvelteSet<string>();
+
+	function alternarExpandidoTipo(idTipo: string) {
+		if (tiposExpandidos.has(idTipo)) tiposExpandidos.delete(idTipo);
+		else tiposExpandidos.add(idTipo);
 	}
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
@@ -1279,7 +1293,68 @@
 											{/if}
 										</DropdownMenu.Content>
 									</DropdownMenu.Root>
+
+									<!-- Chevron para ver descripción + campos sin entrar al modo
+									     edición (pedido 2026-09-05). Mismo patrón que
+									     `camposExpandidos` en Calibración: arranca replegado, un
+									     SvelteSet lleva qué tarjetas están desplegadas. -->
+									<button
+										type="button"
+										aria-label={tiposExpandidos.has(tipo.id)
+											? `Ocultar el detalle de ${tipo.nombre}`
+											: `Mostrar el detalle de ${tipo.nombre}`}
+										aria-expanded={tiposExpandidos.has(tipo.id)}
+										data-testid="chevron-tipo"
+										class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										onclick={() => alternarExpandidoTipo(tipo.id)}
+									>
+										{#if tiposExpandidos.has(tipo.id)}
+											<ChevronUp class="size-4" />
+										{:else}
+											<ChevronDown class="size-4" />
+										{/if}
+									</button>
 								</div>
+
+								{#if tiposExpandidos.has(tipo.id)}
+									<div
+										data-testid="detalle-tipo"
+										class="-mt-1 flex flex-col gap-4 rounded-xl border border-border bg-muted/30 px-4 py-4"
+									>
+										<div>
+											<p class="text-xs font-medium text-muted-foreground">Descripción</p>
+											<p class="mt-1 text-sm text-foreground">
+												{tipo.descripcion || 'Sin descripción.'}
+											</p>
+										</div>
+
+										<div>
+											<p class="text-xs font-medium text-muted-foreground">Campos</p>
+											{#if tipo.campos.length === 0}
+												<p class="mt-1 text-sm text-muted-foreground">Sin campos configurados.</p>
+											{:else}
+												<div class="mt-2 flex flex-col gap-2">
+													{#each tipo.campos as campo (campo.id)}
+														<div
+															class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+														>
+															<span class="font-medium text-foreground">{campo.nombre}</span>
+															<span class="text-muted-foreground"
+																>· {etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
+															>
+															<span class="text-muted-foreground"
+																>· {campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
+															>
+															<span class="text-muted-foreground"
+																>· {etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
+															>
+														</div>
+													{/each}
+												</div>
+											{/if}
+										</div>
+									</div>
+								{/if}
 
 								{#if historialTipo?.id === tipo.id}
 									<HistorialVersiones {tipo} onCerrar={() => (historialTipo = null)} />
