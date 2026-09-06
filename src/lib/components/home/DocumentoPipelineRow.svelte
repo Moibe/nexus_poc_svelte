@@ -30,7 +30,11 @@
 
 	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 	const etiqueta = $derived(ETIQUETA_ESTADO[documento.estado]);
-	const enProceso = $derived(documento.estado === 'en_cola' || documento.estado === 'procesando');
+	const enProceso = $derived(
+		documento.estado === 'en_cola' ||
+			documento.estado === 'clasificando' ||
+			documento.estado === 'procesando'
+	);
 
 	// Figma muestra en las filas duplicadas SOLO el renglón rojo, sin el "Listo"
 	// verde: la nota de que se procesó a propósito pesa más que el resultado.

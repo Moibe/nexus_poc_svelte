@@ -23,9 +23,11 @@ import type { ResultadoIne } from '$lib/types/ine';
 
 export type EstadoPipeline =
 	| 'en_cola' // esperando turno; ver NOTA sobre por qué se procesa de a uno
+	| 'clasificando'
 	| 'procesando'
 	| 'procesado' // extracción exitosa
-	| 'no_reconocido' // la API respondió bien pero el documento no es una INE
+	| 'no_reconocido' // el clasificador SÍ ubicó un tipo, pero su extractor no reconoció el documento
+	| 'no_configurado' // el clasificador no encontró ningún tipo documental activo que corresponda
 	| 'no_soportado' // formato que Document AI no procesa (DOCX, XLSX)
 	| 'fallido'; // error de red, timeout o error del servicio
 
@@ -142,6 +144,16 @@ export async function iniciarPipeline() {
 	}
 }
 
+/**
+ * Categoría que devuelve `/api/pipeline/clasificar` cuando SÍ hay un tipo
+ * documental configurado que corresponde — hoy la única real, el extractor de
+ * INE (ver `servicios/esquema.py` esquema_clasificador_desde_tipos: el `name`
+ * de cada categoría ES el `procesadorId` de su extractor). Cuando exista más
+ * de un tipo activo, esto se vuelve una tabla categoría -> endpoint en vez de
+ * una comparación fija.
+ */
+const CATEGORIA_INE = 'bf35151f51b51521';
+
 async function procesarUno(id: string) {
 	const doc = documentosEnPipeline.find((d) => d.id === id);
 	if (!doc) return; // lo quitaron mientras esperaba turno
@@ -154,14 +166,89 @@ async function procesarUno(id: string) {
 		return;
 	}
 
-	doc.estado = 'procesando';
-
 	// Se reconstruye el File con el MIME correcto en vez de mandar el original:
 	// el navegador deja `File.type` vacío para extensiones que no conoce (pasa
 	// seguido con .tiff), y el back valida justamente ese header. Sin esto, un
 	// TIFF válido se rechazaría con "formato no soportado" sin motivo real.
+	const archivo = new File([doc.archivo], doc.nombre, { type: mime });
+
+	doc.estado = 'clasificando';
+	const categoria = await clasificar(id, archivo);
+	if (categoria === null) return; // clasificar() ya dejó el documento en 'fallido'
+
+	const vivo = documentosEnPipeline.find((d) => d.id === id);
+	if (!vivo) return; // lo quitaron mientras se clasificaba
+
+	if (categoria === 'otro') {
+		// Ningún tipo documental activo corresponde: no hay extractor al que
+		// mandarlo, así que aquí termina — mandarlo de todos modos a /ia/ine
+		// sería repetir el bug original (todo se procesaba como INE sin
+		// importar qué fuera).
+		vivo.estado = 'no_configurado';
+		vivo.terminadoEn = new Date();
+		return;
+	}
+
+	if (categoria !== CATEGORIA_INE) {
+		// Categoría real pero sin extractor conectado todavía del lado del
+		// front — no debería pasar hoy (es la única categoría configurada),
+		// pero si pasa es mejor decirlo que fingir que se procesó.
+		vivo.estado = 'fallido';
+		vivo.terminadoEn = new Date();
+		vivo.error = `El clasificador encontró la categoría "${categoria}", pero el front todavía no sabe a qué extractor mandarla.`;
+		return;
+	}
+
+	vivo.estado = 'procesando';
+	await extraerIne(id, archivo);
+}
+
+/** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
+ *  ("otro" incluido), o `null` si algo falló — en ese caso ya dejó al
+ *  documento en 'fallido' con su mensaje, igual que hacía `procesarUno` antes
+ *  de separar este paso. */
+async function clasificar(id: string, archivo: File): Promise<string | null> {
 	const cuerpo = new FormData();
-	cuerpo.append('archivo', new File([doc.archivo], doc.nombre, { type: mime }));
+	cuerpo.append('archivo', archivo);
+
+	try {
+		const respuesta = await fetch('/api/pipeline/clasificar', { method: 'POST', body: cuerpo });
+
+		let datos: { mensaje?: string; categoria?: string | null } | null = null;
+		try {
+			datos = await respuesta.json();
+		} catch {
+			datos = null;
+		}
+
+		const vivo = documentosEnPipeline.find((d) => d.id === id);
+		if (!vivo) return null; // lo quitaron mientras se clasificaba
+
+		if (!respuesta.ok || datos === null) {
+			vivo.estado = 'fallido';
+			vivo.terminadoEn = new Date();
+			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status} al clasificar.`;
+			return null;
+		}
+
+		// `categoria: null` es el mismo caso de negocio que "otro" (Document AI
+		// respondió sin ninguna entidad) — se contempla en vez de asumir que
+		// nunca pasa, pero para quien llama significa exactamente lo mismo.
+		return datos.categoria ?? 'otro';
+	} catch (err) {
+		const vivo = documentosEnPipeline.find((d) => d.id === id);
+		if (vivo) {
+			vivo.estado = 'fallido';
+			vivo.terminadoEn = new Date();
+			vivo.error = err instanceof Error ? err.message : 'Error desconocido al clasificar.';
+		}
+		return null;
+	}
+}
+
+async function extraerIne(id: string, archivo: File) {
+	const cuerpo = new FormData();
+	cuerpo.append('archivo', archivo);
 
 	try {
 		const respuesta = await fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo });
@@ -191,7 +278,11 @@ async function procesarUno(id: string) {
 		vivo.resultado = datos as ResultadoIne;
 		// `quality_alert` no es un error: la API funcionó y su respuesta es que
 		// el documento no se reconoció como INE. Se distingue de `fallido` para
-		// que el usuario sepa que no tiene nada que reintentar.
+		// que el usuario sepa que no tiene nada que reintentar. Esto es distinto
+		// de 'no_configurado': aquí el clasificador SÍ encontró la categoría
+		// INE, pero el extractor de INE, ya viendo el documento con detalle, no
+		// reconoció ninguno de sus campos — un segundo chequeo, más fino, que
+		// puede discrepar del primero.
 		vivo.estado = datos?._metadata?.quality_alert ? 'no_reconocido' : 'procesado';
 	} catch (err) {
 		const vivo = documentosEnPipeline.find((d) => d.id === id);
@@ -216,9 +307,11 @@ export function quitarDelPipeline(id: string) {
  *  de detalle no se contradigan. */
 export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok' | 'error' | 'proceso' }> = {
 	en_cola: { texto: 'En cola', tono: 'proceso' },
+	clasificando: { texto: 'Clasificando', tono: 'proceso' },
 	procesando: { texto: 'Procesando', tono: 'proceso' },
 	procesado: { texto: 'Listo', tono: 'ok' },
 	no_reconocido: { texto: 'No se reconoció como INE', tono: 'error' },
+	no_configurado: { texto: 'Tipo documental no configurado', tono: 'error' },
 	no_soportado: { texto: 'Formato no procesable', tono: 'error' },
 	fallido: { texto: 'Falló el procesamiento', tono: 'error' }
 };

@@ -282,6 +282,16 @@
 					</div>
 				{/if}
 
+				{#if documento.estado === 'no_configurado'}
+					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
+						<p class="text-sm font-medium text-amber-800">Tipo documental no configurado</p>
+						<p class="mt-1 text-xs text-amber-700">
+							El clasificador no encontró ningún tipo documental activo que corresponda a
+							este documento.
+						</p>
+					</div>
+				{/if}
+
 				<!-- LA SECCIÓN "CAMPOS EXTRAÍDOS" SE QUITÓ EL 2026-08-25, a propósito.
 				     No es que estorbara: funcionaba y mostraba el valor de cada campo con
 				     su confianza individual. Se retiró porque NO está en el frame de Figma
