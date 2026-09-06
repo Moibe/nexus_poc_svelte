@@ -1515,9 +1515,20 @@
 									{@const todosEtiquetados =
 										tipoEnCalibracion.campos.length > 0 &&
 										tipoEnCalibracion.campos.every((c) => recortesDelDoc[c.nombre])}
+									<!-- `aria-label` fijo al nombre del archivo: sin él, el
+									     nombre ACCESIBLE de este botón incluiría también el
+									     texto (aunque sea `sr-only`) de la palomita/círculo de
+									     abajo, y dejaría de ser exactamente `doc.nombre` — rompía
+									     en la práctica un `getByRole('button', { name: ...,
+									     exact: true })` de una prueba ya existente en cuanto el
+									     documento tenía algún campo etiquetado. El estado
+									     ("parcial"/"100%") lo sigue explicando el tooltip de cada
+									     ícono (se abre también con foco de teclado, no solo con
+									     el mouse — no hace falta duplicarlo aquí. -->
 									<button
 										type="button"
 										aria-pressed={documentoSeleccionadoId === doc.id}
+										aria-label={doc.nombre}
 										class="inline-flex max-w-48 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {documentoSeleccionadoId ===
 										doc.id
 											? 'border-primary bg-primary/10 text-primary'
@@ -1547,7 +1558,6 @@
 													<Tooltip.Content side="top">Etiquetado al 100%</Tooltip.Content>
 												</Tooltip.Root>
 											</Tooltip.Provider>
-											<span class="sr-only">Todos los campos etiquetados —</span>
 										{:else if tieneRecortes}
 											<!-- Mismo truco que el círculo dorado de arriba: snippet
 											     `child` para que el trigger sea un <span>, no el
@@ -1567,7 +1577,6 @@
 													<Tooltip.Content side="top">Parcialmente etiquetado</Tooltip.Content>
 												</Tooltip.Root>
 											</Tooltip.Provider>
-											<span class="sr-only">Con campos etiquetados —</span>
 										{/if}
 										<span class="truncate">{doc.nombre}</span>
 									</button>

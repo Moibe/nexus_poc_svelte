@@ -5,7 +5,7 @@
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
-	import Save from '@lucide/svelte/icons/save';
+	import Upload from '@lucide/svelte/icons/upload';
 	import { agregarDocumentoEjemplo } from '$lib/state/configuracion.svelte';
 
 	let {
@@ -18,7 +18,7 @@
 		/** A qué tipo documental pertenece el documento que se está subiendo.
 		 *  Un tipo puede tener VARIAS instancias (2026-09-04): esto solo AGREGA
 		 *  una más, nunca sobreescribe. `null` no debería pasar en la práctica:
-		 *  "Guardar" simplemente no hace nada sin él. */
+		 *  "Subir" simplemente no hace nada sin él. */
 		tipoId?: string | null;
 		/** Se llama justo después de agregar la instancia, con su id — lo usa
 		 *  `ConfigSheet.svelte` para dejarla seleccionada de inmediato en vez de
@@ -281,8 +281,8 @@
 							class="flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
 							onclick={guardarDocumento}
 						>
-							<Save class="size-4" />
-							Guardar
+							<Upload class="size-4" />
+							Subir
 						</button>
 					</div>
 				{/if}
