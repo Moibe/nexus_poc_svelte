@@ -1573,7 +1573,7 @@
 												</span>
 												{campo.nombre}
 											</span>
-											<div class="flex items-center gap-2">
+											<div class="flex items-center gap-1">
 												{#if ejemplo}
 													<!-- Orden pedido el 2026-09-05: ojo, lápiz, bote (antes
 													     era lápiz, bote, chevron). Los tres con tooltip
