@@ -37,6 +37,8 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Info from '@lucide/svelte/icons/info';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import Eye from '@lucide/svelte/icons/eye';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -1578,7 +1580,9 @@
 													</button>
 													<!-- Replegado por default (cambio pedido el 2026-09-04):
 													     el recorte ya guardado no se muestra solo hasta picar
-													     este chevron. -->
+													     este botón. Ícono cambiado de chevron a ojo/ojo-tachado
+													     el 2026-09-05, a pedido explícito — misma función
+													     (mostrar/ocultar), solo cambió el glifo. -->
 													<button
 														type="button"
 														aria-label={camposExpandidos.has(campo.nombre)
@@ -1589,9 +1593,9 @@
 														onclick={() => alternarExpandidoCampo(campo.nombre)}
 													>
 														{#if camposExpandidos.has(campo.nombre)}
-															<ChevronUp class="size-4" />
+															<EyeOff class="size-4" />
 														{:else}
-															<ChevronDown class="size-4" />
+															<Eye class="size-4" />
 														{/if}
 													</button>
 												{:else}
