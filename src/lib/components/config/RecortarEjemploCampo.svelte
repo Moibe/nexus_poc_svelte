@@ -280,7 +280,7 @@
 					</DialogPrimitive.Title>
 					<DialogPrimitive.Description class="mt-1 text-xs text-muted-foreground">
 						Utiliza la herramienta de recorte para seleccionar en el documento la información que
-						se necesita extraer para "{campoNombre}".
+						se necesita extraer para "<span class="font-semibold text-foreground">{campoNombre}</span>".
 					</DialogPrimitive.Description>
 				</div>
 				<DialogPrimitive.Close aria-label="Cerrar" onclick={cerrar}>
