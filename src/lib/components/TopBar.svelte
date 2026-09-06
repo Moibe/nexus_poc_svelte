@@ -108,7 +108,7 @@
 			<div class="h-6 w-px bg-border"></div>
 			<div class="flex items-center gap-3">
 				<div>
-					<p class="text-sm font-medium text-foreground">Benjamin Leon Galvez</p>
+					<p class="text-sm font-medium text-foreground">Moisés Briseño Estrello</p>
 					<p class="text-xs text-muted-foreground">Administrador</p>
 				</div>
 				<button
