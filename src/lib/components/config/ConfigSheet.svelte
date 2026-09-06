@@ -1549,7 +1549,24 @@
 											</Tooltip.Provider>
 											<span class="sr-only">Todos los campos etiquetados —</span>
 										{:else if tieneRecortes}
-											<Check class="size-3.5 shrink-0 text-green-600" aria-hidden="true" />
+											<!-- Mismo truco que el círculo dorado de arriba: snippet
+											     `child` para que el trigger sea un <span>, no el
+											     <button> por default (ya estamos dentro del <button>
+											     del chip). -->
+											<Tooltip.Provider>
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														{#snippet child({ props })}
+															<Check
+																{...props}
+																class="size-3.5 shrink-0 text-green-600"
+																aria-hidden="true"
+															/>
+														{/snippet}
+													</Tooltip.Trigger>
+													<Tooltip.Content side="top">Parcialmente etiquetado</Tooltip.Content>
+												</Tooltip.Root>
+											</Tooltip.Provider>
 											<span class="sr-only">Con campos etiquetados —</span>
 										{/if}
 										<span class="truncate">{doc.nombre}</span>
