@@ -1542,7 +1542,16 @@
 									{@const ejemplo = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]}
 									<div class="border-b border-border py-4 last:border-0">
 										<div class="flex items-center justify-between gap-4">
-											<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
+											<span class="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+												{#if ejemplo}
+													<!-- Palomita verde: de un vistazo, qué campos ya
+													     tienen recorte guardado sin tener que fijarse en
+													     el set de íconos de la derecha (pedido explícito
+													     2026-09-05). -->
+													<Check class="size-4 shrink-0 text-green-600" aria-hidden="true" />
+												{/if}
+												{campo.nombre}
+											</span>
 											<div class="flex items-center gap-2">
 												{#if ejemplo}
 													<!-- Orden pedido el 2026-09-05: ojo, lápiz, bote (antes
