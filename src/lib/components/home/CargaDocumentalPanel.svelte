@@ -127,7 +127,10 @@
 				>
 					Cancelar
 				</Button>
-				<Button onclick={confirmarCargaPendiente}>Subir documentos</Button>
+				<Button
+					disabled={!archivosPendientesDeCarga.some((a) => a.seleccionado)}
+					onclick={confirmarCargaPendiente}>Subir documentos</Button
+				>
 			</div>
 		</div>
 	{/if}

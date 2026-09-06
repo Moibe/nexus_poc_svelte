@@ -165,7 +165,12 @@ export function agregarArchivosPendientes(files: FileList) {
 			extension: extension.toUpperCase(),
 			tamanioBytes: file.size,
 			agregadoEn: new Date(),
-			seleccionado: false,
+			// Arranca marcado (pedido explícito 2026-09-06: "Subir documentos"
+			// debe respetar la palomita, solo suben los marcados) — pero por
+			// default TODOS lo están, para que el caso común (soltar N archivos
+			// y querer subirlos todos) siga sin exigir picarle a cada uno.
+			// Desmarcar es la excepción, no la regla.
+			seleccionado: true,
 			archivo: file
 		});
 	}
@@ -189,10 +194,14 @@ export function cancelarCargaPendiente() {
 	archivosPendientesDeCarga.splice(0, archivosPendientesDeCarga.length);
 }
 
-/** "Subir documentos": mueve TODOS los pendientes a la bandeja de preparación
- *  de una sola vez, arrancando recién ahí su lectura/hash. */
+/** "Subir documentos": mueve a la bandeja de preparación SOLO los pendientes
+ *  con la palomita marcada (pedido explícito 2026-09-06 — antes subía todos
+ *  sin importar la selección, lo cual volvía la palomita puramente decorativa).
+ *  Los que se queden SIN marcar no se pierden: siguen esperando en la lista
+ *  de pendientes para una próxima confirmación. */
 export function confirmarCargaPendiente() {
-	for (const pendiente of archivosPendientesDeCarga) {
+	const seleccionados = archivosPendientesDeCarga.filter((a) => a.seleccionado);
+	for (const pendiente of seleccionados) {
 		const { id, archivo } = pendiente;
 		const extensionEnMinusculas = pendiente.extension.toLowerCase();
 		documentosEnBandeja.push({
@@ -210,7 +219,10 @@ export function confirmarCargaPendiente() {
 		});
 		colaDeLectura.push(() => procesarArchivo(id, archivo, extensionEnMinusculas));
 	}
-	archivosPendientesDeCarga.splice(0, archivosPendientesDeCarga.length);
+	for (const { id } of seleccionados) {
+		const indice = archivosPendientesDeCarga.findIndex((a) => a.id === id);
+		if (indice !== -1) archivosPendientesDeCarga.splice(indice, 1);
+	}
 	drenarCola();
 }
 
