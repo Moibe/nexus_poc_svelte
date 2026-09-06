@@ -1610,6 +1610,20 @@
 													>
 														<Scissors class="size-4" />
 													</button>
+													<!-- Basura deshabilitada, puramente de relleno (pedido
+													     explícito 2026-09-05): sin recorte todavía no hay nada
+													     que quitar, pero dejar SOLO las tijeras rompía la
+													     simetría con las filas de arriba (lápiz + basura +
+													     chevron). Mismo tamaño que las demás, en gris para que
+													     se lea inerte. -->
+													<button
+														type="button"
+														aria-label={`Aún no hay recorte que quitar de ${campo.nombre}`}
+														disabled
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+													>
+														<Trash2 class="size-4" />
+													</button>
 												{/if}
 											</div>
 										</div>
