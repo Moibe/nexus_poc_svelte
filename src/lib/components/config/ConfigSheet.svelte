@@ -317,6 +317,12 @@
 	// quedar vacía, igual que al entrar.
 	function seleccionarRama(id: string) {
 		seleccionadoId = seleccionadoId === id ? null : id;
+		// Repliega la tarjeta de ese tipo al seleccionarlo desde el árbol
+		// (pedido explícito 2026-09-05): a diferencia del chevron de cada
+		// CAMPO en Calibración (que sí conserva su estado entre selecciones,
+		// a propósito), aquí se pidió lo contrario — siempre arrancar
+		// replegado, sin importar si ya se había desplegado antes.
+		if (seleccionadoId === id) tiposExpandidos.delete(id);
 	}
 
 	async function activar(id: string) {
