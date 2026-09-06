@@ -36,6 +36,7 @@
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Info from '@lucide/svelte/icons/info';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -59,6 +60,7 @@
 		archivarTipoDocumental,
 		crearNuevaVersion,
 		eliminarTipoDocumental,
+		reordenarTipoDocumental,
 		cargarTipoDocumental,
 		etiquetaVersion,
 		etiquetaVertical,
@@ -608,6 +610,21 @@
 		if (tiposExpandidos.has(idTipo)) tiposExpandidos.delete(idTipo);
 		else tiposExpandidos.add(idTipo);
 	}
+
+	// Arrastrar-y-soltar para reordenar el árbol de tipos documentales (pedido
+	// explícito 2026-09-05, sin frame de Figma). Solo dos variables efímeras de
+	// PANTALLA — el orden real vive en `tiposDocumentales`, que
+	// `reordenarTipoDocumental` ya persiste solo.
+	let idArrastrando = $state<string | null>(null);
+	let idSobreRama = $state<string | null>(null);
+
+	function soltarSobreRama(idDestino: string) {
+		if (idArrastrando && idArrastrando !== idDestino) {
+			reordenarTipoDocumental(idArrastrando, idDestino);
+		}
+		idArrastrando = null;
+		idSobreRama = null;
+	}
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
 	);
@@ -842,23 +859,58 @@
 					{#if tiposEnBiblioteca.length > 0}
 						<ul class="mt-4">
 							{#each tiposEnBiblioteca as tipo (tipo.id)}
-								<li class="relative flex h-9.5 items-center pl-11">
+								<!-- Arrastrar-y-soltar para reordenar (pedido explícito
+								     2026-09-05): drag-and-drop nativo, sin librería nueva —
+								     `reordenarTipoDocumental` en el módulo de estado hace y
+								     persiste el reacomodo real; aquí solo vive qué rama se está
+								     arrastrando y sobre cuál anda encima, para el resalte visual. -->
+								<li
+									class="relative flex h-9.5 items-center pl-11 transition-opacity {idArrastrando ===
+									tipo.id
+										? 'opacity-40'
+										: ''} {idSobreRama === tipo.id && idArrastrando !== null && idArrastrando !== tipo.id
+										? 'border-t-2 border-primary'
+										: ''}"
+									draggable="true"
+									ondragstart={() => (idArrastrando = tipo.id)}
+									ondragover={(e) => {
+										e.preventDefault();
+										idSobreRama = tipo.id;
+									}}
+									ondragleave={() => {
+										if (idSobreRama === tipo.id) idSobreRama = null;
+									}}
+									ondrop={(e) => {
+										e.preventDefault();
+										soltarSobreRama(tipo.id);
+									}}
+									ondragend={() => {
+										idArrastrando = null;
+										idSobreRama = null;
+									}}
+								>
 									<span
 										class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
 									></span>
 									<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-									<button
-										type="button"
-										data-testid="rama-tipo"
-										aria-pressed={seleccionadoId === tipo.id}
-										class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
-										tipo.id
-											? 'text-primary'
-											: 'text-foreground hover:text-primary'}"
-										onclick={() => seleccionarRama(tipo.id)}
-									>
-										{tipo.nombre}
-									</button>
+									<span class="ml-[19.5px] flex min-w-0 items-center gap-1">
+										<GripVertical
+											class="size-3.5 shrink-0 cursor-grab text-muted-foreground/60"
+											aria-hidden="true"
+										/>
+										<button
+											type="button"
+											data-testid="rama-tipo"
+											aria-pressed={seleccionadoId === tipo.id}
+											class="min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
+											tipo.id
+												? 'text-primary'
+												: 'text-foreground hover:text-primary'}"
+											onclick={() => seleccionarRama(tipo.id)}
+										>
+											{tipo.nombre}
+										</button>
+									</span>
 								</li>
 							{/each}
 						</ul>

@@ -1196,6 +1196,30 @@ export async function eliminarTipoDocumental(id: string): Promise<{ ok: boolean;
 	return { ok: true, mensaje: '' };
 }
 
+/**
+ * Mueve `idArrastrado` justo ANTES de `idDestino` en `tiposDocumentales` — el
+ * orden real que el árbol de la izquierda dibuja, así que reordenar aquí es
+ * lo único que hace falta para que el árbol (y la lista de "Modelos
+ * documentales agregados") reflejen el nuevo orden. Sin frame de Figma —
+ * pedido explícito el 2026-09-05 ("quiero poder arrastrar los tipos
+ * documentales... para reordenarlos a gusto").
+ *
+ * `hacia` se vuelve a buscar DESPUÉS de quitar el arrastrado (no se calcula
+ * con aritmética de índices) para no tener que distinguir a mano si el
+ * arrastre fue hacia arriba o hacia abajo — el índice post-remoción ya es el
+ * correcto en los dos casos.
+ */
+export function reordenarTipoDocumental(idArrastrado: string, idDestino: string): boolean {
+	if (idArrastrado === idDestino) return false;
+	const desde = tiposDocumentales.findIndex((t) => t.id === idArrastrado);
+	if (desde === -1) return false;
+	const [movido] = tiposDocumentales.splice(desde, 1);
+	const hacia = tiposDocumentales.findIndex((t) => t.id === idDestino);
+	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia, 0, movido);
+	guardarBiblioteca();
+	return true;
+}
+
 /** Etiqueta legible de la vertical. Vive aquí y no en el componente porque la
  *  biblioteca la necesita para pintar las tarjetas. */
 export const VERTICALES = [
