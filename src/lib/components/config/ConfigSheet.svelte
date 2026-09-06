@@ -25,7 +25,7 @@
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Plus from '@lucide/svelte/icons/plus';
-	import UsersRound from '@lucide/svelte/icons/users-round';
+	import Share2 from '@lucide/svelte/icons/share-2';
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -1171,7 +1171,7 @@
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
 												onSelect={() => abrirCalibracion(tipo.id)}
 											>
-												<UsersRound class="size-4 text-muted-foreground" />
+												<Share2 class="size-4 text-muted-foreground" />
 												<span>Ejemplo documental</span>
 												<Tooltip.Provider>
 													<Tooltip.Root>
