@@ -1506,16 +1506,26 @@
 							     de "varias instancias". -->
 							<div class="flex flex-wrap items-center gap-2 border-b border-border pb-4">
 								{#each tipoEnCalibracion.documentosEjemplo as doc (doc.id)}
+									<!-- Palomita verde: qué documentos ya tienen AL MENOS un
+										     campo etiquetado (recortado), de un vistazo, sin tener
+										     que seleccionar cada chip para averiguarlo (pedido
+										     explícito 2026-09-05). -->
+									{@const tieneRecortes =
+										Object.keys(tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}).length > 0}
 									<button
 										type="button"
 										aria-pressed={documentoSeleccionadoId === doc.id}
-										class="max-w-48 truncate rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {documentoSeleccionadoId ===
+										class="inline-flex max-w-48 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {documentoSeleccionadoId ===
 										doc.id
 											? 'border-primary bg-primary/10 text-primary'
 											: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
 										onclick={() => (documentoSeleccionadoId = doc.id)}
 									>
-										{doc.nombre}
+										{#if tieneRecortes}
+											<Check class="size-3.5 shrink-0 text-green-600" aria-hidden="true" />
+											<span class="sr-only">Con campos etiquetados —</span>
+										{/if}
+										<span class="truncate">{doc.nombre}</span>
 									</button>
 								{/each}
 								{#if tipoEnCalibracion.documentosEjemplo.length === 0}
