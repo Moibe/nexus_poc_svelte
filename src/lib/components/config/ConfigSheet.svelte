@@ -1287,7 +1287,7 @@
 														     accesibilidad) — un inline style le gana a cualquier clase
 														     normal sin importar el orden, así que una `pointer-events-none`
 														     sin el modificador de Tailwind v4 no hace nada aquí. -->
-														<Tooltip.Content side="right" avoidCollisions={false} class="pointer-events-none!">
+														<Tooltip.Content side="bottom" class="pointer-events-none!">
 															{tipo.ejemploDocumental ? 'Quitar la marca de listo' : 'Marcar como listo'}
 														</Tooltip.Content>
 													</Tooltip.Root>
