@@ -1545,89 +1545,172 @@
 											<span class="text-sm font-medium text-foreground">{campo.nombre}</span>
 											<div class="flex items-center gap-2">
 												{#if ejemplo}
+													<!-- Orden pedido el 2026-09-05: ojo, lápiz, bote (antes
+													     era lápiz, bote, chevron). Los tres con tooltip
+													     ("Ver"/"Editar"/"Eliminar") — mismos `aria-label`
+													     de siempre, que ya describen la acción sin
+													     ambigüedad, así que las pruebas que buscan por ellos
+													     no se tocaron. -->
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		type="button"
+																		aria-label={camposExpandidos.has(campo.nombre)
+																			? `Ocultar el recorte de ${campo.nombre}`
+																			: `Mostrar el recorte de ${campo.nombre}`}
+																		aria-expanded={camposExpandidos.has(campo.nombre)}
+																		class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+																		onclick={() => alternarExpandidoCampo(campo.nombre)}
+																	>
+																		{#if camposExpandidos.has(campo.nombre)}
+																			<EyeOff class="size-4" />
+																		{:else}
+																			<Eye class="size-4" />
+																		{/if}
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Ver</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
+
 													<!-- Réplica del Figma: con un recorte ya guardado, el
 													     botón deja de ser "Recortar" y pasa a ser un ícono
 													     de lápiz que reabre el mismo modal para rehacer el
 													     recorte — `guardarRecorteEjemplo` ya sobreescribe
 													     el anterior, así que "editar" y "recortar de nuevo"
-													     son la misma operación. Junto a él, un botón de
-													     basura para poder dejar el campo SIN recorte
-													     asignado EN ESTA INSTANCIA (a diferencia de
-													     "editar", esto sí pide confirmar). -->
-													<button
-														type="button"
-														aria-label={`Editar el recorte de ${campo.nombre}`}
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
-														onclick={() => {
-															campoRecorteNombre = campo.nombre;
-															modalRecorteAbierto = true;
-														}}
-													>
-														<Pencil class="size-4" />
-													</button>
-													<button
-														type="button"
-														aria-label={`Quitar el recorte de ${campo.nombre}`}
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
-														onclick={() =>
-															(recorteAQuitar = {
-																idTipo: tipoEnCalibracion.id,
-																idDocumento: doc.id,
-																nombreCampo: campo.nombre
-															})}
-													>
-														<Trash2 class="size-4" />
-													</button>
-													<!-- Replegado por default (cambio pedido el 2026-09-04):
-													     el recorte ya guardado no se muestra solo hasta picar
-													     este botón. Ícono cambiado de chevron a ojo/ojo-tachado
-													     el 2026-09-05, a pedido explícito — misma función
-													     (mostrar/ocultar), solo cambió el glifo. -->
-													<button
-														type="button"
-														aria-label={camposExpandidos.has(campo.nombre)
-															? `Ocultar el recorte de ${campo.nombre}`
-															: `Mostrar el recorte de ${campo.nombre}`}
-														aria-expanded={camposExpandidos.has(campo.nombre)}
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-														onclick={() => alternarExpandidoCampo(campo.nombre)}
-													>
-														{#if camposExpandidos.has(campo.nombre)}
-															<EyeOff class="size-4" />
-														{:else}
-															<Eye class="size-4" />
-														{/if}
-													</button>
+													     son la misma operación. -->
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		type="button"
+																		aria-label={`Editar el recorte de ${campo.nombre}`}
+																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		onclick={() => {
+																			campoRecorteNombre = campo.nombre;
+																			modalRecorteAbierto = true;
+																		}}
+																	>
+																		<Pencil class="size-4" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Editar</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
+
+													<!-- Basura para poder dejar el campo SIN recorte
+													     asignado EN ESTA INSTANCIA (a diferencia de "editar",
+													     esto sí pide confirmar). -->
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		type="button"
+																		aria-label={`Quitar el recorte de ${campo.nombre}`}
+																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		onclick={() =>
+																			(recorteAQuitar = {
+																				idTipo: tipoEnCalibracion.id,
+																				idDocumento: doc.id,
+																				nombreCampo: campo.nombre
+																			})}
+																	>
+																		<Trash2 class="size-4" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Eliminar</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
 												{:else}
+													<!-- Mismo orden y mismos tres tooltips que arriba. Ojo y
+													     bote van DESHABILITADOS y grises — sin recorte
+													     todavía no hay nada que ver ni que quitar — puro
+													     relleno por simetría (pedido explícito 2026-09-05).
+													     Un botón `disabled` no dispara el hover del tooltip
+													     (mismo motivo que el "Editar" deshabilitado del menú
+													     `⋮`, arriba): el trigger real es el `<span>` que lo
+													     envuelve, no el botón mismo. -->
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<span {...props} class="block">
+																		<button
+																			type="button"
+																			aria-label={`Aún no hay recorte que ver de ${campo.nombre}`}
+																			disabled
+																			class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+																		>
+																			<Eye class="size-4" />
+																		</button>
+																	</span>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Ver</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
+
 													<!-- Ícono, no botón con texto (cambio pedido el
 													     2026-09-05): misma concordancia visual que el
 													     lápiz de "Editar" y la basura de "Quitar" — mismo
 													     tamaño, mismo `bg-primary/10`, mismo radio. -->
-													<button
-														type="button"
-														aria-label={`Recortar ${campo.nombre}`}
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
-														onclick={() => {
-															campoRecorteNombre = campo.nombre;
-															modalRecorteAbierto = true;
-														}}
-													>
-														<Scissors class="size-4" />
-													</button>
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		type="button"
+																		aria-label={`Recortar ${campo.nombre}`}
+																		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+																		onclick={() => {
+																			campoRecorteNombre = campo.nombre;
+																			modalRecorteAbierto = true;
+																		}}
+																	>
+																		<Scissors class="size-4" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Marcar recorte</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
+
 													<!-- Basura deshabilitada, puramente de relleno (pedido
 													     explícito 2026-09-05): sin recorte todavía no hay nada
 													     que quitar, pero dejar SOLO las tijeras rompía la
 													     simetría con las filas de arriba (lápiz + basura +
 													     chevron). Mismo tamaño que las demás, en gris para que
 													     se lea inerte. -->
-													<button
-														type="button"
-														aria-label={`Aún no hay recorte que quitar de ${campo.nombre}`}
-														disabled
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
-													>
-														<Trash2 class="size-4" />
-													</button>
+													<Tooltip.Provider>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<span {...props} class="block">
+																		<button
+																			type="button"
+																			aria-label={`Aún no hay recorte que quitar de ${campo.nombre}`}
+																			disabled
+																			class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+																		>
+																			<Trash2 class="size-4" />
+																		</button>
+																	</span>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content side="top">Eliminar</Tooltip.Content>
+														</Tooltip.Root>
+													</Tooltip.Provider>
 												{/if}
 											</div>
 										</div>
