@@ -30,6 +30,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import LapizFirmaIcon from '$lib/components/icons/LapizFirmaIcon.svelte';
 	import Scissors from '@lucide/svelte/icons/scissors';
 	import Archive from '@lucide/svelte/icons/archive';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -1561,7 +1562,7 @@
 															modalRecorteAbierto = true;
 														}}
 													>
-														<Pencil class="size-4" />
+														<LapizFirmaIcon class="size-4" />
 													</button>
 													<button
 														type="button"
