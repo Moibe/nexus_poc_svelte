@@ -1391,20 +1391,28 @@
 											{#if tipo.campos.length === 0}
 												<p class="mt-1 text-sm text-muted-foreground">Sin campos configurados.</p>
 											{:else}
+												<!-- Grid con columnas de ancho FIJO (no `auto`), a propósito
+													     (pedido explícito 2026-09-05): cada fila es su propio
+													     grid, pero al compartir el mismo `grid-template-columns`
+													     en rem fijos, las columnas quedan alineadas entre filas
+													     sin necesitar `subgrid`. Antes iba todo corrido en una
+													     sola línea separado por "·", que no alineaba nada. -->
 												<div class="mt-2 flex flex-col gap-2">
 													{#each tipo.campos as campo (campo.id)}
 														<div
-															class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+															class="grid grid-cols-[minmax(0,1fr)_6rem_7rem_14rem] items-center gap-x-4 rounded-lg border border-border bg-background px-3 py-2 text-sm"
 														>
-															<span class="font-medium text-foreground">{campo.nombre}</span>
-															<span class="text-muted-foreground"
-																>· {etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
+															<span class="min-w-0 truncate font-medium text-foreground"
+																>{campo.nombre}</span
 															>
 															<span class="text-muted-foreground"
-																>· {campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
+																>{etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
 															>
 															<span class="text-muted-foreground"
-																>· {etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
+																>{campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
+															>
+															<span class="text-muted-foreground"
+																>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
 															>
 														</div>
 													{/each}
