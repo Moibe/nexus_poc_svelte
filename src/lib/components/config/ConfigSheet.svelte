@@ -1566,7 +1566,7 @@
 													<button
 														type="button"
 														aria-label={`Quitar el recorte de ${campo.nombre}`}
-														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
 														onclick={() =>
 															(recorteAQuitar = {
 																idTipo: tipoEnCalibracion.id,
