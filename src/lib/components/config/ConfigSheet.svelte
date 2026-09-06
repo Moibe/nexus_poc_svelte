@@ -1510,8 +1510,11 @@
 										     campo etiquetado (recortado), de un vistazo, sin tener
 										     que seleccionar cada chip para averiguarlo (pedido
 										     explícito 2026-09-05). -->
-									{@const tieneRecortes =
-										Object.keys(tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}).length > 0}
+									{@const recortesDelDoc = tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}}
+									{@const tieneRecortes = Object.keys(recortesDelDoc).length > 0}
+									{@const todosEtiquetados =
+										tipoEnCalibracion.campos.length > 0 &&
+										tipoEnCalibracion.campos.every((c) => recortesDelDoc[c.nombre])}
 									<button
 										type="button"
 										aria-pressed={documentoSeleccionadoId === doc.id}
@@ -1521,7 +1524,14 @@
 											: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
 										onclick={() => (documentoSeleccionadoId = doc.id)}
 									>
-										{#if tieneRecortes}
+										{#if todosEtiquetados}
+											<span
+												class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-amber-400"
+											>
+												<Check class="size-2.5 text-white" aria-hidden="true" />
+											</span>
+											<span class="sr-only">Todos los campos etiquetados —</span>
+										{:else if tieneRecortes}
 											<Check class="size-3.5 shrink-0 text-green-600" aria-hidden="true" />
 											<span class="sr-only">Con campos etiquetados —</span>
 										{/if}
