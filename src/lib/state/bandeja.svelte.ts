@@ -165,12 +165,11 @@ export function agregarArchivosPendientes(files: FileList) {
 			extension: extension.toUpperCase(),
 			tamanioBytes: file.size,
 			agregadoEn: new Date(),
-			// Arranca marcado (pedido explícito 2026-09-06: "Subir documentos"
-			// debe respetar la palomita, solo suben los marcados) — pero por
-			// default TODOS lo están, para que el caso común (soltar N archivos
-			// y querer subirlos todos) siga sin exigir picarle a cada uno.
-			// Desmarcar es la excepción, no la regla.
-			seleccionado: true,
+			// Arranca DESMARCADO (pedido explícito 2026-09-06, ajustado horas
+			// después el mismo día): "Subir documentos" solo sube lo marcado, y
+			// marcar es una decisión deliberada del usuario para cada archivo,
+			// no algo que se asuma por default.
+			seleccionado: false,
 			archivo: file
 		});
 	}
