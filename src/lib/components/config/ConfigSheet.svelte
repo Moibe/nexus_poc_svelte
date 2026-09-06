@@ -71,6 +71,7 @@
 		hayBorrador,
 		irAPaso,
 		pasoNavegable,
+		pedidoDeConfiguracion,
 		tiposDocumentales,
 		VERTICALES,
 		guardarBorrador,
@@ -526,6 +527,18 @@
 		mostrarFormularioCampo = true;
 		vista = 'wizard';
 	}
+
+	// Segundo paso del handshake de `pedidoDeConfiguracion` (ver su docstring):
+	// TopBar ya abrió el sheet, aquí se navega al tipo nuevo y se apaga la
+	// bandera. La condición incluye `open` porque `nuevoTipoDocumental()` deja
+	// `vista = 'wizard'`, y hacer eso con el sheet cerrado dejaría el módulo
+	// parado en un wizard en blanco la próxima vez que alguien lo abriera por
+	// el menú del engrane, sin haberlo pedido.
+	$effect(() => {
+		if (!pedidoDeConfiguracion.nuevoTipo || !open) return;
+		pedidoDeConfiguracion.nuevoTipo = false;
+		nuevoTipoDocumental();
+	});
 
 	/**
 	 * Picar la tarjeta de un modelo ACTIVO no hace nada, a propósito.

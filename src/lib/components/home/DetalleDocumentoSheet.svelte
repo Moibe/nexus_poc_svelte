@@ -292,6 +292,16 @@
 					</div>
 				{/if}
 
+				{#if documento.estado === 'pendiente_revision'}
+					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
+						<p class="text-sm font-medium text-amber-800">Pendiente de revisión humana</p>
+						<p class="mt-1 text-xs text-amber-700">
+							Su tipo documental no está configurado y se eligió continuar sin
+							configurarlo, así que no se le extrajo ningún dato.
+						</p>
+					</div>
+				{/if}
+
 				<!-- LA SECCIÓN "CAMPOS EXTRAÍDOS" SE QUITÓ EL 2026-08-25, a propósito.
 				     No es que estorbara: funcionaba y mostraba el valor de cada campo con
 				     su confianza individual. Se retiró porque NO está en el frame de Figma

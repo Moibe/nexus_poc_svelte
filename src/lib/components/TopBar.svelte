@@ -9,6 +9,7 @@
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
+	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
@@ -17,6 +18,13 @@
 	// El sheet se monta aquí junto al menú que lo abre; se renderiza en un portal
 	// sobre todo el documento, así que no importa que viva dentro del header.
 	let configAbierto = $state(false);
+
+	// Algo fuera del header puede pedir que se abra (hoy: "Configurar" en una
+	// fila del Pipeline documental). Aquí SOLO se abre; la bandera la apaga
+	// ConfigSheet cuando ya navegó — ver `pedidoDeConfiguracion`.
+	$effect(() => {
+		if (pedidoDeConfiguracion.nuevoTipo) configAbierto = true;
+	});
 
 	const navItems = [
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },

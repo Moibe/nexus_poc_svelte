@@ -28,6 +28,7 @@ export type EstadoPipeline =
 	| 'procesado' // extracción exitosa
 	| 'no_reconocido' // el clasificador SÍ ubicó un tipo, pero su extractor no reconoció el documento
 	| 'no_configurado' // el clasificador no encontró ningún tipo documental activo que corresponda
+	| 'pendiente_revision' // no_configurado + el usuario eligió seguir sin configurar el tipo
 	| 'no_soportado' // formato que Document AI no procesa (DOCX, XLSX)
 	| 'fallido'; // error de red, timeout o error del servicio
 
@@ -298,6 +299,22 @@ export function alternarSeleccionPipeline(id: string) {
 	if (doc) doc.seleccionado = !doc.seleccionado;
 }
 
+/**
+ * "Continuar sin configuración": el documento se queda en el pipeline pero
+ * SIN extraerse, esperando a que una persona decida qué hacer con él.
+ *
+ * No es un estado de error ni de reintento: la clasificación funcionó
+ * perfecto, su respuesta fue "esto no es ninguno de tus tipos", y el usuario
+ * decidió no configurar uno ahora. Se distingue de `no_configurado` (que aún
+ * ofrece las dos opciones) porque la decisión ya se tomó — por eso las
+ * opciones desaparecen al pasar aquí.
+ */
+export function continuarSinConfiguracion(id: string) {
+	const doc = documentosEnPipeline.find((d) => d.id === id);
+	if (!doc || doc.estado !== 'no_configurado') return;
+	doc.estado = 'pendiente_revision';
+}
+
 export function quitarDelPipeline(id: string) {
 	const indice = documentosEnPipeline.findIndex((d) => d.id === id);
 	if (indice !== -1) documentosEnPipeline.splice(indice, 1);
@@ -312,6 +329,7 @@ export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok'
 	procesado: { texto: 'Listo', tono: 'ok' },
 	no_reconocido: { texto: 'No se reconoció como INE', tono: 'error' },
 	no_configurado: { texto: 'Tipo documental no configurado', tono: 'error' },
+	pendiente_revision: { texto: 'Pendiente de revisión humana', tono: 'error' },
 	no_soportado: { texto: 'Formato no procesable', tono: 'error' },
 	fallido: { texto: 'Falló el procesamiento', tono: 'error' }
 };

@@ -17,8 +17,10 @@
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import ImageIcon from '$lib/components/icons/ImageIcon.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
+	import { pedirConfigurarNuevoTipo } from '$lib/state/configuracion.svelte';
 	import {
 		alternarSeleccionPipeline,
+		continuarSinConfiguracion,
 		ETIQUETA_ESTADO,
 		type DocumentoEnPipeline
 	} from '$lib/state/pipeline.svelte';
@@ -51,7 +53,8 @@
 	}
 </script>
 
-<div class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+<div class="rounded-lg border border-border bg-background">
+	<div class="flex items-center gap-3 px-3 py-2.5">
 	<Checkbox
 		checked={documento.seleccionado}
 		onCheckedChange={() => alternarSeleccionPipeline(documento.id)}
@@ -111,5 +114,31 @@
 			     0-100 (`_a_cien` en servicios/ia.py). -->
 			{documento.resultado.confianza_minima.toFixed(2)}%
 		</span>
+	{/if}
+	</div>
+
+	<!-- Las dos salidas de un documento cuyo tipo no está configurado. Van FUERA
+	     del <button> de arriba (el que abre el detalle) y no dentro: un botón
+	     anidado en otro es HTML inválido, el navegador deshace el anidamiento y
+	     los clics dejan de llegar a quien deben — ya mordió dos veces en este
+	     proyecto, está documentado en docs/pendientes-ux.md. -->
+	{#if documento.estado === 'no_configurado'}
+		<div class="flex items-center justify-end gap-3 border-t border-border px-3 py-2">
+			<button
+				type="button"
+				class="text-xs text-muted-foreground transition-colors hover:text-foreground"
+				onclick={() => continuarSinConfiguracion(documento.id)}
+			>
+				Continuar sin configuración
+			</button>
+			<span class="text-border" aria-hidden="true">|</span>
+			<button
+				type="button"
+				class="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+				onclick={pedirConfigurarNuevoTipo}
+			>
+				Configurar
+			</button>
+		</div>
 	{/if}
 </div>

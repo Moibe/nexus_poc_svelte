@@ -1363,3 +1363,25 @@ export function irAPaso(n: number): boolean {
 	borradorTipoDocumental.paso = n;
 	return true;
 }
+
+/**
+ * Canal para que algo FUERA del Módulo de configuración pida abrirlo ya
+ * parado en un tipo documental nuevo. Hoy lo usa "Configurar" de una fila del
+ * Pipeline documental cuyo documento no correspondió a ningún tipo activo.
+ *
+ * Existe porque las dos piezas no se pueden hablar directo: quién abre el
+ * sheet es `TopBar.svelte` (con estado local suyo, `configAbierto`) y quién
+ * sabe arrancar un tipo en blanco es `nuevoTipoDocumental()`, una función
+ * privada de `ConfigSheet.svelte`. Pasar un callback desde una fila del
+ * pipeline hasta allá cruzaría media app; una bandera compartida no.
+ *
+ * El handshake es de dos pasos a propósito: `TopBar` ve la bandera y abre el
+ * sheet, y `ConfigSheet` —que solo puede navegar cuando YA está abierto— la
+ * consume y la apaga. Por eso la apaga el segundo y no el primero: apagarla
+ * al abrir dejaría a `ConfigSheet` sin señal que leer.
+ */
+export const pedidoDeConfiguracion = $state({ nuevoTipo: false });
+
+export function pedirConfigurarNuevoTipo() {
+	pedidoDeConfiguracion.nuevoTipo = true;
+}
