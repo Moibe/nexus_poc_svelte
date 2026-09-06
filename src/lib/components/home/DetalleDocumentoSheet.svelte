@@ -229,7 +229,12 @@
 				{/snippet}
 				{@render dato('Hash SHA-256', valorHash)}
 
-				{#snippet valorUsuario()}Benjamin Leon Galvez{/snippet}
+				<!-- Sigue siendo un placeholder, igual que el del TopBar: no hay
+				     autenticación todavía, así que no existe "el usuario que procesó
+				     este documento" como dato real. El nombre del volcado de Figma
+				     (Benjamin Leon Galvez) se reemplazó por el del usuario real a
+				     pedido explícito, para no ver un nombre ajeno en las demos. -->
+				{#snippet valorUsuario()}Moisés Briseño Estrello{/snippet}
 				{@render dato('Usuario', valorUsuario)}
 
 				<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Procesamiento OCR</h3>
