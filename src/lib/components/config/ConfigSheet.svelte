@@ -980,7 +980,13 @@
 						     modelo (682x72). No pude ver los píxeles —se agotó la cuota de
 						     Figma— así que el espaciado y el detalle fino quedan pendientes
 						     de una pasada de fidelidad contra el frame. -->
-						<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
+						<div class="flex items-center justify-between gap-4">
+							<h3 class="text-xl font-semibold text-foreground">Modelos documentales agregados</h3>
+							<Button class="shrink-0 gap-2" onclick={nuevoTipoDocumental}>
+								<Plus class="size-4" />
+								Agregar nuevo tipo documental
+							</Button>
+						</div>
 
 						{#if tiposVisibles.length === 0}
 							<!-- Sin selección la lista es intencionalmente vacía, pero un área
@@ -1360,10 +1366,6 @@
 									<HistorialVersiones {tipo} onCerrar={() => (historialTipo = null)} />
 								{/if}
 							{/each}
-						</div>
-
-						<div class="mt-8">
-							<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 						</div>
 					{:else}
 					<!-- Estado vacío de la biblioteca de modelos documentales -->
