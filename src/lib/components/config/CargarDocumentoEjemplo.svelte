@@ -278,7 +278,7 @@
 							type="button"
 							data-testid="boton-guardar-documento"
 							disabled={cargandoPdf || guardando}
-							class="flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
+							class="flex items-center gap-2 rounded-full bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:pointer-events-none disabled:opacity-40"
 							onclick={guardarDocumento}
 						>
 							<Upload class="size-4" />
