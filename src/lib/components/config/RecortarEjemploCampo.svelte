@@ -76,6 +76,28 @@
 	let modoRecorte = $state(true);
 	let recorte = $state<Recorte | null>(null);
 
+	/**
+	 * ¿La etiqueta de "otro" recorte (que vive pegada arriba de su rectángulo,
+	 * ver el markup) queda tapada por el rectángulo ACTIVO que se está
+	 * dibujando/moviendo/redimensionando ahora mismo? Pedido explícito
+	 * 2026-09-05: "que las etiquetas que se crucen en el camino se muevan a
+	 * otra orilla de su marcación". `MARGEN_ETIQUETA` extiende el borde
+	 * superior de `otro` unos puntos porcentuales hacia arriba SOLO para esta
+	 * comparación (no para el dibujo) — aproxima el alto real en píxeles de la
+	 * etiqueta, que vive fuera de la caja. No es geometría exacta a propósito:
+	 * ese detalle no importa para decidir si estorba o no.
+	 */
+	const MARGEN_ETIQUETA = 4;
+	function etiquetaTapadaPorActivo(otro: Recorte): boolean {
+		if (!recorte || recorte.w === 0 || recorte.h === 0) return false;
+		return (
+			recorte.x < otro.x + otro.w &&
+			recorte.x + recorte.w > otro.x &&
+			recorte.y < otro.y + otro.h &&
+			recorte.y + recorte.h > otro.y - MARGEN_ETIQUETA
+		);
+	}
+
 	// Precarga el rectángulo ya guardado al ABRIR — "Editar" (2026-09-04)
 	// debe mostrar lo que había, no arrancar en blanco. Se dispara solo en la
 	// transición false→true de `abierto` (por eso el `untrack` alrededor de
@@ -296,12 +318,18 @@
 							     para que el rectángulo activo quede visualmente por encima. -->
 							{#each otrosRecortes as otro (otro.nombreCampo)}
 								{@const color = colorParaCampo(otro.nombreCampo)}
+								{@const tapada = etiquetaTapadaPorActivo(otro.recorte)}
 								<div
 									class="absolute pointer-events-none border-2 {color.borde} {color.relleno}"
 									style="left:{otro.recorte.x}%; top:{otro.recorte.y}%; width:{otro.recorte.w}%; height:{otro.recorte.h}%;"
 								>
+									<!-- Se mueve a la orilla de ABAJO cuando el rectángulo
+									     ACTIVO (el que se está dibujando ahora) le estorba
+									     encima — pedido explícito 2026-09-05. -->
 									<span
-										class="absolute -top-5 left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
+										class="absolute left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white {tapada
+											? '-bottom-5'
+											: '-top-5'}"
 									>
 										{otro.nombreCampo}
 									</span>
