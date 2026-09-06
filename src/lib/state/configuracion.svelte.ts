@@ -1237,6 +1237,43 @@ export function etiquetaVertical(valor: string): string | undefined {
 }
 
 /**
+ * Paleta de colores para marcar, en pantalla, el recorte de CADA campo con un
+ * color distinto — usada en dos lugares que antes no compartían nada
+ * (`RecortarEjemploCampo.svelte`, para los recortes de los "otros" campos
+ * mientras se edita uno; y `ConfigSheet.svelte`, para "ver el documento
+ * completo con sus recortes"). Vive aquí, no en ninguno de los dos
+ * componentes, para que un mismo campo se pinte del MISMO color en ambas
+ * vistas. Ninguno es azul: ese es el color del rectángulo ACTIVO en el modal
+ * de recorte, y mezclarlo confundiría "el que estoy editando" con "uno ya
+ * guardado".
+ */
+export const PALETA_COLORES_CAMPO = [
+	{ borde: 'border-amber-500', relleno: 'bg-amber-500/10', etiqueta: 'bg-amber-500' },
+	{ borde: 'border-emerald-500', relleno: 'bg-emerald-500/10', etiqueta: 'bg-emerald-500' },
+	{ borde: 'border-rose-500', relleno: 'bg-rose-500/10', etiqueta: 'bg-rose-500' },
+	{ borde: 'border-violet-500', relleno: 'bg-violet-500/10', etiqueta: 'bg-violet-500' },
+	{ borde: 'border-cyan-500', relleno: 'bg-cyan-500/10', etiqueta: 'bg-cyan-500' },
+	{ borde: 'border-fuchsia-500', relleno: 'bg-fuchsia-500/10', etiqueta: 'bg-fuchsia-500' },
+	{ borde: 'border-lime-600', relleno: 'bg-lime-500/10', etiqueta: 'bg-lime-600' },
+	{ borde: 'border-orange-500', relleno: 'bg-orange-500/10', etiqueta: 'bg-orange-500' }
+] as const;
+
+/**
+ * Un color estable por NOMBRE de campo (no por posición en una lista): así el
+ * mismo campo se ve del mismo color sin importar en qué orden aparezca, o si
+ * una vista muestra un subconjunto distinto de campos que la otra (el modal
+ * de recorte excluye al campo que se está editando; "documento completo" no
+ * excluye a ninguno).
+ */
+export function colorParaCampo(nombreCampo: string): (typeof PALETA_COLORES_CAMPO)[number] {
+	let hash = 0;
+	for (let i = 0; i < nombreCampo.length; i++) {
+		hash = (hash + nombreCampo.charCodeAt(i)) % PALETA_COLORES_CAMPO.length;
+	}
+	return PALETA_COLORES_CAMPO[hash];
+}
+
+/**
  * Carga un tipo documental guardado dentro del borrador, para retomarlo.
  *
  * Los campos se copian con ids NUEVOS: los del guardado podrían chocar con los

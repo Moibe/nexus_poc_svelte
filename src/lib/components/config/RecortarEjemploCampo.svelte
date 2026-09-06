@@ -8,24 +8,10 @@
 	import Save from '@lucide/svelte/icons/save';
 	import {
 		guardarRecorteEjemplo,
+		colorParaCampo,
 		type Recorte,
 		type DocumentoEjemploInstancia
 	} from '$lib/state/configuracion.svelte';
-
-	// Paleta de colores para los overlays de "otros recortes" (solo lectura,
-	// ver `otrosRecortes` abajo) — uno por campo, distintos entre sí y del
-	// azul primario que ya usa el rectángulo ACTIVO. Cíclica vía
-	// `i % PALETA_OTROS_RECORTES.length` si hay más campos que colores.
-	const PALETA_OTROS_RECORTES = [
-		{ borde: 'border-amber-500', relleno: 'bg-amber-500/10', etiqueta: 'bg-amber-500' },
-		{ borde: 'border-emerald-500', relleno: 'bg-emerald-500/10', etiqueta: 'bg-emerald-500' },
-		{ borde: 'border-rose-500', relleno: 'bg-rose-500/10', etiqueta: 'bg-rose-500' },
-		{ borde: 'border-violet-500', relleno: 'bg-violet-500/10', etiqueta: 'bg-violet-500' },
-		{ borde: 'border-cyan-500', relleno: 'bg-cyan-500/10', etiqueta: 'bg-cyan-500' },
-		{ borde: 'border-fuchsia-500', relleno: 'bg-fuchsia-500/10', etiqueta: 'bg-fuchsia-500' },
-		{ borde: 'border-lime-600', relleno: 'bg-lime-500/10', etiqueta: 'bg-lime-600' },
-		{ borde: 'border-orange-500', relleno: 'bg-orange-500/10', etiqueta: 'bg-orange-500' }
-	] as const;
 
 	let {
 		abierto = false,
@@ -308,8 +294,8 @@
 							     rectángulo activo, rompiendo el dibujo/movimiento/
 							     redimensionado de arriba. Va ANTES del bloque `{#if recorte}`
 							     para que el rectángulo activo quede visualmente por encima. -->
-							{#each otrosRecortes as otro, i (otro.nombreCampo)}
-								{@const color = PALETA_OTROS_RECORTES[i % PALETA_OTROS_RECORTES.length]}
+							{#each otrosRecortes as otro (otro.nombreCampo)}
+								{@const color = colorParaCampo(otro.nombreCampo)}
 								<div
 									class="absolute pointer-events-none border-2 {color.borde} {color.relleno}"
 									style="left:{otro.recorte.x}%; top:{otro.recorte.y}%; width:{otro.recorte.w}%; height:{otro.recorte.h}%;"

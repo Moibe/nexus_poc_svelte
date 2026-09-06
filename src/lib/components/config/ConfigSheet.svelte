@@ -66,6 +66,7 @@
 		cargarTipoDocumental,
 		etiquetaVersion,
 		etiquetaVertical,
+		colorParaCampo,
 		guardarTipoDocumental,
 		hayBorrador,
 		irAPaso,
@@ -1615,12 +1616,13 @@
 												{@const r = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]
 													?.recorte}
 												{#if r}
+													{@const color = colorParaCampo(campo.nombre)}
 													<div
-														class="absolute border-2 border-primary bg-primary/10"
+														class="absolute border-2 {color.borde} {color.relleno}"
 														style="left:{r.x}%; top:{r.y}%; width:{r.w}%; height:{r.h}%;"
 													>
 														<span
-															class="absolute -top-5 left-0 truncate rounded bg-primary px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
+															class="absolute -top-5 left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
 														>
 															{campo.nombre}
 														</span>
