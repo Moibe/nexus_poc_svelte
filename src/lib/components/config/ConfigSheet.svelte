@@ -1391,27 +1391,34 @@
 											{#if tipo.campos.length === 0}
 												<p class="mt-1 text-sm text-muted-foreground">Sin campos configurados.</p>
 											{:else}
-												<!-- Grid con columnas de ancho FIJO (no `auto`), a propósito
-													     (pedido explícito 2026-09-05): cada fila es su propio
-													     grid, pero al compartir el mismo `grid-template-columns`
-													     en rem fijos, las columnas quedan alineadas entre filas
-													     sin necesitar `subgrid`. Antes iba todo corrido en una
-													     sola línea separado por "·", que no alineaba nada. -->
-												<div class="mt-2 flex flex-col gap-2">
+												<!-- `subgrid` (pedido explícito 2026-09-05, ajustado el mismo
+													     día): la primera versión fijaba las columnas 2-4 en rem
+													     A OJO (6/7/14rem) — a un ancho de panel angosto eso le
+													     dejaba casi nada a la columna del nombre, que es
+													     justamente la que más varía ("numero_poliza" truncado a
+													     "n..."). Con `subgrid`, las columnas 2-4 se miden UNA
+													     SOLA VEZ para todo el grupo (el ancho real del texto más
+													     largo que traiga esa columna en cualquier fila: "Múltiples
+													     valores (Multi Value)", "Obligatorio", etc.) y la del
+													     nombre (`minmax(0,1fr)`) se queda con TODO lo que sobra —
+													     nunca reserva de más. Cada fila sigue siendo su propia
+													     tarjeta (borde, fondo, padding); lo que comparten es
+													     `grid-template-columns` vía `grid-cols-subgrid`. -->
+												<div class="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2">
 													{#each tipo.campos as campo (campo.id)}
 														<div
-															class="grid grid-cols-[minmax(0,1fr)_6rem_7rem_14rem] items-center gap-x-4 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+															class="col-span-4 grid grid-cols-subgrid items-center rounded-lg border border-border bg-background px-3 py-2 text-sm"
 														>
 															<span class="min-w-0 truncate font-medium text-foreground"
 																>{campo.nombre}</span
 															>
-															<span class="text-muted-foreground"
+															<span class="text-muted-foreground whitespace-nowrap"
 																>{etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
 															>
-															<span class="text-muted-foreground"
+															<span class="text-muted-foreground whitespace-nowrap"
 																>{campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
 															>
-															<span class="text-muted-foreground"
+															<span class="text-muted-foreground whitespace-nowrap"
 																>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
 															>
 														</div>
