@@ -1631,7 +1631,7 @@
 																	</button>
 																{/snippet}
 															</Tooltip.Trigger>
-															<Tooltip.Content side="top">Editar</Tooltip.Content>
+															<Tooltip.Content side="top">Editar recorte</Tooltip.Content>
 														</Tooltip.Root>
 													</Tooltip.Provider>
 
