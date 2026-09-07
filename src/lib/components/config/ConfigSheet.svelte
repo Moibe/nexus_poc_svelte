@@ -21,6 +21,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -220,6 +221,7 @@
 		promptsPendientes = null;
 		promptActual = 1;
 		puntajesPorPrompt = {};
+		intentoCalibracion = 0;
 		vista = 'prompts';
 	}
 
@@ -227,27 +229,84 @@
 	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
 	let promptActual = $state(1);
 
-	/** Puntaje (0-100) de cada prompt YA terminado, por número de prompt. Se
-	 *  llena en `avanzarPrompt` con lo último que reportó `RevisionPrompt` antes
-	 *  de que ese prompt se abandone — un objeto normal basta (no hace falta
-	 *  `$state` en las claves, solo en la variable que lo contiene) porque
-	 *  nunca se edita una entrada ya escrita, solo se agregan nuevas. */
+	/** Puntaje (0-100) de cada prompt YA ABANDONADO, por número de prompt —
+	 *  "abandonado" en el sentido de que `avanzarPrompt` ya se lo llevó de
+	 *  encima. El del prompt QUE SE ESTÁ VIENDO ahora mismo (`promptActual`) no
+	 *  vive aquí: se calcula al vuelo en `puntajeDe`, para que si la persona
+	 *  cambia un veredicto después de terminar el último prompt (posible: sus
+	 *  campos se quedan visibles e interactivos, ver `calibracionSinExito`) el
+	 *  puntaje reaccione en vez de quedarse con un número viejo. Un objeto
+	 *  normal basta (no `$state` en las claves) porque nunca se edita una
+	 *  entrada ya escrita, solo se agregan nuevas. */
 	let puntajesPorPrompt = $state<Record<number, number>>({});
+
+	/** Puntaje (0-100) del prompt `n`, sea que ya se haya abandonado
+	 *  (`puntajesPorPrompt`) o que sea el que se está viendo ahora mismo
+	 *  (calculado al vuelo desde `avanceRevision`). `undefined` mientras ese
+	 *  prompt no tenga TODOS sus campos calificados todavía. */
+	function puntajeDe(n: number): number | undefined {
+		if (n === promptActual) {
+			return avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
+				? Math.round((avanceRevision.correctos / avanceRevision.total) * 100)
+				: undefined;
+		}
+		return puntajesPorPrompt[n];
+	}
+
+	/** Puntaje mínimo (correctos/total, en %) para que un prompt cuente como
+	 *  "de calidad adecuada" — el mismo corte que ya pinta un puntaje en verde
+	 *  en `claseColorPuntaje`. No hay razón para que "adecuado" y "verde" sean
+	 *  dos números distintos si ninguno de los dos viene de una fuente real
+	 *  todavía (los dos son una lectura mía, no del back ni del mockup). */
+	const UMBRAL_ADECUADO = 80;
+
+	/** Verde/ámbar/rojo del puntaje, a pedido explícito con captura
+	 *  (2026-09-07). Cortes propios — el diseño solo mostró 84% en verde y 60%
+	 *  en ámbar, así que 80/50 es la lectura más simple que reproduce esos dos
+	 *  ejemplos sin inventar un tercer corte que nadie pidió. */
+	function claseColorPuntaje(puntaje: number): string {
+		if (puntaje >= UMBRAL_ADECUADO) return 'bg-green-50 text-green-700';
+		if (puntaje >= 50) return 'bg-amber-50 text-amber-700';
+		return 'bg-red-50 text-red-700';
+	}
+
+	/** true cuando se llegó al ÚLTIMO prompt, se calificaron todos sus campos,
+	 *  y NINGUNO de los `promptsDe.cantidad` prompts alcanzó `UMBRAL_ADECUADO`
+	 *  (2026-09-07, a pedido explícito con captura: "cuando ninguno de los
+	 *  prompts alcanza un nivel adecuado, debe desplegar este mensaje").
+	 *  Es un `$derived`, no una bandera que se prende una vez y se queda
+	 *  prendida: los campos del último prompt se quedan visibles e
+	 *  interactivos después de esto (nada los oculta), así que si la persona
+	 *  cambia un veredicto y el puntaje sube del umbral, el aviso debe
+	 *  desaparecer solo, no quedarse mintiendo. */
+	const calibracionSinExito = $derived.by(() => {
+		if (promptsDe === null || promptActual !== promptsDe.cantidad) return false;
+		const puntajes: number[] = [];
+		for (let n = 1; n <= promptsDe.cantidad; n++) {
+			const p = puntajeDe(n);
+			if (p === undefined) return false; // todavía falta calificar alguno
+			puntajes.push(p);
+		}
+		return puntajes.every((p) => p < UMBRAL_ADECUADO);
+	});
 
 	/** "Continuar" con el pie: por ahora cada prompt es la MISMA operación
 	 *  (correr el extractor contra el mismo documento de ejemplo y calificar sus
 	 *  campos) repetida tantas veces como prompts se hayan pedido — todavía no
 	 *  existe una noción de qué distingue a un prompt del siguiente, así que no
-	 *  hay nada más que "avanzar" por ahora. El `{#key promptActual}` que envuelve
-	 *  a `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
+	 *  hay nada más que "avanzar" por ahora. El `{#key}` que envuelve a
+	 *  `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
 	 *  Svelte destruye el componente viejo y monta uno limpio, que vuelve a
 	 *  extraer desde cero.
 	 *  Antes de avanzar, se calcula el puntaje del prompt que se abandona
 	 *  (correctos/total de `avanceRevision`, que a esta altura siempre tiene
 	 *  `revisados === total` porque así lo exige `revisionCompleta`) y se
 	 *  guarda en `puntajesPorPrompt` para que el sidebar lo pinte.
-	 *  En el ÚLTIMO prompt esto todavía no lleva a ningún lado — qué pasa al
-	 *  terminarlos todos sigue sin definirse (ver `docs/pendientes-ux.md`). */
+	 *  En el ÚLTIMO prompt esto no hace nada — no hay a dónde avanzar. Si
+	 *  además NINGÚN prompt alcanzó el umbral, ese caso lo resuelve
+	 *  `calibracionSinExito` con su propio pie (`calibrarNuevamente` /
+	 *  `pedirNuevoDocumentoParaPrompts`); si SÍ hay al menos uno adecuado, qué
+	 *  debería pasar sigue sin definirse (ver `docs/pendientes-ux.md`). */
 	function avanzarPrompt() {
 		if (promptsDe === null || promptActual >= promptsDe.cantidad) return;
 		if (avanceRevision.total > 0) {
@@ -262,6 +321,33 @@
 		// (todo revisado), y "Continuar" se vería habilitado un instante antes
 		// de que la extracción nueva ni siquiera empiece.
 		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
+	}
+
+	/** Se incrementa cada vez que `calibrarNuevamente` reinicia el MISMO
+	 *  documento desde el prompt 1. Sin esto, si `cantidad === 1`,
+	 *  `promptActual` volvería a valer 1 —el mismo valor que ya tenía— y el
+	 *  `{#key}` que envuelve a `RevisionPrompt` no cambiaría, así que el
+	 *  componente no se remontaría y no volvería a extraer nada. */
+	let intentoCalibracion = $state(0);
+
+	/** Pie de "No fue posible activar el modelo": reinicia la revisión desde
+	 *  el prompt 1 contra el MISMO documento de ejemplo — a diferencia de
+	 *  "Cargar documento" (abajo), que pide uno nuevo. */
+	function calibrarNuevamente() {
+		promptActual = 1;
+		puntajesPorPrompt = {};
+		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
+		intentoCalibracion += 1;
+	}
+
+	/** El otro camino que ofrece el aviso: probar con un documento de ejemplo
+	 *  distinto. Reabre el mismo modal que el paso 2→3 original
+	 *  (`DocumentoParaPrompts`, vía `promptsPendientes`), con el mismo tipo y
+	 *  cantidad — `irARevisionDePrompts` hace el resto (incluido resetear
+	 *  `promptActual` y `puntajesPorPrompt`) en cuanto se elige el archivo. */
+	function pedirNuevoDocumentoParaPrompts() {
+		if (promptsDe === null) return;
+		promptsPendientes = { tipoId: promptsDe.tipoId, cantidad: promptsDe.cantidad };
 	}
 
 	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
@@ -279,6 +365,7 @@
 		promptsDe = null;
 		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
 		puntajesPorPrompt = {};
+		intentoCalibracion = 0;
 		vista = 'biblioteca';
 	}
 
@@ -289,21 +376,11 @@
 	 *  pantalla existe para recoger. `total: 0` (todavía extrayendo, o un
 	 *  documento sin campos) también deja el botón apagado, que es lo
 	 *  correcto — no hay nada que evaluar. `correctos` alimenta el puntaje que
-	 *  `avanzarPrompt` guarda al abandonar este prompt. */
+	 *  calcula `puntajeDe`. */
 	let avanceRevision = $state({ revisados: 0, total: 0, correctos: 0 });
 	const revisionCompleta = $derived(
 		avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
 	);
-
-	/** Verde/ámbar/rojo del puntaje, a pedido explícito con captura
-	 *  (2026-09-07). Cortes propios — el diseño solo mostró 84% en verde y 60%
-	 *  en ámbar, así que 80/50 es la lectura más simple que reproduce esos dos
-	 *  ejemplos sin inventar un tercer corte que nadie pidió. */
-	function claseColorPuntaje(puntaje: number): string {
-		if (puntaje >= 80) return 'bg-green-50 text-green-700';
-		if (puntaje >= 50) return 'bg-amber-50 text-amber-700';
-		return 'bg-red-50 text-red-700';
-	}
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -1170,49 +1247,50 @@
 					{/if}
 				{:else if vista === 'prompts'}
 					<!-- Réplica de la captura del 2026-09-06. Reusa a propósito el MISMO
-					     lenguaje visual del sidebar del wizard, ahora con sus TRES estados
-					     reales (2026-09-07: antes solo existía el prompt 1, hard-codeado;
-					     "Continuar" avanza `promptActual` y esto ya refleja el avance de
-					     verdad, calcado del `state` del wizard de arriba):
-					       - 'revisado' (n < promptActual): check verde + "Listo" — el MISMO
-					         texto que usa el wizard para un paso completado (se llamó
-					         "Revisado" en el primer intento; la captura del puntaje trajo
-					         también el rótulo correcto y se corrige aquí de una vez).
-					       - 'actual' (n === promptActual): punto verde + "En revisión" +
-					         `border-b-2 border-green-500`.
-					       - 'pendiente' (n > promptActual): "Por revisar", en gris.
+					     lenguaje visual del sidebar del wizard, con sus TRES estados
+					     reales calcado del `state` del wizard de arriba, salvo que aquí
+					     el subrayado y el rótulo/puntaje son DOS preguntas distintas
+					     (2026-09-07, segunda ronda: la primera los ataba juntos a
+					     `n < promptActual`, pero el aviso de "ningún prompt adecuado"
+					     deja el ÚLTIMO prompt con puntaje MIENTRAS sigue siendo el que se
+					     muestra a la derecha):
+					       - El subrayado (`border-b-2 border-green-500`) marca cuál
+					         renglón es el que se está VIENDO ahora mismo: `n === promptActual`,
+					         sin importar si ya tiene puntaje o no.
+					       - El rótulo/chip depende de `puntajeDe(n)`: check verde + "Listo"
+					         (el MISMO texto que usa el wizard para un paso completado; se
+					         llamó "Revisado" en el primer intento) más el chip
+					         "Puntaje | N%" en cuanto ese prompt tiene TODOS sus campos
+					         calificados — sea que ya se haya abandonado (`n < promptActual`)
+					         o que sea el actual y ya esté completo. Sin puntaje, el actual
+					         dice "En revisión" (punto verde) y el resto "Por revisar" (gris).
 					     Los renglones siguen sin ser clicables — no hay forma de VOLVER a
-					     un prompt ya revisado, a diferencia del wizard — porque no está
+					     un prompt ya abandonado, a diferencia del wizard — porque no está
 					     pedido: cada prompt de hoy es la misma operación repetida, no una
 					     página con su propio estado que valga la pena reabrir.
-					     El chip "Puntaje | N%" (2026-09-07, a pedido explícito con
-					     captura) solo aparece en los YA terminados ('revisado'): es
-					     literalmente "cada prompt que se haya terminado de revisar", y el
-					     actual —aunque ya tenga sus campos calificados— no cuenta como
-					     terminado hasta que se le da Continuar. El puntaje mismo
-					     (correctos/total, ver `avanzarPrompt`) es una lectura MÍA, no del
-					     mockup: es lo único medible con lo que ya se captura en pantalla.
+					     El puntaje mismo (correctos/total, ver `puntajeDe`) es una lectura
+					     MÍA, no del mockup: es lo único medible con lo que ya se captura
+					     en pantalla.
 					     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
 					     dedazo del diseño. Aquí se numera correctamente. -->
 					<ol class="space-y-6">
 						{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
-							{@const estadoPrompt =
-								n < promptActual ? 'revisado' : n === promptActual ? 'actual' : 'pendiente'}
-							{@const puntaje = puntajesPorPrompt[n]}
-							<li class={estadoPrompt === 'actual' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
+							{@const esActual = n === promptActual}
+							{@const puntaje = puntajeDe(n)}
+							<li class={esActual ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
 								<div class="mb-1 flex items-center justify-between gap-2">
 									<div class="flex items-center gap-1.5">
-										{#if estadoPrompt === 'revisado'}
+										{#if puntaje !== undefined}
 											<Check class="size-3.5 text-green-600" />
 											<span class="text-xs font-medium text-green-600">Listo</span>
-										{:else if estadoPrompt === 'actual'}
+										{:else if esActual}
 											<span class="size-1.5 rounded-full bg-green-500"></span>
 											<span class="text-xs font-medium text-green-600">En revisión</span>
 										{:else}
 											<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
 										{/if}
 									</div>
-									{#if estadoPrompt === 'revisado' && puntaje !== undefined}
+									{#if puntaje !== undefined}
 										<span
 											data-testid="puntaje-prompt"
 											data-puntaje={puntaje}
@@ -2206,16 +2284,55 @@
 					     volver a correr lo mismo, así para tantos prompts como se
 					     pongan") — todavía no existe ninguna noción de qué distingue a un
 					     prompt del siguiente.
-					     El `{#key promptActual}` es lo que hace que "correr de nuevo"
-					     signifique algo: sin él, `archivo` no cambia entre un prompt y el
-					     siguiente, así que el `$effect` de `RevisionPrompt` nunca se
-					     volvería a disparar y la pantalla se quedaría mostrando los
-					     resultados viejos. Con la key, Svelte destruye el componente
-					     entero y monta uno limpio, que vuelve a extraer desde cero.
+					     El `{#key}` es lo que hace que "correr de nuevo" signifique algo:
+					     sin él, `archivo` no cambia entre un prompt y el siguiente, así
+					     que el `$effect` de `RevisionPrompt` nunca se volvería a disparar
+					     y la pantalla se quedaría mostrando los resultados viejos. Con la
+					     key, Svelte destruye el componente entero y monta uno limpio, que
+					     vuelve a extraer desde cero. Lleva `intentoCalibracion` además de
+					     `promptActual` porque "Calibrar nuevamente" puede reiniciar SIN
+					     cambiar el número de prompt (si `cantidad === 1`, vuelve a valer
+					     1) y, sin ese segundo valor, la key no cambiaría.
 					     El `{#if}` de afuera es lo que garantiza que `archivo` no sea
 					     null dentro del componente, que lo declara requerido. -->
 					{#if promptsDe}
-						{#key promptActual}
+						{#if calibracionSinExito}
+							<!-- "No fue posible activar el modelo" (2026-09-07, a pedido
+							     explícito con captura): se llegó al último prompt y NINGUNO
+							     alcanzó `UMBRAL_ADECUADO`. Va ARRIBA del panel del prompt —no
+							     lo reemplaza—, porque los campos ya calificados de ese último
+							     prompt siguen siendo información real y no hay motivo para
+							     ocultarlos; el aviso es una capa extra, no una pantalla nueva.
+							     Colores fuera de la paleta semántica de la app (--exito/--error)
+							     porque esto no es éxito ni error de sistema: es un resultado de
+							     calidad a medias, y ese tono es justo lo que separa el ámbar. -->
+							<div
+								class="mb-6 max-w-3xl rounded-xl border border-amber-300 bg-amber-50 p-5"
+								data-testid="aviso-sin-exito"
+							>
+								<div class="flex items-center gap-2">
+									<TriangleAlert class="size-5 shrink-0 text-amber-600" aria-hidden="true" />
+									<p class="text-sm font-semibold text-amber-800">
+										No fue posible activar el modelo
+									</p>
+								</div>
+								<p class="mt-1.5 text-sm text-amber-700">
+									Ningún prompt alcanzó el nivel mínimo de calidad requerido para su
+									activación. Revisa los ejemplos documentales configurados o carga un
+									nuevo documento de referencia y vuelve a ejecutar la calibración para
+									obtener mejores resultados.
+									<button
+										type="button"
+										class="font-medium underline underline-offset-2"
+										data-testid="cargar-documento-aviso"
+										onclick={pedirNuevoDocumentoParaPrompts}
+									>
+										Cargar documento
+									</button>
+								</p>
+							</div>
+						{/if}
+						{#key `${promptActual}-${intentoCalibracion}`}
 							<RevisionPrompt
 								archivo={promptsDe.archivo}
 								numero={promptActual}
@@ -2829,9 +2946,16 @@
 			     documento no dio campos, sigue apagado: no hay nada que evaluar.
 			     Al picarle, avanza al siguiente prompt (`avanzarPrompt`) — mismo
 			     documento, misma operación, ver el comentario junto a
-			     `RevisionPrompt` de arriba. En el ÚLTIMO prompt sigue sin llevar a
-			     ningún lado: qué pasa al terminarlos todos no está definido
-			     todavía. -->
+			     `RevisionPrompt` de arriba.
+			     Si al llegar al ÚLTIMO prompt `calibracionSinExito` queda en true
+			     (ver el aviso de arriba), este pie CAMBIA DE FORMA: "Continuar" ya
+			     no tiene a dónde ir, así que se reemplaza por "Cargar documento" y
+			     "Calibrar nuevamente" (2026-09-07, a pedido explícito con captura —
+			     la misma captura resuelve, para ESTE caso puntual, la pregunta que
+			     había quedado abierta de "qué pasa al terminar el último prompt").
+			     Si el último SÍ se calificó pero al menos un prompt alcanzó el
+			     umbral, sigue sin definirse: "Continuar" se queda deshabilitado sin
+			     más, tal como antes. -->
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 				<Button
 					variant="link"
@@ -2841,9 +2965,27 @@
 				>
 					Cancelar evaluación
 				</Button>
-				<Button data-testid="continuar-evaluacion" disabled={!revisionCompleta} onclick={avanzarPrompt}>
-					Continuar
-				</Button>
+				{#if calibracionSinExito}
+					<Button
+						variant="link"
+						class="h-auto p-0"
+						data-testid="cargar-documento-pie"
+						onclick={pedirNuevoDocumentoParaPrompts}
+					>
+						Cargar documento
+					</Button>
+					<Button data-testid="calibrar-nuevamente" onclick={calibrarNuevamente}>
+						Calibrar nuevamente
+					</Button>
+				{:else}
+					<Button
+						data-testid="continuar-evaluacion"
+						disabled={!revisionCompleta}
+						onclick={avanzarPrompt}
+					>
+						Continuar
+					</Button>
+				{/if}
 			</div>
 		{/if}
 	</Sheet.Content>
