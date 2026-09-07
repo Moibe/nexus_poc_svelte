@@ -541,19 +541,21 @@
 	});
 
 	/**
-	 * Picar la tarjeta de un modelo ACTIVO no hace nada, a propósito.
+	 * Abre un tipo documental en el wizard, en modo edición. Desde el
+	 * 2026-09-06 su ÚNICA puerta es el renglón "Editar" del menú `⋮` de la
+	 * tarjeta: la tarjeta misma dejó de ser clicable, a pedido explícito
+	 * (antes su zona de clic se estiraba por el área vacía y entraba a editar
+	 * sin que nada lo sugiriera).
 	 *
-	 * Se probó una versión que sí abría el wizard —en modo solo lectura, con un
-	 * candado explicando por qué y una invitación a "Crear nueva versión"— pero
-	 * se retiró el mismo día a pedido explícito: por ahora no hay editing real
-	 * que ofrecer, así que ni la explicación ni la invitación tienen a dónde
-	 * llevar. Ver docs/pendientes-ux.md.
+	 * El guardia de estado se queda igual y sigue teniendo sentido aunque el
+	 * menú ya deshabilite "Editar" para un modelo activo: esta función es la
+	 * que decide, no su llamador. Solo un 'borrador' se abre — se probó una
+	 * versión que abría un modelo ACTIVO en solo lectura (candado + invitación
+	 * a "Crear nueva versión") y se retiró el mismo día a pedido explícito,
+	 * porque no hay editing real que ofrecer ahí. Ver docs/pendientes-ux.md.
 	 *
-	 * Eso sigue vigente para la TARJETA. `crearNuevaVersion()` ya no está sin
-	 * usar, eso sí: el menú (ver `iniciarNuevaVersion`, abajo) la llama
-	 * directamente. La diferencia es que ahí la acción es explícita —"Crear
-	 * nueva versión" dice exactamente lo que va a pasar—, mientras que picar la
-	 * tarjeta entera no lo es.
+	 * Para un modelo activo el camino es "Crear nueva versión" del mismo menú
+	 * (ver `iniciarNuevaVersion`), que sí es explícito sobre lo que va a pasar.
 	 */
 	function abrirTipoDocumental(id: string) {
 		const tipo = tiposDocumentales.find((t) => t.id === id);
@@ -1098,22 +1100,24 @@
 								<!-- Tarjeta del frame 1077:65410 (sección HU038). Sus medidas:
 								     botón de 82x38, caja de menú de 24x24 con el glifo de 12x12.
 
-								     Ya NO es un <button> entera. Ahora conviven aquí tres controles
-								     —retomar, Activar y el menú— y un <button> dentro de otro es
-								     HTML inválido: el navegador deshace el anidamiento y los clics
-								     dejan de llegar a quien deben. La zona clicable para retomar se
-								     acotó al ícono y los textos, que es lo que el usuario asocia con
-								     "abrir esto". De paso se arregló otra invalidez que venía de
-								     antes: había <div> y <p> dentro del <button>, y un botón solo
-								     admite contenido de frase. -->
+								     La tarjeta NO es clicable (2026-09-06, a pedido explícito). Antes
+								     el ícono y los textos eran un <button> que abría el modo edición,
+								     pero llevaba `flex-1`: se estiraba por todo el espacio libre hasta
+								     "Activar", así que picar en el área VACÍA de la tarjeta —donde no
+								     hay nada que sugiera que sea clicable— también entraba a editar.
+								     Ahora la ÚNICA puerta al modo edición es el renglón "Editar" del
+								     menú `⋮` (que ya trae su propio guardia para modelos activos), y
+								     en la tarjeta quedan solo dos controles reales: "Activar" y el
+								     menú. Ojo si se reintroduce algo clicable aquí: un <button>
+								     dentro de otro es HTML inválido —el navegador deshace el
+								     anidamiento y los clics dejan de llegar a quien deben—, que es el
+								     bug que ya mordió dos veces en este archivo. -->
 								<div
 									class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3"
 								>
-									<button
-										type="button"
+									<div
 										data-testid="tarjeta-tipo"
-										class="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left transition-colors hover:opacity-80"
-										onclick={() => abrirTipoDocumental(tipo.id)}
+										class="flex min-w-0 flex-1 items-center gap-4"
 									>
 										<span
 											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
@@ -1148,7 +1152,7 @@
 												{/if}
 											</span>
 										</span>
-									</button>
+									</div>
 
 									<!-- Los dos estados de la tarjeta están dibujados en el archivo: sin
 									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
