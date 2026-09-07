@@ -456,11 +456,23 @@
 	// nada que esperar.
 	let tipoAArchivar = $state<{ id: string; nombre: string } | null>(null);
 
-	function confirmarArchivarTipo() {
+	async function confirmarArchivarTipo() {
 		const objetivo = tipoAArchivar;
 		tipoAArchivar = null;
 		if (!objetivo) return;
-		archivarTipoDocumental(objetivo.id);
+		// Se limpia AL EMPEZAR, no solo al fallar — mismo motivo que en
+		// `confirmarEliminarTipo`: sin esto, un aviso de un intento anterior se
+		// quedaba pegado en pantalla aunque este intento nuevo terminara bien.
+		errorActivacion = '';
+		const r = await archivarTipoDocumental(objetivo.id);
+		// Archivar en sí es local y no puede fallar (ver el docstring de
+		// `archivarTipoDocumental`) — lo único que puede salir mal es la
+		// sincronización del clasificador, y eso NO debe tratarse como que
+		// "archivar" falló: el tipo YA se archivó.
+		if (r.avisoClasificador) {
+			tituloError = 'El tipo se archivó, pero el clasificador no se pudo actualizar.';
+			errorActivacion = r.avisoClasificador;
+		}
 		// Igual que al eliminar: si era el seleccionado, se limpia la selección
 		// para no dejar la columna derecha apuntando a un modelo que ya no se
 		// lista.
@@ -482,6 +494,13 @@
 			tituloError = 'No se pudo eliminar el modelo.';
 			errorActivacion = r.mensaje;
 			return;
+		}
+		// El borrado (lo que este botón promete) ya tuvo éxito llegado aquí —
+		// un fallo sincronizando el clasificador es secundario, mismo criterio
+		// que en `activar` de abajo.
+		if (r.avisoClasificador) {
+			tituloError = 'El tipo se borró, pero el clasificador no se pudo actualizar.';
+			errorActivacion = r.avisoClasificador;
 		}
 		// El tipo ya no existe: si era el seleccionado en el árbol, limpiar la
 		// selección para que la columna derecha vuelva al estado vacío con su
@@ -540,6 +559,15 @@
 		if (!r.ok) {
 			tituloError = 'No se pudo activar el modelo.';
 			errorActivacion = r.mensaje;
+			return;
+		}
+		// El Extractor (lo que este botón promete) ya quedó activo llegado
+		// aquí — un fallo sincronizando el clasificador es secundario: este
+		// tipo puede seguir cayendo en "otro" al clasificar hasta que se
+		// reintente, pero la activación en sí no fue mentira.
+		if (r.avisoClasificador) {
+			tituloError = 'El modelo se activó, pero el clasificador no se pudo actualizar.';
+			errorActivacion = r.avisoClasificador;
 		}
 	}
 

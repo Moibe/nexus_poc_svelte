@@ -903,6 +903,64 @@ export function guardarTipoDocumental(): string | null {
 }
 
 /**
+ * Sincroniza el Classifier ÚNICO de Document AI con la lista de tipos
+ * ACTIVOS de la Biblioteca (`POST /procesadores/clasificador/sincronizar`).
+ *
+ * El propio back documenta esto como responsabilidad del front: sin base de
+ * datos todavía, no tiene otra forma de saber cuáles tipos están activos que
+ * la que el front le mande — así que se llama automáticamente después de
+ * cada mutación que puede cambiar ese conjunto (`activarTipoDocumental`,
+ * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la
+ * UI. Manda la lista COMPLETA de activos, no solo el que cambió: el back
+ * reemplaza el esquema del clasificador ENTERO en cada llamada —Document AI
+ * no ofrece un PATCH incremental de categorías—, así que una lista parcial
+ * borraría del clasificador cualquier tipo activo que no viajara en esa
+ * llamada puntual.
+ *
+ * Con cero tipos activos no se llama al back: esa lista la rechaza con 422
+ * ("un clasificador sin categorías" no es un estado útil), y no hay nada que
+ * sincronizar en ese caso — el clasificador simplemente se queda como estaba
+ * hasta que vuelva a haber al menos un tipo activo.
+ */
+export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje: string }> {
+	const activos = tiposDocumentales.filter((t) => t.estado === 'activo');
+	if (activos.length === 0) return { ok: true, mensaje: '' };
+
+	let respuesta: Response;
+	try {
+		respuesta = await fetch('/api/procesadores/clasificador/sincronizar', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				tipos: activos.map((t) => ({ id: t.id, nombre: t.nombre, descripcion: t.descripcion }))
+			})
+		});
+	} catch {
+		return {
+			ok: false,
+			mensaje: 'No se pudo contactar al servidor para actualizar el clasificador.'
+		};
+	}
+
+	let datos: Record<string, unknown> = {};
+	try {
+		datos = await respuesta.json();
+	} catch {
+		/* un cuerpo ilegible cae al mensaje genérico de abajo */
+	}
+
+	if (!respuesta.ok) {
+		const mensaje =
+			typeof datos.mensaje === 'string'
+				? datos.mensaje
+				: `No se pudo actualizar el clasificador (HTTP ${respuesta.status}).`;
+		return { ok: false, mensaje };
+	}
+
+	return { ok: true, mensaje: '' };
+}
+
+/**
  * Activa un modelo: crea (o adopta) su Custom Extractor en Document AI, vía el
  * back, y solo si Google respondió marca el estado local. Es el botón
  * "Activar" de la tarjeta (HU038), y es LA operación del sistema: convierte la
@@ -911,10 +969,18 @@ export function guardarTipoDocumental(): string | null {
  * El orden importa: primero el procesador, después el estado. Al revés
  * quedaría un tipo "activo" apuntando a nada si la llamada falla.
  *
- * Devuelve `{ ok, mensaje }` en vez de tirar: quien llama es un manejador de
- * clic y el error tiene que llegar a la pantalla, no a la consola.
+ * Devuelve `{ ok, mensaje, avisoClasificador }` en vez de tirar: quien llama
+ * es un manejador de clic y el error tiene que llegar a la pantalla, no a la
+ * consola. `avisoClasificador` es DISTINTO de `ok = false`: la activación del
+ * Extractor (lo que este botón promete) ya tuvo éxito llegado ese punto — un
+ * fallo sincronizando el Classifier es un problema real pero secundario
+ * (documentos de este tipo pueden seguir cayendo en "otro" hasta reintentar),
+ * y tratarlo como si la activación completa hubiera fallado sería mentir
+ * sobre lo que sí funcionó.
  */
-export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
+export async function activarTipoDocumental(
+	id: string
+): Promise<{ ok: boolean; mensaje: string; avisoClasificador?: string }> {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo) return { ok: false, mensaje: 'Ese tipo documental ya no existe.' };
 	if (tipo.estado === 'activo') return { ok: true, mensaje: '' };
@@ -972,7 +1038,11 @@ export async function activarTipoDocumental(id: string): Promise<{ ok: boolean; 
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
 	tipo.activadoEn = new Date().toISOString();
 	guardarBiblioteca();
-	return { ok: true, mensaje: '' };
+
+	// El tipo YA quedó activo localmente aunque esto falle — ver el docstring
+	// de arriba sobre por qué `ok` no se ve afectado por esto.
+	const sync = await sincronizarClasificador();
+	return { ok: true, mensaje: '', avisoClasificador: sync.ok ? undefined : sync.mensaje };
 }
 
 /**
@@ -1041,13 +1111,24 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
  *
  * No hay todavía una pantalla de "Archivados" para verlos ni un
  * `desarchivarTipoDocumental()` para volver — se agregan cuando se pidan.
+ *
+ * Async desde que archivar también sincroniza el Classifier (2026-09-07): un
+ * tipo archivado debe dejar de ser una categoría clasificable, aunque su
+ * Custom Extractor se quede vivo sin tocarse. `ok` sigue siendo `true`
+ * siempre que el tipo exista —archivar en sí es puramente local, no puede
+ * fallar contra Google— así que un problema sincronizando llega SOLO por
+ * `avisoClasificador`, nunca convirtiendo esto en un error.
  */
-export function archivarTipoDocumental(id: string): boolean {
+export async function archivarTipoDocumental(
+	id: string
+): Promise<{ ok: boolean; avisoClasificador?: string }> {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo) return false;
+	if (!tipo) return { ok: false };
 	tipo.estado = 'archivado';
 	guardarBiblioteca();
-	return true;
+
+	const sync = await sincronizarClasificador();
+	return { ok: true, avisoClasificador: sync.ok ? undefined : sync.mensaje };
 }
 
 /**
@@ -1156,12 +1237,19 @@ export function borrarRecorteEjemplo(idTipo: string, idDocumento: string, nombre
  * que existe para limpiarlo. Borrando primero en Google, un fallo deja el
  * tipo documental intacto localmente y se puede reintentar.
  *
- * Devuelve `{ ok, mensaje }`, igual que `activarTipoDocumental`: quien llama
- * es un manejador de clic y el error tiene que llegar a la pantalla.
+ * Devuelve `{ ok, mensaje, avisoClasificador }`, igual que
+ * `activarTipoDocumental`: quien llama es un manejador de clic y el error
+ * tiene que llegar a la pantalla. `avisoClasificador` solo se llena cuando el
+ * tipo borrado ERA activo (ver el comentario junto a la sincronización, más
+ * abajo) y esa sincronización falla — el borrado en sí (`ok`) no se ve
+ * afectado, por la misma razón que en `activarTipoDocumental`.
  */
-export async function eliminarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
+export async function eliminarTipoDocumental(
+	id: string
+): Promise<{ ok: boolean; mensaje: string; avisoClasificador?: string }> {
 	const tipo = tiposDocumentales.find((tp) => tp.id === id);
 	if (!tipo) return { ok: false, mensaje: 'Ese tipo documental ya no existe.' };
+	const eraActivo = tipo.estado === 'activo';
 
 	if (tipo.procesadorId) {
 		let respuesta: Response;
@@ -1193,7 +1281,16 @@ export async function eliminarTipoDocumental(id: string): Promise<{ ok: boolean;
 	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
 	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;
 	guardarBiblioteca();
-	return { ok: true, mensaje: '' };
+
+	// Solo si ERA activo: un borrador o un archivado ya no contaban como
+	// categoría del clasificador, así que borrarlos no cambia nada que
+	// sincronizar — evita una llamada a Google que no haría ninguna
+	// diferencia. Va DESPUÉS del `splice`: `sincronizarClasificador` lee
+	// `tiposDocumentales` tal cual está ahora, y el tipo borrado no debe
+	// aparecer en la lista que se le manda al back.
+	if (!eraActivo) return { ok: true, mensaje: '' };
+	const sync = await sincronizarClasificador();
+	return { ok: true, mensaje: '', avisoClasificador: sync.ok ? undefined : sync.mensaje };
 }
 
 /**
