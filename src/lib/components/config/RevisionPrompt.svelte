@@ -25,7 +25,9 @@
 	 * mandaría a Document AI como ejemplos etiquetados. Hoy no se persiste: se
 	 * pierde al salir de la pantalla. Ver `docs/pendientes-ux.md`.
 	 */
+	import Ban from '@lucide/svelte/icons/ban';
 	import Braces from '@lucide/svelte/icons/braces';
+	import Check from '@lucide/svelte/icons/check';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -253,16 +255,21 @@
 						</div>
 					</div>
 
-					<!-- Los dos botones NO cambian de forma al elegir (así los trae la
-					     captura: "Correcto" siempre en azul sólido, "Incorrecto" siempre
-					     en texto rojo) y se quedan visibles después de elegir: un
-					     veredicto equivocado tiene que poderse cambiar sin volver a
-					     extraer el documento.
-					     Lo que sí AGREGO respecto al diseño es el rótulo de la izquierda:
-					     sin él, una ficha ya revisada se ve idéntica a una pendiente y en
-					     una lista larga no hay forma de saber dónde te quedaste. Reusa el
-					     punto de color del árbol del sidebar. `aria-pressed` va en los
-					     botones porque el rótulo por sí solo no dice cuál está elegido. -->
+					<!-- Botones de solo ícono (2026-09-07, a pedido explícito con
+					     captura): reemplazan a los de texto ("Correcto" / "Incorrecto")
+					     por un check y un ban, ambos del mismo tamaño y forma que los
+					     badges de Braces/Search de arriba (size-9 rounded-lg), para que
+					     los cuatro se lean como la misma familia de ícono.
+					     Se quedan visibles después de elegir — un veredicto equivocado
+					     tiene que poderse cambiar sin volver a extraer el documento — y
+					     el elegido se marca en azul sólido; el otro queda en outline. Como
+					     el color ya no distingue "Correcto" de "Incorrecto" (los dos son
+					     azules al elegirse), la forma del ícono es lo que carga ese
+					     significado, y por eso cada botón lleva su `aria-label`: sin texto
+					     visible, sin eso no tendría nombre accesible.
+					     El rótulo de la izquierda ("Confirmado"/"Corregido") se queda: es
+					     lo único que distingue una ficha revisada de una pendiente sin
+					     tener que fijarse en qué ícono quedó relleno. -->
 					<div class="flex items-center justify-between gap-4 border-t border-border px-5 py-3">
 						<div class="flex items-center gap-1.5" data-testid="estado-campo">
 							{#if fila.veredicto === 'correcto'}
@@ -273,23 +280,33 @@
 								<span class="text-xs font-medium text-amber-600">Corregido</span>
 							{/if}
 						</div>
-						<div class="flex items-center gap-4">
-							<Button
-								variant="link"
-								class="h-auto p-0 text-destructive"
+						<div class="flex items-center gap-2">
+							<button
+								type="button"
+								aria-label="Incorrecto"
 								aria-pressed={fila.veredicto === 'incorrecto'}
 								data-testid="marcar-incorrecto"
 								onclick={(e) => marcarIncorrecto(fila, e.currentTarget)}
+								class="flex size-9 items-center justify-center rounded-lg transition-colors {fila.veredicto ===
+								'incorrecto'
+									? 'bg-primary text-primary-foreground'
+									: 'border border-border text-muted-foreground hover:border-primary/50 hover:text-primary'}"
 							>
-								Incorrecto
-							</Button>
-							<Button
+								<Ban class="size-4" />
+							</button>
+							<button
+								type="button"
+								aria-label="Correcto"
 								aria-pressed={fila.veredicto === 'correcto'}
 								data-testid="marcar-correcto"
 								onclick={() => marcarCorrecto(fila)}
+								class="flex size-9 items-center justify-center rounded-lg transition-colors {fila.veredicto ===
+								'correcto'
+									? 'bg-primary text-primary-foreground'
+									: 'border border-border text-muted-foreground hover:border-primary/50 hover:text-primary'}"
 							>
-								Correcto
-							</Button>
+								<Check class="size-4" />
+							</button>
 						</div>
 					</div>
 				</li>
