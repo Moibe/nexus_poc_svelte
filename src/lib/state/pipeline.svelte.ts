@@ -19,6 +19,7 @@ import {
 	moverDocumentoAlPipeline,
 	type DocumentoEnBandeja
 } from './bandeja.svelte';
+import { tiposDocumentales } from './configuracion.svelte';
 import type { ResultadoIne } from '$lib/types/ine';
 
 export type EstadoPipeline =
@@ -149,14 +150,60 @@ export async function iniciarPipeline() {
 }
 
 /**
- * Categoría que devuelve `/api/pipeline/clasificar` cuando SÍ hay un tipo
- * documental configurado que corresponde — hoy la única real, el extractor de
- * INE (ver `servicios/esquema.py` esquema_clasificador_desde_tipos: el `name`
- * de cada categoría ES el `procesadorId` de su extractor). Cuando exista más
- * de un tipo activo, esto se vuelve una tabla categoría -> endpoint en vez de
- * una comparación fija.
+ * La categoría de escape del clasificador: "no es ninguno de los tipos
+ * documentales configurados". La agrega SIEMPRE el back
+ * (`CATEGORIA_OTRO` en `servicios/esquema.py`) y este nombre tiene que
+ * coincidir con el de allá — si divergen, lo desconocido deja de caer en
+ * "manda esto a revisión" y cae en "categoría que no sé mapear".
  */
-const CATEGORIA_INE = 'bf35151f51b51521';
+const CATEGORIA_OTRO = 'otro';
+
+/**
+ * Nombres de tipo documental (normalizados) que este front SÍ sabe extraer,
+ * y con qué.
+ *
+ * Por qué por NOMBRE y no por id ni por `procesadorId`, que sería lo natural:
+ * el único extractor conectado hoy es `/api/pipeline/ine` -> `/ia/ine`, que
+ * usa el procesador FIJO `DOCAI_PROCESADOR_INE` del `.env` del back. Ese
+ * procesador es el INE legado, y NO es el `procesadorId` que se guarda en el
+ * tipo documental al activarlo (activar crea uno propio, `nexusdoc--{id}--v{n}`).
+ * O sea: no existe forma de pedirle al back que extraiga con el procesador de
+ * un tipo cualquiera — hace falta un endpoint de extracción genérico que
+ * reciba el `procesadorId`, y ese es el trabajo real que falta. Mientras no
+ * exista, la única manera de saber "este tipo se extrae con /ia/ine" es
+ * reconocerlo por su nombre.
+ *
+ * Costo asumido y visible: si el usuario RENOMBRA su tipo "INE", deja de
+ * empatar y sus documentos caen en `pendiente_revision` con un mensaje que
+ * dice exactamente eso. Se prefirió ese fallo —ruidoso y explicado— sobre
+ * mandar el documento a un extractor que no le corresponde.
+ */
+const EXTRACTORES_POR_NOMBRE: Record<string, (id: string, archivo: File) => Promise<void>> = {
+	ine: extraerIne
+};
+
+/**
+ * Misma normalización que `normalizar_nombre` de `servicios/esquema.py`, con
+ * la que el back nombra cada categoría del clasificador. Se replica en vez de
+ * pedirla al server porque es pura y minúscula, y el mapeo
+ * categoría -> tipo documental tiene que poder hacerse sin una llamada más.
+ * No se replica el relleno de `campo_` para nombres que no empiezan con
+ * letra: los ids que genera el front (`tipo-{base36}-{n}`) y los nombres de
+ * tipo documental siempre empiezan con letra.
+ */
+function normalizarCategoria(valor: string): string {
+	return valor
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '') // fuera los diacríticos que NFD separó
+		.replace(/ñ/gi, 'n')
+		.toLowerCase()
+		.trim()
+		.replace(/\s+/g, '_')
+		.replace(/[^a-z0-9_-]/g, '')
+		.replace(/_+/g, '_')
+		.replace(/^[_-]+|[_-]+$/g, '')
+		.slice(0, 64);
+}
 
 async function procesarUno(id: string) {
 	const doc = documentosEnPipeline.find((d) => d.id === id);
@@ -183,28 +230,55 @@ async function procesarUno(id: string) {
 	const vivo = documentosEnPipeline.find((d) => d.id === id);
 	if (!vivo) return; // lo quitaron mientras se clasificaba
 
-	if (categoria === 'otro') {
+	// El clasificador nombra cada categoría con el ID del tipo documental (ver
+	// `esquema_clasificador_desde_tipos`), así que mapear de vuelta es buscar
+	// ese id entre los tipos ACTIVOS de la Biblioteca. Antes esto era una
+	// comparación contra un `procesadorId` fijo, con un comentario que afirmaba
+	// que las categorías se nombraban por procesador — era falso, y quedó al
+	// descubierto el 2026-09-07: en cuanto el front empezó a sincronizar el
+	// clasificador de verdad, ninguna categoría empató y TODO caía en el error
+	// "el front todavía no sabe a qué extractor mandarla".
+	const tipo =
+		categoria === CATEGORIA_OTRO
+			? undefined
+			: tiposDocumentales.find(
+					(t) => t.estado === 'activo' && normalizarCategoria(t.id) === categoria
+				);
+
+	if (categoria === CATEGORIA_OTRO || !tipo) {
 		// Ningún tipo documental activo corresponde: no hay extractor al que
 		// mandarlo, así que aquí termina — mandarlo de todos modos a /ia/ine
 		// sería repetir el bug original (todo se procesaba como INE sin
-		// importar qué fuera).
+		// importar qué fuera). Desde aquí el renglón ofrece las dos salidas
+		// reales: "Continuar sin configuración" (revisión humana) o
+		// "Configurar" (darlo de alta como tipo nuevo).
+		//
+		// El `!tipo` cae en el MISMO desenlace a propósito, aunque signifique
+		// algo distinto (el clasificador nombró una categoría que ya no existe
+		// en la Biblioteca — un tipo archivado o borrado cuya sincronización
+		// no alcanzó a correr): para quien está viendo la pantalla el
+		// resultado es idéntico —no hay tipo configurado que aplique— y
+		// ofrecerle las mismas dos salidas es más útil que un error técnico.
 		vivo.estado = 'no_configurado';
 		vivo.terminadoEn = new Date();
 		return;
 	}
 
-	if (categoria !== CATEGORIA_INE) {
-		// Categoría real pero sin extractor conectado todavía del lado del
-		// front — no debería pasar hoy (es la única categoría configurada),
-		// pero si pasa es mejor decirlo que fingir que se procesó.
-		vivo.estado = 'fallido';
+	const extraer = EXTRACTORES_POR_NOMBRE[normalizarCategoria(tipo.nombre)];
+	if (!extraer) {
+		// Tipo documental identificado CORRECTAMENTE, pero sin extracción
+		// conectada en el front (ver `EXTRACTORES_POR_NOMBRE`: hoy solo INE).
+		// No es un fallo del sistema ni algo que se arregle reintentando, así
+		// que va a revisión humana y no a 'fallido': el documento sí se
+		// entendió, lo que falta es a dónde mandarlo.
+		vivo.estado = 'pendiente_revision';
 		vivo.terminadoEn = new Date();
-		vivo.error = `El clasificador encontró la categoría "${categoria}", pero el front todavía no sabe a qué extractor mandarla.`;
+		vivo.error = `Se identificó como "${tipo.nombre}", pero la extracción de ese tipo documental todavía no está conectada. Queda para revisión humana.`;
 		return;
 	}
 
 	vivo.estado = 'procesando';
-	await extraerIne(id, archivo);
+	await extraer(id, archivo);
 }
 
 /** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
