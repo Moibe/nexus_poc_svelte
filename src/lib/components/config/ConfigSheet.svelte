@@ -1719,16 +1719,44 @@
 											     misma tarjeta — reemplaza al link "Listar versiones
 											     anteriores" que se había puesto junto al encabezado de la
 											     Biblioteca (nunca llegó a verse en producción; este menú es
-											     más descubrible). Toggle: volver a picarlo lo oculta. -->
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled={!tipo.historialVersiones.length}
-												onSelect={() =>
-													(historialTipo = historialTipo?.id === tipo.id ? null : tipo)}
-											>
-												<Calendar class="size-4 text-muted-foreground" />
-												<span>Historial de versiones</span>
-											</DropdownMenu.Item>
+											     más descubrible). Toggle: volver a picarlo lo oculta.
+											     Deshabilitado, lleva el MISMO tooltip que "Editar" arriba —
+											     mismo truco (el `<span>` que envuelve es el trigger real,
+											     porque el renglón deshabilitado es `pointer-events-none` y
+											     nunca recibiría el hover) y el mismo `ignoreNonKeyboardFocus`
+											     desde el principio: sin él, este tooltip se abriría solo al
+											     abrir el menú en cuanto un tipo SIN historial fuera el primer
+											     renglón deshabilitado que recibe el foco — el mismo bug que ya
+											     se corrigió una vez arriba, en "Editar". -->
+											{#if tipo.historialVersiones.length}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() =>
+														(historialTipo = historialTipo?.id === tipo.id ? null : tipo)}
+												>
+													<Calendar class="size-4 text-muted-foreground" />
+													<span>Historial de versiones</span>
+												</DropdownMenu.Item>
+											{:else}
+												<Tooltip.Provider>
+													<Tooltip.Root ignoreNonKeyboardFocus>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<span {...props} class="block">
+																	<DropdownMenu.Item
+																		class="h-11.5 gap-3 px-2 whitespace-nowrap"
+																		disabled
+																	>
+																		<Calendar class="size-4 text-muted-foreground" />
+																		<span>Historial de versiones</span>
+																	</DropdownMenu.Item>
+																</span>
+															{/snippet}
+														</Tooltip.Trigger>
+														<Tooltip.Content side="left">Aún no hay nuevas versiones.</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											{/if}
 
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
