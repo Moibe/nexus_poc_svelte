@@ -218,7 +218,33 @@
 		if (promptsPendientes === null) return;
 		promptsDe = { ...promptsPendientes, archivo };
 		promptsPendientes = null;
+		promptActual = 1;
 		vista = 'prompts';
+	}
+
+	/** Cuál de los `promptsDe.cantidad` prompts se está revisando ahora mismo,
+	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
+	let promptActual = $state(1);
+
+	/** "Continuar" con el pie: por ahora cada prompt es la MISMA operación
+	 *  (correr el extractor contra el mismo documento de ejemplo y calificar sus
+	 *  campos) repetida tantas veces como prompts se hayan pedido — todavía no
+	 *  existe una noción de qué distingue a un prompt del siguiente, así que no
+	 *  hay nada más que "avanzar" por ahora. El `{#key promptActual}` que envuelve
+	 *  a `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
+	 *  Svelte destruye el componente viejo y monta uno limpio, que vuelve a
+	 *  extraer desde cero.
+	 *  En el ÚLTIMO prompt esto todavía no lleva a ningún lado — qué pasa al
+	 *  terminarlos todos sigue sin definirse (ver `docs/pendientes-ux.md`). */
+	function avanzarPrompt() {
+		if (promptsDe === null || promptActual >= promptsDe.cantidad) return;
+		promptActual += 1;
+		// Se apaga aquí, no solo en el remount de `RevisionPrompt`: entre el
+		// clic y el primer `onCambioRevision` del componente nuevo hay un hueco
+		// donde `avanceRevision` todavía tendría los números del prompt viejo
+		// (todo revisado), y "Continuar" se vería habilitado un instante antes
+		// de que la extracción nueva ni siquiera empiece.
+		avanceRevision = { revisados: 0, total: 0 };
 	}
 
 	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
@@ -1114,22 +1140,31 @@
 					{/if}
 				{:else if vista === 'prompts'}
 					<!-- Réplica de la captura del 2026-09-06. Reusa a propósito el MISMO
-					     lenguaje visual del sidebar del wizard (que está justo abajo):
-					     punto verde + rótulo de estado, número + nombre en semibold,
-					     descripción en gris, y `border-b-2 border-green-500` bajo el
-					     activo. Lo único que cambia son los rótulos ("En revisión" /
-					     "Por revisar" en vez de "En configuración" / "Por configurar").
-					     Hoy los renglones NO son clicables ni cambian de estado: el
-					     panel derecho —que es lo que habría que mostrar al elegir uno—
-					     queda fuera del alcance de esta iteración por pedido explícito.
+					     lenguaje visual del sidebar del wizard, ahora con sus TRES estados
+					     reales (2026-09-07: antes solo existía el prompt 1, hard-codeado;
+					     "Continuar" avanza `promptActual` y esto ya refleja el avance de
+					     verdad, calcado del `state` del wizard de arriba):
+					       - 'revisado' (n < promptActual): check verde + "Revisado", igual
+					         que "Listo" en el wizard.
+					       - 'actual' (n === promptActual): punto verde + "En revisión" +
+					         `border-b-2 border-green-500`.
+					       - 'pendiente' (n > promptActual): "Por revisar", en gris.
+					     Los renglones siguen sin ser clicables — no hay forma de VOLVER a
+					     un prompt ya revisado, a diferencia del wizard — porque no está
+					     pedido: cada prompt de hoy es la misma operación repetida, no una
+					     página con su propio estado que valga la pena reabrir.
 					     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
 					     dedazo del diseño. Aquí se numera correctamente. -->
 					<ol class="space-y-6">
 						{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
-							{@const enRevision = n === 1}
-							<li class={enRevision ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
+							{@const estadoPrompt =
+								n < promptActual ? 'revisado' : n === promptActual ? 'actual' : 'pendiente'}
+							<li class={estadoPrompt === 'actual' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
 								<div class="mb-1 flex items-center gap-1.5">
-									{#if enRevision}
+									{#if estadoPrompt === 'revisado'}
+										<Check class="size-3.5 text-green-600" />
+										<span class="text-xs font-medium text-green-600">Revisado</span>
+									{:else if estadoPrompt === 'actual'}
 										<span class="size-1.5 rounded-full bg-green-500"></span>
 										<span class="text-xs font-medium text-green-600">En revisión</span>
 									{:else}
@@ -2106,16 +2141,27 @@
 						</div>
 					{/if}
 				{:else if vista === 'prompts'}
-					<!-- Solo el prompt 1, a pedido explícito (2026-09-07): corre el
-					     extractor contra el documento que se acaba de subir y muestra
-					     los pares. Los demás renglones del árbol siguen sin panel.
-					     El `{#if}` es lo que garantiza que `archivo` no sea null
-					     dentro del componente, que lo declara requerido. -->
+					<!-- Cada prompt corre la MISMA operación contra el MISMO documento
+					     de ejemplo (2026-09-07, a pedido explícito: "por ahora simplemente
+					     volver a correr lo mismo, así para tantos prompts como se
+					     pongan") — todavía no existe ninguna noción de qué distingue a un
+					     prompt del siguiente.
+					     El `{#key promptActual}` es lo que hace que "correr de nuevo"
+					     signifique algo: sin él, `archivo` no cambia entre un prompt y el
+					     siguiente, así que el `$effect` de `RevisionPrompt` nunca se
+					     volvería a disparar y la pantalla se quedaría mostrando los
+					     resultados viejos. Con la key, Svelte destruye el componente
+					     entero y monta uno limpio, que vuelve a extraer desde cero.
+					     El `{#if}` de afuera es lo que garantiza que `archivo` no sea
+					     null dentro del componente, que lo declara requerido. -->
 					{#if promptsDe}
-						<RevisionPrompt
-							archivo={promptsDe.archivo}
-							onCambioRevision={(revisados, total) => (avanceRevision = { revisados, total })}
-						/>
+						{#key promptActual}
+							<RevisionPrompt
+								archivo={promptsDe.archivo}
+								numero={promptActual}
+								onCambioRevision={(revisados, total) => (avanceRevision = { revisados, total })}
+							/>
+						{/key}
 					{/if}
 				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
@@ -2720,7 +2766,11 @@
 			     "Continuar" se habilita cuando TODOS los campos del prompt llevan
 			     veredicto (ver `revisionCompleta`). Mientras se extrae, o si el
 			     documento no dio campos, sigue apagado: no hay nada que evaluar.
-			     Todavía no lleva a ningún lado — el prompt 2 no existe. -->
+			     Al picarle, avanza al siguiente prompt (`avanzarPrompt`) — mismo
+			     documento, misma operación, ver el comentario junto a
+			     `RevisionPrompt` de arriba. En el ÚLTIMO prompt sigue sin llevar a
+			     ningún lado: qué pasa al terminarlos todos no está definido
+			     todavía. -->
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 				<Button
 					variant="link"
@@ -2730,7 +2780,9 @@
 				>
 					Cancelar evaluación
 				</Button>
-				<Button data-testid="continuar-evaluacion" disabled={!revisionCompleta}>Continuar</Button>
+				<Button data-testid="continuar-evaluacion" disabled={!revisionCompleta} onclick={avanzarPrompt}>
+					Continuar
+				</Button>
 			</div>
 		{/if}
 	</Sheet.Content>

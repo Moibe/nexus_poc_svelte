@@ -37,10 +37,14 @@
 
 	let {
 		archivo,
+		numero = 1,
 		onCambioRevision
 	}: {
 		/** El documento de ejemplo que se eligió en el paso anterior. */
 		archivo: File;
+		/** Qué prompt es este (1-indexado), solo para el título — hoy los N
+		 *  prompts son la misma operación repetida, así que no cambia nada más. */
+		numero?: number;
 		/** Cuántos campos llevan veredicto, de cuántos hay. Quien nos monta lo
 		 *  usa para decidir si "Continuar" ya tiene sentido. */
 		onCambioRevision?: (revisados: number, total: number) => void;
@@ -160,7 +164,7 @@
 </script>
 
 <div data-testid="revision-prompt">
-	<h3 class="text-xl font-semibold text-foreground">Prompt 1</h3>
+	<h3 class="text-xl font-semibold text-foreground">Prompt {numero}</h3>
 	<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 		Estos son los datos que el extractor encontró en <span class="font-medium text-foreground"
 			>{archivo.name}</span
