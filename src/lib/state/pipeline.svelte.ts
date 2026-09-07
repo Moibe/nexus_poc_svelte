@@ -56,10 +56,13 @@ export type DocumentoEnPipeline = {
 /**
  * Lo que Document AI acepta, por extensión de la bandeja.
  *
- * DOCX y XLSX NO están: la bandeja los admite (se pueden almacenar y luego
- * ingerirlos por otra vía), pero Document AI no los procesa. En vez de mandarlos
- * y recibir un error del proveedor, se marcan `no_soportado` sin gastar la
- * llamada — que además cuesta dinero.
+ * DOCX y XLSX NO están porque Document AI no los procesa — y desde el
+ * 2026-09-06 la Bandeja ya ni los admite (`EXTENSIONES_PERMITIDAS` en
+ * `bandeja.svelte.ts`), así que este caso hoy es defensivo, no el camino
+ * esperado. Se deja el guardia igual: si algún día se vuelve a admitir un
+ * formato que Document AI no procesa, se marca `no_soportado` sin gastar la
+ * llamada — que además cuesta dinero — en vez de mandarlo y recibir un error
+ * del proveedor.
  */
 const MIME_POR_EXTENSION: Record<string, string> = {
 	PDF: 'application/pdf',

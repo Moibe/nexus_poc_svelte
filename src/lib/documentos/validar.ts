@@ -9,12 +9,19 @@
  * ALCANCE, para tenerlo claro: esto detecta los casos evidentes, no valida el
  * documento a fondo.
  *   - SÍ detecta: archivo vacío, archivo cuyo contenido no corresponde a su
- *     extensión (ej. un .exe renombrado a .pdf), archivo truncado a medias,
- *     PDF cifrado, y Office (docx/xlsx) cifrado.
+ *     extensión (ej. un .exe renombrado a .pdf), archivo truncado a medias, y
+ *     PDF cifrado.
  *   - NO detecta: un PDF con encabezado válido pero con la tabla de referencias
  *     rota adentro, o un documento que abre pero cuyo contenido es basura. Para
  *     eso haría falta parsear el formato completo (pdf.js y similares), que es
  *     mucho más peso y no aporta para una PoC.
+ *
+ * Office (docx/xlsx) YA NO se revisa aquí: se quitaron del dropzone el
+ * 2026-09-06 porque Document AI no los procesa (ver `EXTENSIONES_PERMITIDAS`
+ * en `bandeja.svelte.ts`), así que un archivo con esa extensión ya no llega
+ * hasta esta función. La detección de Office cifrado que existía (contenedor
+ * OLE con un stream "EncryptedPackage") se puede recuperar del historial de
+ * git si algún día se vuelve a admitir el formato.
  *
  * Cuando el pipeline real corra del lado del servidor, esa validación profunda
  * le toca a él; esto es el filtro rápido de la UI para no mandar a procesar algo
@@ -26,8 +33,6 @@ export type ProblemaDocumento = 'protegido' | 'corrupto';
 // Firmas de formato ("magic numbers"): los primeros bytes que todo archivo
 // válido de ese tipo tiene por especificación.
 const FIRMA_PDF = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
-const FIRMA_ZIP = [0x50, 0x4b, 0x03, 0x04]; // "PK\x03\x04" — docx/xlsx son ZIP por dentro
-const FIRMA_CFB = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]; // contenedor OLE
 const FIRMA_JPEG = [0xff, 0xd8, 0xff];
 const FIRMA_PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const FIRMA_TIFF_LE = [0x49, 0x49, 0x2a, 0x00]; // "II*\0" little-endian
@@ -44,12 +49,6 @@ function empiezaCon(bytes: Uint8Array, firma: number[]): boolean {
 /** Bytes de un texto ASCII, para buscarlo dentro del binario. */
 function comoAscii(texto: string): number[] {
 	return Array.from(texto, (caracter) => caracter.charCodeAt(0));
-}
-
-/** Bytes de un texto en UTF-16LE (cada carácter ASCII seguido de 0x00), que es
- * como guarda sus nombres de stream el contenedor OLE de Office. */
-function comoUtf16le(texto: string): number[] {
-	return Array.from(texto, (caracter) => [caracter.charCodeAt(0), 0x00]).flat();
 }
 
 function contiene(bytes: Uint8Array, secuencia: number[], desde = 0): boolean {
@@ -93,23 +92,6 @@ function revisarPdf(bytes: Uint8Array): ProblemaDocumento | null {
 	if (!contiene(bytes, comoAscii('%%EOF'))) return 'corrupto';
 
 	return null;
-}
-
-function revisarOoxml(bytes: Uint8Array): ProblemaDocumento | null {
-	// Un docx/xlsx normal es un ZIP.
-	if (empiezaCon(bytes, FIRMA_ZIP)) return null;
-
-	// Si en cambio es un contenedor OLE, hay dos posibilidades: un Office
-	// cifrado (el ZIP real va dentro de un stream llamado "EncryptedPackage"),
-	// o un .doc/.xls viejo renombrado. Solo el primero es "protegido".
-	if (empiezaCon(bytes, FIRMA_CFB)) {
-		if (contiene(bytes, comoUtf16le('EncryptedPackage'))) return 'protegido';
-		// Formato legado, no es problema de contraseña — se deja pasar y que el
-		// pipeline decida si lo soporta.
-		return null;
-	}
-
-	return 'corrupto';
 }
 
 /**
@@ -160,9 +142,6 @@ export function detectarProblema(bytes: Uint8Array, extension: string): Problema
 	switch (extension.toLowerCase()) {
 		case 'pdf':
 			return revisarPdf(bytes);
-		case 'docx':
-		case 'xlsx':
-			return revisarOoxml(bytes);
 		case 'jpg':
 		case 'jpeg':
 		case 'tiff':

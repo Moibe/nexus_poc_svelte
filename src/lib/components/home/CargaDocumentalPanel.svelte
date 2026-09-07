@@ -81,7 +81,10 @@
 			<p class="text-sm font-medium text-foreground">
 				Arrastra y suelta tus documentos aquí o selecciona archivos desde tu equipo
 			</p>
-			<p class="text-xs text-muted-foreground">PDF, DOCX, XLSX, JPG, JPEG, PNG, TIFF | Max 20 MB</p>
+			<!-- DOCX y XLSX se quitaron el 2026-09-06: Document AI no los procesa
+			     (ver EXTENSIONES_PERMITIDAS en bandeja.svelte.ts), así que ya no
+			     tiene caso ofrecerlos aquí para que fallen hasta "Iniciar pipeline". -->
+			<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max 20 MB</p>
 		</div>
 		<input
 			bind:this={fileInput}
@@ -89,7 +92,7 @@
 			type="file"
 			multiple
 			class="hidden"
-			accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.tiff"
+			accept=".pdf,.jpg,.jpeg,.png,.tiff"
 		/>
 		<span class="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-secondary-foreground">
 			Buscar archivos

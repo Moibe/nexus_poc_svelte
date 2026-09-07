@@ -63,8 +63,14 @@ export type ArchivoPendienteDeCarga = {
 // real de INEs del usuario (548 archivos) el 17% son PNG, así que una sexta
 // parte de los documentos que de verdad se van a procesar no se podía ni subir.
 // El back y Document AI ya lo aceptaban; el único que lo bloqueaba era este
-// listado. Si el UX actualiza el frame, alinear el texto del dropzone también.
-const EXTENSIONES_PERMITIDAS = ['pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'png', 'tiff'];
+// listado.
+// DOCX y XLSX se QUITARON el 2026-09-06, a pedido explícito: Document AI no
+// los procesa (ver MIME_POR_EXTENSION en pipeline.svelte.ts), así que antes
+// se podían subir hasta la Bandeja de preparación y solo fallaban hasta
+// picarle a "Iniciar pipeline" — un archivo que nunca se iba a poder
+// procesar ya no debería aceptarse desde el primer paso.
+// Si el UX actualiza el frame, alinear el texto del dropzone también.
+const EXTENSIONES_PERMITIDAS = ['pdf', 'jpg', 'jpeg', 'png', 'tiff'];
 const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
 
 const DURACION_ANIMACION_MS = 900;
