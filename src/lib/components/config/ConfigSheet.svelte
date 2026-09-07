@@ -1412,9 +1412,16 @@
 												<!-- El renglón deshabilitado es `pointer-events-none` (ver
 												     dropdown-menu-item.svelte), así que nunca recibiría el hover
 												     que abre el tooltip. El truco de siempre: el trigger real es
-												     el <span> que lo envuelve, no el ítem mismo. -->
+												     el <span> que lo envuelve, no el ítem mismo.
+												     `ignoreNonKeyboardFocus` (2026-09-07, mismo bug y misma
+												     corrección que ya se aplicó al tooltip de "Ejemplo documental"
+												     de abajo): el menú, al abrirse, mueve el foco a su primer
+												     renglón — que es justo este—, y bits-ui abre el tooltip con
+												     CUALQUIER foco, no solo el de teclado. Sin esto, el mensaje
+												     aparecía solo con abrir el menú, antes de que el mouse tocara
+												     nada. -->
 												<Tooltip.Provider>
-													<Tooltip.Root>
+													<Tooltip.Root ignoreNonKeyboardFocus>
 														<Tooltip.Trigger>
 															{#snippet child({ props })}
 																<span {...props} class="block">
