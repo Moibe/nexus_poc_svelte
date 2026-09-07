@@ -1181,6 +1181,37 @@
 											<LoaderCircle class="size-4 animate-spin" />
 											Validando configuración...
 										</Button>
+									{:else if !tipo.ejemploDocumental}
+										<!-- El switch "Ejemplo documental" antes solo validaba el mínimo
+										     de instancias para la recomendación (ver
+										     `intentarAlternarEjemploDocumental`) y no tenía ningún otro
+										     efecto — a petición explícita del 2026-09-06, ahora también
+										     bloquea "Activar": no se activa un tipo documental sin que su
+										     ejemplo se haya marcado como listo primero.
+										     Mismo truco que "Editar" deshabilitado, arriba: un botón
+										     `disabled` no dispara el hover del tooltip, así que el trigger
+										     real es el `<span>` que lo envuelve. -->
+										<Tooltip.Provider>
+											<Tooltip.Root>
+												<Tooltip.Trigger>
+													{#snippet child({ props })}
+														<span {...props} class="block">
+															<Button
+																size="sm"
+																data-testid="activar-tipo"
+																class="h-9.5 w-20.5 shrink-0"
+																disabled
+															>
+																Activar
+															</Button>
+														</span>
+													{/snippet}
+												</Tooltip.Trigger>
+												<Tooltip.Content side="left">
+													Marca "Ejemplo documental" como listo antes de activar.
+												</Tooltip.Content>
+											</Tooltip.Root>
+										</Tooltip.Provider>
 									{:else}
 										<Button
 											size="sm"
