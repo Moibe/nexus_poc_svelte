@@ -1171,12 +1171,26 @@
 											Eliminando...
 										</Button>
 									{:else if tipo.estado === 'activo'}
+										<!-- Chip + "Generar prompt", según la captura compartida el
+										     2026-09-06. El chip ganó un punto verde y dejó su ancho fijo
+										     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
+										     calculado para solo el texto lo apretaba. -->
 										<span
 											data-testid="insignia-activo"
-											class="flex h-5.5 w-14.75 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-medium text-green-700"
+											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
 										>
+											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
 											Activo
 										</span>
+
+										<!-- OJO: todavía NO hace nada, a propósito y a pedido explícito —
+										     el prompt de un tipo documental no existe como concepto en el
+										     back todavía. Se deja SIN `onclick` (no un `onclick` vacío) para
+										     que quede obvio al leer que falta cablearlo, y con `type="button"`
+										     heredado del componente para que no dispare ningún submit. -->
+										<Button size="sm" data-testid="generar-prompt" class="h-9.5 shrink-0">
+											Generar prompt
+										</Button>
 									{:else if activandoId === tipo.id}
 										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
 										     tres llamadas reales a Google (crear el procesador, inicializar
