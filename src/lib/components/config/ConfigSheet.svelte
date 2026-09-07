@@ -46,6 +46,7 @@
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
+	import GenerarPrompts from './GenerarPrompts.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import type { TipoDocumentalGuardado, Recorte } from '$lib/state/configuracion.svelte';
@@ -179,6 +180,12 @@
 	// ejemplos" está abierto — se necesita el id (para activar) y el nombre
 	// (si algún día el aviso lo muestra), igual que `campoAQuitar` de arriba.
 	let tipoPocosEjemplos = $state<{ id: string; nombre: string } | null>(null);
+
+	// Id del tipo cuyo modal de "Generar prompts" está abierto, o null. Se
+	// guarda el ID y no un booleano porque el modal se abre desde la tarjeta de
+	// UN tipo concreto: cuando exista el back, la cantidad elegida tendrá que
+	// viajar junto con el tipo al que pertenece.
+	let tipoGenerandoPrompts = $state<string | null>(null);
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -1183,12 +1190,16 @@
 											Activo
 										</span>
 
-										<!-- OJO: todavía NO hace nada, a propósito y a pedido explícito —
-										     el prompt de un tipo documental no existe como concepto en el
-										     back todavía. Se deja SIN `onclick` (no un `onclick` vacío) para
-										     que quede obvio al leer que falta cablearlo, y con `type="button"`
-										     heredado del componente para que no dispare ningún submit. -->
-										<Button size="sm" data-testid="generar-prompt" class="h-9.5 shrink-0">
+										<!-- Abre el modal de "Generar prompts de configuración". Lo que
+										     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
+										     (generar prompts no es un concepto del back aún) — ver
+										     `GenerarPrompts.svelte`. -->
+										<Button
+											size="sm"
+											data-testid="generar-prompt"
+											class="h-9.5 shrink-0"
+											onclick={() => (tipoGenerandoPrompts = tipo.id)}
+										>
 											Generar prompt
 										</Button>
 									{:else if activandoId === tipo.id}
@@ -2663,4 +2674,15 @@
 	onAgregarMas={irACalibracionDesdeAviso}
 	onContinuar={confirmarActivacionConPocosEjemplos}
 	onCerrar={() => (tipoPocosEjemplos = null)}
+/>
+
+<!-- `onGenerar` hoy SOLO cierra el modal: generar prompts no existe todavía en
+     el back, y este es el punto exacto donde se cablea cuando exista (ya llega
+     la cantidad elegida y el `tipoGenerandoPrompts` dice de qué tipo es). Se
+     cierra en vez de dejar el botón inerte para que la interacción no quede en
+     un callejón sin salida — pero OJO: hoy no persiste ni manda nada. -->
+<GenerarPrompts
+	abierto={tipoGenerandoPrompts !== null}
+	onCerrar={() => (tipoGenerandoPrompts = null)}
+	onGenerar={() => (tipoGenerandoPrompts = null)}
 />
