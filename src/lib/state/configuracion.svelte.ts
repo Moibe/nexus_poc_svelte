@@ -576,11 +576,9 @@ export type TipoDocumentalGuardado = {
 	 *  FIJARLA en cada extracción: la default de Google cambia sin aviso y la
 	 *  reproducibilidad ya nos mordió una vez. */
 	procesadorVersion: string;
-	/** El interruptor "Ejemplo documental" del menú de la tarjeta — marca que
-	 *  el ejemplo documental ya se considera listo. Desde el 2026-09-06 SÍ
-	 *  tiene un efecto real: "Activar" (`ConfigSheet.svelte`) se queda
-	 *  deshabilitado mientras esto sea `false`. Se persiste para que el
-	 *  interruptor no mienta al reabrir. */
+	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
+	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
+	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
 	ejemploDocumental: boolean;
 	/** ISO-8601 de cuándo se publicó la versión VIGENTE (`version`, arriba).
 	 *  Es lo que pasa a `publicadoEn` en `historialVersiones` el día que esta
