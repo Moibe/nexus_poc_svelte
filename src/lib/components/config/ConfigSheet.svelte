@@ -227,6 +227,15 @@
 		promptsPendientes = null;
 	}
 
+	/** Salir de la revisión: además de regresar a la Biblioteca, suelta el
+	 *  documento y la cantidad. Lo usan "Cancelar evaluación" del pie y la X del
+	 *  encabezado (vía `cerrarNivel`) — el mismo destino por dos caminos, así
+	 *  que comparten función para que no puedan divergir. */
+	function salirDeRevisionDePrompts() {
+		promptsDe = null;
+		vista = 'biblioteca';
+	}
+
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
 	 *  con menos de `MINIMO_EJEMPLOS_RECOMENDADO` instancias abre el aviso en
@@ -545,7 +554,11 @@
 	 *  módulo entero en vez de regresar a la Biblioteca — y hoy 'prompts' no
 	 *  tiene pie con botones, así que esa X es su ÚNICA salida. */
 	function cerrarNivel() {
-		if (vista === 'wizard' || vista === 'calibracion' || vista === 'prompts') {
+		if (vista === 'prompts') {
+			// Mismo camino que "Cancelar evaluación": suelta el documento y la
+			// cantidad, no solo cambia de vista.
+			salirDeRevisionDePrompts();
+		} else if (vista === 'wizard' || vista === 'calibracion') {
 			vista = 'biblioteca';
 		} else {
 			open = false;
@@ -2680,6 +2693,29 @@
 					Cancelar configuración
 				</Button>
 				<Button onclick={() => (vista = 'biblioteca')}>Guardar configuración</Button>
+			</div>
+		{:else if vista === 'prompts'}
+			<!-- A la DERECHA los dos, no separados a los extremos como en el wizard y
+			     Calibración: así lo trae la captura del 2026-09-06.
+			     "Cancelar evaluación" tiene el MISMO destino que la X del encabezado
+			     (ver `salirDeRevisionDePrompts`) — dos afordancias para lo mismo,
+			     igual que "Cancelar configuración" en Calibración.
+			     "Continuar" nace deshabilitado porque hoy NO hay nada que evaluar:
+			     el panel derecho, que es donde se marcaría cada campo como correcto
+			     o incorrecto, todavía no existe. Deshabilitado es más honesto que
+			     habilitado sin nada detrás — y así lo dibuja la captura, en azul
+			     pálido. Cuando exista la evaluación, la condición debería ser "ya se
+			     revisaron todos los campos de este prompt", no `true` a secas. -->
+			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
+				<Button
+					variant="link"
+					class="h-auto p-0 text-destructive"
+					data-testid="cancelar-evaluacion"
+					onclick={salirDeRevisionDePrompts}
+				>
+					Cancelar evaluación
+				</Button>
+				<Button data-testid="continuar-evaluacion" disabled>Continuar</Button>
 			</div>
 		{/if}
 	</Sheet.Content>
