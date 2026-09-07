@@ -219,12 +219,20 @@
 		promptsDe = { ...promptsPendientes, archivo };
 		promptsPendientes = null;
 		promptActual = 1;
+		puntajesPorPrompt = {};
 		vista = 'prompts';
 	}
 
 	/** Cuál de los `promptsDe.cantidad` prompts se está revisando ahora mismo,
 	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
 	let promptActual = $state(1);
+
+	/** Puntaje (0-100) de cada prompt YA terminado, por número de prompt. Se
+	 *  llena en `avanzarPrompt` con lo último que reportó `RevisionPrompt` antes
+	 *  de que ese prompt se abandone — un objeto normal basta (no hace falta
+	 *  `$state` en las claves, solo en la variable que lo contiene) porque
+	 *  nunca se edita una entrada ya escrita, solo se agregan nuevas. */
+	let puntajesPorPrompt = $state<Record<number, number>>({});
 
 	/** "Continuar" con el pie: por ahora cada prompt es la MISMA operación
 	 *  (correr el extractor contra el mismo documento de ejemplo y calificar sus
@@ -234,17 +242,26 @@
 	 *  a `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
 	 *  Svelte destruye el componente viejo y monta uno limpio, que vuelve a
 	 *  extraer desde cero.
+	 *  Antes de avanzar, se calcula el puntaje del prompt que se abandona
+	 *  (correctos/total de `avanceRevision`, que a esta altura siempre tiene
+	 *  `revisados === total` porque así lo exige `revisionCompleta`) y se
+	 *  guarda en `puntajesPorPrompt` para que el sidebar lo pinte.
 	 *  En el ÚLTIMO prompt esto todavía no lleva a ningún lado — qué pasa al
 	 *  terminarlos todos sigue sin definirse (ver `docs/pendientes-ux.md`). */
 	function avanzarPrompt() {
 		if (promptsDe === null || promptActual >= promptsDe.cantidad) return;
+		if (avanceRevision.total > 0) {
+			puntajesPorPrompt[promptActual] = Math.round(
+				(avanceRevision.correctos / avanceRevision.total) * 100
+			);
+		}
 		promptActual += 1;
 		// Se apaga aquí, no solo en el remount de `RevisionPrompt`: entre el
 		// clic y el primer `onCambioRevision` del componente nuevo hay un hueco
 		// donde `avanceRevision` todavía tendría los números del prompt viejo
 		// (todo revisado), y "Continuar" se vería habilitado un instante antes
 		// de que la extracción nueva ni siquiera empiece.
-		avanceRevision = { revisados: 0, total: 0 };
+		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
 	}
 
 	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
@@ -260,20 +277,33 @@
 	 *  que comparten función para que no puedan divergir. */
 	function salirDeRevisionDePrompts() {
 		promptsDe = null;
-		avanceRevision = { revisados: 0, total: 0 };
+		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
+		puntajesPorPrompt = {};
 		vista = 'biblioteca';
 	}
 
-	/** Cuántos campos del prompt en revisión llevan veredicto. Lo reporta
-	 *  `RevisionPrompt` y es lo único que habilita "Continuar": seguir adelante
-	 *  con campos sin revisar dejaría huecos justo en el dato que la pantalla
-	 *  existe para recoger. `total: 0` (todavía extrayendo, o un documento sin
-	 *  campos) también deja el botón apagado, que es lo correcto — no hay nada
-	 *  que evaluar. */
-	let avanceRevision = $state({ revisados: 0, total: 0 });
+	/** Cuántos campos del prompt en revisión llevan veredicto, de cuántos hay,
+	 *  y cuántos de esos quedaron "Correcto". Lo reporta `RevisionPrompt`.
+	 *  `revisados`/`total` son lo único que habilita "Continuar": seguir
+	 *  adelante con campos sin revisar dejaría huecos justo en el dato que la
+	 *  pantalla existe para recoger. `total: 0` (todavía extrayendo, o un
+	 *  documento sin campos) también deja el botón apagado, que es lo
+	 *  correcto — no hay nada que evaluar. `correctos` alimenta el puntaje que
+	 *  `avanzarPrompt` guarda al abandonar este prompt. */
+	let avanceRevision = $state({ revisados: 0, total: 0, correctos: 0 });
 	const revisionCompleta = $derived(
 		avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
 	);
+
+	/** Verde/ámbar/rojo del puntaje, a pedido explícito con captura
+	 *  (2026-09-07). Cortes propios — el diseño solo mostró 84% en verde y 60%
+	 *  en ámbar, así que 80/50 es la lectura más simple que reproduce esos dos
+	 *  ejemplos sin inventar un tercer corte que nadie pidió. */
+	function claseColorPuntaje(puntaje: number): string {
+		if (puntaje >= 80) return 'bg-green-50 text-green-700';
+		if (puntaje >= 50) return 'bg-amber-50 text-amber-700';
+		return 'bg-red-50 text-red-700';
+	}
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -1144,8 +1174,10 @@
 					     reales (2026-09-07: antes solo existía el prompt 1, hard-codeado;
 					     "Continuar" avanza `promptActual` y esto ya refleja el avance de
 					     verdad, calcado del `state` del wizard de arriba):
-					       - 'revisado' (n < promptActual): check verde + "Revisado", igual
-					         que "Listo" en el wizard.
+					       - 'revisado' (n < promptActual): check verde + "Listo" — el MISMO
+					         texto que usa el wizard para un paso completado (se llamó
+					         "Revisado" en el primer intento; la captura del puntaje trajo
+					         también el rótulo correcto y se corrige aquí de una vez).
 					       - 'actual' (n === promptActual): punto verde + "En revisión" +
 					         `border-b-2 border-green-500`.
 					       - 'pendiente' (n > promptActual): "Por revisar", en gris.
@@ -1153,22 +1185,43 @@
 					     un prompt ya revisado, a diferencia del wizard — porque no está
 					     pedido: cada prompt de hoy es la misma operación repetida, no una
 					     página con su propio estado que valga la pena reabrir.
+					     El chip "Puntaje | N%" (2026-09-07, a pedido explícito con
+					     captura) solo aparece en los YA terminados ('revisado'): es
+					     literalmente "cada prompt que se haya terminado de revisar", y el
+					     actual —aunque ya tenga sus campos calificados— no cuenta como
+					     terminado hasta que se le da Continuar. El puntaje mismo
+					     (correctos/total, ver `avanzarPrompt`) es una lectura MÍA, no del
+					     mockup: es lo único medible con lo que ya se captura en pantalla.
 					     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
 					     dedazo del diseño. Aquí se numera correctamente. -->
 					<ol class="space-y-6">
 						{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
 							{@const estadoPrompt =
 								n < promptActual ? 'revisado' : n === promptActual ? 'actual' : 'pendiente'}
+							{@const puntaje = puntajesPorPrompt[n]}
 							<li class={estadoPrompt === 'actual' ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
-								<div class="mb-1 flex items-center gap-1.5">
-									{#if estadoPrompt === 'revisado'}
-										<Check class="size-3.5 text-green-600" />
-										<span class="text-xs font-medium text-green-600">Revisado</span>
-									{:else if estadoPrompt === 'actual'}
-										<span class="size-1.5 rounded-full bg-green-500"></span>
-										<span class="text-xs font-medium text-green-600">En revisión</span>
-									{:else}
-										<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
+								<div class="mb-1 flex items-center justify-between gap-2">
+									<div class="flex items-center gap-1.5">
+										{#if estadoPrompt === 'revisado'}
+											<Check class="size-3.5 text-green-600" />
+											<span class="text-xs font-medium text-green-600">Listo</span>
+										{:else if estadoPrompt === 'actual'}
+											<span class="size-1.5 rounded-full bg-green-500"></span>
+											<span class="text-xs font-medium text-green-600">En revisión</span>
+										{:else}
+											<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
+										{/if}
+									</div>
+									{#if estadoPrompt === 'revisado' && puntaje !== undefined}
+										<span
+											data-testid="puntaje-prompt"
+											data-puntaje={puntaje}
+											class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {claseColorPuntaje(
+												puntaje
+											)}"
+										>
+											Puntaje | {puntaje}%
+										</span>
 									{/if}
 								</div>
 								<p class="text-sm font-semibold text-foreground">{n}. Prompt {n}</p>
@@ -2166,7 +2219,8 @@
 							<RevisionPrompt
 								archivo={promptsDe.archivo}
 								numero={promptActual}
-								onCambioRevision={(revisados, total) => (avanceRevision = { revisados, total })}
+								onCambioRevision={(revisados, total, correctos) =>
+								(avanceRevision = { revisados, total, correctos })}
 							/>
 						{/key}
 					{/if}

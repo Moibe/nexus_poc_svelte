@@ -45,9 +45,11 @@
 		/** Qué prompt es este (1-indexado), solo para el título — hoy los N
 		 *  prompts son la misma operación repetida, así que no cambia nada más. */
 		numero?: number;
-		/** Cuántos campos llevan veredicto, de cuántos hay. Quien nos monta lo
-		 *  usa para decidir si "Continuar" ya tiene sentido. */
-		onCambioRevision?: (revisados: number, total: number) => void;
+		/** Cuántos campos llevan veredicto, de cuántos hay, y cuántos de esos
+		 *  quedaron "Correcto". Quien nos monta usa `revisados`/`total` para
+		 *  decidir si "Continuar" ya tiene sentido, y `correctos` para calcular
+		 *  el puntaje del prompt una vez terminado. */
+		onCambioRevision?: (revisados: number, total: number, correctos: number) => void;
 	} = $props();
 
 	type Veredicto = 'correcto' | 'incorrecto' | null;
@@ -138,9 +140,15 @@
 	});
 
 	const revisados = $derived(filas.filter((f) => f.veredicto !== null).length);
+	/** Cuántos de los campos calificados quedaron "Correcto". Junto con
+	 *  `filas.length` es lo que arma el puntaje del prompt (correctos/total) —
+	 *  ese cálculo vive en `ConfigSheet`, no aquí, porque solo `ConfigSheet`
+	 *  sabe a qué prompt pertenece este resultado (`RevisionPrompt` no conoce
+	 *  su propio número más que para el título). */
+	const correctos = $derived(filas.filter((f) => f.veredicto === 'correcto').length);
 
 	$effect(() => {
-		onCambioRevision?.(revisados, filas.length);
+		onCambioRevision?.(revisados, filas.length, correctos);
 	});
 
 	function marcarCorrecto(fila: Fila) {
