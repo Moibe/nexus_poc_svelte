@@ -48,6 +48,7 @@
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import GenerarPrompts from './GenerarPrompts.svelte';
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
+	import RevisionPrompt from './RevisionPrompt.svelte';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
@@ -233,8 +234,20 @@
 	 *  que comparten función para que no puedan divergir. */
 	function salirDeRevisionDePrompts() {
 		promptsDe = null;
+		avanceRevision = { revisados: 0, total: 0 };
 		vista = 'biblioteca';
 	}
+
+	/** Cuántos campos del prompt en revisión llevan veredicto. Lo reporta
+	 *  `RevisionPrompt` y es lo único que habilita "Continuar": seguir adelante
+	 *  con campos sin revisar dejaría huecos justo en el dato que la pantalla
+	 *  existe para recoger. `total: 0` (todavía extrayendo, o un documento sin
+	 *  campos) también deja el botón apagado, que es lo correcto — no hay nada
+	 *  que evaluar. */
+	let avanceRevision = $state({ revisados: 0, total: 0 });
+	const revisionCompleta = $derived(
+		avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
+	);
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -2093,13 +2106,17 @@
 						</div>
 					{/if}
 				{:else if vista === 'prompts'}
-					<!-- VACÍO a propósito, a pedido explícito: esta iteración construye
-					     solo el árbol de la izquierda. Lo que va aquí (el documento de
-					     ejemplo con sus pares "valor correcto / valor extraído" y los
-					     botones Correcto/Incorrecto por campo) queda para la siguiente,
-					     junto con el pie de "Cancelar evaluación / Continuar".
-					     Mientras tanto la salida es la X del encabezado, que regresa a
-					     la Biblioteca (ver `cerrarNivel`). -->
+					<!-- Solo el prompt 1, a pedido explícito (2026-09-07): corre el
+					     extractor contra el documento que se acaba de subir y muestra
+					     los pares. Los demás renglones del árbol siguen sin panel.
+					     El `{#if}` es lo que garantiza que `archivo` no sea null
+					     dentro del componente, que lo declara requerido. -->
+					{#if promptsDe}
+						<RevisionPrompt
+							archivo={promptsDe.archivo}
+							onCambioRevision={(revisados, total) => (avanceRevision = { revisados, total })}
+						/>
+					{/if}
 				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
@@ -2700,12 +2717,10 @@
 			     "Cancelar evaluación" tiene el MISMO destino que la X del encabezado
 			     (ver `salirDeRevisionDePrompts`) — dos afordancias para lo mismo,
 			     igual que "Cancelar configuración" en Calibración.
-			     "Continuar" nace deshabilitado porque hoy NO hay nada que evaluar:
-			     el panel derecho, que es donde se marcaría cada campo como correcto
-			     o incorrecto, todavía no existe. Deshabilitado es más honesto que
-			     habilitado sin nada detrás — y así lo dibuja la captura, en azul
-			     pálido. Cuando exista la evaluación, la condición debería ser "ya se
-			     revisaron todos los campos de este prompt", no `true` a secas. -->
+			     "Continuar" se habilita cuando TODOS los campos del prompt llevan
+			     veredicto (ver `revisionCompleta`). Mientras se extrae, o si el
+			     documento no dio campos, sigue apagado: no hay nada que evaluar.
+			     Todavía no lleva a ningún lado — el prompt 2 no existe. -->
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 				<Button
 					variant="link"
@@ -2715,7 +2730,7 @@
 				>
 					Cancelar evaluación
 				</Button>
-				<Button data-testid="continuar-evaluacion" disabled>Continuar</Button>
+				<Button data-testid="continuar-evaluacion" disabled={!revisionCompleta}>Continuar</Button>
 			</div>
 		{/if}
 	</Sheet.Content>
