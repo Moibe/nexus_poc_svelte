@@ -47,6 +47,8 @@
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import GenerarPrompts from './GenerarPrompts.svelte';
+	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
+	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import type { TipoDocumentalGuardado, Recorte } from '$lib/state/configuracion.svelte';
@@ -90,7 +92,7 @@
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	// El módulo tiene tres vistas:
+	// El módulo tiene cuatro vistas:
 	//  - 'biblioteca': la pantalla de entrada, con el listado de modelos (hoy
 	//    vacío) y el botón para arrancar uno nuevo.
 	//  - 'wizard': el alta de tipo documental en 3 pasos.
@@ -98,8 +100,12 @@
 	//    sin frame de Figma — se construyó desde una captura). Por ahora SOLO
 	//    puebla el árbol izquierdo con los campos reales del tipo; qué muestra y
 	//    qué hace el lado derecho queda para la siguiente conversación.
+	//  - 'prompts': la revisión de los prompts generados (2026-09-06, también
+	//    desde una captura). MISMO estado que 'calibracion' cuando nació: el
+	//    árbol izquierdo está construido y el lado derecho queda vacío a
+	//    propósito, a pedido explícito.
 	// Se entra siempre por 'biblioteca'.
-	let vista = $state<'biblioteca' | 'wizard' | 'calibracion'>('biblioteca');
+	let vista = $state<'biblioteca' | 'wizard' | 'calibracion' | 'prompts'>('biblioteca');
 	let avisoExito = $state(false);
 	// Si el wizard que está abierto es un ALTA o la edición de un modelo que ya
 	// existía. No se puede deducir al final: el tipo documental entra a la
@@ -186,6 +192,40 @@
 	// UN tipo concreto: cuando exista el back, la cantidad elegida tendrá que
 	// viajar junto con el tipo al que pertenece.
 	let tipoGenerandoPrompts = $state<string | null>(null);
+
+	// El flujo de "Generar prompt" son TRES pasos, y cada uno tiene su propia
+	// variable a propósito — no una sola con banderas:
+	//   1. `tipoGenerandoPrompts`  modal de cantidad abierto
+	//   2. `promptsPendientes`     modal del documento de ejemplo abierto
+	//   3. `promptsDe`             la pantalla de revisión ya tiene datos
+	// Reusar una sola variable haría que cerrar un paso vaciara el siguiente.
+	let promptsPendientes = $state<{ tipoId: string; cantidad: number } | null>(null);
+	let promptsDe = $state<{ tipoId: string; cantidad: number; archivo: File } | null>(null);
+
+	/** Paso 1 → 2: se eligió la cantidad; ahora falta el documento sobre el que
+	 *  se van a probar los prompts. */
+	function pedirDocumentoParaPrompts(cantidad: number) {
+		if (tipoGenerandoPrompts === null) return;
+		promptsPendientes = { tipoId: tipoGenerandoPrompts, cantidad };
+		tipoGenerandoPrompts = null;
+	}
+
+	/** Paso 2 → 3: con documento en mano, se entra a la revisión. Lo único que
+	 *  NO pasa aquí es la GENERACIÓN: no se le pide nada al back, los renglones
+	 *  del árbol son la estructura de la pantalla, no prompts reales. */
+	function irARevisionDePrompts(archivo: File) {
+		if (promptsPendientes === null) return;
+		promptsDe = { ...promptsPendientes, archivo };
+		promptsPendientes = null;
+		vista = 'prompts';
+	}
+
+	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
+	 *  documento): aborta el flujo COMPLETO, no solo ese paso — volver al modal
+	 *  de cantidad obligaría a re-elegirla sin haberlo pedido. */
+	function cancelarGeneracionDePrompts() {
+		promptsPendientes = null;
+	}
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -498,10 +538,18 @@
 	 * pantalla de la que se viene. Nada se pierde — el borrador sigue guardado y
 	 * el tipo sigue en la lista.
 	 */
-	/** La X del header. Sube un nivel en vez de cerrar de golpe. */
+	/** La X del header. Sube un nivel en vez de cerrar de golpe.
+	 *
+	 *  Es una lista de vistas INTERIORES, no una negación de 'biblioteca', y hay
+	 *  que acordarse de agregar cada vista nueva aquí: si no, su X cierra el
+	 *  módulo entero en vez de regresar a la Biblioteca — y hoy 'prompts' no
+	 *  tiene pie con botones, así que esa X es su ÚNICA salida. */
 	function cerrarNivel() {
-		if (vista === 'wizard' || vista === 'calibracion') vista = 'biblioteca';
-		else open = false;
+		if (vista === 'wizard' || vista === 'calibracion' || vista === 'prompts') {
+			vista = 'biblioteca';
+		} else {
+			open = false;
+		}
 	}
 
 	function regresar() {
@@ -810,7 +858,17 @@
 		<!-- header . navigation -->
 		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
-				{vista === 'calibracion' ? 'Configuración de tipo documental' : 'Modulo de configuración'}
+				<!-- "Generación de prompt" es el texto literal del encabezado del
+				     modal que trae a esta pantalla (captura del 2026-09-06). La
+				     captura de ESTA vista viene recortada y no muestra su propio
+				     encabezado, así que se reusa ese en vez de inventar uno. -->
+				{#if vista === 'calibracion'}
+					Configuración de tipo documental
+				{:else if vista === 'prompts'}
+					Generación de prompt
+				{:else}
+					Modulo de configuración
+				{/if}
 			</Sheet.Title>
 			<!-- La X sube UN NIVEL, no cierra siempre: estando en el wizard regresa a
 			     la Biblioteca; estando ya en la Biblioteca sí cierra el módulo. Antes
@@ -826,7 +884,7 @@
 			>
 				<CancelSquareIcon />
 				<span class="sr-only">
-					{vista === 'wizard' || vista === 'calibracion'
+					{vista === 'wizard' || vista === 'calibracion' || vista === 'prompts'
 					? 'Volver al módulo de configuración'
 					: 'Cerrar'}
 				</span>
@@ -843,6 +901,8 @@
 				     píxeles reales (a diferencia del resto del módulo). -->
 				{#if vista === 'calibracion'}
 					<Sparkles class="size-4" />
+				{:else if vista === 'prompts'}
+					<CodeXml class="size-4" />
 				{:else}
 					<SetupIcon />
 				{/if}
@@ -851,6 +911,13 @@
 				{#if vista === 'calibracion'}
 					<h2 class="text-lg font-medium text-foreground">Calibración de campos extraídos</h2>
 					<Sheet.Description class="text-sm">Carga tus documentos referencia</Sheet.Description>
+				{:else if vista === 'prompts'}
+					<!-- Sin subtítulo a propósito: la captura de esta vista viene
+					     recortada justo donde iría, y el único texto legible de esa
+					     zona ("...información antes de continuar con el proceso.")
+					     pertenece al panel DERECHO, que está fuera del alcance de
+					     esta iteración. Mejor sin subtítulo que con uno inventado. -->
+					<h2 class="text-lg font-medium text-foreground">Generar prompts de configuración</h2>
 				{:else}
 					<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
 					<Sheet.Description class="text-sm">
@@ -1019,6 +1086,37 @@
 							</li>
 						</ul>
 					{/if}
+				{:else if vista === 'prompts'}
+					<!-- Réplica de la captura del 2026-09-06. Reusa a propósito el MISMO
+					     lenguaje visual del sidebar del wizard (que está justo abajo):
+					     punto verde + rótulo de estado, número + nombre en semibold,
+					     descripción en gris, y `border-b-2 border-green-500` bajo el
+					     activo. Lo único que cambia son los rótulos ("En revisión" /
+					     "Por revisar" en vez de "En configuración" / "Por configurar").
+					     Hoy los renglones NO son clicables ni cambian de estado: el
+					     panel derecho —que es lo que habría que mostrar al elegir uno—
+					     queda fuera del alcance de esta iteración por pedido explícito.
+					     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
+					     dedazo del diseño. Aquí se numera correctamente. -->
+					<ol class="space-y-6">
+						{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
+							{@const enRevision = n === 1}
+							<li class={enRevision ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
+								<div class="mb-1 flex items-center gap-1.5">
+									{#if enRevision}
+										<span class="size-1.5 rounded-full bg-green-500"></span>
+										<span class="text-xs font-medium text-green-600">En revisión</span>
+									{:else}
+										<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
+									{/if}
+								</div>
+								<p class="text-sm font-semibold text-foreground">{n}. Prompt {n}</p>
+								<p class="mt-1 text-sm text-muted-foreground">
+									Listo para revisión de los resultados extraídos sobre ejemplos documentales
+								</p>
+							</li>
+						{/each}
+					</ol>
 				{:else}
 					<p class="mb-4 text-sm font-semibold text-foreground">Nuevo tipo documental</p>
 					<ol class="space-y-6">
@@ -1981,6 +2079,14 @@
 							{/if}
 						</div>
 					{/if}
+				{:else if vista === 'prompts'}
+					<!-- VACÍO a propósito, a pedido explícito: esta iteración construye
+					     solo el árbol de la izquierda. Lo que va aquí (el documento de
+					     ejemplo con sus pares "valor correcto / valor extraído" y los
+					     botones Correcto/Incorrecto por campo) queda para la siguiente,
+					     junto con el pie de "Cancelar evaluación / Continuar".
+					     Mientras tanto la salida es la X del encabezado, que regresa a
+					     la Biblioteca (ver `cerrarNivel`). -->
 				{:else if borrador.paso === 1}
 					<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 					<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
@@ -2676,13 +2782,17 @@
 	onCerrar={() => (tipoPocosEjemplos = null)}
 />
 
-<!-- `onGenerar` hoy SOLO cierra el modal: generar prompts no existe todavía en
-     el back, y este es el punto exacto donde se cablea cuando exista (ya llega
-     la cantidad elegida y el `tipoGenerandoPrompts` dice de qué tipo es). Se
-     cierra en vez de dejar el botón inerte para que la interacción no quede en
-     un callejón sin salida — pero OJO: hoy no persiste ni manda nada. -->
+<!-- Los dos pasos previos a la pantalla de revisión: cuántos prompts, y sobre
+     qué documento probarlos. Ver los comentarios de `pedirDocumentoParaPrompts`
+     e `irARevisionDePrompts`. -->
 <GenerarPrompts
 	abierto={tipoGenerandoPrompts !== null}
 	onCerrar={() => (tipoGenerandoPrompts = null)}
-	onGenerar={() => (tipoGenerandoPrompts = null)}
+	onGenerar={pedirDocumentoParaPrompts}
+/>
+
+<DocumentoParaPrompts
+	abierto={promptsPendientes !== null}
+	onContinuar={irARevisionDePrompts}
+	onCancelar={cancelarGeneracionDePrompts}
 />
