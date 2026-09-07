@@ -279,7 +279,12 @@
 
 				{#if documento.resultado?._metadata?.quality_alert}
 					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
-						<p class="text-sm font-medium text-amber-800">No se reconoció como INE</p>
+						<!-- Decía "No se reconoció como INE" hasta el 2026-09-07: desde que
+						     cada tipo documental se extrae con SU procesador, este aviso
+						     puede venir de cualquiera de ellos y nombrar a INE sería
+						     mentira en todos los demás. Mismo cambio que en
+						     `ETIQUETA_ESTADO.no_reconocido`. -->
+						<p class="text-sm font-medium text-amber-800">No se reconocieron sus campos</p>
 						<p class="mt-1 text-xs text-amber-700">
 							{documento.resultado._metadata.motivo ??
 								'Document AI respondió sin campos para este documento.'}

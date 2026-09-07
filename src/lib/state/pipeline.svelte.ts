@@ -159,26 +159,28 @@ export async function iniciarPipeline() {
 const CATEGORIA_OTRO = 'otro';
 
 /**
- * Nombres de tipo documental (normalizados) que este front SÍ sabe extraer,
- * y con qué.
+ * Tipos documentales que se extraen con un endpoint DEDICADO en vez del
+ * genérico, por su nombre normalizado.
  *
- * Por qué por NOMBRE y no por id ni por `procesadorId`, que sería lo natural:
- * el único extractor conectado hoy es `/api/pipeline/ine` -> `/ia/ine`, que
- * usa el procesador FIJO `DOCAI_PROCESADOR_INE` del `.env` del back. Ese
- * procesador es el INE legado, y NO es el `procesadorId` que se guarda en el
- * tipo documental al activarlo (activar crea uno propio, `nexusdoc--{id}--v{n}`).
- * O sea: no existe forma de pedirle al back que extraiga con el procesador de
- * un tipo cualquiera — hace falta un endpoint de extracción genérico que
- * reciba el `procesadorId`, y ese es el trabajo real que falta. Mientras no
- * exista, la única manera de saber "este tipo se extrae con /ia/ine" es
- * reconocerlo por su nombre.
+ * Hoy solo INE, y no por falta de alternativa sino porque su endpoint hace
+ * cosas que el genérico no puede hacer: `/ia/ine` usa el procesador INE
+ * LEGADO (`DOCAI_PROCESADOR_INE` del `.env` del back), que trae ~20 campos ya
+ * afinados, y encima aplica dos limpiezas propias de una credencial (quitarle
+ * el punto final a `estado`, partir `fecha_registro` en año + número de
+ * emisión). El procesador que "Activar" le creó al tipo INE de la Biblioteca
+ * extrae solo los campos que se capturaron en el wizard, así que mandarlo por
+ * el camino genérico DEGRADARÍA lo que hoy funciona.
+ *
+ * Todo lo demás va por `/api/pipeline/extraer` con el `procesadorId` propio
+ * del tipo (ver `extraerConProcesador`). Cuando el tipo INE de la Biblioteca
+ * tenga configurados los mismos campos que el procesador legado, esta tabla
+ * puede desaparecer y el pipeline queda 100% genérico.
  *
  * Costo asumido y visible: si el usuario RENOMBRA su tipo "INE", deja de
- * empatar y sus documentos caen en `pendiente_revision` con un mensaje que
- * dice exactamente eso. Se prefirió ese fallo —ruidoso y explicado— sobre
- * mandar el documento a un extractor que no le corresponde.
+ * empatar aquí y sus documentos pasan al camino genérico — que funciona, pero
+ * con los campos de SU procesador, no los del legado.
  */
-const EXTRACTORES_POR_NOMBRE: Record<string, (id: string, archivo: File) => Promise<void>> = {
+const EXTRACTORES_DEDICADOS: Record<string, (id: string, archivo: File) => Promise<void>> = {
 	ine: extraerIne
 };
 
@@ -264,21 +266,26 @@ async function procesarUno(id: string) {
 		return;
 	}
 
-	const extraer = EXTRACTORES_POR_NOMBRE[normalizarCategoria(tipo.nombre)];
-	if (!extraer) {
-		// Tipo documental identificado CORRECTAMENTE, pero sin extracción
-		// conectada en el front (ver `EXTRACTORES_POR_NOMBRE`: hoy solo INE).
-		// No es un fallo del sistema ni algo que se arregle reintentando, así
-		// que va a revisión humana y no a 'fallido': el documento sí se
-		// entendió, lo que falta es a dónde mandarlo.
+	const dedicado = EXTRACTORES_DEDICADOS[normalizarCategoria(tipo.nombre)];
+
+	if (!dedicado && !tipo.procesadorId) {
+		// Tipo activo sin procesador guardado: no debería pasar (activar lo
+		// escribe antes de marcar el estado), pero si pasa no hay con qué
+		// extraer. Va a revisión humana y no a 'fallido' porque el documento SÍ
+		// se entendió — lo que falta es la configuración del tipo, y eso no se
+		// arregla reintentando.
 		vivo.estado = 'pendiente_revision';
 		vivo.terminadoEn = new Date();
-		vivo.error = `Se identificó como "${tipo.nombre}", pero la extracción de ese tipo documental todavía no está conectada. Queda para revisión humana.`;
+		vivo.error = `Se identificó como "${tipo.nombre}", pero ese tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde el Módulo de configuración.`;
 		return;
 	}
 
 	vivo.estado = 'procesando';
-	await extraer(id, archivo);
+	if (dedicado) {
+		await dedicado(id, archivo);
+	} else {
+		await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
+	}
 }
 
 /** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
@@ -324,12 +331,49 @@ async function clasificar(id: string, archivo: File): Promise<string | null> {
 	}
 }
 
+/**
+ * Extrae con el Custom Extractor PROPIO de un tipo documental, vía
+ * `/api/pipeline/extraer` (2026-09-07). Es lo que permite que un tipo dado de
+ * alta desde el wizard se procese de verdad: antes, el único extractor del
+ * front estaba atado al procesador de INE del `.env` del back, así que un
+ * documento se podía clasificar bien y no tener a dónde ir.
+ *
+ * Comparte con `extraerIne` el manejo de la respuesta —incluido
+ * `quality_alert`, que aquí significa lo mismo: el extractor no reconoció
+ * ninguno de los campos que su esquema esperaba— porque la forma que devuelve
+ * `/ia/extraer` es idéntica a la de `/ia/ine` a propósito.
+ */
+async function extraerConProcesador(
+	id: string,
+	archivo: File,
+	procesador: string,
+	version: string
+) {
+	const cuerpo = new FormData();
+	cuerpo.append('archivo', archivo);
+	cuerpo.append('procesador', procesador);
+	// La versión viaja solo si el tipo la tiene guardada. Sin ella Google usa
+	// su default, que puede cambiar sin aviso — mismo criterio que
+	// DOCAI_VERSION_INE en el back.
+	if (version) cuerpo.append('version', version);
+
+	await procesarRespuestaExtraccion(id, fetch('/api/pipeline/extraer', { method: 'POST', body: cuerpo }));
+}
+
 async function extraerIne(id: string, archivo: File) {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo);
 
+	await procesarRespuestaExtraccion(id, fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo }));
+}
+
+/** El manejo de la respuesta, común a los dos caminos de extracción (el
+ *  dedicado de INE y el genérico por procesador): las dos APIs devuelven la
+ *  MISMA forma, así que interpretarla dos veces solo garantizaba que un día
+ *  divergieran. */
+async function procesarRespuestaExtraccion(id: string, promesa: Promise<Response>) {
 	try {
-		const respuesta = await fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo });
+		const respuesta = await promesa;
 
 		// Se parsea con red: no todo error llega del BFF con forma {mensaje}. Un
 		// 502 de infraestructura o una página de error devuelven HTML, y hacer
@@ -355,12 +399,12 @@ async function extraerIne(id: string, archivo: File) {
 
 		vivo.resultado = datos as ResultadoIne;
 		// `quality_alert` no es un error: la API funcionó y su respuesta es que
-		// el documento no se reconoció como INE. Se distingue de `fallido` para
-		// que el usuario sepa que no tiene nada que reintentar. Esto es distinto
-		// de 'no_configurado': aquí el clasificador SÍ encontró la categoría
-		// INE, pero el extractor de INE, ya viendo el documento con detalle, no
-		// reconoció ninguno de sus campos — un segundo chequeo, más fino, que
-		// puede discrepar del primero.
+		// el extractor no reconoció ninguno de los campos que su esquema
+		// esperaba. Se distingue de `fallido` para que el usuario sepa que no
+		// tiene nada que reintentar. Y es distinto de 'no_configurado': aquí el
+		// clasificador SÍ ubicó el tipo documental, pero su extractor, ya
+		// viendo el documento con detalle, no encontró nada — un segundo
+		// chequeo, más fino, que puede discrepar del primero.
 		vivo.estado = datos?._metadata?.quality_alert ? 'no_reconocido' : 'procesado';
 	} catch (err) {
 		const vivo = documentosEnPipeline.find((d) => d.id === id);
@@ -404,7 +448,10 @@ export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok'
 	clasificando: { texto: 'Clasificando', tono: 'proceso' },
 	procesando: { texto: 'Procesando', tono: 'proceso' },
 	procesado: { texto: 'Listo', tono: 'ok' },
-	no_reconocido: { texto: 'No se reconoció como INE', tono: 'error' },
+	// "como INE" hasta el 2026-09-07, cuando el pipeline dejó de tener un solo
+	// extractor: el mismo estado ahora puede venir del extractor de cualquier
+	// tipo documental, y nombrar a INE ahí sería mentira en todos los demás.
+	no_reconocido: { texto: 'No se reconocieron sus campos', tono: 'error' },
 	no_configurado: { texto: 'Tipo documental no configurado', tono: 'error' },
 	pendiente_revision: { texto: 'Pendiente de revisión humana', tono: 'error' },
 	no_soportado: { texto: 'Formato no procesable', tono: 'error' },
