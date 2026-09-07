@@ -11,11 +11,12 @@
 	 * nada. Compartir componente entre los dos habría significado un montón de
 	 * banderas para apagar la mitad del comportamiento.
 	 *
-	 * Sin frame de Figma en el volcado: construido desde la captura del
-	 * 2026-09-06 (rotulada "HU001 | 129" el estado vacío y "HU001 | 130" el
-	 * estado con archivo).
+	 * Sin frame de Figma en el volcado: construido desde las capturas del
+	 * 2026-09-06 ("HU001 | 129" el estado vacío, "HU001 | 130" el estado con
+	 * archivo, y una tercera con los tres estados de la ficha).
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
+	import X from '@lucide/svelte/icons/x';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
@@ -36,36 +37,121 @@
 	const MAX_MB = 20;
 	const MAX_BYTES = MAX_MB * 1024 * 1024;
 
+	// Mismos números que `bandeja.svelte.ts` usa para la barra de la Bandeja, para
+	// que el progreso se sienta igual en las dos pantallas. Se copian en vez de
+	// exportarlos desde allá: son dos constantes de presentación, no API.
+	const DURACION_ANIMACION_MS = 900;
+	const INTERVALO_TICK_MS = 60;
+
 	let {
 		abierto = false,
 		onContinuar,
 		onCancelar
 	}: {
 		abierto?: boolean;
-		/** El archivo elegido. Quien abre decide qué hacer con él — este modal no
-		 *  persiste nada. */
+		/** El archivo elegido, ya leído sin errores. Quien abre decide qué hacer
+		 *  con él — este modal no persiste nada. */
 		onContinuar: (archivo: File) => void;
 		/** "Cancelar generación", la X, Escape y el clic fuera: todos abortan la
 		 *  generación completa, no solo este paso. */
 		onCancelar: () => void;
 	} = $props();
 
+	/**
+	 * Los tres estados de la ficha, según la captura. NO son decorativos: cada
+	 * uno corresponde a algo que de verdad pasa al leer el archivo.
+	 *   - 'leyendo': `arrayBuffer()` en curso. Con un archivo de varios MB esto
+	 *      toma tiempo real, así que la barra mide algo que sí está ocurriendo
+	 *      (mismo criterio que la Bandeja del Home).
+	 *   - 'error':   la lectura falló. Pasa de verdad — el archivo se movió, se
+	 *      desmontó la USB, o el navegador negó el permiso; está documentado en
+	 *      `procesarArchivo` de `bandeja.svelte.ts` por el mismo motivo. De ahí
+	 *      que "Recargar" tenga sentido: reintentar puede funcionar.
+	 *   - 'listo':   se pudo leer completo.
+	 */
+	type EstadoArchivo = 'leyendo' | 'error' | 'listo';
+
 	let fileInput = $state<HTMLInputElement>();
 	let files = $state<FileList | null>(null);
 	let arrastrando = $state(false);
 	let archivo = $state<File | null>(null);
-	let error = $state('');
+	let estado = $state<EstadoArchivo>('listo');
+	let progreso = $state(0);
+	/** Error de VALIDACIÓN (formato/tamaño), que se muestra bajo el dropzone y
+	 *  no llega a crear ficha. Distinto de `estado === 'error'`, que es un fallo
+	 *  de LECTURA de un archivo que sí pasó la validación. */
+	let errorValidacion = $state('');
 
-	const esImagen = $derived(
-		archivo ? !/\.pdf$/i.test(archivo.name) : false
-	);
+	const esImagen = $derived(archivo ? !/\.pdf$/i.test(archivo.name) : false);
+	const extension = $derived((archivo?.name.split('.').pop() ?? '').toUpperCase());
+
+	/**
+	 * Contador que invalida lecturas viejas. Sin esto hay una carrera real: si
+	 * se quita el archivo (o se elige otro) mientras el `await arrayBuffer()`
+	 * del anterior sigue vivo, al resolverse pisaría el estado y "resucitaría"
+	 * una ficha que ya no debería existir.
+	 */
+	let lecturaId = 0;
+	let intervalo: ReturnType<typeof setInterval> | null = null;
+
+	function limpiarIntervalo() {
+		if (intervalo !== null) {
+			clearInterval(intervalo);
+			intervalo = null;
+		}
+	}
+
+	/** Quita la ficha y aborta cualquier lectura en curso. Lo usan "Eliminar",
+	 *  la X del estado 'leyendo', y el reinicio al cerrar el modal. */
+	function quitarArchivo() {
+		lecturaId += 1;
+		limpiarIntervalo();
+		archivo = null;
+		estado = 'listo';
+		progreso = 0;
+	}
+
+	async function leer(f: File) {
+		const miLectura = ++lecturaId;
+		limpiarIntervalo();
+		archivo = f;
+		estado = 'leyendo';
+		progreso = 0;
+
+		// Tope en 90%: el 100 se reserva para cuando la lectura DE VERDAD terminó.
+		// Una barra que llega al 100 y se queda ahí esperando miente sobre lo que
+		// falta (mismo criterio que `animarProgresoMientrasSube` de la Bandeja).
+		const inicio = Date.now();
+		intervalo = setInterval(() => {
+			if (miLectura !== lecturaId) {
+				limpiarIntervalo();
+				return;
+			}
+			progreso = Math.min(90, Math.round(((Date.now() - inicio) / DURACION_ANIMACION_MS) * 90));
+		}, INTERVALO_TICK_MS);
+
+		try {
+			await f.arrayBuffer();
+		} catch {
+			if (miLectura !== lecturaId) return;
+			limpiarIntervalo();
+			estado = 'error';
+			return;
+		}
+
+		if (miLectura !== lecturaId) return; // lo quitaron mientras se leía
+		limpiarIntervalo();
+		progreso = 100;
+		estado = 'listo';
+	}
 
 	// Al reabrir siempre se arranca en el dropzone, sin el archivo de la vez
-	// anterior — mismo criterio que `CargarDocumentoEjemplo`.
+	// anterior — mismo criterio que `CargarDocumentoEjemplo`. También corta la
+	// lectura en curso: cerrar a media lectura no debe dejar un setInterval vivo.
 	$effect(() => {
 		if (abierto) return;
-		archivo = null;
-		error = '';
+		quitarArchivo();
+		errorValidacion = '';
 	});
 
 	$effect(() => {
@@ -79,19 +165,19 @@
 	});
 
 	function aceptar(f: File) {
-		const extension = f.name.split('.').pop()?.toLowerCase() ?? '';
-		if (!EXTENSIONES.includes(extension)) {
-			error = `Formato no admitido. Se aceptan ${EXTENSIONES.join(', ').toUpperCase()}.`;
-			archivo = null;
+		const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+		if (!EXTENSIONES.includes(ext)) {
+			errorValidacion = `Formato no admitido. Se aceptan ${EXTENSIONES.join(', ').toUpperCase()}.`;
+			quitarArchivo();
 			return;
 		}
 		if (f.size > MAX_BYTES) {
-			error = `El archivo excede el límite de ${MAX_MB} MB.`;
-			archivo = null;
+			errorValidacion = `El archivo excede el límite de ${MAX_MB} MB.`;
+			quitarArchivo();
 			return;
 		}
-		error = '';
-		archivo = f;
+		errorValidacion = '';
+		leer(f);
 	}
 
 	function manejarDrop(evento: DragEvent) {
@@ -195,8 +281,10 @@
 					</span>
 				</button>
 
-				{#if error}
-					<p data-testid="error-documento-prompts" class="text-xs text-destructive">{error}</p>
+				{#if errorValidacion}
+					<p data-testid="error-documento-prompts" class="text-xs text-destructive">
+						{errorValidacion}
+					</p>
 				{/if}
 
 				{#if archivo}
@@ -209,35 +297,98 @@
 
 						<div
 							data-testid="archivo-elegido"
-							class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+							data-estado={estado}
+							class="flex flex-col gap-2 rounded-lg border border-border bg-background px-3 py-2.5"
 						>
-							<span
-								class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-							>
-								{#if esImagen}
-									<ImageIcon />
+							<div class="flex items-center gap-3">
+								<span
+									class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
+								>
+									{#if esImagen}
+										<ImageIcon />
+									{:else}
+										<FileIcon />
+									{/if}
+								</span>
+
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium text-foreground">
+										{archivo.name}
+									</span>
+									{#if estado === 'error'}
+										<!-- Sustituye a "tipo • tamaño", no se agrega debajo: así lo trae
+										     la captura, y el dato de tamaño de un archivo que no se pudo
+										     leer no aporta nada. -->
+										<span class="block text-xs text-destructive">Error al cargar archivo</span>
+									{:else}
+										<span class="block text-xs text-muted-foreground">
+											{extension} • {formatearTamano(archivo.size)}
+										</span>
+									{/if}
+								</span>
+
+								{#if estado === 'leyendo'}
+									<div class="flex shrink-0 flex-col items-end gap-1">
+										<button
+											type="button"
+											data-testid="cancelar-lectura"
+											aria-label="Cancelar la carga de {archivo.name}"
+											class="text-muted-foreground transition-colors hover:text-foreground"
+											onclick={quitarArchivo}
+										>
+											<X class="size-4" />
+										</button>
+										<span class="text-xs tabular-nums text-muted-foreground">{progreso}%</span>
+									</div>
+								{:else if estado === 'error'}
+									<div class="flex shrink-0 items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											class="text-destructive hover:text-destructive"
+											data-testid="quitar-archivo-prompts"
+											onclick={quitarArchivo}
+										>
+											Eliminar
+										</Button>
+										<Button
+											variant="outline"
+											size="sm"
+											class="text-primary hover:text-primary"
+											data-testid="recargar-archivo-prompts"
+											onclick={() => archivo && leer(archivo)}
+										>
+											Recargar
+										</Button>
+									</div>
 								{:else}
-									<FileIcon />
+									<Button
+										variant="outline"
+										size="sm"
+										class="shrink-0 text-destructive hover:text-destructive"
+										data-testid="quitar-archivo-prompts"
+										onclick={quitarArchivo}
+									>
+										Eliminar
+									</Button>
 								{/if}
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="block truncate text-sm font-medium text-foreground">
-									{archivo.name}
-								</span>
-								<span class="block text-xs text-muted-foreground">
-									{(archivo.name.split('.').pop() ?? '').toUpperCase()} • {formatearTamano(
-										archivo.size
-									)}
-								</span>
-							</span>
-							<Button
-								variant="outline"
-								size="sm"
-								data-testid="quitar-archivo-prompts"
-								onclick={() => (archivo = null)}
-							>
-								Eliminar
-							</Button>
+							</div>
+
+							{#if estado === 'leyendo'}
+								<div
+									class="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+									role="progressbar"
+									aria-valuenow={progreso}
+									aria-valuemin={0}
+									aria-valuemax={100}
+									aria-label="Progreso de carga de {archivo.name}"
+								>
+									<div
+										class="h-full rounded-full bg-primary transition-[width] duration-100"
+										style="width: {progreso}%"
+									></div>
+								</div>
+							{/if}
 						</div>
 					</div>
 				{/if}
@@ -252,12 +403,13 @@
 				>
 					Cancelar generación
 				</Button>
-				<!-- Deshabilitado sin archivo, como en la captura del estado vacío: sin
-				     documento no hay nada sobre lo que probar los prompts. -->
+				<!-- Exige estado 'listo', no solo que haya archivo: mientras se lee no
+				     se sabe si se va a poder, y con un error de lectura definitivamente
+				     no hay documento que mandar a la revisión. -->
 				<Button
 					data-testid="continuar-documento-prompts"
-					disabled={archivo === null}
-					onclick={() => archivo && onContinuar(archivo)}
+					disabled={archivo === null || estado !== 'listo'}
+					onclick={() => archivo && estado === 'listo' && onContinuar(archivo)}
 				>
 					Continuar
 				</Button>
