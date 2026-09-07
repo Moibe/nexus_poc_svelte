@@ -229,6 +229,17 @@
 	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
 	let promptActual = $state(1);
 
+	/** El tipo documental que se está calibrando en la pantalla de prompts.
+	 *  `RevisionPrompt` necesita su `procesadorId` para extraer con el Custom
+	 *  Extractor que le toca — antes del 2026-09-07 llamaba siempre al de INE,
+	 *  así que revisar los prompts de una Póliza corría el extractor de una
+	 *  credencial. */
+	const tipoDePrompts = $derived.by(() => {
+		const enCurso = promptsDe;
+		if (!enCurso) return undefined;
+		return tiposDocumentales.find((t) => t.id === enCurso.tipoId);
+	});
+
 	/** Puntaje (0-100) de cada prompt YA ABANDONADO, por número de prompt —
 	 *  "abandonado" en el sentido de que `avanzarPrompt` ya se lo llevó de
 	 *  encima. El del prompt QUE SE ESTÁ VIENDO ahora mismo (`promptActual`) no
@@ -2392,6 +2403,8 @@
 							<RevisionPrompt
 								archivo={promptsDe.archivo}
 								numero={promptActual}
+								procesador={tipoDePrompts?.procesadorId ?? ''}
+								procesadorVersion={tipoDePrompts?.procesadorVersion ?? ''}
 								onCambioRevision={(revisados, total, correctos) =>
 								(avanceRevision = { revisados, total, correctos })}
 							/>

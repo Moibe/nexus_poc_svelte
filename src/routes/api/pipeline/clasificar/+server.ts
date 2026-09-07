@@ -1,7 +1,7 @@
 /**
  * BFF: reenvía un documento a `POST /ia/clasificar` de nexus_back.
  *
- * Mismo patrón que `/api/pipeline/ine` (mismo origen, sin CORS, la dirección
+ * Mismo patrón que `/api/pipeline/extraer` (mismo origen, sin CORS, la dirección
  * real de la API solo la conoce este handler). Se llama ANTES de `/ine` en el
  * pipeline: primero se clasifica a qué tipo documental pertenece el
  * documento, y solo si corresponde a INE se manda al extractor.
@@ -11,7 +11,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
-// Mismos tres números alineados que `/api/pipeline/ine` (ver el comentario
+// Mismos tres números alineados que `/api/pipeline/extraer` (ver el comentario
 // gemelo ahí): el dropzone de Figma, este guardia, y MAX_SUBIDA_MB en el .env
 // de nexus_back.
 const MAX_MB = 20;
@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		entrada = await request.formData();
 	} catch (err) {
-		// Ver el comentario gemelo en `/api/pipeline/ine`: adapter-node aborta el
+		// Ver el comentario gemelo en `/api/pipeline/extraer`: adapter-node aborta el
 		// cuerpo ANTES de que este handler lo vea si pesa más que
 		// BODY_SIZE_LIMIT, y sin distinguir esto el mensaje culpa al formulario
 		// cuando el archivo estaba bien.

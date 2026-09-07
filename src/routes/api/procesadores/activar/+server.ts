@@ -3,7 +3,7 @@
  * de nexus_back, que crea (o adopta) su Custom Extractor en Document AI y le
  * sube el esquema armado desde los campos del wizard.
  *
- * Mismo patrón que /api/pipeline/ine: el navegador pega aquí (mismo origen) y
+ * Mismo patrón que /api/pipeline/extraer: el navegador pega aquí (mismo origen) y
  * esta capa agrega la llave. La respuesta se devuelve tal cual — trae
  * `procesadorId` y `versionDefault`, que el cliente persiste junto al tipo.
  */

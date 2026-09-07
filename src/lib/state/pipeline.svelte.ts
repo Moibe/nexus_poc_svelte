@@ -159,32 +159,6 @@ export async function iniciarPipeline() {
 const CATEGORIA_OTRO = 'otro';
 
 /**
- * Tipos documentales que se extraen con un endpoint DEDICADO en vez del
- * genérico, por su nombre normalizado.
- *
- * Hoy solo INE, y no por falta de alternativa sino porque su endpoint hace
- * cosas que el genérico no puede hacer: `/ia/ine` usa el procesador INE
- * LEGADO (`DOCAI_PROCESADOR_INE` del `.env` del back), que trae ~20 campos ya
- * afinados, y encima aplica dos limpiezas propias de una credencial (quitarle
- * el punto final a `estado`, partir `fecha_registro` en año + número de
- * emisión). El procesador que "Activar" le creó al tipo INE de la Biblioteca
- * extrae solo los campos que se capturaron en el wizard, así que mandarlo por
- * el camino genérico DEGRADARÍA lo que hoy funciona.
- *
- * Todo lo demás va por `/api/pipeline/extraer` con el `procesadorId` propio
- * del tipo (ver `extraerConProcesador`). Cuando el tipo INE de la Biblioteca
- * tenga configurados los mismos campos que el procesador legado, esta tabla
- * puede desaparecer y el pipeline queda 100% genérico.
- *
- * Costo asumido y visible: si el usuario RENOMBRA su tipo "INE", deja de
- * empatar aquí y sus documentos pasan al camino genérico — que funciona, pero
- * con los campos de SU procesador, no los del legado.
- */
-const EXTRACTORES_DEDICADOS: Record<string, (id: string, archivo: File) => Promise<void>> = {
-	ine: extraerIne
-};
-
-/**
  * Misma normalización que `normalizar_nombre` de `servicios/esquema.py`, con
  * la que el back nombra cada categoría del clasificador. Se replica en vez de
  * pedirla al server porque es pura y minúscula, y el mapeo
@@ -266,9 +240,7 @@ async function procesarUno(id: string) {
 		return;
 	}
 
-	const dedicado = EXTRACTORES_DEDICADOS[normalizarCategoria(tipo.nombre)];
-
-	if (!dedicado && !tipo.procesadorId) {
+	if (!tipo.procesadorId) {
 		// Tipo activo sin procesador guardado: no debería pasar (activar lo
 		// escribe antes de marcar el estado), pero si pasa no hay con qué
 		// extraer. Va a revisión humana y no a 'fallido' porque el documento SÍ
@@ -280,12 +252,19 @@ async function procesarUno(id: string) {
 		return;
 	}
 
+	// SIN excepciones por tipo: cada documento se extrae con el Custom
+	// Extractor que "Activar" le creó a SU tipo documental. Hubo por unas horas
+	// una tabla `EXTRACTORES_DEDICADOS` que mandaba el tipo llamado "INE" al
+	// endpoint `/ia/ine` (el procesador INE LEGADO del `.env`, con más campos
+	// ya afinados); se quitó a pedido explícito — "no quiero que el procesador
+	// de INE sea mi genérico que ya tenía ahí, quiero que sea el que
+	// genuinamente le toca al procesador que construí". El costo asumido es
+	// justo ese: se extraen los campos que el tipo tenga configurados en el
+	// wizard, ni uno más, y las dos limpiezas propias de una credencial (el
+	// punto de `estado`, partir `fecha_registro`) dejan de aplicarse porque
+	// viven del lado de `/ia/ine`.
 	vivo.estado = 'procesando';
-	if (dedicado) {
-		await dedicado(id, archivo);
-	} else {
-		await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
-	}
+	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
 }
 
 /** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
@@ -333,15 +312,14 @@ async function clasificar(id: string, archivo: File): Promise<string | null> {
 
 /**
  * Extrae con el Custom Extractor PROPIO de un tipo documental, vía
- * `/api/pipeline/extraer` (2026-09-07). Es lo que permite que un tipo dado de
- * alta desde el wizard se procese de verdad: antes, el único extractor del
- * front estaba atado al procesador de INE del `.env` del back, así que un
- * documento se podía clasificar bien y no tener a dónde ir.
+ * `/api/pipeline/extraer` (2026-09-07). Es el ÚNICO camino de extracción del
+ * pipeline: antes el único extractor estaba atado al procesador de INE del
+ * `.env` del back, así que un documento se podía clasificar bien y no tener a
+ * dónde ir.
  *
- * Comparte con `extraerIne` el manejo de la respuesta —incluido
- * `quality_alert`, que aquí significa lo mismo: el extractor no reconoció
- * ninguno de los campos que su esquema esperaba— porque la forma que devuelve
- * `/ia/extraer` es idéntica a la de `/ia/ine` a propósito.
+ * `quality_alert` en la respuesta significa que el extractor no reconoció
+ * ninguno de los campos que su esquema esperaba — ver
+ * `procesarRespuestaExtraccion`.
  */
 async function extraerConProcesador(
 	id: string,
@@ -357,20 +335,16 @@ async function extraerConProcesador(
 	// DOCAI_VERSION_INE en el back.
 	if (version) cuerpo.append('version', version);
 
-	await procesarRespuestaExtraccion(id, fetch('/api/pipeline/extraer', { method: 'POST', body: cuerpo }));
+	await procesarRespuestaExtraccion(
+		id,
+		fetch('/api/pipeline/extraer', { method: 'POST', body: cuerpo })
+	);
 }
 
-async function extraerIne(id: string, archivo: File) {
-	const cuerpo = new FormData();
-	cuerpo.append('archivo', archivo);
-
-	await procesarRespuestaExtraccion(id, fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo }));
-}
-
-/** El manejo de la respuesta, común a los dos caminos de extracción (el
- *  dedicado de INE y el genérico por procesador): las dos APIs devuelven la
- *  MISMA forma, así que interpretarla dos veces solo garantizaba que un día
- *  divergieran. */
+/** El manejo de la respuesta de una extracción. Sigue aparte de
+ *  `extraerConProcesador` —aunque hoy solo lo llame él— porque separa dos
+ *  cosas que cambian por motivos distintos: a quién se le pide la extracción,
+ *  y cómo se lee lo que contestó. */
 async function procesarRespuestaExtraccion(id: string, promesa: Promise<Response>) {
 	try {
 		const respuesta = await promesa;

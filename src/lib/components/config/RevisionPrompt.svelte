@@ -38,6 +38,8 @@
 	let {
 		archivo,
 		numero = 1,
+		procesador,
+		procesadorVersion = '',
 		onCambioRevision
 	}: {
 		/** El documento de ejemplo que se eligió en el paso anterior. */
@@ -45,6 +47,15 @@
 		/** Qué prompt es este (1-indexado), solo para el título — hoy los N
 		 *  prompts son la misma operación repetida, así que no cambia nada más. */
 		numero?: number;
+		/** El Custom Extractor del tipo documental que se está calibrando: el
+		 *  `procesadorId` que "Activar" le creó. Hasta el 2026-09-07 esta
+		 *  pantalla llamaba SIEMPRE a `/api/pipeline/ine` —el procesador INE
+		 *  legado del `.env`— así que revisar los prompts de una Póliza corría
+		 *  el extractor de una credencial y no encontraba nada. */
+		procesador: string;
+		/** La versión fijada del procesador, si el tipo la tiene guardada. Sin
+		 *  ella Google usa su default, que puede cambiar sin aviso. */
+		procesadorVersion?: string;
 		/** Cuántos campos llevan veredicto, de cuántos hay, y cuántos de esos
 		 *  quedaron "Correcto". Quien nos monta usa `revisados`/`total` para
 		 *  decidir si "Continuar" ya tiene sentido, y `correctos` para calcular
@@ -85,12 +96,24 @@
 		error = '';
 		filas = [];
 
+		if (!procesador) {
+			// Un tipo activo siempre tiene procesador (activar lo escribe antes
+			// de marcar el estado), así que esto es defensivo — pero callarlo
+			// dejaría la pantalla "extrayendo" para siempre.
+			error =
+				'Este tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde la Biblioteca.';
+			estado = 'error';
+			return;
+		}
+
 		const cuerpo = new FormData();
 		cuerpo.append('archivo', archivo, archivo.name);
+		cuerpo.append('procesador', procesador);
+		if (procesadorVersion) cuerpo.append('version', procesadorVersion);
 
 		let respuesta: Response;
 		try {
-			respuesta = await fetch('/api/pipeline/ine', { method: 'POST', body: cuerpo });
+			respuesta = await fetch('/api/pipeline/extraer', { method: 'POST', body: cuerpo });
 		} catch {
 			if (mia !== corrida) return;
 			error = 'No se pudo contactar al servidor. Revisa tu conexión y vuelve a intentar.';
@@ -132,10 +155,12 @@
 		estado = 'listo';
 	}
 
-	// Se dispara con el archivo como dependencia: si algún día se puede cambiar
-	// de documento sin salir de la pantalla, la extracción se repite sola.
+	// Se dispara con el archivo Y el procesador como dependencias: si algún día
+	// se puede cambiar de documento —o de tipo documental— sin salir de la
+	// pantalla, la extracción se repite sola.
 	$effect(() => {
 		void archivo;
+		void procesador;
 		extraer();
 	});
 
