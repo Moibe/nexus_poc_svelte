@@ -19,7 +19,9 @@
 	 *   el atajo para llenarlo: "Correcto" copia el valor extraído (el caso
 	 *   mayoritario, un clic y sin teclear) e "Incorrecto" pone el cursor en el
 	 *   campo para que la persona escriba el valor real. La captura del diseño
-	 *   es entonces el estado FINAL de una ficha ya corregida, no el inicial.
+	 *   es entonces el estado FINAL de una ficha ya corregida, no el inicial —
+	 *   y ese estado final es precisamente el que muestra solo un ícono azul en
+	 *   vez de los dos botones de texto (ver el pie de cada ficha, abajo).
 	 *
 	 * Lo que se acumula aquí es exactamente el material que después se le
 	 * mandaría a Document AI como ejemplos etiquetados. Hoy no se persiste: se
@@ -255,59 +257,49 @@
 						</div>
 					</div>
 
-					<!-- Botones de solo ícono (2026-09-07, a pedido explícito con
-					     captura): reemplazan a los de texto ("Correcto" / "Incorrecto")
-					     por un check y un ban, ambos del mismo tamaño y forma que los
-					     badges de Braces/Search de arriba (size-9 rounded-lg), para que
-					     los cuatro se lean como la misma familia de ícono.
-					     Se quedan visibles después de elegir — un veredicto equivocado
-					     tiene que poderse cambiar sin volver a extraer el documento — y
-					     el elegido se marca en azul sólido; el otro queda en outline. Como
-					     el color ya no distingue "Correcto" de "Incorrecto" (los dos son
-					     azules al elegirse), la forma del ícono es lo que carga ese
-					     significado, y por eso cada botón lleva su `aria-label`: sin texto
-					     visible, sin eso no tendría nombre accesible.
-					     El rótulo de la izquierda ("Confirmado"/"Corregido") se queda: es
-					     lo único que distingue una ficha revisada de una pendiente sin
-					     tener que fijarse en qué ícono quedó relleno. -->
-					<div class="flex items-center justify-between gap-4 border-t border-border px-5 py-3">
-						<div class="flex items-center gap-1.5" data-testid="estado-campo">
-							{#if fila.veredicto === 'correcto'}
-								<span class="size-1.5 rounded-full bg-green-500"></span>
-								<span class="text-xs font-medium text-green-600">Confirmado</span>
-							{:else if fila.veredicto === 'incorrecto'}
-								<span class="size-1.5 rounded-full bg-amber-500"></span>
-								<span class="text-xs font-medium text-amber-600">Corregido</span>
-							{/if}
-						</div>
-						<div class="flex items-center gap-2">
-							<button
-								type="button"
-								aria-label="Incorrecto"
-								aria-pressed={fila.veredicto === 'incorrecto'}
+					<!-- Dos estados del pie, corregido el 2026-09-07 a pedido explícito
+					     ("quiero que diga las palabras Incorrecto y Correcto, y solo
+					     hasta darles click es que se convierten en los iconitos azules"):
+					       - PENDIENTE (`fila.veredicto === null`): los dos botones de
+					         TEXTO, como cualquier acción del resto de la app.
+					       - YA ELEGIDO: el par de botones se reemplaza por un solo
+					         cuadrado azul con el ícono (check o ban) — así lucía la
+					         captura original, que mostraba nada más UNO por ficha, no
+					         los dos. Ese cuadrado es a su vez el botón para deshacer:
+					         un clic vuelve a `veredicto = null` y reaparecen los dos
+					         botones de texto, que es como se puede corregir un
+					         veredicto equivocado sin volver a extraer el documento. -->
+					<div class="flex items-center justify-end gap-4 border-t border-border px-5 py-3">
+						{#if fila.veredicto === null}
+							<Button
+								variant="link"
+								class="h-auto p-0 text-destructive"
 								data-testid="marcar-incorrecto"
 								onclick={(e) => marcarIncorrecto(fila, e.currentTarget)}
-								class="flex size-9 items-center justify-center rounded-lg transition-colors {fila.veredicto ===
-								'incorrecto'
-									? 'bg-primary text-primary-foreground'
-									: 'border border-border text-muted-foreground hover:border-primary/50 hover:text-primary'}"
 							>
-								<Ban class="size-4" />
-							</button>
+								Incorrecto
+							</Button>
+							<Button data-testid="marcar-correcto" onclick={() => marcarCorrecto(fila)}>
+								Correcto
+							</Button>
+						{:else}
 							<button
 								type="button"
-								aria-label="Correcto"
-								aria-pressed={fila.veredicto === 'correcto'}
-								data-testid="marcar-correcto"
-								onclick={() => marcarCorrecto(fila)}
-								class="flex size-9 items-center justify-center rounded-lg transition-colors {fila.veredicto ===
-								'correcto'
-									? 'bg-primary text-primary-foreground'
-									: 'border border-border text-muted-foreground hover:border-primary/50 hover:text-primary'}"
+								aria-label={fila.veredicto === 'correcto'
+									? 'Marcado como correcto. Da clic para cambiarlo.'
+									: 'Marcado como incorrecto. Da clic para cambiarlo.'}
+								data-testid="veredicto-elegido"
+								data-veredicto={fila.veredicto}
+								onclick={() => (fila.veredicto = null)}
+								class="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"
 							>
-								<Check class="size-4" />
+								{#if fila.veredicto === 'correcto'}
+									<Check class="size-4" />
+								{:else}
+									<Ban class="size-4" />
+								{/if}
 							</button>
-						</div>
+						{/if}
 					</div>
 				</li>
 			{/each}
