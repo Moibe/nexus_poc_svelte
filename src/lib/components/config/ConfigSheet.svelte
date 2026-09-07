@@ -1295,7 +1295,26 @@
 												<Share2 class="size-4 text-muted-foreground" />
 												<span>Ejemplo documental</span>
 												<Tooltip.Provider>
-													<Tooltip.Root>
+													<!-- `ignoreNonKeyboardFocus` (2026-09-06, a pedido explícito):
+													     sin él el tooltip aparecía SOLO, ya desplegado, nada más
+													     con abrir el menú `⋮`. Causa medida: al abrir, el foco
+													     aterriza en este switch —los renglones del menú son
+													     `div`s, así que el switch es el único elemento
+													     nativamente enfocable ahí dentro— y el tooltip de bits-ui
+													     abre con foco, no solo con hover (su `#onfocus` llama a
+													     `handleOpen`). Con esta prop ese `#onfocus` solo abre si
+													     el foco es `:focus-visible`, o sea navegación con teclado
+													     de verdad: un foco programático como el del menú ya no lo
+													     dispara. El hover NO se toca (va por otra ruta,
+													     `#onpointermove`) — verificado midiendo antes y después
+													     del cambio: idéntico.
+													     Sobre accesibilidad, lo medido y no supuesto: navegando
+													     el menú con flechas el foco salta entre RENGLONES y el
+													     switch nunca lo recibe, así que por teclado el tooltip no
+													     aparece — ni antes ni ahora. No se pierde información: el
+													     `aria-label` del switch dice exactamente lo mismo que el
+													     tooltip, y eso es lo que lee un lector de pantalla. -->
+													<Tooltip.Root ignoreNonKeyboardFocus>
 														<Tooltip.Trigger>
 															{#snippet child({ props })}
 																<button
