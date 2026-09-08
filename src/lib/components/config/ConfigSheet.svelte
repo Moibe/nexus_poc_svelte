@@ -1845,37 +1845,39 @@
 
 										<!-- El procesador de Document AI, a pedido explícito
 										     (2026-09-08): "quiero el nombre del procesador que tengo en
-										     Document AI, para que yo pueda identificarlo". Se muestran
-										     las DOS cosas que la consola de GCP enseña de un procesador,
-										     porque cada una sirve para algo distinto: el nombre visible
-										     es lo que se lee en la lista, y el id es lo que aparece en la
-										     URL y lo que no se repite nunca.
-										     El nombre viene de Google (`procesadorDisplayName`, lo
-										     devuelve "Activar"), no se arma aquí: si el tipo se renombró
-										     después de activarse, Document AI se queda con el nombre
-										     VIEJO —no ofrece renombrar un procesador ya creado— y
-										     recalcularlo de este lado mostraría algo que allá no existe.
-										     Por eso también puede venir vacío en tipos activados antes
-										     de esta fecha: ahí se muestra solo el id, que igual sirve
-										     para identificarlo.
+										     Document AI, para que yo pueda identificarlo".
+										     UN SOLO RENGLÓN y sin rótulo, corregido el mismo día: la
+										     primera versión traía "Procesador en Document AI" arriba y el
+										     id abajo, y se pidió quitar las dos cosas —"me sirve más
+										     éste" (el nombre) "y quítale lo de 'Procesador en Document
+										     AI' para que quepa en una sola línea"—. El nombre se explica
+										     solo: empieza con `nexusdoc--` y es idéntico al que se lee en
+										     la consola de GCP.
+										     Viene de Google (`procesadorDisplayName`, lo devuelve
+										     "Activar"), no se arma aquí: si el tipo se renombró después
+										     de activarse, Document AI se queda con el nombre VIEJO —no
+										     ofrece renombrar un procesador ya creado— y recalcularlo de
+										     este lado mostraría algo que allá no existe. Por eso puede
+										     venir vacío en tipos activados antes del 2026-09-08: ahí cae
+										     al id, que ocupa el mismo renglón y también lo identifica.
+										     `truncate` + `title` en vez de `break-all`: un nombre largo
+										     (el slug lleva el nombre del tipo) rompería el renglón único
+										     que se pidió, así que se corta con puntos suspensivos y el
+										     completo se lee al pasar el mouse.
 										     Sin botón de "copiar": `navigator.clipboard` es una API de
 										     contexto seguro y el server de CSI es HTTP plano (ver la nota
 										     permanente en la memoria del proyecto). El texto es
 										     seleccionable, que es lo que sí funciona ahí. -->
 										{#if tipo.procesadorId}
-											<div data-testid="procesador-tipo">
-												<p class="text-xs font-medium text-muted-foreground">
-													Procesador en Document AI
-												</p>
-												{#if tipo.procesadorDisplayName}
-													<p class="mt-1 font-mono text-sm break-all text-foreground">
-														{tipo.procesadorDisplayName}
-													</p>
-												{/if}
-												<p class="mt-0.5 font-mono text-xs break-all text-muted-foreground">
-													ID: {tipo.procesadorId}
-												</p>
-											</div>
+											{@const nombreProcesador =
+												tipo.procesadorDisplayName || tipo.procesadorId}
+											<p
+												data-testid="procesador-tipo"
+												title={nombreProcesador}
+												class="truncate font-mono text-sm text-muted-foreground"
+											>
+												{nombreProcesador}
+											</p>
 										{/if}
 
 										<div>
