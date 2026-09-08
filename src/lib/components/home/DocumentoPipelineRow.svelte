@@ -80,6 +80,19 @@
 		onclick={() => alAbrirDetalle(documento.id)}
 	>
 		<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+		<!-- "Documento detectado: INE", justo debajo del nombre (2026-09-08, a
+		     pedido explícito). Es la versión PERSISTENTE de lo que la etiqueta
+		     de estado dice de paso mientras corre ("Clasificado: INE",
+		     "Procesando INE"): en cuanto termina, la etiqueta pasa a "Listo" y el
+		     tipo dejaba de verse. Solo aparece cuando SÍ se identificó un tipo —
+		     con `otro` no hay documento detectado que nombrar, y la etiqueta de
+		     estado ("Tipo documental no configurado") ya dice lo que pasó. -->
+		{#if documento.tipoDetectado}
+			<p class="truncate text-xs text-muted-foreground" data-testid="documento-detectado">
+				Documento detectado:
+				<span class="font-medium text-foreground">{documento.tipoDetectado}</span>
+			</p>
+		{/if}
 		<p class="text-xs text-muted-foreground">
 			{documento.extension} • {formatearTamano(documento.tamanioBytes)} | {fechaCorta(
 				documento.agregadoEn
