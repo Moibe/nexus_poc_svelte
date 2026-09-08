@@ -194,6 +194,16 @@
 				{#snippet valorNombre()}{documento.nombre}{/snippet}
 				{@render dato('Nombre de archivo', valorNombre)}
 
+				<!-- Justo debajo del nombre, igual que en el renglón del pipeline
+				     (2026-09-08, a pedido explícito en los dos lugares). Solo cuando
+				     SÍ se identificó un tipo: con `otro` no hay documento detectado
+				     que nombrar, y "Estado actual" —el renglón de abajo— ya dice
+				     "Tipo documental no configurado". -->
+				{#if documento.tipoDetectado}
+					{#snippet valorDetectado()}{documento.tipoDetectado}{/snippet}
+					{@render dato('Documento detectado', valorDetectado)}
+				{/if}
+
 				{#snippet valorEstado()}
 					<span class="flex items-center justify-end gap-1.5">
 						<span
