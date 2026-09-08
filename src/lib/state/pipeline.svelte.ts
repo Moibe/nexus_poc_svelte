@@ -88,19 +88,22 @@ const MIME_POR_EXTENSION: Record<string, string> = {
 export const documentosEnPipeline = $state<DocumentoEnPipeline[]>([]);
 
 /**
- * Candado del lote en curso. Vive en el MÓDULO y no en el componente de la
- * barra flotante a propósito: esa barra se desmonta en cuanto la selección
- * queda vacía —que es justo lo que pasa al mover los documentos al pipeline—
- * así que un `let enviando` local se perdía al instante y no impedía nada. Con
- * el candado aquí, seleccionar más archivos y volver a picar "Iniciar
- * pipeline" mientras el primer lote corre ya no arranca un segundo lote en
- * paralelo (que serían llamadas simultáneas a Document AI, o sea costo).
+ * Hay un worker drenando la cola ahora mismo.
+ *
+ * Lo que este candado impide es que corran DOS workers a la vez — o sea,
+ * llamadas simultáneas a Document AI, que cuestan dinero y provocan 429. Lo
+ * que NO impide, desde el 2026-09-08, es seguir ENCOLANDO: hasta esa fecha
+ * era un "candado de lote" que además deshabilitaba "Iniciar pipeline"
+ * mientras el lote corría, así que había que esperar a que terminara todo para
+ * poder mandar un documento más. A pedido explícito, ahora los que se agregan
+ * se suman a la cola y el mismo worker los recoge cuando llega a ellos.
+ *
+ * Vive en el MÓDULO y no en el componente de la barra flotante a propósito:
+ * esa barra se desmonta en cuanto la selección queda vacía —justo lo que pasa
+ * al mover los documentos al pipeline— así que un `let` local se perdería al
+ * instante.
  */
-let loteEnCurso = $state(false);
-
-export function hayLoteEnCurso(): boolean {
-	return loteEnCurso;
-}
+let drenandoCola = false;
 
 /** Solo lo que se puede mandar: un archivo que sigue subiendo no tiene bytes
  *  confirmados, y uno protegido o corrupto no se va a poder abrir del otro
@@ -111,24 +114,27 @@ export function sePuedeProcesar(doc: DocumentoEnBandeja): boolean {
 }
 
 /**
- * Manda a la API los documentos seleccionados en la Bandeja.
+ * Encola los documentos seleccionados en la Bandeja y se asegura de que haya
+ * un worker procesándolos.
  *
  * NOTA sobre el orden: los documentos se procesan de UNO EN UNO, no en
  * paralelo. Cada llamada a Document AI se cobra y tiene límite de tasa; si
  * alguien selecciona veinte archivos, veinte llamadas simultáneas son un pico
  * de costo y un 429 casi seguro. La cola se ve en la UI (`en_cola`) para que la
  * espera sea explícita en vez de parecer que la app se colgó.
+ *
+ * Se puede llamar CON UN LOTE YA CORRIENDO: los nuevos se agregan al final de
+ * la cola y el worker que ya está trabajando los recoge. Es la diferencia con
+ * la versión anterior, que rechazaba la llamada entera mientras hubiera algo
+ * en curso.
  */
 export async function iniciarPipeline() {
-	if (loteEnCurso) return;
 	const elegibles = documentosEnBandeja.filter((d) => d.seleccionado && sePuedeProcesar(d));
 	if (elegibles.length === 0) return;
-	loteEnCurso = true;
 
 	// Se mueven TODOS primero y después se procesan: si se hiciera de a uno, la
 	// bandeja se iría vaciando poco a poco y el usuario vería saltar las filas
 	// mientras las mira.
-	const recienLlegados: DocumentoEnPipeline[] = [];
 	for (const doc of elegibles) {
 		const entrada: DocumentoEnPipeline = {
 			id: doc.id,
@@ -149,10 +155,30 @@ export async function iniciarPipeline() {
 			error: null
 		};
 		documentosEnPipeline.push(entrada);
-		recienLlegados.push(entrada);
 		moverDocumentoAlPipeline(doc.id);
 	}
 
+	await drenarCola();
+}
+
+/**
+ * Procesa la cola de a uno hasta vaciarla, y se apaga.
+ *
+ * Toma el SIGUIENTE `en_cola` en cada vuelta en vez de recorrer una lista
+ * capturada al arrancar: así, lo que se agregue mientras corre entra en la
+ * misma pasada y no necesita que nadie levante un worker nuevo.
+ *
+ * Sobre la carrera que uno esperaría —encolar justo cuando el worker está por
+ * apagarse y que nadie recoja lo nuevo—: no puede pasar. Entre la última
+ * búsqueda que sale vacía y el `finally` que apaga el candado no hay ningún
+ * `await`, así que ningún otro código se intercala ahí. Si alguien encola
+ * mientras el worker está esperando una llamada, el candado está puesto y la
+ * siguiente búsqueda lo encuentra; si encola después de apagarse, arranca un
+ * worker nuevo.
+ */
+async function drenarCola() {
+	if (drenandoCola) return; // ya hay quien va a tomar lo que se acaba de encolar
+	drenandoCola = true;
 	try {
 		// Antes de clasificar nada: comprobar que el clasificador de Google
 		// sigue conociendo los mismos tipos que la Biblioteca. Es el momento
@@ -161,11 +187,30 @@ export async function iniciarPipeline() {
 		// hace UNA vez por sesión, no por documento. Ver
 		// `asegurarClasificadorAlDia` para el fallo real que lo motivó.
 		await asegurarClasificadorAlDia();
-		for (const entrada of recienLlegados) {
-			await procesarUno(entrada.id);
+
+		let siguiente = documentosEnPipeline.find((d) => d.estado === 'en_cola');
+		while (siguiente) {
+			const id = siguiente.id;
+			try {
+				await procesarUno(id);
+			} catch (err) {
+				// `procesarUno` ya atrapa lo suyo, así que esto es la red de
+				// abajo — pero es una red OBLIGATORIA: si algo tronara antes de
+				// que el documento saliera de `en_cola`, la búsqueda de la
+				// siguiente vuelta devolvería el MISMO documento y la cola giraría
+				// para siempre. Marcarlo como fallido es lo que garantiza que la
+				// cola siempre avance.
+				const vivo = documentosEnPipeline.find((d) => d.id === id);
+				if (vivo && vivo.estado === 'en_cola') {
+					vivo.estado = 'fallido';
+					vivo.terminadoEn = new Date();
+					vivo.error = err instanceof Error ? err.message : 'Error inesperado al procesar.';
+				}
+			}
+			siguiente = documentosEnPipeline.find((d) => d.estado === 'en_cola');
 		}
 	} finally {
-		loteEnCurso = false;
+		drenandoCola = false;
 	}
 }
 

@@ -26,12 +26,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
-	import {
-		documentosEnPipeline,
-		hayLoteEnCurso,
-		iniciarPipeline,
-		sePuedeProcesar
-	} from '$lib/state/pipeline.svelte';
+	import { documentosEnPipeline, iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
 
 	let { alAbrirDetalle }: { alAbrirDetalle: (id: string) => void } = $props();
 
@@ -58,12 +53,6 @@
 		unicoSeleccionado !== null && seleccionPipeline.length === 1
 	);
 
-	// El candado vive en el módulo del pipeline, no aquí: esta barra se DESMONTA
-	// en cuanto la selección queda vacía —justo lo que pasa al mover los
-	// documentos al tercer panel— así que un `let enviando` local desaparecía
-	// junto con el componente y no impedía arrancar un segundo lote.
-	const enviando = $derived(hayLoteEnCurso());
-
 	const claseBoton =
 		'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40';
 </script>
@@ -81,15 +70,22 @@
 				Detalle
 			</button>
 
+			<!-- Ya NO se deshabilita mientras hay documentos procesándose (cambio
+			     pedido el 2026-09-08). Antes decía "Procesando…" y no dejaba mandar
+			     nada más hasta que la tercera bandeja terminara con TODO, que es
+			     justo lo contrario de lo que uno quiere con un lote largo corriendo.
+			     Ahora lo que se mande se suma a la cola y el worker que ya está
+			     trabajando lo recoge — ver `iniciarPipeline`. Sigue procesándose de
+			     uno en uno: lo que cambió es quién puede formarse, no cuántos corren
+			     a la vez. -->
 			{#if procesables.length > 0}
 				<button
 					type="button"
 					class="{claseBoton} text-[#f9fafb] enabled:hover:bg-white/10"
-					disabled={enviando}
 					onclick={iniciarPipeline}
 				>
 					<Play class="size-4" />
-					{enviando ? 'Procesando…' : `Iniciar pipeline (${procesables.length})`}
+					Iniciar pipeline ({procesables.length})
 				</button>
 			{/if}
 
