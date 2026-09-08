@@ -1093,9 +1093,18 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 	if (clasificadorRevisado) return;
 	clasificadorRevisado = true; // también ante un fallo: no reintentar en cada lote
 
+	// Se compara el par (categoría, descripción) y no solo la categoría: la
+	// `description` de cada EntityType es PROMPT REAL para el modelo — la guía
+	// del Custom Classifier lo dice con esas palabras ("Use the description
+	// field to enter a prompt which describes the label") — así que una
+	// descripción vieja degrada la clasificación exactamente igual que una
+	// categoría equivocada, y sin ella el desfase es invisible. Caso real: un
+	// tipo activado cuando su descripción decía "Identificaion cliente" siguió
+	// con ese prompt en Google después de corregirse a "Credencial de elector
+	// con fotografía", porque editar un tipo YA ACTIVO no resincroniza nada.
 	const esperadas = tiposDocumentales
 		.filter((t) => t.estado === 'activo')
-		.map((t) => normalizarCategoria(t.id));
+		.map((t) => [normalizarCategoria(t.id), t.descripcion.trim()] as const);
 	// Sin tipos activos no hay nada que exigirle al clasificador, y el back
 	// rechaza esa lista vacía de todos modos.
 	if (esperadas.length === 0) return;
@@ -1108,7 +1117,7 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 	}
 	if (!respuesta.ok) return;
 
-	let datos: { categorias?: { name?: unknown }[] } = {};
+	let datos: { categorias?: { name?: unknown; description?: unknown }[] } = {};
 	try {
 		datos = await respuesta.json();
 	} catch {
@@ -1116,16 +1125,28 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 	}
 
 	const vigentes = (datos.categorias ?? [])
-		.map((c) => (typeof c.name === 'string' ? c.name : ''))
-		.filter((n) => n && n !== CATEGORIA_OTRO);
+		.filter((c) => typeof c.name === 'string' && c.name && c.name !== CATEGORIA_OTRO)
+		.map(
+			(c) =>
+				[c.name as string, typeof c.description === 'string' ? c.description.trim() : ''] as const
+		);
 
-	const iguales =
-		vigentes.length === esperadas.length && esperadas.every((e) => vigentes.includes(e));
-	if (iguales) return;
+	// Se comparan como ESTRUCTURA serializada y ordenada, no concatenando los
+	// dos campos en una cadena: una descripción puede contener cualquier cosa,
+	// incluido lo que se hubiera elegido como separador, y entonces dos pares
+	// distintos podrían verse iguales. (La primera versión sí concatenaba, y
+	// de paso un carácter NUL invisible se coló en el separador y hacía que
+	// NADA coincidiera nunca — se resincronizaba en cada sesión sin motivo.)
+	const canonico = (pares: readonly (readonly [string, string])[]) =>
+		JSON.stringify([...pares].sort((a, b) => a[0].localeCompare(b[0])));
+	if (canonico(vigentes) === canonico(esperadas)) return;
 
+	// El detalle va SERIALIZADO y no como objeto: un `console.warn(msg, obj)`
+	// se ve bien en las devtools abiertas, pero se pierde en cualquier captura
+	// de logs (sale "Array(1)"), que es justo cuando hace falta leerlo.
 	console.warn(
-		'El clasificador estaba desfasado y se va a resincronizar.',
-		{ enGoogle: vigentes, enLaBiblioteca: esperadas }
+		'El clasificador estaba desfasado y se va a resincronizar. ' +
+			`En Google: ${JSON.stringify(vigentes)} · En la Biblioteca: ${JSON.stringify(esperadas)}`
 	);
 	await sincronizarClasificador();
 }
