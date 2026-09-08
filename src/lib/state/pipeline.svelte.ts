@@ -25,6 +25,7 @@ import type { ResultadoIne } from '$lib/types/ine';
 export type EstadoPipeline =
 	| 'en_cola' // esperando turno; ver NOTA sobre por qué se procesa de a uno
 	| 'clasificando'
+	| 'clasificado' // se identificó el tipo; se muestra un momento antes de extraer
 	| 'procesando'
 	| 'procesado' // extracción exitosa
 	| 'no_reconocido' // el clasificador SÍ ubicó un tipo, pero su extractor no reconoció el documento
@@ -45,6 +46,12 @@ export type DocumentoEnPipeline = {
 	seleccionado: boolean;
 
 	estado: EstadoPipeline;
+	/** Nombre del tipo documental que el clasificador identificó (el visible,
+	 *  "INE", no su id). `null` mientras no se ha clasificado, y también cuando
+	 *  la categoría fue `otro` — ahí no hay tipo que nombrar. Lo usa
+	 *  `etiquetaDe` para que el renglón diga "Clasificado: INE" y luego
+	 *  "Procesando INE" en vez de las etiquetas genéricas. */
+	tipoDetectado: string | null;
 	/** Venía marcado como duplicado en la bandeja y aun así se mandó a procesar.
 	 *  Figma lo etiqueta "Duplicado procesado de forma explícita". */
 	eraDuplicado: boolean;
@@ -129,6 +136,7 @@ export async function iniciarPipeline() {
 			archivo: doc.archivo,
 			seleccionado: false,
 			estado: 'en_cola',
+			tipoDetectado: null,
 			eraDuplicado: doc.estado === 'duplicado',
 			enviadoEn: new Date(),
 			terminadoEn: null,
@@ -240,15 +248,28 @@ async function procesarUno(id: string) {
 		return;
 	}
 
+	// El tipo YA se identificó: se anota y se muestra un momento ("Clasificado:
+	// INE") para que se alcance a leer, antes de seguir. `tipoDetectado` se
+	// queda pegado al documento a partir de aquí, así que el paso siguiente
+	// dice "Procesando INE" en vez de solo "Procesando" — ver `etiquetaDe`.
+	vivo.tipoDetectado = tipo.nombre;
+	vivo.estado = 'clasificado';
+	await esperar(PAUSA_CLASIFICADO_MS);
+
+	// Se vuelve a buscar tras la espera: en ese segundo el documento pudo
+	// haberse quitado del pipeline. Mismo patrón que en el resto del módulo.
+	const sigueVivo = documentosEnPipeline.find((d) => d.id === id);
+	if (!sigueVivo) return;
+
 	if (!tipo.procesadorId) {
 		// Tipo activo sin procesador guardado: no debería pasar (activar lo
 		// escribe antes de marcar el estado), pero si pasa no hay con qué
 		// extraer. Va a revisión humana y no a 'fallido' porque el documento SÍ
 		// se entendió — lo que falta es la configuración del tipo, y eso no se
 		// arregla reintentando.
-		vivo.estado = 'pendiente_revision';
-		vivo.terminadoEn = new Date();
-		vivo.error = `Se identificó como "${tipo.nombre}", pero ese tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde el Módulo de configuración.`;
+		sigueVivo.estado = 'pendiente_revision';
+		sigueVivo.terminadoEn = new Date();
+		sigueVivo.error = `Se identificó como "${tipo.nombre}", pero ese tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde el Módulo de configuración.`;
 		return;
 	}
 
@@ -263,8 +284,29 @@ async function procesarUno(id: string) {
 	// wizard, ni uno más, y las dos limpiezas propias de una credencial (el
 	// punto de `estado`, partir `fecha_registro`) dejan de aplicarse porque
 	// viven del lado de `/ia/ine`.
-	vivo.estado = 'procesando';
+	sigueVivo.estado = 'procesando';
 	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
+}
+
+/**
+ * Cuánto se queda "Clasificado: X" en pantalla antes de pasar a extraer
+ * (2026-09-07, a pedido explícito: "si identifico al documento que se alcance
+ * a leer 'Clasificado: INE'").
+ *
+ * Es una espera DELIBERADA, no un artefacto: sin ella el paso existe pero
+ * dura lo que tarda un `await` en resolverse —milisegundos— y nadie alcanza a
+ * verlo, así que el usuario no tendría forma de saber como qué se identificó
+ * su documento hasta el final. El costo es real y hay que tenerlo presente:
+ * los documentos se procesan de a uno (ver la NOTA de `iniciarPipeline`), así
+ * que esto suma ~1s por documento a un lote.
+ *
+ * Solo se paga cuando SÍ se identificó un tipo: la categoría `otro` no pasa
+ * por aquí, va directo a `no_configurado`, que ya trae su propio mensaje.
+ */
+const PAUSA_CLASIFICADO_MS = 1000;
+
+function esperar(ms: number): Promise<void> {
+	return new Promise((listo) => setTimeout(listo, ms));
 }
 
 /** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
@@ -420,6 +462,11 @@ export function quitarDelPipeline(id: string) {
 export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok' | 'error' | 'proceso' }> = {
 	en_cola: { texto: 'En cola', tono: 'proceso' },
 	clasificando: { texto: 'Clasificando', tono: 'proceso' },
+	// Los textos de estos dos son el CASO SIN TIPO, que en la práctica no se
+	// ve: cuando se llega a ellos ya se identificó un tipo documental y
+	// `etiquetaDe` los reescribe a "Clasificado: INE" / "Procesando INE".
+	// Quedan como respaldo honesto por si alguna vez se llega sin nombre.
+	clasificado: { texto: 'Clasificado', tono: 'proceso' },
 	procesando: { texto: 'Procesando', tono: 'proceso' },
 	procesado: { texto: 'Listo', tono: 'ok' },
 	// "como INE" hasta el 2026-09-07, cuando el pipeline dejó de tener un solo
@@ -431,3 +478,27 @@ export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok'
 	no_soportado: { texto: 'Formato no procesable', tono: 'error' },
 	fallido: { texto: 'Falló el procesamiento', tono: 'error' }
 };
+
+/**
+ * La etiqueta de un documento CONCRETO: igual que `ETIQUETA_ESTADO`, salvo
+ * que nombra el tipo documental identificado cuando lo hay (2026-09-07, a
+ * pedido explícito: "Clasificado: INE ... y así persista en Procesando, que
+ * ahora diría Procesando INE").
+ *
+ * Existe porque `ETIQUETA_ESTADO` es un mapa estático por estado y estos dos
+ * textos ya no dependen solo del estado, sino también de QUÉ se encontró. Se
+ * dejó el mapa como base —sigue siendo la fuente del tono y de los otros
+ * estados— en vez de convertirlo todo en función: así el caso sin tipo sigue
+ * teniendo un texto declarado en un solo lugar.
+ */
+export function etiquetaDe(documento: DocumentoEnPipeline): {
+	texto: string;
+	tono: 'ok' | 'error' | 'proceso';
+} {
+	const base = ETIQUETA_ESTADO[documento.estado];
+	const tipo = documento.tipoDetectado;
+	if (!tipo) return base;
+	if (documento.estado === 'clasificado') return { ...base, texto: `Clasificado: ${tipo}` };
+	if (documento.estado === 'procesando') return { ...base, texto: `Procesando ${tipo}` };
+	return base;
+}

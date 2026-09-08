@@ -21,7 +21,7 @@
 	import {
 		alternarSeleccionPipeline,
 		continuarSinConfiguracion,
-		ETIQUETA_ESTADO,
+		etiquetaDe,
 		type DocumentoEnPipeline
 	} from '$lib/state/pipeline.svelte';
 
@@ -31,7 +31,10 @@
 	}: { documento: DocumentoEnPipeline; alAbrirDetalle: (id: string) => void } = $props();
 
 	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
-	const etiqueta = $derived(ETIQUETA_ESTADO[documento.estado]);
+	// `etiquetaDe` y no `ETIQUETA_ESTADO[estado]`: los textos de 'clasificado'
+	// y 'procesando' nombran el tipo documental identificado, así que dependen
+	// del documento y no solo de su estado.
+	const etiqueta = $derived(etiquetaDe(documento));
 	const enProceso = $derived(
 		documento.estado === 'en_cola' ||
 			documento.estado === 'clasificando' ||

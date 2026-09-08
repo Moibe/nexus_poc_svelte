@@ -27,7 +27,7 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Clock from '@lucide/svelte/icons/clock';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
-	import { ETIQUETA_ESTADO, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
+	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe } from '$lib/types/ine';
 
 	let {
@@ -35,7 +35,7 @@
 		documento
 	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
 
-	const etiqueta = $derived(documento ? ETIQUETA_ESTADO[documento.estado] : null);
+	const etiqueta = $derived(documento ? etiquetaDe(documento) : null);
 	const esImagen = $derived(
 		documento ? ['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension) : false
 	);
