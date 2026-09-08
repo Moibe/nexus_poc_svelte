@@ -912,6 +912,43 @@ export function guardarTipoDocumental(): string | null {
 	return b.idGuardado;
 }
 
+/**
+ * La categoría de escape del clasificador: "no es ninguno de los tipos
+ * documentales configurados". La agrega SIEMPRE el back (`CATEGORIA_OTRO` en
+ * `servicios/esquema.py`) y este nombre tiene que coincidir con el de allá —
+ * si divergen, lo desconocido deja de caer en "manda esto a revisión" y cae
+ * en "categoría que no sé mapear".
+ */
+export const CATEGORIA_OTRO = 'otro';
+
+/**
+ * Misma normalización que `normalizar_nombre` de `servicios/esquema.py`, con
+ * la que el back nombra cada categoría del clasificador. Se replica en vez de
+ * pedirla al server porque es pura y minúscula, y el mapeo
+ * categoría -> tipo documental tiene que poder hacerse sin una llamada más.
+ * No se replica el relleno de `campo_` para nombres que no empiezan con
+ * letra: los ids que genera el front (`tipo-{base36}-{n}`) y los nombres de
+ * tipo documental siempre empiezan con letra.
+ *
+ * Vive aquí, junto a los tipos documentales, y no en `pipeline.svelte.ts`
+ * (donde nació): desde que también se usa para detectar si el clasificador
+ * quedó desfasado (`asegurarClasificadorAlDia`), tenerla en dos lugares sería
+ * garantía de que un día divergieran.
+ */
+export function normalizarCategoria(valor: string): string {
+	return valor
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '') // fuera los diacríticos que NFD separó
+		.replace(/ñ/gi, 'n')
+		.toLowerCase()
+		.trim()
+		.replace(/\s+/g, '_')
+		.replace(/[^a-z0-9_-]/g, '')
+		.replace(/_+/g, '_')
+		.replace(/^[_-]+|[_-]+$/g, '')
+		.slice(0, 64);
+}
+
 /** Tipos cuyo nombre de procesador ya se intentó leer en esta sesión, para no
  *  volver a preguntar por cada vez que se despliega la ficha. Incluye los
  *  intentos FALLIDOS a propósito: si el procesador ya no existe en Google, o
@@ -1022,6 +1059,75 @@ export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje:
 	}
 
 	return { ok: true, mensaje: '' };
+}
+
+/** Ya se comparó el clasificador contra la Biblioteca en esta sesión. Una vez
+ *  basta: dentro de una sesión, todo lo que cambia el conjunto de tipos
+ *  activos ya sincroniza solo. */
+let clasificadorRevisado = false;
+
+/**
+ * Compara las categorías que el clasificador tiene EN GOOGLE contra los tipos
+ * activos de la Biblioteca y, si no coinciden, lo vuelve a sincronizar.
+ *
+ * Nació de un fallo real (2026-09-08): el clasificador se quedó con la
+ * categoría `tipo-mtsvawu5-1` —un INE que el usuario había borrado— mientras
+ * su INE vigente era `tipo-mtn9nop8-1`. Con esa diferencia, un INE de verdad
+ * se clasificaba en una categoría que la Biblioteca ya no conocía, y el
+ * pipeline lo mandaba a "Tipo documental no configurado". Desde afuera se ve
+ * idéntico a "el clasificador no reconoce una INE".
+ *
+ * Por qué existe aunque activar/archivar/borrar ya sincronicen: esas tres
+ * cubren los cambios que pasan POR AQUÍ, pero el estado real puede desfasarse
+ * igual — una sincronización que falló, un tipo borrado mientras estaba en
+ * borrador (que a propósito no sincroniza), o el mismo clasificador tocado
+ * desde otro navegador con otra Biblioteca. Todos esos casos son invisibles
+ * hasta que alguien sube un documento y no lo reconoce.
+ *
+ * Se compara contra la VERDAD de Google (`GET /api/procesadores/clasificador`)
+ * y no contra un registro local de "qué mandé la última vez", que es
+ * justamente lo que ya no sirve cuando algo se desfasó. La lectura es gratis;
+ * la sincronización solo ocurre si de verdad hay diferencia.
+ */
+export async function asegurarClasificadorAlDia(): Promise<void> {
+	if (clasificadorRevisado) return;
+	clasificadorRevisado = true; // también ante un fallo: no reintentar en cada lote
+
+	const esperadas = tiposDocumentales
+		.filter((t) => t.estado === 'activo')
+		.map((t) => normalizarCategoria(t.id));
+	// Sin tipos activos no hay nada que exigirle al clasificador, y el back
+	// rechaza esa lista vacía de todos modos.
+	if (esperadas.length === 0) return;
+
+	let respuesta: Response;
+	try {
+		respuesta = await fetch('/api/procesadores/clasificador');
+	} catch {
+		return; // sin red no se puede comparar; el pipeline sigue con lo que haya
+	}
+	if (!respuesta.ok) return;
+
+	let datos: { categorias?: { name?: unknown }[] } = {};
+	try {
+		datos = await respuesta.json();
+	} catch {
+		return;
+	}
+
+	const vigentes = (datos.categorias ?? [])
+		.map((c) => (typeof c.name === 'string' ? c.name : ''))
+		.filter((n) => n && n !== CATEGORIA_OTRO);
+
+	const iguales =
+		vigentes.length === esperadas.length && esperadas.every((e) => vigentes.includes(e));
+	if (iguales) return;
+
+	console.warn(
+		'El clasificador estaba desfasado y se va a resincronizar.',
+		{ enGoogle: vigentes, enLaBiblioteca: esperadas }
+	);
+	await sincronizarClasificador();
 }
 
 /**

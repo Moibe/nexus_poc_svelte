@@ -19,7 +19,12 @@ import {
 	moverDocumentoAlPipeline,
 	type DocumentoEnBandeja
 } from './bandeja.svelte';
-import { tiposDocumentales } from './configuracion.svelte';
+import {
+	asegurarClasificadorAlDia,
+	CATEGORIA_OTRO,
+	normalizarCategoria,
+	tiposDocumentales
+} from './configuracion.svelte';
 import type { ResultadoIne } from '$lib/types/ine';
 
 export type EstadoPipeline =
@@ -149,6 +154,13 @@ export async function iniciarPipeline() {
 	}
 
 	try {
+		// Antes de clasificar nada: comprobar que el clasificador de Google
+		// sigue conociendo los mismos tipos que la Biblioteca. Es el momento
+		// exacto en que un desfase duele —clasificar contra un catálogo viejo
+		// manda documentos buenos a "Tipo documental no configurado"— y se
+		// hace UNA vez por sesión, no por documento. Ver
+		// `asegurarClasificadorAlDia` para el fallo real que lo motivó.
+		await asegurarClasificadorAlDia();
 		for (const entrada of recienLlegados) {
 			await procesarUno(entrada.id);
 		}
@@ -157,37 +169,6 @@ export async function iniciarPipeline() {
 	}
 }
 
-/**
- * La categoría de escape del clasificador: "no es ninguno de los tipos
- * documentales configurados". La agrega SIEMPRE el back
- * (`CATEGORIA_OTRO` en `servicios/esquema.py`) y este nombre tiene que
- * coincidir con el de allá — si divergen, lo desconocido deja de caer en
- * "manda esto a revisión" y cae en "categoría que no sé mapear".
- */
-const CATEGORIA_OTRO = 'otro';
-
-/**
- * Misma normalización que `normalizar_nombre` de `servicios/esquema.py`, con
- * la que el back nombra cada categoría del clasificador. Se replica en vez de
- * pedirla al server porque es pura y minúscula, y el mapeo
- * categoría -> tipo documental tiene que poder hacerse sin una llamada más.
- * No se replica el relleno de `campo_` para nombres que no empiezan con
- * letra: los ids que genera el front (`tipo-{base36}-{n}`) y los nombres de
- * tipo documental siempre empiezan con letra.
- */
-function normalizarCategoria(valor: string): string {
-	return valor
-		.normalize('NFD')
-		.replace(/[\u0300-\u036f]/g, '') // fuera los diacríticos que NFD separó
-		.replace(/ñ/gi, 'n')
-		.toLowerCase()
-		.trim()
-		.replace(/\s+/g, '_')
-		.replace(/[^a-z0-9_-]/g, '')
-		.replace(/_+/g, '_')
-		.replace(/^[_-]+|[_-]+$/g, '')
-		.slice(0, 64);
-}
 
 async function procesarUno(id: string) {
 	const doc = documentosEnPipeline.find((d) => d.id === id);
