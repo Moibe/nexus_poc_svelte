@@ -576,6 +576,13 @@ export type TipoDocumentalGuardado = {
 	 *  FIJARLA en cada extracción: la default de Google cambia sin aviso y la
 	 *  reproducibilidad ya nos mordió una vez. */
 	procesadorVersion: string;
+	/** El nombre VISIBLE del procesador en la consola de Document AI (algo como
+	 *  `nexusdoc--tipo-abc--v2--ine`), tal como lo devolvió Google al activar —
+	 *  no se recalcula de este lado. Existe solo para que una persona pueda
+	 *  casar el tipo documental de NexusDoc con el procesador que ve en GCP.
+	 *  Vacío en los tipos activados ANTES del 2026-09-08, que no lo recibieron:
+	 *  ahí la ficha cae al `procesadorId`, que igual lo identifica. */
+	procesadorDisplayName: string;
 	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
 	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
 	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
@@ -811,6 +818,8 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 							: 0,
 				procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
 				procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
+				procesadorDisplayName:
+					typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
 				ejemploDocumental: d.ejemploDocumental === true,
 				activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
 				historialVersiones: Array.isArray(d.historialVersiones)
@@ -887,6 +896,7 @@ export function guardarTipoDocumental(): string | null {
 			version: 0,
 			procesadorId: '',
 			procesadorVersion: '',
+			procesadorDisplayName: '',
 			ejemploDocumental: false,
 			activadoEn: null,
 			historialVersiones: [],
@@ -1036,6 +1046,8 @@ export async function activarTipoDocumental(
 	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
 	tipo.procesadorVersion =
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
+	tipo.procesadorDisplayName =
+		typeof datos.procesadorDisplayName === 'string' ? datos.procesadorDisplayName : '';
 	tipo.activadoEn = new Date().toISOString();
 	guardarBiblioteca();
 
