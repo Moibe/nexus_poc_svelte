@@ -84,6 +84,7 @@
 		nombreCampoDuplicado,
 		quitarCampo,
 		quitarValorLista,
+		completarNombreProcesador,
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
@@ -890,8 +891,18 @@
 	let tiposExpandidos = new SvelteSet<string>();
 
 	function alternarExpandidoTipo(idTipo: string) {
-		if (tiposExpandidos.has(idTipo)) tiposExpandidos.delete(idTipo);
-		else tiposExpandidos.add(idTipo);
+		if (tiposExpandidos.has(idTipo)) {
+			tiposExpandidos.delete(idTipo);
+			return;
+		}
+		tiposExpandidos.add(idTipo);
+		// Al DESPLEGAR (no al replegar) se rellena el nombre del procesador si
+		// falta, leyéndolo de Document AI. Aquí y no al cargar la Biblioteca
+		// porque ese nombre solo se ve en esta ficha: preguntándolo al abrir se
+		// paga exactamente una consulta por tipo que alguien de verdad miró, y
+		// cero por los que no. La función es silenciosa y se acuerda de a
+		// quién ya le preguntó — ver `completarNombreProcesador`.
+		void completarNombreProcesador(idTipo);
 	}
 
 	// Arrastrar-y-soltar para reordenar el árbol de tipos documentales (pedido
