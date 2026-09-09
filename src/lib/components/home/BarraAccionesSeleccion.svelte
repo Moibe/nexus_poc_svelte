@@ -11,6 +11,9 @@
 	 * Estado de cada botón:
 	 *   - Iniciar pipeline → FUNCIONA.
 	 *   - Detalle          → FUNCIONA (abre el modal de resultados).
+	 *   - Registro de OT   → sin funcionalidad todavía (agregado 2026-09-08 a
+	 *                        pedido explícito, con captura). Ver el comentario
+	 *                        junto al botón.
 	 *   - Eventos          → sin funcionalidad: necesita `audit_event`, que vive
 	 *                        en SQL Server y todavía no existe.
 	 *   - Descartar        → sin funcionalidad: es destructivo y merece un modal
@@ -23,6 +26,7 @@
 	 */
 	import Eye from '@lucide/svelte/icons/eye';
 	import Play from '@lucide/svelte/icons/play';
+	import FileBadge from '@lucide/svelte/icons/file-badge';
 	import Clock from '@lucide/svelte/icons/clock';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
@@ -55,6 +59,12 @@
 
 	const claseBoton =
 		'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+
+	/** El separador vertical entre acciones, que trae la captura del
+	 *  2026-09-08 (antes los botones iban pegados, solo con `gap`). Es
+	 *  decorativo: `aria-hidden` para que un lector de pantalla no lo anuncie
+	 *  entre botón y botón. */
+	const claseSeparador = 'h-5 w-px shrink-0 bg-white/15';
 </script>
 
 {#if haySeleccionados}
@@ -79,6 +89,7 @@
 			     uno en uno: lo que cambió es quién puede formarse, no cuántos corren
 			     a la vez. -->
 			{#if procesables.length > 0}
+				<span class={claseSeparador} aria-hidden="true"></span>
 				<button
 					type="button"
 					class="{claseBoton} text-[#f9fafb] enabled:hover:bg-white/10"
@@ -89,11 +100,32 @@
 				</button>
 			{/if}
 
+			<!-- "Registro de OT" (2026-09-08, a pedido explícito con captura).
+			     TODAVÍA NO HACE NADA, y por eso nace deshabilitado: qué significa
+			     "registrar la OT" no está definido —no hay orden de trabajo como
+			     concepto en el back, ni tabla donde asentarla— y un botón vivo que
+			     no hace nada es peor que uno atenuado, porque promete.
+			     Se deja SIN `onclick` (no un `onclick` vacío) para que al leer el
+			     código sea obvio que falta cablearlo; mismo criterio que se usó con
+			     "Generar prompt" cuando se agregó.
+			     Va entre "Detalle" y "Eventos", como en la captura. El ícono es de
+			     lucide y NO sale del diseño: la captura trae un set propio de
+			     íconos de documento que tampoco coincide con los que ya usan los
+			     otros tres botones — si aparece el link de Figma, valdría una
+			     pasada para exportar los cuatro de verdad. -->
+			<span class={claseSeparador} aria-hidden="true"></span>
+			<button type="button" disabled class="{claseBoton} text-[#f9fafb]">
+				<FileBadge class="size-4" />
+				Registro de OT
+			</button>
+
+			<span class={claseSeparador} aria-hidden="true"></span>
 			<button type="button" disabled class="{claseBoton} text-[#f9fafb]">
 				<Clock class="size-4" />
 				Eventos
 			</button>
 
+			<span class={claseSeparador} aria-hidden="true"></span>
 			<button type="button" disabled class="{claseBoton} text-red-500">
 				<CircleX class="size-4" />
 				Descartar
