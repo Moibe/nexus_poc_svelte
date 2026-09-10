@@ -74,7 +74,7 @@
 		     el último renglón de una lista larga y no hay forma de llegar a él. -->
 		<div class={['flex flex-col gap-2 overflow-y-auto', seleccionados.length > 0 && 'pb-16']}>
 			{#each documentosEnPipeline as documento (documento.id)}
-				<DocumentoPipelineRow {documento} {alAbrirDetalle} />
+				<DocumentoPipelineRow {documento} />
 			{/each}
 		</div>
 	{:else}

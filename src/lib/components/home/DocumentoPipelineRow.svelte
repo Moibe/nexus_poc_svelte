@@ -2,11 +2,22 @@
 	/**
 	 * Fila del panel "Pipeline documental".
 	 *
-	 * Se parece a DocumentoRow (el de la bandeja) pero no lo reutiliza: ahí la
-	 * acción es quitar de la lista y el subtexto habla de problemas de archivo;
-	 * aquí la acción es abrir el detalle y el subtexto habla del resultado de la
+	 * Se parece a DocumentoRow (el de la bandeja) pero no lo reutiliza: ahí el
+	 * subtexto habla de problemas de archivo y aquí del resultado de la
 	 * extracción. Forzar un solo componente con banderas para las dos cosas
 	 * saldría más enredado que tener dos.
+	 *
+	 * LA FILA NO ES CLICABLE (2026-09-10, a pedido explícito). Hasta hoy, picar
+	 * el nombre abría el "Detalle"; ahora el único camino es el botón "Detalle"
+	 * de la barra de acciones del panel, con el documento seleccionado. Mismo
+	 * criterio que ya se había aplicado a la tarjeta de un tipo documental en la
+	 * Biblioteca, y misma razón de fondo: una fila que también es un botón
+	 * gigante compite con su propia casilla de selección — el usuario quiere
+	 * marcarla y termina abriendo un panel.
+	 *
+	 * Por eso el contenedor del nombre es un `div` y no un `<button>` sin
+	 * `onclick`: sin el elemento no hay cursor de mano, ni anillo de foco, ni
+	 * parada de tabulador prometiendo algo que no pasa.
 	 *
 	 * El formato del subtexto (`PDF • 2.8 MB | 12/05/2026 | 12:45`) sale de
 	 * Figma HU001|106 y NO coincide con el que usa hoy la fila de la bandeja
@@ -25,10 +36,7 @@
 		type DocumentoEnPipeline
 	} from '$lib/state/pipeline.svelte';
 
-	let {
-		documento,
-		alAbrirDetalle
-	}: { documento: DocumentoEnPipeline; alAbrirDetalle: (id: string) => void } = $props();
+	let { documento }: { documento: DocumentoEnPipeline } = $props();
 
 	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 	// `etiquetaDe` y no `ETIQUETA_ESTADO[estado]`: los textos de 'clasificado'
@@ -74,11 +82,7 @@
 		{/if}
 	</span>
 
-	<button
-		type="button"
-		class="min-w-0 flex-1 text-left"
-		onclick={() => alAbrirDetalle(documento.id)}
-	>
+	<div class="min-w-0 flex-1">
 		<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
 		<!-- "Documento detectado: INE", justo debajo del nombre (2026-09-08, a
 		     pedido explícito). Es la versión PERSISTENTE de lo que la etiqueta
@@ -121,7 +125,7 @@
 				{etiqueta.texto}
 			</p>
 		{/if}
-	</button>
+	</div>
 
 	{#if enProceso}
 		<span class="shrink-0 text-xs text-muted-foreground" aria-hidden="true">…</span>
@@ -143,11 +147,14 @@
 	{/if}
 	</div>
 
-	<!-- Las dos salidas de un documento cuyo tipo no está configurado. Van FUERA
-	     del <button> de arriba (el que abre el detalle) y no dentro: un botón
-	     anidado en otro es HTML inválido, el navegador deshace el anidamiento y
-	     los clics dejan de llegar a quien deben — ya mordió dos veces en este
-	     proyecto, está documentado en docs/pendientes-ux.md. -->
+	<!-- Las dos salidas de un documento cuyo tipo no está configurado. Van en su
+	     propio renglón, debajo y con su línea divisoria.
+	     Antes había además una razón dura para no meterlas arriba: el nombre
+	     estaba envuelto en un <button> y un botón anidado en otro es HTML
+	     inválido — el navegador deshace el anidamiento y los clics dejan de
+	     llegar a quien deben, cosa que ya mordió dos veces en este proyecto.
+	     Ese riesgo desapareció el 2026-09-10, cuando la fila dejó de ser
+	     clicable; se deja escrito por si algún día se vuelve a envolver. -->
 	{#if documento.estado === 'no_configurado'}
 		<div class="flex items-center justify-end gap-3 border-t border-border px-3 py-2">
 			<button
