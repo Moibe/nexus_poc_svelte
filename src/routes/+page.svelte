@@ -3,27 +3,43 @@
 	import BandejaPreparacionPanel from '$lib/components/home/BandejaPreparacionPanel.svelte';
 	import PipelineDocumentalPanel from '$lib/components/home/PipelineDocumentalPanel.svelte';
 	import DetalleDocumentoSheet from '$lib/components/home/DetalleDocumentoSheet.svelte';
+	import RegistroOtSheet from '$lib/components/home/RegistroOtSheet.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	// El detalle se controla desde aquí y no dentro del panel porque el modal es
-	// hermano de las tres columnas, no hijo de una: montarlo dentro de la
-	// tarjeta del Pipeline lo metería en un contenedor con `overflow-y-auto`.
-	// Los dos disparadores (la fila y el botón "Detalle" de la barra del panel)
-	// viven los dos en esa columna y le llegan por `alAbrirDetalle`.
+	// Los dos paneles laterales se controlan desde aquí y no dentro del panel
+	// del Pipeline porque son hermanos de las tres columnas, no hijos de una:
+	// montarlos dentro de la tarjeta los metería en un contenedor con
+	// `overflow-y-auto`. Sus disparadores viven los dos en esa columna (la fila
+	// y la barra de acciones) y les llegan por props.
 	//
 	// Se guarda el ID y no el documento: así, si la extracción termina con el
-	// modal abierto, el $derived vuelve a leer el objeto vivo del estado y el
+	// panel abierto, el $derived vuelve a leer el objeto vivo del estado y el
 	// contenido se actualiza solo.
-	let idDetalle = $state<string | null>(null);
+	//
+	// UNO A LA VEZ, por construcción. Los dos son `Sheet` con `side="right"`:
+	// mismo z-index y misma caja, así que dos abiertos se taparían. Abrir uno
+	// cierra el otro aquí, en vez de confiar en que quien llame se acuerde.
+	// (En la práctica el usuario tampoco puede abrir los dos desde la barra: con
+	// un panel abierto su overlay cubre la pantalla y la barra queda debajo.
+	// Esto es el segundo candado, no el único.)
+	let idPanel = $state<string | null>(null);
 	let detalleAbierto = $state(false);
+	let registroOtAbierto = $state(false);
 
-	const documentoDetalle = $derived(
-		idDetalle === null ? null : (documentosEnPipeline.find((d) => d.id === idDetalle) ?? null)
+	const documentoPanel = $derived(
+		idPanel === null ? null : (documentosEnPipeline.find((d) => d.id === idPanel) ?? null)
 	);
 
 	function abrirDetalle(id: string) {
-		idDetalle = id;
+		idPanel = id;
+		registroOtAbierto = false;
 		detalleAbierto = true;
+	}
+
+	function abrirRegistroOt(id: string) {
+		idPanel = id;
+		detalleAbierto = false;
+		registroOtAbierto = true;
 	}
 </script>
 
@@ -42,7 +58,11 @@
 <div class="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
 	<div class="min-h-175"><CargaDocumentalPanel /></div>
 	<div class="min-h-175"><BandejaPreparacionPanel /></div>
-	<div class="min-h-175"><PipelineDocumentalPanel alAbrirDetalle={abrirDetalle} /></div>
+	<div class="min-h-175">
+		<PipelineDocumentalPanel alAbrirDetalle={abrirDetalle} alAbrirRegistroOt={abrirRegistroOt} />
+	</div>
 </div>
 
-<DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoDetalle} />
+<DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoPanel} />
+
+<RegistroOtSheet bind:open={registroOtAbierto} documento={documentoPanel} />

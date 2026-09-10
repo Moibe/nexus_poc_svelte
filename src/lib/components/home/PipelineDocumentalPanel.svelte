@@ -10,7 +10,10 @@
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	let { alAbrirDetalle }: { alAbrirDetalle: (id: string) => void } = $props();
+	let {
+		alAbrirDetalle,
+		alAbrirRegistroOt
+	}: { alAbrirDetalle: (id: string) => void; alAbrirRegistroOt: (id: string) => void } = $props();
 
 	const seleccionados = $derived(documentosEnPipeline.filter((d) => d.seleccionado));
 
@@ -29,15 +32,29 @@
 			alHacerClic: unico ? () => alAbrirDetalle(unico) : undefined,
 			testid: 'accion-detalle'
 		},
-		// Las tres de abajo nacen deshabilitadas y sin `onclick`, para que al leer
+		// "Registro de OT" se encendió el 2026-09-10. Abre una ventana de SOLO
+		// LECTURA con los campos que el extractor sacó del documento — que es lo
+		// que el usuario pidió al describirla: "una ventana como ésta [el
+		// detalle] pero que mostrará los resultados de la extracción de cada
+		// campo". Sigue SIN existir el acto de "registrar" una OT (asentar un
+		// folio, aprobar): no hay orden de trabajo como concepto en el back ni
+		// tabla donde asentarla. El nombre promete más de lo que hace, y es a
+		// propósito: es el nombre que pidió el usuario.
+		//
+		// Misma regla que "Detalle": exige UN documento, porque la ventana
+		// muestra los campos de uno.
+		{
+			etiqueta: 'Registro de OT',
+			icono: FileBadge,
+			alHacerClic: unico ? () => alAbrirRegistroOt(unico) : undefined,
+			testid: 'accion-registro-ot'
+		},
+		// Las dos de abajo siguen deshabilitadas y sin `onclick`, para que al leer
 		// el código sea obvio que faltan por cablear:
-		//   - Registro de OT → no existe la orden de trabajo como concepto en el
-		//     back, ni tabla donde asentarla (agregado el 2026-09-08 con captura).
-		//   - Eventos        → necesita `audit_event`, que vive en SQL Server y
+		//   - Eventos   → necesita `audit_event`, que vive en SQL Server y
 		//     todavía no existe.
-		//   - Descartar      → es destructivo y merece su propio modal de
+		//   - Descartar → es destructivo y merece su propio modal de
 		//     confirmación, no un confirm() del navegador.
-		{ etiqueta: 'Registro de OT', icono: FileBadge, testid: 'accion-registro-ot' },
 		{ etiqueta: 'Eventos', icono: Clock, testid: 'accion-eventos' },
 		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-pipeline' }
 	]);

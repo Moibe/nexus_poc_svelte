@@ -29,6 +29,7 @@
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe } from '$lib/types/ine';
+	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 
 	let {
 		open = $bindable(false),
@@ -36,39 +37,15 @@
 	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
 
 	const etiqueta = $derived(documento ? etiquetaDe(documento) : null);
-	const esImagen = $derived(
-		documento ? ['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension) : false
-	);
 	const confianza = $derived(documento?.resultado?.confianza_minima ?? null);
 	const calidad = $derived(calidadDe(confianza));
 
-	// El navegador no muestra TIFF en un <img>, aunque sea una imagen válida:
-	// ningún motor de los grandes lo soporta nativamente. Se detecta aquí para
-	// caer al ícono en vez de dejar una imagen rota.
-	const sePuedePrevisualizar = $derived(esImagen && documento?.extension !== 'TIFF');
-
-	// Un object URL reserva memoria hasta que se revoca a mano — el navegador NO
-	// la libera solo al cerrar el modal. Se crea al abrir y se revoca al cerrar
-	// o al cambiar de documento; sin esto, abrir el detalle de veinte documentos
-	// deja veinte archivos completos retenidos en RAM.
-	let urlPrevia = $state<string | null>(null);
-
-	// Atado a `documento` y NO a `open`: si dependiera de `open`, la vista previa
-	// se borraría en cuanto empieza la animación de cierre y el usuario vería el
-	// panel vaciarse mientras se desliza. Como `documento` solo cambia cuando se
-	// abre otro detalle, la URL vive exactamente lo que tiene que vivir.
-	$effect(() => {
-		if (!documento || !sePuedePrevisualizar) {
-			urlPrevia = null;
-			return;
-		}
-		const url = URL.createObjectURL(documento.archivo);
-		urlPrevia = url;
-		return () => {
-			URL.revokeObjectURL(url);
-			urlPrevia = null;
-		};
-	});
+	// La vista previa vivía aquí como un `$effect` de doce líneas hasta el
+	// 2026-09-10. Se movió a `$lib/hooks/usarVistaPrevia.svelte` cuando
+	// "Registro de OT" necesitó exactamente lo mismo: las dos decisiones que
+	// hacen que funcione (revocar a mano, y depender del documento y no de
+	// `open`) están documentadas allá, y copiarlas garantizaba que divergieran.
+	const previa = usarVistaPrevia(() => documento);
 
 	function descargar() {
 		if (!documento) return;
@@ -124,6 +101,7 @@
 	<Sheet.Content
 		side="right"
 		showCloseButton={false}
+		data-testid="modal-detalle-documento"
 		class="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-147.5"
 	>
 		<div class="flex items-center gap-3 border-b border-border px-6 py-4">
@@ -178,8 +156,8 @@
 				<div
 					class="flex h-52 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/40"
 				>
-					{#if urlPrevia}
-						<img src={urlPrevia} alt={documento.nombre} class="max-h-full max-w-full object-contain" />
+					{#if previa.url}
+						<img src={previa.url} alt={documento.nombre} class="max-h-full max-w-full object-contain" />
 					{:else}
 						<span
 							class="flex size-28 items-center justify-center rounded-2xl border border-border bg-card text-foreground"
