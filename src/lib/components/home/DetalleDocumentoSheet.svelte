@@ -25,7 +25,6 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Download from '@lucide/svelte/icons/download';
-	import Clock from '@lucide/svelte/icons/clock';
 	import Braces from '@lucide/svelte/icons/braces';
 	import VistaJson from './VistaJson.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
@@ -171,17 +170,14 @@
 				>
 					<Download class="size-4" />
 				</button>
-				<!-- Historial de eventos: sin funcionalidad todavía, igual que en el
-				     resto de la barra de acciones. Se necesita audit_event, que vive
-				     en SQL Server y aún no existe. -->
-				<button
-					type="button"
-					disabled
-					aria-label="Historial de eventos (aún no disponible)"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground opacity-40"
-				>
-					<Clock class="size-4" />
-				</button>
+				<!-- Aquí estuvo el reloj de "Historial de eventos", atenuado y sin
+				     funcionalidad. Se QUITÓ el 2026-09-10 a pedido explícito ("por el
+				     momento quita ese ícono del relojito"). No se descartó la función:
+				     sigue necesitando `audit_event`, que vive en SQL Server y todavía
+				     no existe, y mientras tanto un ícono apagado permanente es ruido.
+				     El mismo control, también apagado, sigue en la barra de acciones
+				     del panel del Pipeline como "Eventos". Para devolverlo, basta
+				     recuperar este bloque del historial de git. -->
 				<!-- Modo JSON. Va al extremo derecho de la banda, que es donde el
 				     usuario lo pidió ("un iconito de json arriba a la derecha").
 				     Es un INTERRUPTOR, no una acción: por eso `aria-pressed` y un
