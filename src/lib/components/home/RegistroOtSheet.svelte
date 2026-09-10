@@ -40,6 +40,8 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Download from '@lucide/svelte/icons/download';
+	import Braces from '@lucide/svelte/icons/braces';
+	import VistaJson from './VistaJson.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
@@ -51,6 +53,31 @@
 	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
 
 	const previa = usarVistaPrevia(() => documento);
+	/** El interruptor del modo JSON. Vive por panel y NO se reinicia al cambiar
+	 *  de documento: quien lo prendió está inspeccionando, y apagárselo en cada
+	 *  documento nuevo sería pelear contra lo que está haciendo. */
+	let modoJson = $state(false);
+
+	/** Lo que este panel muestra, serializable. `resultado` va VERBATIM: es la
+	 *  respuesta del extractor tal como llegó, con sus campos y su capa `ocr`,
+	 *  que es la parte que sirve para pegar en un reporte o comparar dos
+	 *  corridas. El `File` NO va: stringify de un File da `{}`. */
+	const datosJson = $derived(
+		documento === null
+			? null
+			: {
+					archivo: {
+						nombre: documento.nombre,
+						formato: documento.extension,
+						tamanioBytes: documento.tamanioBytes,
+						hashSha256: documento.hashSha256
+					},
+					documentoDetectado: documento.tipoDetectado,
+					estado: documento.estado,
+					error: documento.error ?? null,
+					resultado: documento.resultado ?? null
+				}
+	);
 
 	const campos = $derived(documento?.resultado ? camposDe(documento.resultado) : []);
 	// El PROMEDIO de todos los campos, no el mínimo (cambio pedido el
@@ -210,147 +237,167 @@
 				>
 					<Download class="size-4" />
 				</button>
+				<!-- Modo JSON. Al extremo derecho de la banda, igual que en
+				     "Detalle" (2026-09-10, a pedido explícito). Es un INTERRUPTOR:
+				     por eso `aria-pressed` y un `title` que dice a dónde lleva. -->
+				<button
+					type="button"
+					onclick={() => (modoJson = !modoJson)}
+					aria-pressed={modoJson}
+					aria-label="Ver como JSON"
+					title={modoJson ? 'Ver en forma normal' : 'Ver como JSON'}
+					data-testid="alternar-json"
+					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+						? 'border-primary bg-primary text-primary-foreground'
+						: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
+				>
+					<Braces class="size-4" />
+				</button>
 			</div>
 
 			<div class="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-				<div
-					class="flex h-52 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/40"
-				>
-					{#if previa.url}
-						<img
-							src={previa.url}
-							alt={documento.nombre}
-							class="max-h-full max-w-full object-contain"
-						/>
-					{:else}
-						<span
-							class="flex size-28 items-center justify-center rounded-2xl border border-border bg-card text-foreground"
-						>
-							<FileIcon />
-						</span>
-					{/if}
-				</div>
-
-				<!-- Resumen corto, no el "Información" completo del detalle: esa
-				     ventana ya existe y repetir sus nueve renglones aquí solo
-				     alejaría los campos, que son el contenido de ésta. Se conserva
-				     únicamente lo que da contexto para LEER los campos. -->
-				<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Extracción</h3>
-
-				{#snippet valorTipo()}{documento.tipoDetectado ?? '—'}{/snippet}
-				{@render dato('Documento detectado', valorTipo)}
-
-				{#snippet valorEjecucion()}{fechaHoraIso(
-						documento.resultado?._metadata?.procesado_en
-					) ?? fechaHora(documento.terminadoEn)}{/snippet}
-				{@render dato('Fecha y hora de ejecución', valorEjecucion)}
-
-				{#snippet valorConfianza()}
-					<!-- toFixed(2) y no toFixed(1): con un decimal, 99.98 se imprime
-					     "100.0", un cien que no existe. Es además la precisión real,
-					     porque el back ya redondea a dos al pasar de 0-1 a 0-100. -->
-					{confianza === null ? '—' : `${confianza.toFixed(2)} %`}{calidad
-						? ` · ${calidad}`
-						: ''}
-				{/snippet}
-				{@render dato('Nivel de confianza obtenida', valorConfianza)}
-
-				<h3 class="mt-6 mb-2 text-base font-medium text-foreground">
-					Campos extraídos
-					{#if campos.length > 0}
-						<span class="ml-1 text-xs font-normal text-muted-foreground">({campos.length})</span>
-					{/if}
-				</h3>
-
-				<!-- Los avisos van ARRIBA de la lista y no abajo como en el detalle:
-				     aquí, cuando hay aviso, normalmente no hay campos, así que el
-				     aviso ES el contenido de la ventana. -->
-				{#if documento.error}
-					{@render aviso('rojo', 'No se pudo procesar', documento.error)}
-				{/if}
-
-				{#if documento.resultado?._metadata?.quality_alert}
-					{@render aviso(
-						'ambar',
-						'No se reconocieron sus campos',
-						documento.resultado._metadata.motivo ??
-							'Document AI respondió sin campos para este documento.'
-					)}
-				{/if}
-
-				{#if documento.estado === 'no_configurado'}
-					{@render aviso(
-						'ambar',
-						'Tipo documental no configurado',
-						'El clasificador no encontró ningún tipo documental activo que corresponda a este documento, así que no se le extrajo ningún dato.'
-					)}
-				{/if}
-
-				{#if documento.estado === 'pendiente_revision'}
-					{@render aviso(
-						'ambar',
-						'Pendiente de revisión humana',
-						'Su tipo documental no está configurado y se eligió continuar sin configurarlo, así que no se le extrajo ningún dato.'
-					)}
-				{/if}
-
-				{#if campos.length > 0}
-					<div class="flex flex-col gap-2">
-						{#each campos as [nombre, campo] (nombre)}
-							<div
-								class="rounded-lg border border-border bg-background px-3 py-2"
-								data-testid="ficha-campo-ot"
-								data-campo={nombre}
+				{#if modoJson}
+					<VistaJson datos={datosJson} testid="json-registro-ot" />
+				{:else}
+					<div
+						class="flex h-52 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/40"
+					>
+						{#if previa.url}
+							<img
+								src={previa.url}
+								alt={documento.nombre}
+								class="max-h-full max-w-full object-contain"
+							/>
+						{:else}
+							<span
+								class="flex size-28 items-center justify-center rounded-2xl border border-border bg-card text-foreground"
 							>
-								<div class="flex items-baseline justify-between gap-3">
-									<!-- El nombre se pinta CRUDO, en monoespaciada: llega en
-									     snake_case sin acentos porque el back lo normaliza al
-									     crear el esquema (`fecha_de_nacimiento`). Convertirlo a
-									     una etiqueta bonita no se puede con una función pura —la
-									     normalización trunca y desambigua con sufijos—, así que
-									     mostrar la llave real es más honesto que adivinar. -->
-									<span class="min-w-0 font-mono text-xs break-all text-muted-foreground">
-										{nombre}
-									</span>
-									<!-- Sin confianza NO se pinta nada, en vez de un "0 %": el
-									     back manda null cuando Document AI omite el dato, y
-									     confundir "no lo sé" con "cero" ya causó un incidente. -->
-									{#if campo.confianza !== null}
-										<span
-											class="shrink-0 text-xs tabular-nums {claseConfianza(campo.confianza)}"
-										>
-											{campo.confianza.toFixed(2)} % · {calidadDe(campo.confianza)}
+								<FileIcon />
+							</span>
+						{/if}
+					</div>
+
+					<!-- Resumen corto, no el "Información" completo del detalle: esa
+					     ventana ya existe y repetir sus nueve renglones aquí solo
+					     alejaría los campos, que son el contenido de ésta. Se conserva
+					     únicamente lo que da contexto para LEER los campos. -->
+					<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Extracción</h3>
+
+					{#snippet valorTipo()}{documento.tipoDetectado ?? '—'}{/snippet}
+					{@render dato('Documento detectado', valorTipo)}
+
+					{#snippet valorEjecucion()}{fechaHoraIso(
+							documento.resultado?._metadata?.procesado_en
+						) ?? fechaHora(documento.terminadoEn)}{/snippet}
+					{@render dato('Fecha y hora de ejecución', valorEjecucion)}
+
+					{#snippet valorConfianza()}
+						<!-- toFixed(2) y no toFixed(1): con un decimal, 99.98 se imprime
+						     "100.0", un cien que no existe. Es además la precisión real,
+						     porque el back ya redondea a dos al pasar de 0-1 a 0-100. -->
+						{confianza === null ? '—' : `${confianza.toFixed(2)} %`}{calidad
+							? ` · ${calidad}`
+							: ''}
+					{/snippet}
+					{@render dato('Nivel de confianza obtenida', valorConfianza)}
+
+					<h3 class="mt-6 mb-2 text-base font-medium text-foreground">
+						Campos extraídos
+						{#if campos.length > 0}
+							<span class="ml-1 text-xs font-normal text-muted-foreground">({campos.length})</span>
+						{/if}
+					</h3>
+
+					<!-- Los avisos van ARRIBA de la lista y no abajo como en el detalle:
+					     aquí, cuando hay aviso, normalmente no hay campos, así que el
+					     aviso ES el contenido de la ventana. -->
+					{#if documento.error}
+						{@render aviso('rojo', 'No se pudo procesar', documento.error)}
+					{/if}
+
+					{#if documento.resultado?._metadata?.quality_alert}
+						{@render aviso(
+							'ambar',
+							'No se reconocieron sus campos',
+							documento.resultado._metadata.motivo ??
+								'Document AI respondió sin campos para este documento.'
+						)}
+					{/if}
+
+					{#if documento.estado === 'no_configurado'}
+						{@render aviso(
+							'ambar',
+							'Tipo documental no configurado',
+							'El clasificador no encontró ningún tipo documental activo que corresponda a este documento, así que no se le extrajo ningún dato.'
+						)}
+					{/if}
+
+					{#if documento.estado === 'pendiente_revision'}
+						{@render aviso(
+							'ambar',
+							'Pendiente de revisión humana',
+							'Su tipo documental no está configurado y se eligió continuar sin configurarlo, así que no se le extrajo ningún dato.'
+						)}
+					{/if}
+
+					{#if campos.length > 0}
+						<div class="flex flex-col gap-2">
+							{#each campos as [nombre, campo] (nombre)}
+								<div
+									class="rounded-lg border border-border bg-background px-3 py-2"
+									data-testid="ficha-campo-ot"
+									data-campo={nombre}
+								>
+									<div class="flex items-baseline justify-between gap-3">
+										<!-- El nombre se pinta CRUDO, en monoespaciada: llega en
+										     snake_case sin acentos porque el back lo normaliza al
+										     crear el esquema (`fecha_de_nacimiento`). Convertirlo a
+										     una etiqueta bonita no se puede con una función pura —la
+										     normalización trunca y desambigua con sufijos—, así que
+										     mostrar la llave real es más honesto que adivinar. -->
+										<span class="min-w-0 font-mono text-xs break-all text-muted-foreground">
+											{nombre}
 										</span>
+										<!-- Sin confianza NO se pinta nada, en vez de un "0 %": el
+										     back manda null cuando Document AI omite el dato, y
+										     confundir "no lo sé" con "cero" ya causó un incidente. -->
+										{#if campo.confianza !== null}
+											<span
+												class="shrink-0 text-xs tabular-nums {claseConfianza(campo.confianza)}"
+											>
+												{campo.confianza.toFixed(2)} % · {calidadDe(campo.confianza)}
+											</span>
+										{/if}
+									</div>
+									<p class="mt-0.5 text-sm break-words text-foreground">
+										{valorExtraido(campo) || '—'}
+									</p>
+									{#if difiereDelCrudo(campo)}
+										<p class="mt-0.5 text-xs text-muted-foreground">
+											Crudo: <span class="font-mono">{campo.value_raw}</span>
+										</p>
+									{/if}
+									{#if variasPaginas && campo.page_number !== null}
+										<p class="mt-0.5 text-xs text-muted-foreground">Página {campo.page_number}</p>
 									{/if}
 								</div>
-								<p class="mt-0.5 text-sm break-words text-foreground">
-									{valorExtraido(campo) || '—'}
-								</p>
-								{#if difiereDelCrudo(campo)}
-									<p class="mt-0.5 text-xs text-muted-foreground">
-										Crudo: <span class="font-mono">{campo.value_raw}</span>
-									</p>
-								{/if}
-								{#if variasPaginas && campo.page_number !== null}
-									<p class="mt-0.5 text-xs text-muted-foreground">Página {campo.page_number}</p>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				{:else if enProceso}
-					<p class="text-sm text-muted-foreground" data-testid="ot-en-proceso">
-						Este documento todavía se está procesando. Sus campos aparecerán aquí al terminar.
-					</p>
-				{:else if !documento.error && documento.estado !== 'no_configurado' && documento.estado !== 'pendiente_revision' && !documento.resultado?._metadata?.quality_alert}
-					<!-- Caso real y fácil de pasar por alto: el documento salió "Listo",
-					     en verde, sin alerta de calidad, y aun así no hay un solo campo.
-					     Pasa cuando el extractor responde con la lista de entidades
-					     vacía, o cuando todas vienen sin valor. Se dice en gris neutro y
-					     no en ámbar a propósito: el sistema funcionó, simplemente no
-					     encontró nada. -->
-					<p class="text-sm text-muted-foreground" data-testid="ot-sin-campos">
-						El extractor no reconoció ningún campo en este documento.
-					</p>
+							{/each}
+						</div>
+					{:else if enProceso}
+						<p class="text-sm text-muted-foreground" data-testid="ot-en-proceso">
+							Este documento todavía se está procesando. Sus campos aparecerán aquí al terminar.
+						</p>
+					{:else if !documento.error && documento.estado !== 'no_configurado' && documento.estado !== 'pendiente_revision' && !documento.resultado?._metadata?.quality_alert}
+						<!-- Caso real y fácil de pasar por alto: el documento salió "Listo",
+						     en verde, sin alerta de calidad, y aun así no hay un solo campo.
+						     Pasa cuando el extractor responde con la lista de entidades
+						     vacía, o cuando todas vienen sin valor. Se dice en gris neutro y
+						     no en ámbar a propósito: el sistema funcionó, simplemente no
+						     encontró nada. -->
+						<p class="text-sm text-muted-foreground" data-testid="ot-sin-campos">
+							El extractor no reconoció ningún campo en este documento.
+						</p>
+					{/if}
 				{/if}
 			</div>
 

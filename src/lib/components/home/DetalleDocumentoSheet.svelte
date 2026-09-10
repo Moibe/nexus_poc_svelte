@@ -26,6 +26,8 @@
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Download from '@lucide/svelte/icons/download';
 	import Clock from '@lucide/svelte/icons/clock';
+	import Braces from '@lucide/svelte/icons/braces';
+	import VistaJson from './VistaJson.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe } from '$lib/types/ine';
@@ -49,6 +51,33 @@
 	// hacen que funcione (revocar a mano, y depender del documento y no de
 	// `open`) están documentadas allá, y copiarlas garantizaba que divergieran.
 	const previa = usarVistaPrevia(() => documento);
+	/** El interruptor del modo JSON. Vive por panel y NO se reinicia al cambiar
+	 *  de documento: quien lo prendió está inspeccionando, y apagárselo en cada
+	 *  documento nuevo sería pelear contra lo que está haciendo. */
+	let modoJson = $state(false);
+
+	/** Lo que este panel muestra, serializable. `resultado` va VERBATIM: es la
+	 *  respuesta del extractor tal como llegó, que es la parte que sirve para
+	 *  pegar en un reporte. El `File` NO va: stringify de un File da `{}`. */
+	const datosJson = $derived(
+		documento === null
+			? null
+			: {
+					archivo: {
+						nombre: documento.nombre,
+						formato: documento.extension,
+						tamanioBytes: documento.tamanioBytes,
+						hashSha256: documento.hashSha256,
+						origen: documento.origen,
+						ingestadoEn: documento.agregadoEn
+					},
+					documentoDetectado: documento.tipoDetectado,
+					estado: { clave: documento.estado, texto: etiqueta?.texto ?? null },
+					terminadoEn: documento.terminadoEn,
+					error: documento.error ?? null,
+					resultado: documento.resultado ?? null
+				}
+	);
 
 	function descargar() {
 		if (!documento) return;
@@ -153,169 +182,190 @@
 				>
 					<Clock class="size-4" />
 				</button>
+				<!-- Modo JSON. Va al extremo derecho de la banda, que es donde el
+				     usuario lo pidió ("un iconito de json arriba a la derecha").
+				     Es un INTERRUPTOR, no una acción: por eso `aria-pressed` y un
+				     `title` que dice a dónde lleva, en vez de un rótulo fijo. -->
+				<button
+					type="button"
+					onclick={() => (modoJson = !modoJson)}
+					aria-pressed={modoJson}
+					aria-label="Ver como JSON"
+					title={modoJson ? 'Ver en forma normal' : 'Ver como JSON'}
+					data-testid="alternar-json"
+					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+						? 'border-primary bg-primary text-primary-foreground'
+						: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
+				>
+					<Braces class="size-4" />
+				</button>
 			</div>
 
 			<div class="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-				<div
-					class="flex h-52 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/40"
-				>
-					{#if previa.url}
-						<img src={previa.url} alt={documento.nombre} class="max-h-full max-w-full object-contain" />
-					{:else}
-						<span
-							class="flex size-28 items-center justify-center rounded-2xl border border-border bg-card text-foreground"
-						>
-							<FileIcon />
-						</span>
+				{#if modoJson}
+					<VistaJson datos={datosJson} testid="json-detalle" />
+				{:else}
+					<div
+						class="flex h-52 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/40"
+					>
+						{#if previa.url}
+							<img src={previa.url} alt={documento.nombre} class="max-h-full max-w-full object-contain" />
+						{:else}
+							<span
+								class="flex size-28 items-center justify-center rounded-2xl border border-border bg-card text-foreground"
+							>
+								<FileIcon />
+							</span>
+						{/if}
+					</div>
+
+					<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Información</h3>
+
+					{#snippet valorNombre()}{documento.nombre}{/snippet}
+					{@render dato('Nombre de archivo', valorNombre)}
+
+					<!-- Justo debajo del nombre, igual que en el renglón del pipeline
+					     (2026-09-08, a pedido explícito en los dos lugares). Solo cuando
+					     SÍ se identificó un tipo: con `otro` no hay documento detectado
+					     que nombrar, y "Estado actual" —el renglón de abajo— ya dice
+					     "Tipo documental no configurado". -->
+					{#if documento.tipoDetectado}
+						{#snippet valorDetectado()}{documento.tipoDetectado}{/snippet}
+						{@render dato('Documento detectado', valorDetectado)}
 					{/if}
-				</div>
 
-				<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Información</h3>
+					{#snippet valorEstado()}
+						<span class="flex items-center justify-end gap-1.5">
+							<span
+								class="size-1.5 shrink-0 rounded-full {etiqueta?.tono === 'ok'
+									? 'bg-green-500'
+									: etiqueta?.tono === 'error'
+										? 'bg-red-500'
+										: 'bg-primary'}"
+							></span>
+							{etiqueta?.texto}
+						</span>
+					{/snippet}
+					{@render dato('Estado actual', valorEstado)}
 
-				{#snippet valorNombre()}{documento.nombre}{/snippet}
-				{@render dato('Nombre de archivo', valorNombre)}
+					{#snippet valorIngesta()}{fechaHora(documento.agregadoEn)}{/snippet}
+					{@render dato('Fecha y hora de ingesta', valorIngesta)}
 
-				<!-- Justo debajo del nombre, igual que en el renglón del pipeline
-				     (2026-09-08, a pedido explícito en los dos lugares). Solo cuando
-				     SÍ se identificó un tipo: con `otro` no hay documento detectado
-				     que nombrar, y "Estado actual" —el renglón de abajo— ya dice
-				     "Tipo documental no configurado". -->
-				{#if documento.tipoDetectado}
-					{#snippet valorDetectado()}{documento.tipoDetectado}{/snippet}
-					{@render dato('Documento detectado', valorDetectado)}
+					{#snippet valorFuente()}
+						<span class="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+							{documento.origen}
+						</span>
+					{/snippet}
+					{@render dato('Fuente de ingesta', valorFuente)}
+
+					{#snippet valorTamano()}{formatearTamano(documento.tamanioBytes)}{/snippet}
+					{@render dato('Tamaño del archivo', valorTamano)}
+
+					{#snippet valorFormato()}{documento.extension}{/snippet}
+					{@render dato('Formato', valorFormato)}
+
+					{#snippet valorHash()}
+						<span class="font-mono text-xs break-all">{documento.hashSha256 ?? '—'}</span>
+					{/snippet}
+					{@render dato('Hash SHA-256', valorHash)}
+
+					<!-- Sigue siendo un placeholder, igual que el del TopBar: no hay
+					     autenticación todavía, así que no existe "el usuario que procesó
+					     este documento" como dato real. El nombre del volcado de Figma
+					     (Benjamin Leon Galvez) se reemplazó por el del usuario real a
+					     pedido explícito, para no ver un nombre ajeno en las demos. -->
+					{#snippet valorUsuario()}Moisés Briseño Estrello{/snippet}
+					{@render dato('Usuario', valorUsuario)}
+
+					<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Procesamiento OCR</h3>
+
+					<!-- procesado_en lo estampa el back al terminar la llamada a Document AI;
+					     terminadoEn es el reloj del navegador cuando llegó la respuesta.
+					     El primero es el que se va a guardar en extraction_run, así que es
+					     el que hay que mostrar — si difieren, es la latencia de red y más
+					     vale que la pantalla y la base digan lo mismo. -->
+					{#snippet valorEjecucion()}{fechaHoraIso(
+							documento.resultado?._metadata?.procesado_en
+						) ?? fechaHora(documento.terminadoEn)}{/snippet}
+					{@render dato('Fecha y hora de ejecución', valorEjecucion)}
+
+					{#snippet valorConfianza()}
+						<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
+				     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
+				     decir qué tan confiable fue la lectura, mostrar un 100 falso es
+				     justo el error que no se puede permitir. Dos decimales es además
+				     la precisión real: el back redondea a 2 al convertir de 0-1 a
+				     0-100 (`_a_cien` en servicios/ia.py). -->
+						{confianza === null ? '—' : `${confianza.toFixed(2)} %`}
+					{/snippet}
+					{@render dato('Nivel de confianza obtenida', valorConfianza)}
+
+					{#snippet valorCalidad()}{calidad ?? '—'}{/snippet}
+					{@render dato('Calidad de la lectura', valorCalidad)}
+
+					{#snippet valorMotor()}
+						<span class="font-mono text-xs break-all">
+							{documento.resultado?._metadata?.engine_version ?? 'sin fijar'}
+						</span>
+					{/snippet}
+					{@render dato('Versión del modelo', valorMotor)}
+
+					{#if documento.error}
+						<div class="mt-6 rounded-lg border border-red-200 bg-red-50 p-3">
+							<p class="text-sm font-medium text-red-700">No se pudo procesar</p>
+							<p class="mt-1 text-xs text-red-600">{documento.error}</p>
+						</div>
+					{/if}
+
+					{#if documento.resultado?._metadata?.quality_alert}
+						<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
+							<!-- Decía "No se reconoció como INE" hasta el 2026-09-07: desde que
+							     cada tipo documental se extrae con SU procesador, este aviso
+							     puede venir de cualquiera de ellos y nombrar a INE sería
+							     mentira en todos los demás. Mismo cambio que en
+							     `ETIQUETA_ESTADO.no_reconocido`. -->
+							<p class="text-sm font-medium text-amber-800">No se reconocieron sus campos</p>
+							<p class="mt-1 text-xs text-amber-700">
+								{documento.resultado._metadata.motivo ??
+									'Document AI respondió sin campos para este documento.'}
+							</p>
+						</div>
+					{/if}
+
+					{#if documento.estado === 'no_configurado'}
+						<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
+							<p class="text-sm font-medium text-amber-800">Tipo documental no configurado</p>
+							<p class="mt-1 text-xs text-amber-700">
+								El clasificador no encontró ningún tipo documental activo que corresponda a
+								este documento.
+							</p>
+						</div>
+					{/if}
+
+					{#if documento.estado === 'pendiente_revision'}
+						<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
+							<p class="text-sm font-medium text-amber-800">Pendiente de revisión humana</p>
+							<p class="mt-1 text-xs text-amber-700">
+								Su tipo documental no está configurado y se eligió continuar sin
+								configurarlo, así que no se le extrajo ningún dato.
+							</p>
+						</div>
+					{/if}
+
+					<!-- LA SECCIÓN "CAMPOS EXTRAÍDOS" SE QUITÓ EL 2026-08-25, a propósito.
+					     No es que estorbara: funcionaba y mostraba el valor de cada campo con
+					     su confianza individual. Se retiró porque NO está en el frame de Figma
+					     (905:49554) y el UX todavía no la ha revisado — esta pantalla se va a
+					     someter a su revisión, y meterle secciones inventadas ensucia lo que
+					     tiene que evaluar.
+
+					     Para devolverla: el helper `camposDe()` de $lib/types/ine sigue ahí
+					     intacto (aplana `domicilio.estado` y filtra el ruido de la respuesta),
+					     así que basta con recuperar este bloque del historial y volver a
+					     importarlo con su $derived.
+					     Mostraba, por campo: nombre punteado, valor normalizado, el crudo
+					     cuando difería, y la confianza coloreada por umbral. -->
 				{/if}
-
-				{#snippet valorEstado()}
-					<span class="flex items-center justify-end gap-1.5">
-						<span
-							class="size-1.5 shrink-0 rounded-full {etiqueta?.tono === 'ok'
-								? 'bg-green-500'
-								: etiqueta?.tono === 'error'
-									? 'bg-red-500'
-									: 'bg-primary'}"
-						></span>
-						{etiqueta?.texto}
-					</span>
-				{/snippet}
-				{@render dato('Estado actual', valorEstado)}
-
-				{#snippet valorIngesta()}{fechaHora(documento.agregadoEn)}{/snippet}
-				{@render dato('Fecha y hora de ingesta', valorIngesta)}
-
-				{#snippet valorFuente()}
-					<span class="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-						{documento.origen}
-					</span>
-				{/snippet}
-				{@render dato('Fuente de ingesta', valorFuente)}
-
-				{#snippet valorTamano()}{formatearTamano(documento.tamanioBytes)}{/snippet}
-				{@render dato('Tamaño del archivo', valorTamano)}
-
-				{#snippet valorFormato()}{documento.extension}{/snippet}
-				{@render dato('Formato', valorFormato)}
-
-				{#snippet valorHash()}
-					<span class="font-mono text-xs break-all">{documento.hashSha256 ?? '—'}</span>
-				{/snippet}
-				{@render dato('Hash SHA-256', valorHash)}
-
-				<!-- Sigue siendo un placeholder, igual que el del TopBar: no hay
-				     autenticación todavía, así que no existe "el usuario que procesó
-				     este documento" como dato real. El nombre del volcado de Figma
-				     (Benjamin Leon Galvez) se reemplazó por el del usuario real a
-				     pedido explícito, para no ver un nombre ajeno en las demos. -->
-				{#snippet valorUsuario()}Moisés Briseño Estrello{/snippet}
-				{@render dato('Usuario', valorUsuario)}
-
-				<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Procesamiento OCR</h3>
-
-				<!-- procesado_en lo estampa el back al terminar la llamada a Document AI;
-				     terminadoEn es el reloj del navegador cuando llegó la respuesta.
-				     El primero es el que se va a guardar en extraction_run, así que es
-				     el que hay que mostrar — si difieren, es la latencia de red y más
-				     vale que la pantalla y la base digan lo mismo. -->
-				{#snippet valorEjecucion()}{fechaHoraIso(
-						documento.resultado?._metadata?.procesado_en
-					) ?? fechaHora(documento.terminadoEn)}{/snippet}
-				{@render dato('Fecha y hora de ejecución', valorEjecucion)}
-
-				{#snippet valorConfianza()}
-					<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
-			     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
-			     decir qué tan confiable fue la lectura, mostrar un 100 falso es
-			     justo el error que no se puede permitir. Dos decimales es además
-			     la precisión real: el back redondea a 2 al convertir de 0-1 a
-			     0-100 (`_a_cien` en servicios/ia.py). -->
-					{confianza === null ? '—' : `${confianza.toFixed(2)} %`}
-				{/snippet}
-				{@render dato('Nivel de confianza obtenida', valorConfianza)}
-
-				{#snippet valorCalidad()}{calidad ?? '—'}{/snippet}
-				{@render dato('Calidad de la lectura', valorCalidad)}
-
-				{#snippet valorMotor()}
-					<span class="font-mono text-xs break-all">
-						{documento.resultado?._metadata?.engine_version ?? 'sin fijar'}
-					</span>
-				{/snippet}
-				{@render dato('Versión del modelo', valorMotor)}
-
-				{#if documento.error}
-					<div class="mt-6 rounded-lg border border-red-200 bg-red-50 p-3">
-						<p class="text-sm font-medium text-red-700">No se pudo procesar</p>
-						<p class="mt-1 text-xs text-red-600">{documento.error}</p>
-					</div>
-				{/if}
-
-				{#if documento.resultado?._metadata?.quality_alert}
-					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
-						<!-- Decía "No se reconoció como INE" hasta el 2026-09-07: desde que
-						     cada tipo documental se extrae con SU procesador, este aviso
-						     puede venir de cualquiera de ellos y nombrar a INE sería
-						     mentira en todos los demás. Mismo cambio que en
-						     `ETIQUETA_ESTADO.no_reconocido`. -->
-						<p class="text-sm font-medium text-amber-800">No se reconocieron sus campos</p>
-						<p class="mt-1 text-xs text-amber-700">
-							{documento.resultado._metadata.motivo ??
-								'Document AI respondió sin campos para este documento.'}
-						</p>
-					</div>
-				{/if}
-
-				{#if documento.estado === 'no_configurado'}
-					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
-						<p class="text-sm font-medium text-amber-800">Tipo documental no configurado</p>
-						<p class="mt-1 text-xs text-amber-700">
-							El clasificador no encontró ningún tipo documental activo que corresponda a
-							este documento.
-						</p>
-					</div>
-				{/if}
-
-				{#if documento.estado === 'pendiente_revision'}
-					<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3">
-						<p class="text-sm font-medium text-amber-800">Pendiente de revisión humana</p>
-						<p class="mt-1 text-xs text-amber-700">
-							Su tipo documental no está configurado y se eligió continuar sin
-							configurarlo, así que no se le extrajo ningún dato.
-						</p>
-					</div>
-				{/if}
-
-				<!-- LA SECCIÓN "CAMPOS EXTRAÍDOS" SE QUITÓ EL 2026-08-25, a propósito.
-				     No es que estorbara: funcionaba y mostraba el valor de cada campo con
-				     su confianza individual. Se retiró porque NO está en el frame de Figma
-				     (905:49554) y el UX todavía no la ha revisado — esta pantalla se va a
-				     someter a su revisión, y meterle secciones inventadas ensucia lo que
-				     tiene que evaluar.
-
-				     Para devolverla: el helper `camposDe()` de $lib/types/ine sigue ahí
-				     intacto (aplana `domicilio.estado` y filtra el ruido de la respuesta),
-				     así que basta con recuperar este bloque del historial y volver a
-				     importarlo con su $derived.
-				     Mostraba, por campo: nombre punteado, valor normalizado, el crudo
-				     cuando difería, y la confianza coloreada por umbral. -->
 			</div>
 
 			<div class="flex justify-end border-t border-border px-6 py-4">
