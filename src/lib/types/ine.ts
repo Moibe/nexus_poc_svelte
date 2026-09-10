@@ -87,6 +87,11 @@ export type MetadataExtraccion = {
  * significados distintos.
  */
 export type ResultadoIne = {
+	/** Promedio de la confianza de todos los campos. Es lo que la interfaz
+	 *  muestra como "Nivel de confianza obtenida" desde el 2026-09-10. */
+	confianza_promedio: number | null;
+	/** La del PEOR campo. Ya no se muestra, pero sigue llegando: es justo lo
+	 *  que el promedio esconde cuando un solo dato salió mal leído. */
 	confianza_minima: number | null;
 	_metadata: MetadataExtraccion;
 	ocr?: CapaOcr;
@@ -112,7 +117,13 @@ export function esCampoExtraido(valor: unknown): valor is CampoExtraido {
 export function camposDe(resultado: ResultadoIne): Array<[string, CampoExtraido]> {
 	const salida: Array<[string, CampoExtraido]> = [];
 	for (const [llave, valor] of Object.entries(resultado)) {
-		if (llave.startsWith('_') || llave === 'ocr' || llave === 'confianza_minima') continue;
+		if (
+			llave.startsWith('_') ||
+			llave === 'ocr' ||
+			llave === 'confianza_minima' ||
+			llave === 'confianza_promedio'
+		)
+			continue;
 		if (esCampoExtraido(valor)) {
 			salida.push([llave, valor]);
 		} else if (typeof valor === 'object' && valor !== null) {

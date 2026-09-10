@@ -53,7 +53,10 @@
 	const previa = usarVistaPrevia(() => documento);
 
 	const campos = $derived(documento?.resultado ? camposDe(documento.resultado) : []);
-	const confianza = $derived(documento?.resultado?.confianza_minima ?? null);
+	// El PROMEDIO de todos los campos, no el mínimo (cambio pedido el
+	// 2026-09-10). El mínimo sigue llegando en la respuesta como
+	// `confianza_minima` por si algún día se quiere señalar el peor campo.
+	const confianza = $derived(documento?.resultado?.confianza_promedio ?? null);
 	const calidad = $derived(calidadDe(confianza));
 
 	// El número de página solo se muestra si el documento tiene más de una: en

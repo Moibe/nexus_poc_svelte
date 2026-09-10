@@ -125,9 +125,12 @@
 
 	{#if enProceso}
 		<span class="shrink-0 text-xs text-muted-foreground" aria-hidden="true">…</span>
-	{:else if documento.resultado?.confianza_minima != null}
-		<!-- La confianza MÍNIMA, no el promedio: un solo campo mal leído (la CURP,
-		     por ejemplo) se diluye en un promedio y es justo el que importa. -->
+	{:else if documento.resultado?.confianza_promedio != null}
+		<!-- El PROMEDIO de la confianza de todos los campos (cambio pedido el
+		     2026-09-10; antes era el mínimo). Tiene que ser el MISMO número que
+		     muestran "Detalle" y "Registro de OT" bajo el rótulo "Nivel de
+		     confianza obtenida": que el renglón y el panel del mismo documento
+		     dijeran porcentajes distintos sería un error, no un matiz. -->
 		<span class="shrink-0 text-xs tabular-nums text-muted-foreground">
 			<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
 			     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
@@ -135,7 +138,7 @@
 			     justo el error que no se puede permitir. Dos decimales es además
 			     la precisión real: el back redondea a 2 al convertir de 0-1 a
 			     0-100 (`_a_cien` en servicios/ia.py). -->
-			{documento.resultado.confianza_minima.toFixed(2)}%
+			{documento.resultado.confianza_promedio.toFixed(2)}%
 		</span>
 	{/if}
 	</div>

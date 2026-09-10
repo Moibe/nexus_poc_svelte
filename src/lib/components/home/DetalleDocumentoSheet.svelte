@@ -37,7 +37,10 @@
 	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
 
 	const etiqueta = $derived(documento ? etiquetaDe(documento) : null);
-	const confianza = $derived(documento?.resultado?.confianza_minima ?? null);
+	// El PROMEDIO de todos los campos, no el mínimo (cambio pedido el
+	// 2026-09-10). El mínimo sigue llegando en la respuesta como
+	// `confianza_minima` por si algún día se quiere señalar el peor campo.
+	const confianza = $derived(documento?.resultado?.confianza_promedio ?? null);
 	const calidad = $derived(calidadDe(confianza));
 
 	// La vista previa vivía aquí como un `$effect` de doce líneas hasta el
