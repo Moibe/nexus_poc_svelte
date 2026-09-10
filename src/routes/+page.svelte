@@ -2,14 +2,14 @@
 	import CargaDocumentalPanel from '$lib/components/home/CargaDocumentalPanel.svelte';
 	import BandejaPreparacionPanel from '$lib/components/home/BandejaPreparacionPanel.svelte';
 	import PipelineDocumentalPanel from '$lib/components/home/PipelineDocumentalPanel.svelte';
-	import BarraAccionesSeleccion from '$lib/components/home/BarraAccionesSeleccion.svelte';
 	import DetalleDocumentoSheet from '$lib/components/home/DetalleDocumentoSheet.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	// El detalle se controla desde aquí, no dentro del panel, porque hay dos
-	// disparadores: la fila del pipeline y el botón "Detalle" de la barra
-	// flotante. Tenerlo en el ancestro común evita un estado global solo para
-	// coordinar un modal.
+	// El detalle se controla desde aquí y no dentro del panel porque el modal es
+	// hermano de las tres columnas, no hijo de una: montarlo dentro de la
+	// tarjeta del Pipeline lo metería en un contenedor con `overflow-y-auto`.
+	// Los dos disparadores (la fila y el botón "Detalle" de la barra del panel)
+	// viven los dos en esa columna y le llegan por `alAbrirDetalle`.
 	//
 	// Se guarda el ID y no el documento: así, si la extracción termina con el
 	// modal abierto, el $derived vuelve a leer el objeto vivo del estado y el
@@ -44,7 +44,5 @@
 	<div class="min-h-175"><BandejaPreparacionPanel /></div>
 	<div class="min-h-175"><PipelineDocumentalPanel alAbrirDetalle={abrirDetalle} /></div>
 </div>
-
-<BarraAccionesSeleccion alAbrirDetalle={abrirDetalle} />
 
 <DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoDetalle} />
