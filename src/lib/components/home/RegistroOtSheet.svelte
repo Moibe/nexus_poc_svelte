@@ -242,25 +242,26 @@
 				>
 					<Download class="size-4" />
 				</button>
-				<!-- El reloj abre "Filtros avanzados" (2026-09-11, a pedido
-				     explícito con captura). Historia corta, para que el ida y vuelta
-				     no parezca capricho: estuvo aquí apagado como "Historial de
-				     eventos", se quitó el 2026-09-10 por llevar meses sin hacer nada,
-				     volvió el 2026-09-11 —"ahorita te digo para qué nos va a servir"—
-				     y esto es para lo que servía.
-				     Ya NO está deshabilitado: hoy abre la ventana de verdad. Lo que
-				     todavía no hace es filtrar, porque no existe la lista de outputs
-				     sobre la cual actuaría — ver `FiltrosAvanzados.svelte`. -->
-				<button
-					type="button"
-					onclick={() => (filtrosAbiertos = true)}
-					aria-label="Filtros avanzados"
-					title="Filtros avanzados"
-					data-testid="historial-eventos"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-				>
-					<Clock class="size-4" />
-				</button>
+				<!-- El reloj de "Filtros avanzados" se OCULTA momentáneamente
+				     (2026-09-11, a pedido explícito: "quiero volver a quitar el
+				     reloj"). NO es el mismo caso que el retiro del 2026-09-10: aquel
+				     era un botón que nunca había funcionado; este SÍ funciona —abre
+				     `FiltrosAvanzados.svelte` de verdad— y se apaga solo por ahora.
+				     Todo el cableado se queda intacto a propósito (el estado
+				     `filtrosAbiertos`, el import, el modal montado al final del
+				     archivo): reactivar esto es descomentar el bloque de abajo, no
+				     reconstruir nada.
+				     <button
+				     	type="button"
+				     	onclick={() => (filtrosAbiertos = true)}
+				     	aria-label="Filtros avanzados"
+				     	title="Filtros avanzados"
+				     	data-testid="historial-eventos"
+				     	class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+				     >
+				     	<Clock class="size-4" />
+				     </button>
+				     -->
 				<!-- Modo JSON. Al extremo derecho de la banda, igual que en
 				     "Detalle" (2026-09-10, a pedido explícito). Es un INTERRUPTOR:
 				     por eso `aria-pressed` y un `title` que dice a dónde lleva. -->
