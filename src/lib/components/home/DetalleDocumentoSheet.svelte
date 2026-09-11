@@ -32,7 +32,7 @@
 	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-	import { calidadDe } from '$lib/types/ine';
+	import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 	import {
 		descargarJson,
@@ -132,6 +132,54 @@
 		return lista;
 	});
 
+	/**
+	 * Los campos extraídos, en renglones de informe.
+	 *
+	 * DESVIACIÓN CONSCIENTE de la regla de arriba ("el PDF no puede divergir de
+	 * la pantalla"): esta sección NO se ve en este panel — los campos se
+	 * quitaron de aquí el 2026-08-25 y viven en "Registro de OT". Va al PDF a
+	 * pedido explícito (2026-09-11, "quiero que el PDF también contenga los
+	 * campos extraídos"), porque un informe descargable que omite justo el
+	 * resultado del procesamiento no sirve para lo que se descarga.
+	 *
+	 * El formato copia el de "Registro de OT" para que los dos digan lo mismo:
+	 * el valor con la misma regla de `value_normalized ?? value_raw` (el
+	 * normalizado puede llegar vacío), la confianza a dos decimales con su
+	 * etiqueta cualitativa, y el crudo solo cuando la normalización lo cambió.
+	 */
+	function filaDeCampo(nombre: string, campo: CampoExtraido) {
+		const valor = campo.value_normalized ?? campo.value_raw ?? '';
+		const partes = [valor || '—'];
+		if (campo.confianza !== null) {
+			const cal = calidadDe(campo.confianza);
+			partes.push(`${campo.confianza.toFixed(2)} %${cal ? ` · ${cal}` : ''}`);
+		}
+		if (
+			campo.value_raw !== null &&
+			campo.value_raw !== '' &&
+			campo.value_raw !== campo.value_normalized
+		) {
+			partes.push(`crudo: ${campo.value_raw}`);
+		}
+		return { etiqueta: nombre, valor: partes.join('  —  ') };
+	}
+
+	const seccionCampos = $derived.by(() => {
+		if (!documento?.resultado) return [];
+		const campos = camposDe(documento.resultado);
+		return [
+			{
+				titulo: campos.length > 0 ? `Campos extraídos (${campos.length})` : 'Campos extraídos',
+				filas:
+					campos.length > 0
+						? campos.map(([nombre, campo]) => filaDeCampo(nombre, campo))
+						: // Se dice en vez de omitir la sección: que el PDF no la traiga
+							// se leería como que se olvidó de ponerla.
+							[{ etiqueta: 'Campos', valor: 'No se extrajo ningún campo de este documento.' }]
+			}
+		];
+	});
+
 	/** Lo que muestra el modo documento, en la forma que entiende `descargarPdf`.
 	 *  Se arma AQUÍ y no en el módulo de descarga para que el PDF y la pantalla
 	 *  formateen cada dato con la misma función: si mañana cambia cómo se lee la
@@ -182,7 +230,8 @@
 									valor: documento.resultado?._metadata?.engine_version ?? 'sin fijar'
 								}
 							]
-						}
+						},
+						...seccionCampos
 					],
 					avisos
 				}
