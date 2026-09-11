@@ -171,11 +171,14 @@ export function agregarArchivosPendientes(files: FileList) {
 			extension: extension.toUpperCase(),
 			tamanioBytes: file.size,
 			agregadoEn: new Date(),
-			// Arranca DESMARCADO (pedido explícito 2026-09-06, ajustado horas
-			// después el mismo día): "Subir documentos" solo sube lo marcado, y
-			// marcar es una decisión deliberada del usuario para cada archivo,
-			// no algo que se asuma por default.
-			seleccionado: false,
+			// Arranca MARCADO (pedido explícito 2026-09-11). Esto REVIERTE la
+			// decisión contraria del 2026-09-06, que razonaba que marcar debía
+			// ser deliberado archivo por archivo. En la práctica el caso normal
+			// es subir todo lo que se acaba de arrastrar, así que el default
+			// desmarcado obligaba a un clic por archivo antes de poder avanzar
+			// —y dejaba "Subir documentos" apagado, que se leía como si algo
+			// estuviera mal—. Desmarcar lo que no se quiere sigue siendo un clic.
+			seleccionado: true,
 			archivo: file
 		});
 	}
