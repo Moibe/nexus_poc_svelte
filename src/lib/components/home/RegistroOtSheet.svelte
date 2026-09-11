@@ -40,6 +40,7 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Download from '@lucide/svelte/icons/download';
+	import Clock from '@lucide/svelte/icons/clock';
 	import Braces from '@lucide/svelte/icons/braces';
 	import VistaJson from './VistaJson.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
@@ -236,6 +237,26 @@
 					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 				>
 					<Download class="size-4" />
+				</button>
+				<!-- Historial de eventos. Sin funcionalidad TODAVÍA: sigue
+				     necesitando `audit_event`, que vive en SQL Server y aún no
+				     existe.
+				     Historia corta, para que no parezca un vaivén sin sentido: este
+				     ícono estuvo aquí, se quitó el 2026-09-10 porque llevaba meses
+				     apagado y era ruido, y VOLVIÓ el 2026-09-11 a pedido explícito
+				     ("agrega de nuevo el relojito, ahorita te digo para qué nos va a
+				     servir"). Ahora está en los DOS paneles, no solo en éste.
+				     Nace deshabilitado y sin `onclick` a propósito, igual que el
+				     resto de lo que falta por cablear: en cuanto se sepa qué hace,
+				     aquí es donde se engancha. -->
+				<button
+					type="button"
+					disabled
+					aria-label="Historial de eventos (aún no disponible)"
+					data-testid="historial-eventos"
+					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground opacity-40"
+				>
+					<Clock class="size-4" />
 				</button>
 				<!-- Modo JSON. Al extremo derecho de la banda, igual que en
 				     "Detalle" (2026-09-10, a pedido explícito). Es un INTERRUPTOR:
