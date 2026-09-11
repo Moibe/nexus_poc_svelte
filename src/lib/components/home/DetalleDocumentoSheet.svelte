@@ -28,6 +28,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import Braces from '@lucide/svelte/icons/braces';
 	import VistaJson from './VistaJson.svelte';
+	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe } from '$lib/types/ine';
@@ -55,6 +56,9 @@
 	 *  de documento: quien lo prendió está inspeccionando, y apagárselo en cada
 	 *  documento nuevo sería pelear contra lo que está haciendo. */
 	let modoJson = $state(false);
+
+	/** El modal de "Filtros avanzados", que abre el reloj de la banda. */
+	let filtrosAbiertos = $state(false);
 
 	/** Lo que este panel muestra, serializable. `resultado` va VERBATIM: es la
 	 *  respuesta del extractor tal como llegó, que es la parte que sirve para
@@ -171,23 +175,22 @@
 				>
 					<Download class="size-4" />
 				</button>
-				<!-- Historial de eventos. Sin funcionalidad TODAVÍA: sigue
-				     necesitando `audit_event`, que vive en SQL Server y aún no
-				     existe.
-				     Historia corta, para que no parezca un vaivén sin sentido: este
-				     ícono estuvo aquí, se quitó el 2026-09-10 porque llevaba meses
-				     apagado y era ruido, y VOLVIÓ el 2026-09-11 a pedido explícito
-				     ("agrega de nuevo el relojito, ahorita te digo para qué nos va a
-				     servir"). Ahora está en los DOS paneles, no solo en éste.
-				     Nace deshabilitado y sin `onclick` a propósito, igual que el
-				     resto de lo que falta por cablear: en cuanto se sepa qué hace,
-				     aquí es donde se engancha. -->
+				<!-- El reloj abre "Filtros avanzados" (2026-09-11, a pedido
+				     explícito con captura). Historia corta, para que el ida y vuelta
+				     no parezca capricho: estuvo aquí apagado como "Historial de
+				     eventos", se quitó el 2026-09-10 por llevar meses sin hacer nada,
+				     volvió el 2026-09-11 —"ahorita te digo para qué nos va a servir"—
+				     y esto es para lo que servía.
+				     Ya NO está deshabilitado: hoy abre la ventana de verdad. Lo que
+				     todavía no hace es filtrar, porque no existe la lista de outputs
+				     sobre la cual actuaría — ver `FiltrosAvanzados.svelte`. -->
 				<button
 					type="button"
-					disabled
-					aria-label="Historial de eventos (aún no disponible)"
+					onclick={() => (filtrosAbiertos = true)}
+					aria-label="Filtros avanzados"
+					title="Filtros avanzados"
 					data-testid="historial-eventos"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground opacity-40"
+					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 				>
 					<Clock class="size-4" />
 				</button>
@@ -383,3 +386,5 @@
 		{/if}
 	</Sheet.Content>
 </Sheet.Root>
+
+<FiltrosAvanzados abierto={filtrosAbiertos} onCerrar={() => (filtrosAbiertos = false)} />
