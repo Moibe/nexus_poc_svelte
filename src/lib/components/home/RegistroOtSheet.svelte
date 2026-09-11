@@ -39,7 +39,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
-	import Download from '@lucide/svelte/icons/download';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Braces from '@lucide/svelte/icons/braces';
 	import VistaJson from './VistaJson.svelte';
@@ -55,9 +55,10 @@
 	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
 
 	const previa = usarVistaPrevia(() => documento);
-	/** El interruptor del modo JSON. Vive por panel y NO se reinicia al cambiar
-	 *  de documento: quien lo prendió está inspeccionando, y apagárselo en cada
-	 *  documento nuevo sería pelear contra lo que está haciendo. */
+	/** Cuál de las dos vistas está puesta: false = detalle, true = JSON. Vive
+	 *  por panel y NO se reinicia al cambiar de documento: quien se pasó a JSON
+	 *  está inspeccionando, y regresarlo al detalle en cada documento nuevo
+	 *  sería pelear contra lo que está haciendo. */
 	let modoJson = $state(false);
 
 	/** El modal de "Filtros avanzados", que abre el reloj de la banda. */
@@ -161,22 +162,6 @@
 		const mm = String(fecha.getMinutes()).padStart(2, '0');
 		return `${dia}/${mes}/${fecha.getFullYear()} · ${hh}:${mm} h`;
 	}
-
-	function descargar() {
-		if (!documento) return;
-		const url = URL.createObjectURL(documento.archivo);
-		const enlace = document.createElement('a');
-		enlace.href = url;
-		enlace.download = documento.nombre;
-		// El <a> se INSERTA en el DOM porque Firefox ignora el click() de un
-		// elemento que no está en el documento, y la URL se revoca en el
-		// siguiente tick porque revokeObjectURL() es inmediato y en el mismo
-		// tick la descarga saldría vacía. Igual que en el detalle.
-		document.body.appendChild(enlace);
-		enlace.click();
-		enlace.remove();
-		setTimeout(() => URL.revokeObjectURL(url), 0);
-	}
 </script>
 
 {#snippet dato(etiquetaTexto: string, contenido: import('svelte').Snippet)}
@@ -233,15 +218,6 @@
 						)}
 					</Sheet.Description>
 				</div>
-				<button
-					type="button"
-					onclick={descargar}
-					aria-label="Descargar documento"
-					data-testid="descargar-ot"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-				>
-					<Download class="size-4" />
-				</button>
 				<!-- El reloj de "Filtros avanzados" se OCULTA momentáneamente
 				     (2026-09-11, a pedido explícito: "quiero volver a quitar el
 				     reloj"). NO es el mismo caso que el retiro del 2026-09-10: aquel
@@ -262,16 +238,34 @@
 				     	<Clock class="size-4" />
 				     </button>
 				     -->
-				<!-- Modo JSON. Al extremo derecho de la banda, igual que en
-				     "Detalle" (2026-09-10, a pedido explícito). Es un INTERRUPTOR:
-				     por eso `aria-pressed` y un `title` que dice a dónde lleva. -->
+				<!-- Dos botones, no un interruptor. Hasta el 2026-09-11 el ícono de
+				     JSON prendía y apagaba la vista él solo; a pedido explícito ahora
+				     son dos accesos separados —detalle y JSON—: cada uno LLEVA a su
+				     vista y el activo se queda pintado, así que la banda dice en cuál
+				     estás sin tener que leer el contenido.
+				     El botón de descarga estaba aquí y se quitó el mismo día ("por el
+				     momento quita el botón de descarga"); con él se fue descargar(),
+				     que sigue en el historial por si hay que devolverlo. -->
 				<button
 					type="button"
-					onclick={() => (modoJson = !modoJson)}
+					onclick={() => (modoJson = false)}
+					aria-pressed={!modoJson}
+					aria-label="Ver detalle"
+					title="Ver detalle"
+					data-testid="ver-detalle"
+					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+						? 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+						: 'border-primary bg-primary text-primary-foreground'}"
+				>
+					<FileText class="size-4" />
+				</button>
+				<button
+					type="button"
+					onclick={() => (modoJson = true)}
 					aria-pressed={modoJson}
 					aria-label="Ver como JSON"
-					title={modoJson ? 'Ver en forma normal' : 'Ver como JSON'}
-					data-testid="alternar-json"
+					title="Ver como JSON"
+					data-testid="ver-json"
 					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
 						? 'border-primary bg-primary text-primary-foreground'
 						: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
