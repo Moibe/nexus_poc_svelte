@@ -32,13 +32,13 @@
 	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-	import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
+	import { calidadDe } from '$lib/types/ine';
+	import { construirInforme, fechaHora, fechaHoraIso } from '$lib/documentos/informeDocumento';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 	import {
 		descargarJson,
 		descargarPdf,
 		sinExtension,
-		type AvisoInforme,
 		type Informe
 	} from '$lib/documentos/descargar';
 
@@ -98,143 +98,12 @@
 				}
 	);
 
-	/** Los mismos recuadros de aviso que se pintan al final del panel, en el
-	 *  mismo orden. Si se agrega uno allá abajo, va aquí también: el PDF sólo
-	 *  cuenta lo que esta lista traiga. */
-	const avisos = $derived.by<AvisoInforme[]>(() => {
-		if (documento === null) return [];
-		const lista: AvisoInforme[] = [];
-		if (documento.error) {
-			lista.push({ titulo: 'No se pudo procesar', texto: documento.error });
-		}
-		if (documento.resultado?._metadata?.quality_alert) {
-			lista.push({
-				titulo: 'No se reconocieron sus campos',
-				texto:
-					documento.resultado._metadata.motivo ??
-					'Document AI respondió sin campos para este documento.'
-			});
-		}
-		if (documento.estado === 'no_configurado') {
-			lista.push({
-				titulo: 'Tipo documental no configurado',
-				texto:
-					'El clasificador no encontró ningún tipo documental activo que corresponda a este documento.'
-			});
-		}
-		if (documento.estado === 'pendiente_revision') {
-			lista.push({
-				titulo: 'Pendiente de revisión humana',
-				texto:
-					'Su tipo documental no está configurado y se eligió continuar sin configurarlo, así que no se le extrajo ningún dato.'
-			});
-		}
-		return lista;
-	});
-
-	/**
-	 * Los campos extraídos, en renglones de informe.
-	 *
-	 * DESVIACIÓN CONSCIENTE de la regla de arriba ("el PDF no puede divergir de
-	 * la pantalla"): esta sección NO se ve en este panel — los campos se
-	 * quitaron de aquí el 2026-08-25 y viven en "Registro de OT". Va al PDF a
-	 * pedido explícito (2026-09-11, "quiero que el PDF también contenga los
-	 * campos extraídos"), porque un informe descargable que omite justo el
-	 * resultado del procesamiento no sirve para lo que se descarga.
-	 *
-	 * El formato copia el de "Registro de OT" para que los dos digan lo mismo:
-	 * el valor con la misma regla de `value_normalized ?? value_raw` (el
-	 * normalizado puede llegar vacío), la confianza a dos decimales con su
-	 * etiqueta cualitativa, y el crudo solo cuando la normalización lo cambió.
-	 */
-	function filaDeCampo(nombre: string, campo: CampoExtraido) {
-		const valor = campo.value_normalized ?? campo.value_raw ?? '';
-		const partes = [valor || '—'];
-		if (campo.confianza !== null) {
-			const cal = calidadDe(campo.confianza);
-			partes.push(`${campo.confianza.toFixed(2)} %${cal ? ` · ${cal}` : ''}`);
-		}
-		if (
-			campo.value_raw !== null &&
-			campo.value_raw !== '' &&
-			campo.value_raw !== campo.value_normalized
-		) {
-			partes.push(`crudo: ${campo.value_raw}`);
-		}
-		return { etiqueta: nombre, valor: partes.join('  —  ') };
-	}
-
-	const seccionCampos = $derived.by(() => {
-		if (!documento?.resultado) return [];
-		const campos = camposDe(documento.resultado);
-		return [
-			{
-				titulo: campos.length > 0 ? `Campos extraídos (${campos.length})` : 'Campos extraídos',
-				filas:
-					campos.length > 0
-						? campos.map(([nombre, campo]) => filaDeCampo(nombre, campo))
-						: // Se dice en vez de omitir la sección: que el PDF no la traiga
-							// se leería como que se olvidó de ponerla.
-							[{ etiqueta: 'Campos', valor: 'No se extrajo ningún campo de este documento.' }]
-			}
-		];
-	});
-
-	/** Lo que muestra el modo documento, en la forma que entiende `descargarPdf`.
-	 *  Se arma AQUÍ y no en el módulo de descarga para que el PDF y la pantalla
-	 *  formateen cada dato con la misma función: si mañana cambia cómo se lee la
-	 *  confianza o la fecha, cambia en los dos a la vez y no en uno solo. */
+	/** El informe que se convierte en PDF. Se arma en `informeDocumento.ts` y
+	 *  no aquí desde el 2026-09-11: "Registro de OT" descarga LO MISMO, y con el
+	 *  armado duplicado en dos archivos eso duraba hasta el primer cambio que
+	 *  alguien hiciera en uno solo. */
 	const informe = $derived<Informe | null>(
-		documento === null
-			? null
-			: {
-					titulo: 'Detalle de documento',
-					subtitulo: `${documento.nombre} — ${documento.extension} • ${formatearTamano(
-						documento.tamanioBytes
-					)}`,
-					secciones: [
-						{
-							titulo: 'Información',
-							filas: [
-								{ etiqueta: 'Nombre de archivo', valor: documento.nombre },
-								// Condicional igual que en el cuerpo: con `otro` no hay tipo
-								// que nombrar y el renglón sobra.
-								...(documento.tipoDetectado
-									? [{ etiqueta: 'Documento detectado', valor: documento.tipoDetectado }]
-									: []),
-								{ etiqueta: 'Estado actual', valor: etiqueta?.texto ?? '—' },
-								{ etiqueta: 'Fecha y hora de ingesta', valor: fechaHora(documento.agregadoEn) },
-								{ etiqueta: 'Fuente de ingesta', valor: documento.origen },
-								{ etiqueta: 'Tamaño del archivo', valor: formatearTamano(documento.tamanioBytes) },
-								{ etiqueta: 'Formato', valor: documento.extension },
-								{ etiqueta: 'Hash SHA-256', valor: documento.hashSha256 ?? '—' },
-								{ etiqueta: 'Usuario', valor: USUARIO }
-							]
-						},
-						{
-							titulo: 'Procesamiento OCR',
-							filas: [
-								{
-									etiqueta: 'Fecha y hora de ejecución',
-									valor:
-										fechaHoraIso(documento.resultado?._metadata?.procesado_en) ??
-										fechaHora(documento.terminadoEn)
-								},
-								{
-									etiqueta: 'Nivel de confianza obtenida',
-									valor: confianza === null ? '—' : `${confianza.toFixed(2)} %`
-								},
-								{ etiqueta: 'Calidad de la lectura', valor: calidad ?? '—' },
-								{
-									etiqueta: 'Versión del modelo',
-									valor: documento.resultado?._metadata?.engine_version ?? 'sin fijar'
-								}
-							]
-						},
-						...seccionCampos
-					],
-					avisos
-				}
+		documento === null ? null : construirInforme(documento, 'Detalle de documento')
 	);
 
 	/** Hay una descarga en curso. El PDF trae consigo cargar jsPDF, que la
@@ -268,20 +137,6 @@
 
 	/** `procesado_en` viene en ISO-8601 UTC; se muestra en la hora local de quien
 	 *  mira, que es lo que espera cualquiera leyendo una pantalla. */
-	function fechaHoraIso(iso: string | undefined): string | null {
-		if (!iso) return null;
-		const fecha = new Date(iso);
-		return Number.isNaN(fecha.getTime()) ? null : fechaHora(fecha);
-	}
-
-	function fechaHora(fecha: Date | null): string {
-		if (!fecha) return '—';
-		const dia = String(fecha.getDate()).padStart(2, '0');
-		const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-		const hh = String(fecha.getHours()).padStart(2, '0');
-		const mm = String(fecha.getMinutes()).padStart(2, '0');
-		return `${dia}/${mes}/${fecha.getFullYear()} · ${hh}:${mm} h`;
-	}
 </script>
 
 {#snippet dato(etiquetaTexto: string, contenido: import('svelte').Snippet)}
@@ -308,6 +163,41 @@
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
 				Detalle de documento
 			</Sheet.Title>
+			<!-- Los dos accesos de vista viven en la CABECERA, junto al tache
+			     (2026-09-11, a pedido explícito: "que se vean más generales, que se
+			     vea que pertenecen a ambos"). Estaban en la banda del archivo, y ahí
+			     se leían como acciones sobre ESE archivo; arriba, en el mismo
+			     renglón que el título y el cierre, se leen como lo que son: en qué
+			     vista está el panel.
+			     Son dos botones y no un interruptor: cada uno LLEVA a su vista y el
+			     activo se queda pintado, así que la cabecera dice en cuál estás sin
+			     tener que leer el contenido. -->
+			<button
+				type="button"
+				onclick={() => (modoJson = false)}
+				aria-pressed={!modoJson}
+				aria-label="Ver detalle"
+				title="Ver detalle"
+				data-testid="ver-detalle"
+				class="flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+					? 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+					: 'border-primary bg-primary text-primary-foreground'}"
+			>
+				<FileText class="size-4" />
+			</button>
+			<button
+				type="button"
+				onclick={() => (modoJson = true)}
+				aria-pressed={modoJson}
+				aria-label="Ver como JSON"
+				title="Ver como JSON"
+				data-testid="ver-json"
+				class="flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+					? 'border-primary bg-primary text-primary-foreground'
+					: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
+			>
+				<Braces class="size-4" />
+			</button>
 			<Sheet.Close
 				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
 			>
@@ -351,41 +241,6 @@
 				     	<Clock class="size-4" />
 				     </button>
 				     -->
-				<!-- Dos botones, no un interruptor. Hasta el 2026-09-11 el ícono de
-				     JSON prendía y apagaba la vista él solo; a pedido explícito ahora
-				     son dos accesos separados —detalle y JSON—: cada uno LLEVA a su
-				     vista y el activo se queda pintado, así que la banda dice en cuál
-				     estás sin tener que leer el contenido.
-				     El botón de descarga estaba aquí y se quitó el mismo día ("por el
-				     momento quita el botón de descarga"). El que existe hoy en el pie
-				     NO es aquél de vuelta: aquél bajaba el archivo original, y éste
-				     baja lo que el panel muestra. El viejo sigue en el historial. -->
-				<button
-					type="button"
-					onclick={() => (modoJson = false)}
-					aria-pressed={!modoJson}
-					aria-label="Ver detalle"
-					title="Ver detalle"
-					data-testid="ver-detalle"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
-						? 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-						: 'border-primary bg-primary text-primary-foreground'}"
-				>
-					<FileText class="size-4" />
-				</button>
-				<button
-					type="button"
-					onclick={() => (modoJson = true)}
-					aria-pressed={modoJson}
-					aria-label="Ver como JSON"
-					title="Ver como JSON"
-					data-testid="ver-json"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
-						? 'border-primary bg-primary text-primary-foreground'
-						: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
-				>
-					<Braces class="size-4" />
-				</button>
 			</div>
 
 			<div class="min-h-0 flex-1 overflow-y-auto px-6 pb-6">

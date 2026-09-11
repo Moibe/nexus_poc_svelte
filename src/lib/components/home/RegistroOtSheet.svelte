@@ -48,6 +48,9 @@
 	import { type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
+	import Download from '@lucide/svelte/icons/download';
+	import { descargarJson, descargarPdf, sinExtension, type Informe } from '$lib/documentos/descargar';
+	import { construirInforme } from '$lib/documentos/informeDocumento';
 
 	let {
 		open = $bindable(false),
@@ -63,6 +66,36 @@
 
 	/** El modal de "Filtros avanzados", que abre el reloj de la banda. */
 	let filtrosAbiertos = $state(false);
+	/** El informe que se convierte en PDF. Es EL MISMO que baja "Detalle"
+	 *  (2026-09-11, a pedido explícito: "ya bajan lo mismo"): se arma en
+	 *  `informeDocumento.ts` y lo único que cambia es el título, que dice de
+	 *  dónde se bajó. */
+	const informe = $derived<Informe | null>(
+		documento === null ? null : construirInforme(documento, 'Registro de OT')
+	);
+
+	/** Hay una descarga en curso. El PDF trae consigo cargar jsPDF, que la
+	 *  primera vez tarda lo suficiente para alcanzar a dar dos clics — y serían
+	 *  dos archivos. */
+	let descargando = $state(false);
+
+	/** Baja LO QUE SE ESTÁ VIENDO: PDF en modo documento, JSON en modo JSON.
+	 *  Mismo comportamiento que en "Detalle", que es de donde salió. */
+	async function descargar() {
+		if (documento === null || informe === null || descargando) return;
+		descargando = true;
+		try {
+			const base = sinExtension(documento.nombre);
+			if (modoJson) {
+				descargarJson(datosJson, `${base}-registro-ot.json`);
+			} else {
+				await descargarPdf(informe, `${base}-registro-ot.pdf`);
+			}
+		} finally {
+			descargando = false;
+		}
+	}
+
 
 	/** Lo que este panel muestra, serializable. `resultado` va VERBATIM: es la
 	 *  respuesta del extractor tal como llegó, con sus campos y su capa `ocr`,
@@ -195,6 +228,41 @@
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
 				Registro de OT
 			</Sheet.Title>
+			<!-- Los dos accesos de vista viven en la CABECERA, junto al tache
+			     (2026-09-11, a pedido explícito: "que se vean más generales, que se
+			     vea que pertenecen a ambos"). Estaban en la banda del archivo, y ahí
+			     se leían como acciones sobre ESE archivo; arriba, en el mismo
+			     renglón que el título y el cierre, se leen como lo que son: en qué
+			     vista está el panel.
+			     Son dos botones y no un interruptor: cada uno LLEVA a su vista y el
+			     activo se queda pintado, así que la cabecera dice en cuál estás sin
+			     tener que leer el contenido. -->
+			<button
+				type="button"
+				onclick={() => (modoJson = false)}
+				aria-pressed={!modoJson}
+				aria-label="Ver detalle"
+				title="Ver detalle"
+				data-testid="ver-detalle"
+				class="flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+					? 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+					: 'border-primary bg-primary text-primary-foreground'}"
+			>
+				<FileText class="size-4" />
+			</button>
+			<button
+				type="button"
+				onclick={() => (modoJson = true)}
+				aria-pressed={modoJson}
+				aria-label="Ver como JSON"
+				title="Ver como JSON"
+				data-testid="ver-json"
+				class="flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
+					? 'border-primary bg-primary text-primary-foreground'
+					: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
+			>
+				<Braces class="size-4" />
+			</button>
 			<Sheet.Close
 				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
 			>
@@ -238,40 +306,6 @@
 				     	<Clock class="size-4" />
 				     </button>
 				     -->
-				<!-- Dos botones, no un interruptor. Hasta el 2026-09-11 el ícono de
-				     JSON prendía y apagaba la vista él solo; a pedido explícito ahora
-				     son dos accesos separados —detalle y JSON—: cada uno LLEVA a su
-				     vista y el activo se queda pintado, así que la banda dice en cuál
-				     estás sin tener que leer el contenido.
-				     El botón de descarga estaba aquí y se quitó el mismo día ("por el
-				     momento quita el botón de descarga"); con él se fue descargar(),
-				     que sigue en el historial por si hay que devolverlo. -->
-				<button
-					type="button"
-					onclick={() => (modoJson = false)}
-					aria-pressed={!modoJson}
-					aria-label="Ver detalle"
-					title="Ver detalle"
-					data-testid="ver-detalle"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
-						? 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-						: 'border-primary bg-primary text-primary-foreground'}"
-				>
-					<FileText class="size-4" />
-				</button>
-				<button
-					type="button"
-					onclick={() => (modoJson = true)}
-					aria-pressed={modoJson}
-					aria-label="Ver como JSON"
-					title="Ver como JSON"
-					data-testid="ver-json"
-					class="flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors {modoJson
-						? 'border-primary bg-primary text-primary-foreground'
-						: 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}"
-				>
-					<Braces class="size-4" />
-				</button>
 			</div>
 
 			<div class="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
@@ -420,7 +454,22 @@
 				{/if}
 			</div>
 
-			<div class="flex justify-end border-t border-border px-6 py-4">
+			<!-- "Descargar" baja lo que se está viendo: PDF en modo documento,
+			     JSON en modo JSON. Va en el pie junto a "Cerrar", igual que en
+			     "Detalle", y NO arriba con los dos accesos de vista: esos ELIGEN
+			     vista y éste obedece a la que esté puesta. Por eso la leyenda dice
+			     sólo "Descargar" y el formato se anuncia en el title. -->
+			<div class="flex justify-end gap-2 border-t border-border px-6 py-4">
+				<Button
+					variant="outline"
+					onclick={descargar}
+					disabled={descargando}
+					title={modoJson ? 'Descargar JSON' : 'Descargar PDF'}
+					data-testid="descargar-registro-ot"
+				>
+					<Download />
+					Descargar
+				</Button>
 				<Button onclick={() => (open = false)}>Cerrar</Button>
 			</div>
 		{/if}
