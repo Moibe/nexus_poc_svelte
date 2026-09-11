@@ -27,12 +27,20 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Braces from '@lucide/svelte/icons/braces';
+	import Download from '@lucide/svelte/icons/download';
 	import VistaJson from './VistaJson.svelte';
 	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import { calidadDe } from '$lib/types/ine';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
+	import {
+		descargarJson,
+		descargarPdf,
+		sinExtension,
+		type AvisoInforme,
+		type Informe
+	} from '$lib/documentos/descargar';
 
 	let {
 		open = $bindable(false),
@@ -61,6 +69,12 @@
 	/** El modal de "Filtros avanzados", que abre el reloj de la banda. */
 	let filtrosAbiertos = $state(false);
 
+	/** Placeholder mientras no hay autenticación (ver la nota en el cuerpo,
+	 *  donde se pinta). Vive en una constante porque desde el 2026-09-11 se
+	 *  usa en dos lados —la pantalla y el PDF—, y escribirlo dos veces era
+	 *  garantizar que un día dijeran nombres distintos. */
+	const USUARIO = 'Moisés Briseño Estrello';
+
 	/** Lo que este panel muestra, serializable. `resultado` va VERBATIM: es la
 	 *  respuesta del extractor tal como llegó, que es la parte que sirve para
 	 *  pegar en un reporte. El `File` NO va: stringify de un File da `{}`. */
@@ -83,6 +97,125 @@
 					resultado: documento.resultado ?? null
 				}
 	);
+
+	/** Los mismos recuadros de aviso que se pintan al final del panel, en el
+	 *  mismo orden. Si se agrega uno allá abajo, va aquí también: el PDF sólo
+	 *  cuenta lo que esta lista traiga. */
+	const avisos = $derived.by<AvisoInforme[]>(() => {
+		if (documento === null) return [];
+		const lista: AvisoInforme[] = [];
+		if (documento.error) {
+			lista.push({ titulo: 'No se pudo procesar', texto: documento.error });
+		}
+		if (documento.resultado?._metadata?.quality_alert) {
+			lista.push({
+				titulo: 'No se reconocieron sus campos',
+				texto:
+					documento.resultado._metadata.motivo ??
+					'Document AI respondió sin campos para este documento.'
+			});
+		}
+		if (documento.estado === 'no_configurado') {
+			lista.push({
+				titulo: 'Tipo documental no configurado',
+				texto:
+					'El clasificador no encontró ningún tipo documental activo que corresponda a este documento.'
+			});
+		}
+		if (documento.estado === 'pendiente_revision') {
+			lista.push({
+				titulo: 'Pendiente de revisión humana',
+				texto:
+					'Su tipo documental no está configurado y se eligió continuar sin configurarlo, así que no se le extrajo ningún dato.'
+			});
+		}
+		return lista;
+	});
+
+	/** Lo que muestra el modo documento, en la forma que entiende `descargarPdf`.
+	 *  Se arma AQUÍ y no en el módulo de descarga para que el PDF y la pantalla
+	 *  formateen cada dato con la misma función: si mañana cambia cómo se lee la
+	 *  confianza o la fecha, cambia en los dos a la vez y no en uno solo. */
+	const informe = $derived<Informe | null>(
+		documento === null
+			? null
+			: {
+					titulo: 'Detalle de documento',
+					subtitulo: `${documento.nombre} — ${documento.extension} • ${formatearTamano(
+						documento.tamanioBytes
+					)}`,
+					secciones: [
+						{
+							titulo: 'Información',
+							filas: [
+								{ etiqueta: 'Nombre de archivo', valor: documento.nombre },
+								// Condicional igual que en el cuerpo: con `otro` no hay tipo
+								// que nombrar y el renglón sobra.
+								...(documento.tipoDetectado
+									? [{ etiqueta: 'Documento detectado', valor: documento.tipoDetectado }]
+									: []),
+								{ etiqueta: 'Estado actual', valor: etiqueta?.texto ?? '—' },
+								{ etiqueta: 'Fecha y hora de ingesta', valor: fechaHora(documento.agregadoEn) },
+								{ etiqueta: 'Fuente de ingesta', valor: documento.origen },
+								{ etiqueta: 'Tamaño del archivo', valor: formatearTamano(documento.tamanioBytes) },
+								{ etiqueta: 'Formato', valor: documento.extension },
+								{ etiqueta: 'Hash SHA-256', valor: documento.hashSha256 ?? '—' },
+								{ etiqueta: 'Usuario', valor: USUARIO }
+							]
+						},
+						{
+							titulo: 'Procesamiento OCR',
+							filas: [
+								{
+									etiqueta: 'Fecha y hora de ejecución',
+									valor:
+										fechaHoraIso(documento.resultado?._metadata?.procesado_en) ??
+										fechaHora(documento.terminadoEn)
+								},
+								{
+									etiqueta: 'Nivel de confianza obtenida',
+									valor: confianza === null ? '—' : `${confianza.toFixed(2)} %`
+								},
+								{ etiqueta: 'Calidad de la lectura', valor: calidad ?? '—' },
+								{
+									etiqueta: 'Versión del modelo',
+									valor: documento.resultado?._metadata?.engine_version ?? 'sin fijar'
+								}
+							]
+						}
+					],
+					avisos
+				}
+	);
+
+	/** Hay una descarga en curso. El PDF trae consigo cargar jsPDF, que la
+	 *  primera vez tarda lo suficiente para alcanzar a dar dos clics — y serían
+	 *  dos archivos. */
+	let descargando = $state(false);
+
+	/** Baja LO QUE SE ESTÁ VIENDO, no el archivo original: PDF en modo documento,
+	 *  JSON en modo JSON. El archivo original el usuario ya lo tiene; el
+	 *  resultado del procesamiento no existe en ninguna otra parte hasta aquí. */
+	async function descargar() {
+		if (documento === null || informe === null || descargando) return;
+		descargando = true;
+		const base = sinExtension(documento.nombre);
+		try {
+			if (modoJson) {
+				descargarJson(datosJson, `${base}-detalle.json`);
+			} else {
+				await descargarPdf(informe, `${base}-detalle.pdf`);
+			}
+		} catch (error) {
+			// Esta pantalla no tiene dónde avisar todavía —no hay toasts en el
+			// proyecto—, así que la falla va a la consola en vez de perderse. El
+			// botón se vuelve a habilitar en el `finally`, que es lo que permite
+			// reintentar.
+			console.error('No se pudo generar la descarga del detalle', error);
+		} finally {
+			descargando = false;
+		}
+	}
 
 	/** `procesado_en` viene en ISO-8601 UTC; se muestra en la hora local de quien
 	 *  mira, que es lo que espera cualquiera leyendo una pantalla. */
@@ -175,8 +308,9 @@
 				     vista y el activo se queda pintado, así que la banda dice en cuál
 				     estás sin tener que leer el contenido.
 				     El botón de descarga estaba aquí y se quitó el mismo día ("por el
-				     momento quita el botón de descarga"); con él se fue descargar(),
-				     que sigue en el historial por si hay que devolverlo. -->
+				     momento quita el botón de descarga"). El que existe hoy en el pie
+				     NO es aquél de vuelta: aquél bajaba el archivo original, y éste
+				     baja lo que el panel muestra. El viejo sigue en el historial. -->
 				<button
 					type="button"
 					onclick={() => (modoJson = false)}
@@ -278,7 +412,7 @@
 					     este documento" como dato real. El nombre del volcado de Figma
 					     (Benjamin Leon Galvez) se reemplazó por el del usuario real a
 					     pedido explícito, para no ver un nombre ajeno en las demos. -->
-					{#snippet valorUsuario()}Moisés Briseño Estrello{/snippet}
+					{#snippet valorUsuario()}{USUARIO}{/snippet}
 					{@render dato('Usuario', valorUsuario)}
 
 					<h3 class="mt-6 mb-1 text-base font-medium text-foreground">Procesamiento OCR</h3>
@@ -372,7 +506,24 @@
 				{/if}
 			</div>
 
-			<div class="flex justify-end border-t border-border px-6 py-4">
+			<!-- "Descargar" baja lo que se está viendo: PDF en modo documento, JSON
+			     en modo JSON (2026-09-11, a pedido explícito). Va en el pie junto a
+			     "Cerrar" —ahí se pidió— y no en la banda de íconos de arriba: la
+			     banda ELIGE vista, y este botón obedece a la que esté puesta. Por
+			     eso la leyenda dice sólo "Descargar" y el formato se anuncia en el
+			     title, que es donde no compite con los dos botones que sí deciden.
+			     -->
+			<div class="flex justify-end gap-2 border-t border-border px-6 py-4">
+				<Button
+					variant="outline"
+					onclick={descargar}
+					disabled={descargando}
+					title={modoJson ? 'Descargar JSON' : 'Descargar PDF'}
+					data-testid="descargar-detalle"
+				>
+					<Download />
+					Descargar
+				</Button>
 				<Button onclick={() => (open = false)}>Cerrar</Button>
 			</div>
 		{/if}
