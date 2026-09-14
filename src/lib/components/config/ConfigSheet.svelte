@@ -2837,7 +2837,14 @@
 									value={campo.id}
 									class="rounded-xl border border-border bg-background px-4 last:border-b"
 								>
-									<Accordion.Trigger class="gap-3 hover:no-underline">
+									<!-- `min-w-0` NO es decorativo: sin él, una descripción larga se sale
+									     de la tarjeta. El Trigger es un flex item con `min-width: auto`, así
+									     que su mínimo automático es el ancho de su contenido y se niega a
+									     encogerse — medido: 1340px dentro de un contenedor de 653px. El
+									     `truncate` del texto de adentro no puede hacer nada, porque su padre
+									     ya viene inflado. Con `min-w-0` el botón sí encoge y el truncate
+									     vuelve a servir. -->
+									<Accordion.Trigger class="min-w-0 gap-3 hover:no-underline">
 										<span
 											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card font-mono text-xs text-primary"
 										>
