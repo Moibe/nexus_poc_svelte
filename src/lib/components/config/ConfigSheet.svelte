@@ -1573,11 +1573,20 @@
 											     su lugar a un rótulo. No es un Button deshabilitado porque no
 											     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
 											     nada que picar. Conserva la altura del botón (`h-9.5`) para
-											     que la tarjeta no brinque al cambiar de estado. -->
+											     que la tarjeta no brinque al cambiar de estado.
+											     Tipografía y punto IDÉNTICOS a los de la insignia "Configurado"
+											     de arriba (`text-xs font-medium`, `gap-1.5`, punto `size-1.5
+											     bg-green-500`), a pedido explícito el mismo día: son dos
+											     rótulos de estado uno al lado del otro, y que uno se viera más
+											     grande los hacía leer como cosas de distinta jerarquía. Lo
+											     único que NO se copió es el fondo en píldora (`bg-green-50
+											     rounded-full px-2.5`): sin él se distinguen sin dejar de
+											     emparejar. -->
 											<span
 												data-testid="tipo-activado"
-												class="flex h-9.5 shrink-0 items-center text-sm font-medium text-green-700"
+												class="flex h-9.5 shrink-0 items-center gap-1.5 text-xs font-medium text-green-700"
 											>
+												<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
 												Activado
 											</span>
 										{:else}
