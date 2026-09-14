@@ -248,6 +248,10 @@ async function procesarUno(id: string) {
 	// descubierto el 2026-09-07: en cuanto el front empezó a sincronizar el
 	// clasificador de verdad, ninguna categoría empató y TODO caía en el error
 	// "el front todavía no sabe a qué extractor mandarla".
+	// Ojo: estar activo alcanza para IDENTIFICARLO, pero ya no para procesarlo
+	// — desde el 2026-09-14 además hay que estar calibrado. Ese corte va más
+	// abajo, después de anotar `tipoDetectado`, para poder nombrar el tipo en
+	// el aviso en vez de mandarlo al cajón de los desconocidos.
 	const tipo =
 		categoria === CATEGORIA_OTRO
 			? undefined
@@ -296,6 +300,33 @@ async function procesarUno(id: string) {
 		sigueVivo.estado = 'pendiente_revision';
 		sigueVivo.terminadoEn = new Date();
 		sigueVivo.error = `Se identificó como "${tipo.nombre}", pero ese tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde el Módulo de configuración.`;
+		return;
+	}
+
+	if (!tipo.calibradoEn) {
+		// Estar activo ya NO alcanza para procesar (2026-09-14, a pedido
+		// explícito): además hay que haber pasado la calibración de prompts.
+		// Activar solo crea el Custom Extractor en Document AI; hasta que la
+		// calibración termina, nadie ha comprobado que lo que extrae sea
+		// correcto, y mandarle documentos de producción sería confiar en un
+		// extractor sin verificar.
+		//
+		// Se corta AQUÍ y no en la búsqueda del tipo (arriba) a propósito. Si
+		// se filtrara ahí, un tipo sin calibrar caería en `no_configurado`
+		// junto con los desconocidos, y la pantalla diría "no hay tipo
+		// configurado que aplique" — falso: sí lo hay, está activo y el
+		// clasificador lo reconoció bien. Cortando aquí se conserva
+		// `tipoDetectado`, así que el renglón puede nombrar el tipo y decir
+		// exactamente qué le falta.
+		//
+		// Mismo desenlace que el caso de arriba —`pendiente_revision` y no
+		// `fallido`— por la misma razón: el documento SÍ se entendió, lo que
+		// falta es trabajo de configuración, y eso no se arregla reintentando.
+		sigueVivo.estado = 'pendiente_revision';
+		sigueVivo.terminadoEn = new Date();
+		// Corto a propósito: el renglón de la bandeja recorta a dos líneas, y
+		// la mitad accionable ("dónde se arregla") es justo la que se perdía.
+		sigueVivo.error = `Se identificó como "${tipo.nombre}", pero todavía no se ha calibrado. Calíbralo en el Módulo de configuración.`;
 		return;
 	}
 

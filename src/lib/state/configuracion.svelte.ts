@@ -597,12 +597,19 @@ export type TipoDocumentalGuardado = {
 	 *  en la tarjeta de la Biblioteca, entre ofrecer "Calibrar" y mostrar
 	 *  "Activado".
 	 *
-	 *  Es un campo aparte y NO un valor más de `estado` a propósito: `estado`
-	 *  se quedó en `'activo'` en cuanto se publicó a Document AI, y de eso
-	 *  depende el ruteo del pipeline (`pipeline.svelte.ts` busca
-	 *  `estado === 'activo'` para saber a qué extractor mandar un documento).
-	 *  Meter la calibración ahí obligaría a que un tipo publicado pero sin
-	 *  calibrar dejara de recibir documentos, que no es lo que se pidió.
+	 *  Desde el 2026-09-14 también es REQUISITO para procesar: el pipeline
+	 *  exige `estado === 'activo'` **y** `calibradoEn`. Un tipo activo sin
+	 *  calibrar clasifica bien pero no extrae — su documento se va a
+	 *  `pendiente_revision` diciendo qué le falta (ver `pipeline.svelte.ts`).
+	 *  Activar solo crea el Custom Extractor; hasta que la calibración
+	 *  termina, nadie ha comprobado que lo que extrae sea correcto.
+	 *
+	 *  Sigue siendo un campo aparte y NO un valor más de `estado`, aunque
+	 *  ahora los dos hagan falta: `estado` describe qué se publicó a Document
+	 *  AI y `calibradoEn` si se verificó, que son dos hechos distintos y con
+	 *  ciclos de vida distintos (republicar una versión conserva el estado y
+	 *  tira la calibración). Fundirlos obligaría a inventar un orden entre
+	 *  ellos que el dominio no tiene.
 	 *
 	 *  Se BORRA en `crearNuevaVersion`: lo que se calibró fue la versión
 	 *  anterior, y arrastrar la marca haría pasar por calibrada a una
