@@ -66,6 +66,7 @@
 		activarTipoDocumental,
 		archivarTipoDocumental,
 		crearNuevaVersion,
+		marcarCalibrado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
 		cargarTipoDocumental,
@@ -333,6 +334,38 @@
 		// (todo revisado), y "Continuar" se vería habilitado un instante antes
 		// de que la extracción nueva ni siquiera empiece.
 		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
+	}
+
+	/** true cuando el prompt en pantalla es el último de la tanda. Es lo que
+	 *  decide si "Continuar" avanza al siguiente o cierra la calibración. */
+	const esUltimoPrompt = $derived(promptsDe !== null && promptActual === promptsDe.cantidad);
+
+	/**
+	 * El ÚLTIMO "Continuar" (2026-09-14, a pedido explícito). Cierra la
+	 * calibración: deja constancia de que este tipo ya se probó —lo que cambia
+	 * su tarjeta de ofrecer "Calibrar" a mostrar "Activado"— y regresa al
+	 * listado de tipos documentales.
+	 *
+	 * Esto llena el hueco que `avanzarPrompt` documentaba como "sin definir":
+	 * qué pasa al terminar el último prompt cuando SÍ hubo alguno adecuado. El
+	 * caso contrario no llega aquí — si ninguno alcanzó el umbral, el pie es
+	 * otro (`calibracionSinExito`) y ni siquiera ofrece "Continuar".
+	 *
+	 * Reusa `salirDeRevisionDePrompts` en vez de repetir el reseteo: son el
+	 * mismo destino, y tener dos copias las dejaría libres de divergir.
+	 */
+	function terminarCalibracion() {
+		if (promptsDe === null) return;
+		marcarCalibrado(promptsDe.tipoId);
+		salirDeRevisionDePrompts();
+	}
+
+	/** Onclick único de "Continuar": en los prompts intermedios avanza, y en el
+	 *  último cierra la calibración. Una sola función y no dos botones para que
+	 *  el pie no pueda quedar mostrando los dos, o ninguno. */
+	function continuarRevision() {
+		if (esUltimoPrompt) terminarCalibracion();
+		else avanzarPrompt();
 	}
 
 	/** Se incrementa cada vez que `calibrarNuevamente` reinicia el MISMO
@@ -1535,18 +1568,32 @@
 											Configurado
 										</span>
 
-										<!-- Abre el modal de "Generar prompts de configuración". Lo que
-										     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
-										     (generar prompts no es un concepto del back aún) — ver
-										     `GenerarPrompts.svelte`. -->
-										<Button
-											size="sm"
-											data-testid="generar-prompt"
-											class="h-9.5 shrink-0"
-											onclick={() => (tipoGenerandoPrompts = tipo.id)}
-										>
-											Calibrar
-										</Button>
+										{#if tipo.calibradoEn}
+											<!-- Ya se calibró (2026-09-14, a pedido explícito): el botón deja
+											     su lugar a un rótulo. No es un Button deshabilitado porque no
+											     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
+											     nada que picar. Conserva la altura del botón (`h-9.5`) para
+											     que la tarjeta no brinque al cambiar de estado. -->
+											<span
+												data-testid="tipo-activado"
+												class="flex h-9.5 shrink-0 items-center text-sm font-medium text-green-700"
+											>
+												Activado
+											</span>
+										{:else}
+											<!-- Abre el modal de "Generar prompts de configuración". Lo que
+											     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
+											     (generar prompts no es un concepto del back aún) — ver
+											     `GenerarPrompts.svelte`. -->
+											<Button
+												size="sm"
+												data-testid="generar-prompt"
+												class="h-9.5 shrink-0"
+												onclick={() => (tipoGenerandoPrompts = tipo.id)}
+											>
+												Calibrar
+											</Button>
+										{/if}
 									{:else if activandoId === tipo.id}
 										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
 										     tres llamadas reales a Google (crear el procesador, inicializar
@@ -3103,7 +3150,7 @@
 					<Button
 						data-testid="continuar-evaluacion"
 						disabled={!revisionCompleta}
-						onclick={avanzarPrompt}
+						onclick={continuarRevision}
 					>
 						Continuar
 					</Button>

@@ -592,6 +592,22 @@ export type TipoDocumentalGuardado = {
 	 *  versión se reemplace por una nueva. `null` mientras nunca se ha
 	 *  publicado, o si el tipo se guardó antes de que este campo existiera. */
 	activadoEn: string | null;
+	/** ISO-8601 de cuándo TERMINÓ la calibración de prompts de la versión
+	 *  vigente, o `null` si todavía no se ha calibrado. Es lo que distingue,
+	 *  en la tarjeta de la Biblioteca, entre ofrecer "Calibrar" y mostrar
+	 *  "Activado".
+	 *
+	 *  Es un campo aparte y NO un valor más de `estado` a propósito: `estado`
+	 *  se quedó en `'activo'` en cuanto se publicó a Document AI, y de eso
+	 *  depende el ruteo del pipeline (`pipeline.svelte.ts` busca
+	 *  `estado === 'activo'` para saber a qué extractor mandar un documento).
+	 *  Meter la calibración ahí obligaría a que un tipo publicado pero sin
+	 *  calibrar dejara de recibir documentos, que no es lo que se pidió.
+	 *
+	 *  Se BORRA en `crearNuevaVersion`: lo que se calibró fue la versión
+	 *  anterior, y arrastrar la marca haría pasar por calibrada a una
+	 *  configuración que nadie probó. */
+	calibradoEn: string | null;
 	/** Versiones anteriores a la vigente, más reciente primero. Detrás de
 	 *  "Listar versiones anteriores" en la Biblioteca. Vacío para cualquier
 	 *  tipo que nunca se haya re-publicado. */
@@ -822,6 +838,11 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 					typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
 				ejemploDocumental: d.ejemploDocumental === true,
 				activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
+				// Lo guardado antes de que existiera este campo cae en null, o sea
+				// "sin calibrar": un tipo viejo vuelve a ofrecer "Calibrar", que es
+				// el lado seguro — darlo por calibrado sin que nadie lo haya hecho
+				// sería afirmar algo que no ocurrió.
+				calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 				historialVersiones: Array.isArray(d.historialVersiones)
 					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 					: [],
@@ -899,6 +920,7 @@ export function guardarTipoDocumental(): string | null {
 			procesadorDisplayName: '',
 			ejemploDocumental: false,
 			activadoEn: null,
+			calibradoEn: null,
 			historialVersiones: [],
 			versionEnEdicion: null,
 			documentosEjemplo: [],
@@ -1274,6 +1296,28 @@ export function crearNuevaVersion(id: string): boolean {
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
 	tipo.estado = 'borrador';
+	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
+	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
+	tipo.calibradoEn = null;
+	guardarBiblioteca();
+	return true;
+}
+
+/**
+ * Cierra la calibración de prompts: marca el tipo como calibrado, que es lo
+ * que hace que su tarjeta cambie el botón "Calibrar" por el rótulo "Activado".
+ *
+ * Lo llama el ÚLTIMO "Continuar" de la pantalla de revisión, y solo cuando al
+ * menos un prompt alcanzó el umbral — el caso en que ninguno lo alcanza tiene
+ * su propio pie ("Calibrar nuevamente" / "Cargar documento") y no llega aquí.
+ *
+ * No toca `estado` ni Document AI: el procesador ya existía desde "Activar".
+ * Lo único que cambia es que ahora consta que su configuración se probó.
+ */
+export function marcarCalibrado(id: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo || tipo.estado !== 'activo') return false;
+	tipo.calibradoEn = new Date().toISOString();
 	guardarBiblioteca();
 	return true;
 }
