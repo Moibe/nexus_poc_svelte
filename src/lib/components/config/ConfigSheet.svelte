@@ -1505,7 +1505,11 @@
 									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
 									     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
 									     se puede leer del volcado —es una instancia de componente— así
-									     que "Activo" es una suposición mía.
+									     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
+									     2026-09-14, cuando se pidió que dijera "Configurado": el
+									     estado interno del tipo SIGUE siendo `activo` —la clave, el
+									     testid y el botón "Activar" no cambiaron—, solo cambia la
+									     palabra que ve el usuario.
 									     NO se implementó el estado intermedio "Validando configuración..."
 									     que aparece en una de las capturas: no hay nada que validar sin
 									     el back, y una animación de espera sobre trabajo que nadie está
@@ -1527,7 +1531,7 @@
 											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
 										>
 											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-											Activo
+											Configurado
 										</span>
 
 										<!-- Abre el modal de "Generar prompts de configuración". Lo que
