@@ -1522,8 +1522,9 @@
 											Eliminando...
 										</Button>
 									{:else if tipo.estado === 'activo'}
-										<!-- Chip + "Generar prompt", según la captura compartida el
-										     2026-09-06. El chip ganó un punto verde y dejó su ancho fijo
+										<!-- Chip + botón de acción, según la captura compartida el
+										     2026-09-06 (ahí el botón decía "Generar prompt"; el 2026-09-14
+										     se renombró a "Calibrar"). El chip ganó un punto verde y dejó su ancho fijo
 										     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
 										     calculado para solo el texto lo apretaba. -->
 										<span
@@ -1544,7 +1545,7 @@
 											class="h-9.5 shrink-0"
 											onclick={() => (tipoGenerandoPrompts = tipo.id)}
 										>
-											Generar prompt
+											Calibrar
 										</Button>
 									{:else if activandoId === tipo.id}
 										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
