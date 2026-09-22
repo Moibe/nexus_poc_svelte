@@ -66,6 +66,7 @@
 		activarTipoDocumental,
 		archivarTipoDocumental,
 		crearNuevaVersion,
+		cancelarNuevaVersion,
 		marcarCalibrado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
@@ -748,6 +749,12 @@
 	// siguen llenos. Vaciarlo es una acción explícita ("Cancelar").
 	$effect(() => {
 		if (!open) {
+			// Red de seguridad: hoy todas las salidas del asistente pasan por
+			// `cerrarNivel` o por el pie, pero si alguna vez algo apaga `open`
+			// estando en el wizard, la nueva versión a medias se quedaría
+			// colgada y el tipo desconfigurado. `untrack` porque esto lee el
+			// borrador y no queremos que el efecto dependa de él.
+			untrack(() => soltarNuevaVersionSiIntacta());
 			vista = 'biblioteca';
 			avisoExito = false;
 			tituloError = '';
@@ -778,6 +785,11 @@
 			// cantidad, no solo cambia de vista.
 			salirDeRevisionDePrompts();
 		} else if (vista === 'wizard' || vista === 'calibracion') {
+			// Salir del asistente sin haber tocado nada deshace la nueva versión
+			// que abrirlo había empezado. Escape y el clic fuera también entran
+			// por aquí (ver el comentario del `Sheet.Root`), así que con cubrir
+			// esta función quedan cubiertas las tres salidas.
+			if (vista === 'wizard') soltarNuevaVersionSiIntacta();
 			vista = 'biblioteca';
 		} else {
 			open = false;
@@ -786,7 +798,10 @@
 
 	function regresar() {
 		if (borrador.paso > 1) borrador.paso -= 1;
-		else vista = 'biblioteca';
+		else {
+			soltarNuevaVersionSiIntacta();
+			vista = 'biblioteca';
+		}
 	}
 
 	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
@@ -871,6 +886,49 @@
 	 * (`activarTipoDocumental`), que para un tipo ya antes activo crea un
 	 * Custom Extractor propio en vez de adoptar el vigente.
 	 */
+	/**
+	 * La nueva versión que se está editando, con la HUELLA del borrador tal
+	 * como se cargó. Existe para poder distinguir, al salir del asistente,
+	 * entre "abrí y cerré sin tocar nada" y "edité algo y me salí".
+	 *
+	 * `crearNuevaVersion` muta el registro en el acto (lo pasa a `borrador` y
+	 * le quita la calibración), y antes del 2026-09-22 salir con el tache no
+	 * deshacía nada: el tipo se quedaba desconfigurado para siempre aunque su
+	 * procesador siguiera publicado y vivo. Esto es lo que permite deshacerlo.
+	 */
+	let nuevaVersionEnCurso = $state<{ id: string; huella: string } | null>(null);
+
+	/** Lo que cuenta como "haber editado". Solo los datos que el asistente
+	 *  puede cambiar; el paso en el que se quedó NO entra, porque navegar
+	 *  entre pasos no es editar. */
+	function huellaDelBorrador(): string {
+		return JSON.stringify({
+			nombre: borrador.nombre,
+			descripcion: borrador.descripcion,
+			vertical: borrador.vertical,
+			campos: $state.snapshot(borrador.campos)
+		});
+	}
+
+	/**
+	 * Al salir del asistente: si se había abierto para una nueva versión y el
+	 * borrador sigue idéntico a como se cargó, se deshace todo y el tipo queda
+	 * como estaba (activo, con su calibración).
+	 *
+	 * Si SÍ editó algo no se toca nada: su trabajo sigue en el borrador y el
+	 * tipo sigue en edición, retomable desde "Editar". Deshacer ahí le borraría
+	 * lo que acaba de escribir, que sería un bug peor que el que esto arregla.
+	 */
+	function soltarNuevaVersionSiIntacta() {
+		const enCurso = nuevaVersionEnCurso;
+		if (!enCurso) return;
+		nuevaVersionEnCurso = null;
+		if (huellaDelBorrador() !== enCurso.huella) return;
+		// El borrador se limpia junto con el registro: dejarlo vivo haría que
+		// `hayBorrador()` siguiera en true por una edición que ya se deshizo.
+		if (cancelarNuevaVersion(enCurso.id)) limpiarBorrador();
+	}
+
 	function iniciarNuevaVersion(id: string) {
 		if (crearNuevaVersion(id) && cargarTipoDocumental(id)) {
 			avisoExito = false;
@@ -882,6 +940,9 @@
 			// (`crearNuevaVersion` los copia), así que el formulario arranca
 			// oculto salvo que de verdad no traiga ninguno.
 			mostrarFormularioCampo = borrador.campos.length === 0;
+			// Después de cargar: la huella tiene que ser la del borrador YA
+			// puesto, que es contra lo que se va a comparar al salir.
+			nuevaVersionEnCurso = { id, huella: huellaDelBorrador() };
 			vista = 'wizard';
 		}
 	}
@@ -1054,6 +1115,12 @@
 				borrador.paso = 1;
 				return;
 			}
+
+			// Terminar el asistente es una decisión explícita: aunque no se haya
+			// cambiado un solo campo, la nueva versión se queda en pie y NO se
+			// deshace. Soltar la bandera aquí evita que una salida posterior la
+			// encuentre vieja y cancele algo que el usuario sí guardó.
+			nuevaVersionEnCurso = null;
 
 			// El borrador se limpia para que el próximo "Nuevo tipo documental"
 			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.

@@ -537,6 +537,12 @@ export type VersionPublicada = {
 	procesadorVersion: string;
 	/** ISO-8601 de cuándo se publicó ESTA versión (no cuándo se reemplazó). */
 	publicadoEn: string;
+	/** Si ESTA versión llegó a calibrarse, y cuándo. Lo necesita
+	 *  `cancelarNuevaVersion` para devolver el tipo tal como estaba si la
+	 *  edición se abandona sin tocar nada: sin este dato, cancelar dejaría sin
+	 *  calibrar a un tipo que sí lo estaba, y eso ya no es cosmético — un tipo
+	 *  sin calibrar deja de extraer (ver `pipeline.svelte.ts`). */
+	calibradoEn: string | null;
 	campos: CampoBorrador[];
 };
 
@@ -708,6 +714,11 @@ function leerVersionPublicada(v: unknown): VersionPublicada | null {
 		procesadorId: d.procesadorId,
 		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
 		publicadoEn: typeof d.publicadoEn === 'string' ? d.publicadoEn : new Date(0).toISOString(),
+		// Lo guardado antes de que existiera este campo cae en null, o sea "esa
+		// versión no constaba como calibrada". Es el lado seguro: si se cancela
+		// una edición vieja, el tipo pide calibrarse otra vez en vez de darse
+		// por bueno sin que nadie lo haya comprobado.
+		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : []
 	};
 }
@@ -1300,12 +1311,45 @@ export function crearNuevaVersion(id: string): boolean {
 		procesadorId: tipo.procesadorId,
 		procesadorVersion: tipo.procesadorVersion,
 		publicadoEn: tipo.activadoEn ?? tipo.guardadoEn,
+		// Se guarda ANTES de limpiarlo abajo: es lo único que permite devolver
+		// el tipo a como estaba si la edición se abandona sin tocar nada.
+		calibradoEn: tipo.calibradoEn,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
 	tipo.estado = 'borrador';
 	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
 	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
 	tipo.calibradoEn = null;
+	guardarBiblioteca();
+	return true;
+}
+
+/**
+ * Deshace `crearNuevaVersion` cuando la edición se abandona sin haber tocado
+ * nada: devuelve el tipo a `activo`, le regresa su `calibradoEn` y tira la
+ * foto. Es el reverso exacto, y por eso lee de `versionEnEdicion` en vez de
+ * adivinar: ahí está justo lo que había antes de empezar.
+ *
+ * POR QUÉ HACE FALTA (bug reportado el 2026-09-22). `crearNuevaVersion` muta
+ * el registro en el acto, pero salir del asistente con el tache solo cambiaba
+ * de vista. El tipo se quedaba en `borrador` para siempre: la tarjeta volvía a
+ * ofrecer "Activar" pese a que su procesador seguía publicado y vivo en
+ * Document AI, y —desde que calibrar es requisito— además dejaba de extraer.
+ * O sea que abrir una pantalla y cerrarla apagaba un tipo en producción.
+ *
+ * Quien decide si la edición está "intacta" es el componente, que es el que
+ * conoce el borrador; aquí solo se restaura. Si el usuario SÍ editó algo, no
+ * se llama a esto: su trabajo sigue en el borrador y el tipo sigue en edición.
+ */
+export function cancelarNuevaVersion(id: string): boolean {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	const foto = tipo?.versionEnEdicion;
+	// Sin foto no hay nada que deshacer: o nunca fue "Crear nueva versión", o
+	// ya se publicó (`activarTipoDocumental` la consume y la deja en null).
+	if (!tipo || !foto || tipo.estado !== 'borrador') return false;
+	tipo.estado = 'activo';
+	tipo.calibradoEn = foto.calibradoEn;
+	tipo.versionEnEdicion = null;
 	guardarBiblioteca();
 	return true;
 }
