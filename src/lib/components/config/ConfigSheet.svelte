@@ -67,6 +67,8 @@
 		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
+		estadoBiblioteca,
+		reconocerFallaDeGuardado,
 		marcarCalibrado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
@@ -3242,6 +3244,27 @@
 		{/if}
 	</Sheet.Content>
 </Sheet.Root>
+
+<!-- No se pudo escribir en el navegador. Es un AVISO y no una pregunta: el
+     guardado ya falló, no hay nada que cancelar. Antes esto no existía — el
+     error se perdía en un `catch` vacío y la pantalla confirmaba guardados que
+     no ocurrían; el usuario se enteraba al refrescar, viendo trabajo
+     desaparecido.
+     El mensaje nombra la causa más probable y la salida concreta, porque la
+     genérica ("algo salió mal") dejaría a alguien con la cuota llena sin saber
+     qué hacer. Mientras no exista el almacén del servidor, borrar un ejemplo
+     documental es la única forma real de liberar espacio: son ellos los que
+     pesan, el resto del catálogo son unos pocos KB. -->
+<ConfirmarAccion
+	abierto={estadoBiblioteca.falloAlGuardar}
+	variante="destructivo"
+	soloAviso
+	titulo="No se pudo guardar en este navegador"
+	mensaje="Lo último que hiciste NO quedó guardado. Suele ser que se llenó el espacio del navegador, y lo que más ocupa son los documentos de ejemplo. Quita alguno desde su tipo documental y vuelve a intentarlo."
+	etiquetaConfirmar="Entendido"
+	onConfirmar={reconocerFallaDeGuardado}
+	onCerrar={reconocerFallaDeGuardado}
+/>
 
 <!-- Vive FUERA del Sheet a propósito: se porta a sí mismo al <body> y sube a
      z-60 para quedar encima del panel (z-50). Montarlo dentro del árbol del

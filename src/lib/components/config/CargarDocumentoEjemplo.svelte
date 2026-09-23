@@ -64,7 +64,31 @@
 		guardando = false;
 	}
 
+	/** Los mismos 20 MB que ya usan `bandeja.svelte.ts` y `DocumentoParaPrompts`.
+	 *  Se copian en vez de exportarlos: son constantes de presentación de cada
+	 *  pantalla, no API compartida — mismo criterio que el resto del módulo. */
+	const MAX_MB = 20;
+	const MAX_BYTES = MAX_MB * 1024 * 1024;
+	const EXTENSIONES = ['pdf', 'jpg', 'jpeg', 'png'];
+
 	async function cargarArchivo(f: File) {
+		// Estas dos guardias no existían, y este era el ÚNICO de los tres
+		// dropzones sin ellas: el "Max 20 MB" de abajo era solo texto en
+		// pantalla y el `accept` del input no filtra lo que se suelta
+		// arrastrando. Importa más aquí que en los otros dos, porque lo que se
+		// suelta aquí termina en base64 dentro de localStorage: es el camino
+		// más corto para reventar la cuota.
+		const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+		if (!EXTENSIONES.includes(ext)) {
+			limpiarArchivo();
+			errorCarga = `Formato no admitido. Se aceptan ${EXTENSIONES.join(', ').toUpperCase()}.`;
+			return;
+		}
+		if (f.size > MAX_BYTES) {
+			limpiarArchivo();
+			errorCarga = `El archivo pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el límite es ${MAX_MB} MB.`;
+			return;
+		}
 		limpiarArchivo();
 		archivo = f;
 		esPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');

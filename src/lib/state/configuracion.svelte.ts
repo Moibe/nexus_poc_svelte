@@ -875,17 +875,58 @@ function leerBiblioteca(): TipoDocumentalGuardado[] {
 
 export const tiposDocumentales = $state<TipoDocumentalGuardado[]>(leerBiblioteca());
 
-function guardarBiblioteca() {
+/**
+ * ¿Pudo escribirse la biblioteca la última vez que se intentó?
+ *
+ * Existe porque `guardarBiblioteca()` tiene QUINCE puntos de llamada —activar,
+ * calibrar, recortar, archivar, publicar versión…— y cambiarles la firma a
+ * todos para propagar un booleano sería mucho ruido para un caso que además
+ * es global: cuando la cuota se llena, fallan todos a la vez. Una bandera que
+ * todos alimentan y que la pantalla observa cuesta mucho menos y no se puede
+ * olvidar en un callsite nuevo.
+ *
+ * Es `$state` de módulo: `ConfigSheet` lo lee en un `$effect` y levanta el
+ * aviso. Nadie fuera de este módulo debe escribirlo; `reconocerFallaDeGuardado`
+ * es la única forma de bajarlo.
+ */
+export const estadoBiblioteca = $state<{ falloAlGuardar: boolean }>({ falloAlGuardar: false });
+
+/** La baja la pantalla cuando ya avisó, para que el mismo fallo no reabra el
+ *  diálogo en bucle. El siguiente intento fallido lo vuelve a levantar. */
+export function reconocerFallaDeGuardado() {
+	estadoBiblioteca.falloAlGuardar = false;
+}
+
+/**
+ * Escribe la biblioteca completa en localStorage. Devuelve si lo logró.
+ *
+ * ANTES ESTO MENTÍA. El `catch` estaba vacío y nadie miraba el resultado, así
+ * que un `QuotaExceededError` se perdía en silencio: la pantalla confirmaba
+ * guardados que no ocurrían y el usuario se enteraba al refrescar, viendo
+ * trabajo desaparecido. Y llenar la cuota es fácil de verdad — el producto
+ * recomienda 3 ejemplos por tipo, base64 infla 4/3 y localStorage cuenta
+ * UTF-16 a 2 bytes por carácter, o sea ~2.67 bytes de cuota por byte de
+ * archivo.
+ */
+function guardarBiblioteca(): boolean {
 	const store = almacen();
-	if (!store) return;
+	// Sin `localStorage` (renderizado en servidor) no hay nada que escribir y
+	// tampoco nada que reportar: no es un fallo, es que no hay navegador.
+	if (!store) return true;
 	try {
 		if (tiposDocumentales.length === 0) {
 			store.removeItem(LLAVE_BIBLIOTECA);
-			return;
+		} else {
+			store.setItem(LLAVE_BIBLIOTECA, JSON.stringify($state.snapshot(tiposDocumentales)));
 		}
-		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify($state.snapshot(tiposDocumentales)));
+		estadoBiblioteca.falloAlGuardar = false;
+		return true;
 	} catch {
-		/* cuota llena o almacenamiento bloqueado; ver guardarBorrador */
+		// Cuota llena, almacenamiento bloqueado o modo privado. No se distingue
+		// el motivo a propósito: para quien mira la pantalla las tres cosas
+		// significan lo mismo —no se guardó— y el remedio es el mismo.
+		estadoBiblioteca.falloAlGuardar = true;
+		return false;
 	}
 }
 
@@ -1439,7 +1480,16 @@ export function agregarDocumentoEjemplo(
 	if (!tipo) return null;
 	const id = idDocumentoEjemplo();
 	tipo.documentosEjemplo.push({ ...documento, id, guardadoEn: new Date().toISOString() });
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// No persistió. Se deshace el push y se devuelve null: antes se devolvía
+		// el id igual, y con eso la pantalla cerraba el modal y confirmaba un
+		// guardado que no ocurrió. Deshacerlo además evita lo peor — que la
+		// memoria muestre un ejemplo que el disco no tiene y que desaparezca
+		// al refrescar sin que nadie lo haya borrado.
+		const i = tipo.documentosEjemplo.findIndex((d) => d.id === id);
+		if (i !== -1) tipo.documentosEjemplo.splice(i, 1);
+		return null;
+	}
 	return id;
 }
 
