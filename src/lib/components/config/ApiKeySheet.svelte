@@ -40,6 +40,7 @@
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import { generarApiKey } from '$lib/apiKeys/formato';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -320,6 +321,44 @@
 			     capturas su línea divisoria arranca donde termina el sidebar. -->
 			<div class="flex min-h-0 flex-1 flex-col">
 				<div class="flex-1 overflow-y-auto p-8">
+					<!-- El aviso de éxito (captura del 2026-09-24). Es el MISMO componente
+					     visual que el "Nuevo tipo documental agregado." del módulo hermano —
+					     borde y degradado verdes, `BadgeCheck` relleno, `green-700` para el
+					     texto (el 600 sobre `green-50` da ~3.1:1 y AA pide 4.5:1; allá está la
+					     nota completa)—, así que no se inventa nada: se copia.
+
+					     Va ARRIBA del secret, no debajo: confirma lo que acabas de hacer, y lo
+					     que sigue —copiar la llave— es la acción pendiente. Un aviso debajo se
+					     lee cuando ya te ibas.
+
+					     El contenedor con `aria-live` va SIEMPRE montado y la bandera controla
+					     la tarjeta de adentro: una región que se monta junto con su texto no se
+					     anuncia, el lector tiene que estar observándola de antes. Vacío no mide
+					     nada, así que no separa nada en las otras dos vistas. -->
+					<div role="status" aria-live="polite">
+						{#if vista === 'creada'}
+							<div
+								data-testid="aviso-api-creada"
+								class="mb-6 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
+							>
+								<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
+								<div class="min-w-0">
+									<p class="text-sm font-semibold text-green-700">API creada correctamente</p>
+									<!-- Texto literal de la captura. OJO con lo que promete: "ya está
+									     disponible para realizar solicitudes autenticadas" todavía es
+									     falso — `nexus_back` no conoce estas llaves (ver la nota 1 del
+									     encabezado de este archivo). Se deja el copy del diseño porque
+									     describe el producto terminado, no la demo; si esto se enseña
+									     fuera del equipo, vale ajustarlo. -->
+									<p class="mt-1 max-w-2xl text-xs text-green-700">
+										La credencial se generó correctamente y ya está disponible para realizar
+										solicitudes autenticadas en NexusDoc.
+									</p>
+								</div>
+							</div>
+						{/if}
+					</div>
+
 					{#if vista === 'vacio'}
 						<!-- Estado vacío. `EmptyState` es el mismo componente de los paneles
 						     del Home —ícono en cuadro de 50px, título y descripción—, que es
