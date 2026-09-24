@@ -9,6 +9,7 @@
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
+	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -19,6 +20,9 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 	// El sheet se monta aquí junto al menú que lo abre; se renderiza en un portal
 	// sobre todo el documento, así que no importa que viva dentro del header.
 	let configAbierto = $state(false);
+
+	/** El modal de "Configuración de API Key", hermano del anterior. */
+	let apiKeyAbierto = $state(false);
 
 	// Algo fuera del header puede pedir que se abra (hoy: "Configurar" en una
 	// fila del Pipeline documental). Aquí SOLO se abre; la bandera la apaga
@@ -50,9 +54,8 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 		{ etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
 		// Agregada el 2026-09-23. Va al final del menú, que es donde la pone la
 		// captura del diseño, y con la pieza de rompecabezas que ahí se ve —no una
-		// llave, aunque semánticamente pegaría más. Todavía sin destino: primero el
-		// renglón, la sección viene después.
-		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: undefined }
+		// llave, aunque semánticamente pegaría más.
+		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) }
 	];
 </script>
 
@@ -138,3 +141,4 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 </header>
 
 <ConfigSheet bind:open={configAbierto} />
+<ApiKeySheet bind:open={apiKeyAbierto} />
