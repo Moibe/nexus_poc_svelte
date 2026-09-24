@@ -40,6 +40,7 @@
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
+	import { generarApiKey } from '$lib/apiKeys/formato';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -100,48 +101,11 @@
 		}
 	}
 
-	const ALFABETO = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-
-	/** Cadena aleatoria en base62.
-	 *
-	 *  `crypto.getRandomValues` SÍ existe en contexto inseguro: el veto escrito en
-	 *  `bandeja.svelte.ts` y `configuracion.svelte.ts` es a `crypto.randomUUID` y a
-	 *  `crypto.subtle`, que son las que NO están definidas en el server de CSI
-	 *  (HTTP plano por IP) y tronaron la app el 2026-08-18. Aun así se verifica
-	 *  antes de llamarla y hay plan B: este proyecto ya se quemó dos veces dando
-	 *  por hecho que una API de `crypto` estaba ahí.
-	 *
-	 *  El rechazo de bytes >= 248 no es adorno: 256 % 62 = 8, así que con
-	 *  `byte % 62` a secas las primeras ocho letras del alfabeto saldrían ~1.6%
-	 *  más seguido que el resto. */
-	function azar(largo: number): string {
-		const hayCrypto =
-			typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function';
-		let salida = '';
-		while (salida.length < largo) {
-			// Se piden de más porque el rechazo descarta algunos bytes.
-			const bytes = new Uint8Array((largo - salida.length) * 2);
-			if (hayCrypto) crypto.getRandomValues(bytes);
-			else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-			for (const b of bytes) {
-				if (b >= 248) continue;
-				salida += ALFABETO[b % 62];
-				if (salida.length === largo) break;
-			}
-		}
-		return salida;
-	}
-
-	/** La forma sale del ejemplo del diseño: `nxdoc_live_<4>_sk_<32>`. El dibujo
-	 *  trae 31 caracteres en el último tramo; se usan 32, que es el número redondo
-	 *  y lo que haría un proveedor real: un string dibujado no es una
-	 *  especificación. */
-	function generarSecret(): string {
-		return `nxdoc_live_${azar(4)}_sk_${azar(32)}`;
-	}
-
+	/** El formato de la llave NO vive aquí: lo define `$lib/apiKeys/formato`,
+	 *  que es la especificación que `nexus_back` va a tener que reimplementar el
+	 *  día que las valide. Esta pantalla solo la pide y la muestra. */
 	function crearApiKey() {
-		secret = generarSecret();
+		secret = generarApiKey().secret;
 		// El borrador se limpia en cuanto la llave SE CREA. Si no, la siguiente
 		// alta nace con el nombre y la descripción de la anterior — y ahí el
 		// argumento de "no perder lo escrito" ya no aplica: lo escrito se usó.
