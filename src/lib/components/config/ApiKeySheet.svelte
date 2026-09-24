@@ -278,8 +278,31 @@
 	 *  derecha, no una navegación: `null` significa "muéstralas todas". */
 	let seleccionadaId = $state<string | null>(null);
 
+	/** Las vivas arriba, las muertas al fondo, y dentro de cada grupo la más
+	 *  reciente primero.
+	 *
+	 *  El orden del ESTADO es el que ya traía la captura (Activa, Expirada,
+	 *  Revocada), así que no se inventa un criterio: se respeta ese. Lo que sí es
+	 *  decisión nuestra es que el estado pese MÁS que la fecha — antes mandaba
+	 *  solo la fecha, y una llave revocada ayer quedaba encima de la única que
+	 *  sirve. Quien abre esta pantalla casi siempre viene por una llave viva.
+	 *
+	 *  Se ordena una COPIA: `apiKeys` es el arreglo persistido y `sort` muta en
+	 *  el lugar, así que ordenarlo aquí cambiaría también el orden guardado. */
+	const PESO_ESTADO = { activa: 0, expirada: 1, revocada: 2 };
+
+	const llavesOrdenadas = $derived(
+		[...apiKeys].sort(
+			(a, b) =>
+				PESO_ESTADO[estadoDe(a)] - PESO_ESTADO[estadoDe(b)] ||
+				Date.parse(b.creadaEn) - Date.parse(a.creadaEn)
+		)
+	);
+
 	const llavesVisibles = $derived(
-		seleccionadaId === null ? apiKeys : apiKeys.filter((k) => k.id === seleccionadaId)
+		seleccionadaId === null
+			? llavesOrdenadas
+			: llavesOrdenadas.filter((k) => k.id === seleccionadaId)
 	);
 
 	/** Se prende al revocar con éxito y se apaga al salir del listado o cerrar,
@@ -454,7 +477,9 @@
 				     rama resaltada. -->
 				{#if apiKeys.length > 0}
 					<ul class="mt-4">
-						{#each apiKeys as llave (llave.id)}
+						<!-- Mismo orden que la columna derecha, a propósito: dos listas de lo
+						     mismo en distinto orden se leen como dos listas distintas. -->
+						{#each llavesOrdenadas as llave (llave.id)}
 							<li class="relative flex h-9.5 items-center pl-11">
 								<span class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
 								></span>

@@ -46,6 +46,52 @@
  * ni argon2: esos existen para defender contraseñas humanas, que tienen poca
  * entropía y se atacan por diccionario. Contra 155 bits aleatorios no hay
  * diccionario que sirva, y un hash lento solo costaría latencia en cada request.
+ *
+ * CÓMO SE VERIFICA UNA LLAVE (contrato del servidor)
+ *
+ * Esto NO lo puede hacer el front, y conviene decirlo con todas sus letras: que
+ * esta pantalla muestre "Revocada" no impide nada. Mientras la comprobación no
+ * viva en `nexus_back`, una llave revocada seguiría funcionando el día que algo
+ * empiece a aceptarlas. La revocación es un hecho registrado, no una defensa.
+ *
+ * El orden importa y es de más barato a más caro: los tres primeros pasos
+ * descartan basura sin tocar la base.
+ *
+ *   1. Forma y checksum (`validarFormato`). Sin base de datos de por medio.
+ *   2. Sacar el id (`idDe`) y traer ESA fila por índice. No recorrer todas las
+ *      llaves hasheando: para eso existe el id.
+ *   3. Comparar el hash del secret recibido contra el guardado, en tiempo
+ *      CONSTANTE. Un `==` normal corta en el primer byte distinto, y esa
+ *      diferencia de microsegundos es medible: deja adivinar el hash byte por
+ *      byte. En Python es `hmac.compare_digest`.
+ *   4. Rechazar si está revocada (`revocada_en` no es nulo).
+ *   5. Rechazar si expiró (`expira_en` <= ahora).
+ *
+ * Los cinco devuelven el MISMO error al cliente (401, "API key inválida"): decir
+ * "existe pero está revocada" le confirma a quien prueba llaves que acertó una.
+ * El motivo real va al log, no a la respuesta.
+ *
+ * EN PYTHON, listo para pegar:
+ *
+ *   import hashlib, hmac
+ *   from datetime import datetime, timezone
+ *
+ *   def verificar(secret: str, buscar_por_id) -> bool:
+ *       if not validar_formato(secret):          # paso 1
+ *           return False
+ *       fila = buscar_por_id(id_de(secret))      # paso 2
+ *       if fila is None:
+ *           return False
+ *       esperado = hashlib.sha256(secret.encode()).hexdigest()
+ *       if not hmac.compare_digest(esperado, fila.secret_hash):   # paso 3
+ *           return False
+ *       if fila.revocada_en is not None:         # paso 4
+ *           return False
+ *       return fila.expira_en > datetime.now(timezone.utc)        # paso 5
+ *
+ * Y lo que la tabla guarda por llave: `id` (el tramo público, INDEXADO),
+ * `secret_hash`, `nombre`, `descripcion`, `creada_en`, `expira_en`,
+ * `revocada_en`. El secret NUNCA.
  */
 import { sha256 } from 'js-sha256';
 
