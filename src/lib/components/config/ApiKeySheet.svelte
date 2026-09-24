@@ -47,18 +47,16 @@
 	let nombre = $state('');
 	let descripcion = $state('');
 
-	/** Las opciones de expiración son una SUPOSICIÓN: la captura solo alcanza a
-	 *  mostrar "1 día" con el desplegable cerrado. Este juego es el habitual en
-	 *  proveedores de API keys. A propósito NO hay "sin expiración": el rótulo
-	 *  de abajo promete una fecha de vencimiento, y una llave eterna lo dejaría
-	 *  sin nada que decir. Vale confirmarlo con el UX. */
+	/** Las cuatro opciones del desplegable abierto (captura del 2026-09-23). No
+	 *  hay "sin expiración", lo que encaja con el rótulo de abajo: siempre hay
+	 *  una fecha de vencimiento que mostrar.
+	 *  Hasta esa captura esta lista era una suposición y traía además 60 días y
+	 *  1 año; se quitaron por no existir en el diseño. */
 	const EXPIRACIONES = [
 		{ value: '1', label: '1 día' },
 		{ value: '7', label: '7 días' },
 		{ value: '30', label: '30 días' },
-		{ value: '60', label: '60 días' },
-		{ value: '90', label: '90 días' },
-		{ value: '365', label: '1 año' }
+		{ value: '90', label: '90 días' }
 	];
 	let expiracion = $state('1');
 
