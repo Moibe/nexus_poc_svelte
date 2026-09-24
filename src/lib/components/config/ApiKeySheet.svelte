@@ -43,6 +43,8 @@
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import CalendarDays from '@lucide/svelte/icons/calendar-days';
+	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import Ban from '@lucide/svelte/icons/ban';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
@@ -541,19 +543,37 @@
 													</button>
 												{/snippet}
 											</DropdownMenu.Trigger>
-											<!-- Un solo renglón, y no es pereza: revocar es lo ÚNICO que se
-											     puede hacer con una llave ya emitida. No se puede "editar"
-											     un secret que nadie guardó, y borrarla del listado dejaría
-											     de contar que existió. Se apaga cuando la llave ya no está
-											     activa: revocar algo vencido o ya revocado no cambia nada. -->
-											<DropdownMenu.Content align="end" class="w-56">
+											<!-- Los dos renglones de la captura del 2026-09-24. Mismo
+											     formato que el menú `⋮` del módulo hermano: renglón de
+											     46px, ícono de 16 en gris y rótulo. -->
+											<DropdownMenu.Content align="end" class="w-56 p-3">
+												<!-- "Métricas" NO tiene a dónde ir todavía: no existe la
+												     pantalla, y sobre todo no existe el dato — ninguna llave
+												     se ha usado nunca porque `nexus_back` no las conoce, que
+												     es la misma razón por la que el renglón de una llave
+												     revocada no dice "Último uso". Se deja SIN `onSelect`, no
+												     con uno vacío, para que al leer el código sea obvio que
+												     falta cablearlo — mismo criterio que "Generar prompt" en
+												     la Biblioteca. -->
+												<DropdownMenu.Item
+													data-testid="metricas-api-key"
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												>
+													<ChartLine class="size-4 text-muted-foreground" />
+													<span>Métricas</span>
+												</DropdownMenu.Item>
+												<!-- Rojo porque es irreversible, y apagado cuando la llave ya
+												     no está activa: revocar algo vencido o ya revocado no
+												     cambia nada. El ícono es una aproximación — en la captura
+												     no se alcanza a distinguir cuál es. -->
 												<DropdownMenu.Item
 													data-testid="revocar-api-key"
 													disabled={estado !== 'activa'}
-													class="text-destructive data-highlighted:text-destructive"
+													class="h-11.5 gap-3 px-2 whitespace-nowrap text-destructive data-highlighted:text-destructive"
 													onSelect={() => (llaveARevocar = llave)}
 												>
-													Revocar API Key
+													<Ban class="size-4" />
+													<span>Revocar</span>
 												</DropdownMenu.Item>
 											</DropdownMenu.Content>
 										</DropdownMenu.Root>
