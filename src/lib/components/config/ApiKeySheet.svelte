@@ -532,13 +532,25 @@
 										data-testid="tarjeta-api-key"
 										class="flex items-center gap-3 rounded-xl border border-border px-4 py-3"
 									>
+										<!-- Una llave que ya no sirve tiene que LEERSE así de un vistazo,
+										     no solo por su chip: revocada y expirada bajan el ícono y el
+										     nombre a gris. No se usa `opacity` sobre la tarjeta entera
+										     porque lavaría también el chip, que es justo lo que hay que
+										     poder leer, y el menú `⋮`, que sigue sirviendo (Métricas de una
+										     llave muerta es una pregunta válida). -->
 										<span
-											class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground"
+											class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card {estado === 'activa'
+												? 'text-foreground'
+												: 'text-muted-foreground'}"
 										>
 											<KeyRound class="size-4" />
 										</span>
 										<div class="min-w-0 flex-1">
-											<p class="truncate text-base font-medium text-foreground">{llave.nombre}</p>
+											<p class="truncate text-base font-medium {estado === 'activa'
+												? 'text-foreground'
+												: 'text-muted-foreground'}">
+												{llave.nombre}
+											</p>
 											<p class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
 												<span class="truncate">{PREFIJO} | {fechaHora(llave.creadaEn)}</span>
 												<CalendarDays class="size-3.5 shrink-0" aria-hidden="true" />
