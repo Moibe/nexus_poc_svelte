@@ -1357,11 +1357,20 @@ export function crearNuevaVersion(id: string): boolean {
 		calibradoEn: tipo.calibradoEn,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
+	const calibradoPrevio = tipo.calibradoEn;
 	tipo.estado = 'borrador';
 	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
 	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
 	tipo.calibradoEn = null;
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Sin persistir, la pantalla mostraría el tipo "en edición" —tarjeta con
+		// "Activar", y sin calibrar deja de extraer— mientras el disco lo sigue
+		// teniendo activo. Se revierte para que memoria y disco digan lo mismo.
+		tipo.versionEnEdicion = null;
+		tipo.estado = 'activo';
+		tipo.calibradoEn = calibradoPrevio;
+		return false;
+	}
 	return true;
 }
 
@@ -1409,8 +1418,15 @@ export function cancelarNuevaVersion(id: string): boolean {
 export function marcarCalibrado(id: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo || tipo.estado !== 'activo') return false;
+	const previo = tipo.calibradoEn;
 	tipo.calibradoEn = new Date().toISOString();
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Peor que cosmético: sin revertir, la tarjeta diría "Activado" y el
+		// pipeline empezaría a extraer con un tipo que al refrescar vuelve a
+		// estar sin calibrar.
+		tipo.calibradoEn = previo;
+		return false;
+	}
 	return true;
 }
 
@@ -1426,8 +1442,12 @@ export function marcarCalibrado(id: string): boolean {
 export function alternarEjemploDocumental(id: string, valor: boolean) {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo) return;
+	const previo = tipo.ejemploDocumental;
 	tipo.ejemploDocumental = valor;
-	guardarBiblioteca();
+	// No devuelve nada —nadie mira su resultado— pero sí se revierte: un switch
+	// que se queda prendido en pantalla y aparece apagado al refrescar es
+	// exactamente la clase de mentira que se está cerrando en este módulo.
+	if (!guardarBiblioteca()) tipo.ejemploDocumental = previo;
 }
 
 /**
@@ -1506,9 +1526,19 @@ export function borrarDocumentoEjemplo(idTipo: string, idDocumento: string): boo
 	if (!tipo) return false;
 	const i = tipo.documentosEjemplo.findIndex((d) => d.id === idDocumento);
 	if (i === -1) return false;
+	const docPrevio = tipo.documentosEjemplo[i];
+	const recortesPrevios = tipo.recortesPorDocumento[idDocumento];
 	tipo.documentosEjemplo.splice(i, 1);
 	delete tipo.recortesPorDocumento[idDocumento];
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Un borrado ENCOGE el catálogo, así que la cuota no puede tumbarlo: si
+		// falla es que el almacenamiento está bloqueado del todo (modo privado,
+		// política del navegador). Aun así se revierte, porque el síntoma sería
+		// el mismo de siempre — decir "borrado" y verlo reaparecer al refrescar.
+		tipo.documentosEjemplo.splice(i, 0, docPrevio);
+		if (recortesPrevios) tipo.recortesPorDocumento[idDocumento] = recortesPrevios;
+		return false;
+	}
 	return true;
 }
 
@@ -1574,8 +1604,17 @@ export function guardarRecorteEjemplo(
 export function borrarRecorteEjemplo(idTipo: string, idDocumento: string, nombreCampo: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
+	const previo = tipo.recortesPorDocumento[idDocumento]?.[nombreCampo];
 	delete tipo.recortesPorDocumento[idDocumento]?.[nombreCampo];
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Misma razón que en `borrarDocumentoEjemplo`: encoge, así que solo falla
+		// con el almacenamiento bloqueado — y aun así, decir "borrado" y verlo
+		// volver al refrescar es la mentira que se está cerrando en todo el módulo.
+		if (previo && tipo.recortesPorDocumento[idDocumento]) {
+			tipo.recortesPorDocumento[idDocumento][nombreCampo] = previo;
+		}
+		return false;
+	}
 	return true;
 }
 
@@ -1665,7 +1704,16 @@ export function reordenarTipoDocumental(idArrastrado: string, idDestino: string)
 	const [movido] = tiposDocumentales.splice(desde, 1);
 	const hacia = tiposDocumentales.findIndex((t) => t.id === idDestino);
 	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia, 0, movido);
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Se devuelve a su sitio: un orden que solo existe en pantalla se
+		// desordena solo al refrescar, y el usuario no sabe por qué.
+		const ahora = tiposDocumentales.findIndex((t) => t.id === idArrastrado);
+		if (ahora !== -1) {
+			const [vuelve] = tiposDocumentales.splice(ahora, 1);
+			tiposDocumentales.splice(desde, 0, vuelve);
+		}
+		return false;
+	}
 	return true;
 }
 

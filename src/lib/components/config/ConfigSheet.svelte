@@ -359,7 +359,11 @@
 	 */
 	function terminarCalibracion() {
 		if (promptsDe === null) return;
-		marcarCalibrado(promptsDe.tipoId);
+		// Si la marca no llegó al disco NO se sale de la revisión: irse dejaría
+		// el trabajo de calibrar tirado —el tipo seguiría sin calibrar y sin
+		// extraer— sin más señal que el aviso, ya en otra pantalla. Quedándose
+		// aquí, se libera espacio y se vuelve a picar Continuar.
+		if (!marcarCalibrado(promptsDe.tipoId)) return;
 		salirDeRevisionDePrompts();
 	}
 
@@ -1088,7 +1092,14 @@
 		// Volver a llamarla en el paso 2 no duplica: `guardarTipoDocumental`
 		// actualiza la entrada cuando el borrador ya trae `idGuardado`. Así los
 		// campos se agregan a la MISMA entrada que se creó un paso antes.
-		if (borrador.paso === 1 || borrador.paso === 2) guardarTipoDocumental();
+		if (borrador.paso === 1 || borrador.paso === 2) {
+			guardarTipoDocumental();
+			// Si no llegó al disco no se avanza: el paso siguiente da por hecho
+			// que el tipo ya existe en la Biblioteca, y seguir dejaría al usuario
+			// configurando campos de algo que va a desaparecer al refrescar. El
+			// aviso ya está en pantalla explicando por qué.
+			if (estadoBiblioteca.falloAlGuardar) return;
+		}
 		if (borrador.paso < steps.length) {
 			borrador.paso += 1;
 			// Solo crece: volver atrás desde el sidebar no debe cerrar pasos que ya
@@ -1117,6 +1128,13 @@
 				borrador.paso = 1;
 				return;
 			}
+
+			// Tampoco se cierra si el guardado no llegó al disco. Es distinto del
+			// caso de arriba —ahí falta el nombre, aquí el navegador no pudo
+			// escribir— y por eso no se regresa al paso 1: no hay nada que
+			// corregir en el formulario. Se queda donde está, con todo lo
+			// capturado a la vista, y el aviso explica qué pasó.
+			if (estadoBiblioteca.falloAlGuardar) return;
 
 			// Terminar el asistente es una decisión explícita: aunque no se haya
 			// cambiado un solo campo, la nueva versión se queda en pie y NO se
