@@ -6,7 +6,7 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Upload from '@lucide/svelte/icons/upload';
-	import { agregarDocumentoEjemplo } from '$lib/state/configuracion.svelte';
+	import { agregarDocumentoEjemplo, TENANT_OPERADOR } from '$lib/state/configuracion.svelte';
 
 	let {
 		abierto = false,
@@ -145,34 +145,75 @@
 	let zoom = $state(1);
 	const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-	/** Convierte el archivo de imagen a data URL — a diferencia del PDF (que ya
-	 *  se renderiza a un `<canvas>` propio), una imagen se guarda tal cual la
-	 *  subieron, sin volver a codificarla. */
-	function archivoADataUrl(f: File): Promise<string> {
-		return new Promise((resolve, reject) => {
-			const lector = new FileReader();
-			lector.onload = () => resolve(lector.result as string);
-			lector.onerror = () => reject(lector.error instanceof Error ? lector.error : new Error('lectura fallida'));
-			lector.readAsDataURL(f);
-		});
-	}
 
 	// Cerrar el modal al guardar es la confirmación: vuelve a la lista de
 	// campos de "Calibración" de la que salió, mismo criterio que el resto del
 	// módulo (ver RecortarEjemploCampo.svelte).
+
+	/**
+	 * Sube un archivo al almacén y devuelve su puntero, o `null` con el motivo
+	 * ya puesto en `errorCarga`.
+	 *
+	 * El `tenant` es el prefijo de OPERADOR: un documento de ejemplo no es de
+	 * ningún cliente, es de CSI configurando un tipo documental, y su procesador
+	 * vive en el GCP de CSI. Ver el docstring de `servicios/almacen.py` en
+	 * nexus_back, donde quedó decidido el 2026-09-24.
+	 */
+	async function subirAlAlmacen(f: File | Blob, nombre: string) {
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', f, nombre);
+		cuerpo.append('tenant', TENANT_OPERADOR);
+		let r: Response;
+		try {
+			r = await fetch('/api/archivos', { method: 'POST', body: cuerpo });
+		} catch {
+			errorCarga = 'No se pudo contactar al servidor para guardar el archivo.';
+			return null;
+		}
+		const datos = await r.json().catch(() => null);
+		if (!r.ok) {
+			errorCarga = datos?.mensaje ?? `No se pudo guardar el archivo (${r.status}).`;
+			return null;
+		}
+		return datos as { rutaRelativa: string; sha256: string; mime: string };
+	}
+
 	async function guardarDocumento() {
 		if (!tipoId || !archivo || guardando) return;
 		guardando = true;
 		try {
-			const dataUrl = esPdf ? (canvasEl?.toDataURL('image/png') ?? null) : await archivoADataUrl(archivo);
-			if (!dataUrl) return;
+			// El ORIGINAL siempre. Antes solo sobrevivía el raster de la página 1 y
+			// el PDF completo se perdía — y el original es lo que Document AI va a
+			// querer el día que se etiqueten ejemplos.
+			const original = await subirAlAlmacen(archivo, archivo.name);
+			if (!original) return;
+
+			// Y además la VISTA, solo si el original no se puede pintar en un
+			// `<img>`. Para una imagen, el original ya es la vista.
+			let vista: { rutaRelativa: string; mime: string } | null = null;
+			if (esPdf) {
+				const png = await new Promise<Blob | null>((resolver) =>
+					canvasEl ? canvasEl.toBlob(resolver, 'image/png') : resolver(null)
+				);
+				if (!png) {
+					errorCarga = 'No se pudo preparar la vista del PDF.';
+					return;
+				}
+				const subida = await subirAlAlmacen(png, `${archivo.name}.png`);
+				if (!subida) return;
+				vista = subida;
+			}
+
 			const idNuevo = agregarDocumentoEjemplo(tipoId, {
 				nombre: archivo.name,
 				tipo: esPdf
 					? 'PDF'
 					: (archivo.type.split('/')[1] ?? archivo.name.split('.').pop() ?? '').toUpperCase(),
 				tamanoBytes: archivo.size,
-				dataUrl
+				rutaRelativa: original.rutaRelativa,
+				sha256: original.sha256,
+				mime: original.mime,
+				...(vista ? { rutaVista: vista.rutaRelativa, mimeVista: vista.mime } : {})
 			});
 			if (!idNuevo) return;
 			onGuardado?.(idNuevo);

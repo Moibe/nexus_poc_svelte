@@ -505,10 +505,81 @@ export type DocumentoEjemploInstancia = {
 	nombre: string;
 	tipo: string;
 	tamanoBytes: number;
-	dataUrl: string;
+	/**
+	 * DÓNDE viven los bytes, no los bytes. Desde el 2026-09-24 el archivo se
+	 * sube a `POST /api/archivos` y aquí solo queda su ruta relativa en el
+	 * almacén; para pintarlo se pide a `GET /api/archivos/<ruta>`.
+	 *
+	 * Es el arreglo de raíz del problema de cuota: una foto de INE de 2 MB
+	 * guardada como base64 ocupaba ~5.3 MB de localStorage (base64 infla 4/3 y
+	 * localStorage cuenta UTF-16 a 2 bytes por carácter), así que UN tipo
+	 * configurado bastaba para llenarla. Un puntero ocupa ~150 caracteres.
+	 */
+	rutaRelativa?: string;
+	/** El hash del contenido. Es además el nombre del objeto en disco, así que
+	 *  sirve para verificar integridad sin pedir el archivo. */
+	sha256?: string;
+	/** Con qué `Content-Type` pedirlo de vuelta: el almacén NO guarda el MIME
+	 *  —en disco los objetos no tienen extensión— así que lo lleva el catálogo. */
+	mime?: string;
+	/**
+	 * La VISTA: el mismo documento rasterizado a PNG, para poder pintarlo en un
+	 * `<img>`. Solo existe cuando el original no se puede pintar directo, o sea
+	 * cuando es PDF; para una imagen, el original YA es la vista y este campo
+	 * no se llena.
+	 *
+	 * Se guardan los dos a propósito. Antes solo sobrevivía el raster de la
+	 * página 1 y el PDF original se perdía para siempre — y el original es justo
+	 * lo que Document AI va a querer el día que se etiqueten ejemplos. Guardar
+	 * ambos no desperdicia disco cuando coinciden: el almacén direcciona por
+	 * contenido, así que dos subidas de los mismos bytes son UN objeto.
+	 */
+	rutaVista?: string;
+	mimeVista?: string;
+	/**
+	 * LEGADO. Los bytes en base64, como se guardaban antes del 2026-09-24.
+	 *
+	 * Se sigue LEYENDO para que lo ya capturado no desaparezca, pero nada nuevo
+	 * lo escribe. Un documento viejo se pinta desde aquí y uno nuevo desde
+	 * `rutaRelativa` — `fuenteDeDocumento()` resuelve cuál toca, y es el único
+	 * lugar que debería preguntárselo.
+	 */
+	dataUrl?: string;
 	/** ISO-8601 de cuándo se guardó este documento. */
 	guardadoEn: string;
 };
+
+/**
+ * De dónde sacar la imagen de un documento de ejemplo: del almacén si ya está
+ * allá, o de los bytes viejos si es de antes de la migración. Cadena vacía si
+ * no hay ninguno de los dos, para que quien pinte muestre su hueco en vez de
+ * pedir una URL inventada.
+ */
+/**
+ * El prefijo de almacenamiento de CSI como OPERADOR.
+ *
+ * No es un cliente: es quien configura los tipos documentales. Sus documentos
+ * de ejemplo no pertenecen a ningún tenant de cliente —el procesador que
+ * configuran vive en el GCP de CSI— así que van a su propio prefijo, separado
+ * de los `cli-*`.
+ *
+ * Es lo que permite que el front empiece a subir ejemplos HOY, sin esperar a
+ * que exista un solo tenant en la base. Ver el docstring de
+ * `servicios/almacen.py` en nexus_back, donde quedó decidida la granularidad
+ * el 2026-09-24: un tenant por cliente, y CSI superadmin.
+ */
+export const TENANT_OPERADOR = 'csi';
+
+export function fuenteDeDocumento(doc: DocumentoEjemploInstancia): string {
+	// La vista gana cuando existe: es la que se puede pintar. El original puede
+	// ser un PDF, que un `<img>` no sabe mostrar.
+	const ruta = doc.rutaVista || doc.rutaRelativa;
+	if (ruta) {
+		const mime = (doc.rutaVista ? doc.mimeVista : doc.mime) || 'application/octet-stream';
+		return `/api/archivos/${ruta}?mime=${encodeURIComponent(mime)}`;
+	}
+	return doc.dataUrl ?? '';
+}
 
 /**
  * Lo que "Guardar" persiste desde `RecortarEjemploCampo.svelte` para UN
@@ -791,9 +862,12 @@ function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploInstancia {
 		typeof o.nombre === 'string' &&
 		typeof o.tipo === 'string' &&
 		typeof o.tamanoBytes === 'number' &&
-		typeof o.dataUrl === 'string' &&
-		o.dataUrl !== '' &&
-		typeof o.guardadoEn === 'string'
+		typeof o.guardadoEn === 'string' &&
+		// Vale con que tenga UNA de las dos fuentes: los nuevos traen puntero al
+		// almacén, los de antes del 2026-09-24 traen los bytes. Uno sin ninguna
+		// no se puede pintar, así que se descarta como siempre se hizo.
+		((typeof o.rutaRelativa === 'string' && o.rutaRelativa !== '') ||
+			(typeof o.dataUrl === 'string' && o.dataUrl !== ''))
 	);
 }
 
@@ -1494,7 +1568,16 @@ export async function archivarTipoDocumental(
  */
 export function agregarDocumentoEjemplo(
 	idTipo: string,
-	documento: { nombre: string; tipo: string; tamanoBytes: number; dataUrl: string }
+	documento: {
+		nombre: string;
+		tipo: string;
+		tamanoBytes: number;
+		rutaRelativa: string;
+		sha256: string;
+		mime: string;
+		rutaVista?: string;
+		mimeVista?: string;
+	}
 ): string | null {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return null;

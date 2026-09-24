@@ -8,6 +8,7 @@
 	import Save from '@lucide/svelte/icons/save';
 	import {
 		guardarRecorteEjemplo,
+		fuenteDeDocumento,
 		colorParaCampo,
 		type Recorte,
 		type DocumentoEjemploInstancia
@@ -303,7 +304,7 @@
 						>
 							<img
 								bind:this={imgEl}
-								src={documento.dataUrl}
+								src={fuenteDeDocumento(documento)}
 								alt="Documento de ejemplo"
 								class="block max-w-full select-none"
 								draggable="false"

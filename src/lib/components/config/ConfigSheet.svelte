@@ -67,6 +67,7 @@
 		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
+		fuenteDeDocumento,
 		estadoBiblioteca,
 		reconocerFallaDeGuardado,
 		marcarCalibrado,
@@ -2298,7 +2299,7 @@
 									<div class="mt-3 max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-4">
 										<div class="relative inline-block border border-border bg-white shadow-sm">
 											<img
-												src={doc.dataUrl}
+												src={fuenteDeDocumento(doc)}
 												alt={`Documento completo de ${doc.nombre}, con los recortes marcados`}
 												class="block max-w-full"
 											/>
