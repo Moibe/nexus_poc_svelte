@@ -1538,12 +1538,26 @@ export function guardarRecorteEjemplo(
 ): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	if (!tipo.recortesPorDocumento[idDocumento]) tipo.recortesPorDocumento[idDocumento] = {};
+	const habiaMapa = Boolean(tipo.recortesPorDocumento[idDocumento]);
+	if (!habiaMapa) tipo.recortesPorDocumento[idDocumento] = {};
+	// Se guarda el anterior para poder devolverlo: "recortar de nuevo"
+	// sobreescribe, así que un fallo no debe dejar al campo sin el recorte que
+	// ya tenía.
+	const previo = tipo.recortesPorDocumento[idDocumento][nombreCampo];
 	tipo.recortesPorDocumento[idDocumento][nombreCampo] = {
 		...ejemplo,
 		guardadoEn: new Date().toISOString()
 	};
-	guardarBiblioteca();
+	if (!guardarBiblioteca()) {
+		// Mismo motivo que en `agregarDocumentoEjemplo`: devolver `true` aquí
+		// cerraba el modal y marcaba el campo como etiquetado sin que el recorte
+		// existiera en disco. Y esta es la puerta que MÁS pesa — cada recorte es
+		// un PNG independiente en base64, no unos KB de texto.
+		if (previo) tipo.recortesPorDocumento[idDocumento][nombreCampo] = previo;
+		else delete tipo.recortesPorDocumento[idDocumento][nombreCampo];
+		if (!habiaMapa) delete tipo.recortesPorDocumento[idDocumento];
+		return false;
+	}
 	return true;
 }
 
