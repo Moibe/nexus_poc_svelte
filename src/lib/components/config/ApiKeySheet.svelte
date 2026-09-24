@@ -231,6 +231,7 @@
 	/** Ir al alta. Se limpia lo que haya quedado de una vuelta anterior para que
 	 *  el formulario no herede el aviso de copiado ni un secret viejo. */
 	function irANueva() {
+		avisoRevocada = false;
 		vista = 'nueva';
 	}
 
@@ -281,6 +282,11 @@
 		seleccionadaId === null ? apiKeys : apiKeys.filter((k) => k.id === seleccionadaId)
 	);
 
+	/** Se prende al revocar con éxito y se apaga al salir del listado o cerrar,
+	 *  igual que el aviso de alta de la Biblioteca. No se auto-oculta con un
+	 *  temporizador: quien revocó algo irreversible merece leerlo a su ritmo. */
+	let avisoRevocada = $state(false);
+
 	/** La llave que el menú `⋮` quiere revocar, esperando confirmación. */
 	let llaveARevocar = $state<ApiKeyGuardada | null>(null);
 
@@ -329,6 +335,7 @@
 		secret = '';
 		copiado = false;
 		errorCopiado = '';
+		avisoRevocada = false;
 		limpiarTemporizador();
 	});
 
@@ -339,6 +346,30 @@
 		if (vista === 'creada') botonCopiar?.focus();
 	});
 </script>
+
+<!-- Los dos avisos verdes del módulo (capturas del 2026-09-24) son el MISMO
+     bloque con otro texto, así que va una sola vez. El estilo no se inventó:
+     es el del "Nuevo tipo documental agregado." del módulo hermano — borde y
+     degradado verdes, `BadgeCheck` relleno, y `green-700` para el texto porque
+     el 600 sobre `green-50` da ~3.1:1 y AA pide 4.5:1 (la nota completa está
+     allá).
+
+     OJO con lo que prometen los dos textos, que son literales de las capturas:
+     hablan de "solicitudes autenticadas en NexusDoc", y hoy ninguna llave
+     autentica nada porque `nexus_back` no las conoce. Se deja el copy del
+     diseño a pedido explícito ("eventualmente lo hará"). -->
+{#snippet avisoVerde(testid: string, titulo: string, cuerpo: string)}
+	<div
+		data-testid={testid}
+		class="mb-6 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
+	>
+		<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
+		<div class="min-w-0">
+			<p class="text-sm font-semibold text-green-700">{titulo}</p>
+			<p class="mt-1 max-w-2xl text-xs text-green-700">{cuerpo}</p>
+		</div>
+	</div>
+{/snippet}
 
 <Sheet.Root bind:open>
 	<!-- Mismo ancho que el Modulo de configuración: la cáscara es la misma y dos
@@ -461,41 +492,31 @@
 			     capturas su línea divisoria arranca donde termina el sidebar. -->
 			<div class="flex min-h-0 flex-1 flex-col">
 				<div class="flex-1 overflow-y-auto p-8">
-					<!-- El aviso de éxito (captura del 2026-09-24). Es el MISMO componente
-					     visual que el "Nuevo tipo documental agregado." del módulo hermano —
-					     borde y degradado verdes, `BadgeCheck` relleno, `green-700` para el
-					     texto (el 600 sobre `green-50` da ~3.1:1 y AA pide 4.5:1; allá está la
-					     nota completa)—, así que no se inventa nada: se copia.
+					<!-- Los avisos del módulo. Son dos y comparten bloque (ver el snippet
+					     `avisoVerde` arriba): "API creada" en la vista del secret, y "API Key
+					     revocada" de vuelta en el listado.
 
-					     Va ARRIBA del secret, no debajo: confirma lo que acabas de hacer, y lo
-					     que sigue —copiar la llave— es la acción pendiente. Un aviso debajo se
-					     lee cuando ya te ibas.
+					     Van ARRIBA del contenido, no debajo: confirman lo que acabas de hacer,
+					     y lo que sigue —copiar la llave, o revisar el listado— es la acción
+					     pendiente. Un aviso al pie se lee cuando ya te ibas.
 
 					     El contenedor con `aria-live` va SIEMPRE montado y la bandera controla
 					     la tarjeta de adentro: una región que se monta junto con su texto no se
 					     anuncia, el lector tiene que estar observándola de antes. Vacío no mide
-					     nada, así que no separa nada en las otras dos vistas. -->
+					     nada, así que no separa nada cuando no hay aviso. -->
 					<div role="status" aria-live="polite">
 						{#if vista === 'creada'}
-							<div
-								data-testid="aviso-api-creada"
-								class="mb-6 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
-							>
-								<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
-								<div class="min-w-0">
-									<p class="text-sm font-semibold text-green-700">API creada correctamente</p>
-									<!-- Texto literal de la captura. OJO con lo que promete: "ya está
-									     disponible para realizar solicitudes autenticadas" todavía es
-									     falso — `nexus_back` no conoce estas llaves (ver la nota 1 del
-									     encabezado de este archivo). Se deja el copy del diseño porque
-									     describe el producto terminado, no la demo; si esto se enseña
-									     fuera del equipo, vale ajustarlo. -->
-									<p class="mt-1 max-w-2xl text-xs text-green-700">
-										La credencial se generó correctamente y ya está disponible para realizar
-										solicitudes autenticadas en NexusDoc.
-									</p>
-								</div>
-							</div>
+							{@render avisoVerde(
+								'aviso-api-creada',
+								'API creada correctamente',
+								'La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en NexusDoc.'
+							)}
+						{:else if avisoRevocada}
+							{@render avisoVerde(
+								'aviso-api-revocada',
+								'API Key revocada correctamente',
+								'La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en NexusDoc.'
+							)}
 						{/if}
 					</div>
 
@@ -761,7 +782,11 @@
 		: ''}
 	etiquetaConfirmar="Revocar"
 	onConfirmar={() => {
-		if (llaveARevocar) revocarApiKey(llaveARevocar.id);
+		// El aviso solo sale si la revocación se PERSISTIÓ. Si localStorage la
+		// rechazó, `revocarApiKey` la deshace y salta el otro aviso, el de fallo:
+		// decir "revocada correctamente" ahí sería la mentira más cara de esta
+		// pantalla, porque la llave seguiría viva.
+		if (llaveARevocar) avisoRevocada = revocarApiKey(llaveARevocar.id);
 	}}
 	onCerrar={() => (llaveARevocar = null)}
 />
