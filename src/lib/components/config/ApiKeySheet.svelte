@@ -41,11 +41,27 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
-	import { generarApiKey } from '$lib/apiKeys/formato';
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import CalendarDays from '@lucide/svelte/icons/calendar-days';
+	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { PREFIJO } from '$lib/apiKeys/formato';
+	import {
+		apiKeys,
+		emitirApiKey,
+		revocarApiKey,
+		estadoDe,
+		estadoApiKeys,
+		reconocerFallaDeGuardado,
+		type ApiKeyGuardada
+	} from '$lib/state/apiKeys.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	let vista = $state<'vacio' | 'nueva' | 'creada'>('vacio');
+	/** La vista de entrada es el LISTADO, que por dentro decide si muestra las
+	 *  tarjetas o el estado vacío — son la misma pantalla con y sin llaves. */
+	let vista = $state<'lista' | 'nueva' | 'creada'>('lista');
 
 	// El borrador del alta. NO se limpia al cerrar el modal —igual que el
 	// borrador del Modulo de configuración—: quien cerró por accidente a media
@@ -106,7 +122,14 @@
 	 *  que es la especificación que `nexus_back` va a tener que reimplementar el
 	 *  día que las valide. Esta pantalla solo la pide y la muestra. */
 	function crearApiKey() {
-		secret = generarApiKey().secret;
+		secret = emitirApiKey({
+			nombre,
+			descripcion,
+			diasParaExpirar: Number(expiracion)
+		}).secret;
+		// Si no se pudo persistir, `emitirApiKey` ya prendió
+		// `estadoApiKeys.falloAlGuardar` y el aviso del final del archivo lo dice.
+		// El secret se muestra igual: existe, y quien lo pidió tiene derecho a verlo.
 		// El borrador se limpia en cuanto la llave SE CREA. Si no, la siguiente
 		// alta nace con el nombre y la descripción de la anterior — y ahí el
 		// argumento de "no perder lo escrito" ya no aplica: lo escrito se usó.
@@ -203,19 +226,92 @@
 		return ok;
 	}
 
+	/** Ir al alta. Se limpia lo que haya quedado de una vuelta anterior para que
+	 *  el formulario no herede el aviso de copiado ni un secret viejo. */
+	function irANueva() {
+		vista = 'nueva';
+	}
+
+	/** `12/08/2026 · 12:45`. Las fechas se guardan en ISO/UTC y se muestran en la
+	 *  hora local de quien mira, que es lo que espera cualquiera leyendo una
+	 *  pantalla. */
+	function fechaHora(iso: string): string {
+		const f = new Date(iso);
+		if (Number.isNaN(f.getTime())) return '—';
+		const dia = String(f.getDate()).padStart(2, '0');
+		const mes = String(f.getMonth() + 1).padStart(2, '0');
+		const hh = String(f.getHours()).padStart(2, '0');
+		const mm = String(f.getMinutes()).padStart(2, '0');
+		return `${dia}/${mes}/${f.getFullYear()} · ${hh}:${mm}`;
+	}
+
+	function fecha(iso: string): string {
+		return fechaHora(iso).split(' · ')[0];
+	}
+
+	/** El renglón chico de cada tarjeta, que cambia con el estado.
+	 *
+	 *  OJO con el caso revocada: el diseño dice "Último uso: <fecha>" y aquí dice
+	 *  "Revocada el:". No es un descuido — no existe telemetría de uso: ninguna
+	 *  llave se ha usado nunca porque `nexus_back` no las conoce, así que un
+	 *  "último uso" sería una fecha inventada en la pantalla donde menos se puede
+	 *  inventar. La fecha de revocación sí es un hecho que tenemos. Cuando el back
+	 *  registre uso, esto vuelve al texto del diseño. */
+	function leyendaDe(llave: ApiKeyGuardada): string {
+		const estado = estadoDe(llave);
+		if (estado === 'revocada') return `Revocada el: ${fecha(llave.revocadaEn ?? '')}`;
+		if (estado === 'expirada') return `Expiró el: ${fecha(llave.expiraEn)}`;
+		const dias = Math.ceil((Date.parse(llave.expiraEn) - Date.now()) / (24 * 60 * 60 * 1000));
+		return `Expira en: ${dias} ${dias === 1 ? 'día' : 'días'}`;
+	}
+
+	const ETIQUETA_ESTADO = {
+		activa: { texto: 'Activa', clase: 'bg-green-50 text-green-700' },
+		expirada: { texto: 'Expirada', clase: 'bg-muted text-muted-foreground' },
+		revocada: { texto: 'Revocada', clase: 'bg-red-50 text-red-700' }
+	};
+
+	/** La rama seleccionada en el árbol del sidebar. Es un FILTRO de la columna
+	 *  derecha, no una navegación: `null` significa "muéstralas todas". */
+	let seleccionadaId = $state<string | null>(null);
+
+	const llavesVisibles = $derived(
+		seleccionadaId === null ? apiKeys : apiKeys.filter((k) => k.id === seleccionadaId)
+	);
+
+	/** La llave que el menú `⋮` quiere revocar, esperando confirmación. */
+	let llaveARevocar = $state<ApiKeyGuardada | null>(null);
+
 	function cancelar() {
 		nombre = '';
 		descripcion = '';
 		expiracion = '1';
-		vista = 'vacio';
+		vista = 'lista';
 	}
 
-	/** "Listo" CIERRA el módulo, no regresa al estado vacío: ese estado dice
-	 *  "Configura tu primera API Key", y mostrarlo tres segundos después de "API
-	 *  Key creada correctamente" es la app contradiciéndose sola en la misma
-	 *  pantalla. Cerrar no niega nada; y el listado donde iría a parar la llave
-	 *  todavía no existe. */
+	/** "Listo" REGRESA AL LISTADO, y de paso destruye el secret.
+	 *
+	 *  Hasta que existió el listado (2026-09-24) esto cerraba el módulo entero, y
+	 *  tenía sentido: la vista de entrada era el estado vacío, que dice "Configura
+	 *  tu primera API Key" — mostrarlo tres segundos después de "creada
+	 *  correctamente" era la app contradiciéndose sola. Ahora la entrada es la
+	 *  lista, donde la llave recién creada aparece como Activa, así que volver ahí
+	 *  confirma lo que acaba de pasar en vez de negarlo.
+	 *
+	 *  El secret se limpia aquí y no solo al cerrar: si se quedara en memoria,
+	 *  entrar otra vez al alta y cancelar podría devolver la vista con la llave
+	 *  anterior en pantalla. */
 	function listo() {
+		secret = '';
+		copiado = false;
+		errorCopiado = '';
+		limpiarTemporizador();
+		vista = 'lista';
+	}
+
+	/** El "Cerrar" del pie del listado. Es la única salida que cierra el módulo
+	 *  además de la X, y no destruye nada que no destruya ya el cierre. */
+	function cerrar() {
 		open = false;
 	}
 
@@ -227,7 +323,7 @@
 	 *  Mismo patrón que el `$effect` de cierre de ConfigSheet. */
 	$effect(() => {
 		if (open) return;
-		vista = 'vacio';
+		vista = 'lista';
 		secret = '';
 		copiado = false;
 		errorCopiado = '';
@@ -294,7 +390,7 @@
 			     configuración. Es el mismo en las tres vistas: así lo dibujan las tres
 			     capturas. -->
 			<aside
-				class="w-82.5 shrink-0 overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
+				class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
 			>
 				<p class="text-xs text-foreground">Configuración</p>
 				<!-- La tarjeta de la sección, con la misma forma que "Biblioteca" allá
@@ -315,6 +411,48 @@
 					</div>
 					<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
 				</div>
+
+				<!-- El árbol de llaves, con la misma geometría que el de la Biblioteca en
+				     el módulo hermano: el eje cae en x=44 —que es donde empieza el texto
+				     "API Keys" de arriba (ícono de 32 + gap-3 de 12)—, tramo vertical de
+				     22px centrado en la fila y guion horizontal de 11.5px a media altura.
+				     Picar una rama FILTRA la columna derecha; picarla de nuevo quita el
+				     filtro. Es el mismo gesto que allá, y la captura muestra justamente la
+				     rama resaltada. -->
+				{#if apiKeys.length > 0}
+					<ul class="mt-4">
+						{#each apiKeys as llave (llave.id)}
+							<li class="relative flex h-9.5 items-center pl-11">
+								<span class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
+								></span>
+								<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
+								<button
+									type="button"
+									data-testid="rama-api-key"
+									aria-pressed={seleccionadaId === llave.id}
+									class="ml-[19.5px] min-w-0 flex-1 truncate rounded-lg px-3 py-1.5 text-left text-sm font-medium transition-colors {seleccionadaId ===
+									llave.id
+										? 'bg-muted text-foreground'
+										: 'text-foreground hover:text-primary'}"
+									onclick={() =>
+									(seleccionadaId = seleccionadaId === llave.id ? null : llave.id)}
+								>
+									{llave.nombre}
+								</button>
+							</li>
+						{/each}
+					</ul>
+
+					<!-- Al PIE del sidebar, como en la captura. Solo con llaves ya
+					     emitidas: en el estado vacío el acceso es el botón del centro, que
+					     es lo que dibuja su propia captura, y dos botones para lo mismo en
+					     la misma pantalla se leen como dos cosas distintas. -->
+					{#if vista === 'lista'}
+						<Button class="mt-auto w-full" data-testid="nueva-api-key-sidebar" onclick={irANueva}>
+							Nueva API Key
+						</Button>
+					{/if}
+				{/if}
 			</aside>
 
 			<!-- El pie vive DENTRO de esta columna, no debajo del modal entero: en las
@@ -359,26 +497,90 @@
 						{/if}
 					</div>
 
-					{#if vista === 'vacio'}
-						<!-- Estado vacío. `EmptyState` es el mismo componente de los paneles
-						     del Home —ícono en cuadro de 50px, título y descripción—, que es
-						     justo la forma que dibuja la captura; lo único que no trae es el
-						     botón, así que ese va aquí abajo. -->
-						<div class="flex h-full flex-col items-center justify-center gap-6">
-							<EmptyState
-								icon={Puzzle}
-								iconClass="text-primary"
-								title="Configura tu primera API Key"
-								description="Genera una clave de acceso para autenticar de forma segura las solicitudes e integraciones disponibles."
-							/>
-							<Button
-								class="w-60"
-								data-testid="nueva-api-key"
-								onclick={() => (vista = 'nueva')}
-							>
-								Nueva API Key
-							</Button>
-						</div>
+					{#if vista === 'lista'}
+						{#if apiKeys.length > 0}
+							<!-- Una tarjeta por llave (captura del 2026-09-24). El renglón chico
+							     dice `nxdoc | <creación>` y, tras el ícono de calendario, lo que
+							     corresponda a su estado — ver `leyendaDe`. -->
+							<div class="flex flex-col gap-3">
+								{#each llavesVisibles as llave (llave.id)}
+									{@const estado = estadoDe(llave)}
+									<div
+										data-testid="tarjeta-api-key"
+										class="flex items-center gap-3 rounded-xl border border-border px-4 py-3"
+									>
+										<span
+											class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground"
+										>
+											<KeyRound class="size-4" />
+										</span>
+										<div class="min-w-0 flex-1">
+											<p class="truncate text-base font-medium text-foreground">{llave.nombre}</p>
+											<p class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+												<span class="truncate">{PREFIJO} | {fechaHora(llave.creadaEn)}</span>
+												<CalendarDays class="size-3.5 shrink-0" aria-hidden="true" />
+												<span class="truncate">{leyendaDe(llave)}</span>
+											</p>
+										</div>
+										<span
+											data-testid="chip-estado-api-key"
+											class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {ETIQUETA_ESTADO[estado].clase}"
+										>
+											{ETIQUETA_ESTADO[estado].texto}
+										</span>
+										<DropdownMenu.Root>
+											<DropdownMenu.Trigger>
+												{#snippet child({ props })}
+													<button
+														{...props}
+														type="button"
+														aria-label="Más opciones de {llave.nombre}"
+														class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border transition-colors hover:bg-muted data-[state=open]:bg-muted"
+													>
+														<MoreVerticalIcon />
+													</button>
+												{/snippet}
+											</DropdownMenu.Trigger>
+											<!-- Un solo renglón, y no es pereza: revocar es lo ÚNICO que se
+											     puede hacer con una llave ya emitida. No se puede "editar"
+											     un secret que nadie guardó, y borrarla del listado dejaría
+											     de contar que existió. Se apaga cuando la llave ya no está
+											     activa: revocar algo vencido o ya revocado no cambia nada. -->
+											<DropdownMenu.Content align="end" class="w-56">
+												<DropdownMenu.Item
+													data-testid="revocar-api-key"
+													disabled={estado !== 'activa'}
+													class="text-destructive data-highlighted:text-destructive"
+													onSelect={() => (llaveARevocar = llave)}
+												>
+													Revocar API Key
+												</DropdownMenu.Item>
+											</DropdownMenu.Content>
+										</DropdownMenu.Root>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<!-- Estado vacío. `EmptyState` es el mismo componente de los paneles
+							     del Home —ícono en cuadro de 50px, título y descripción—, que es
+							     justo la forma que dibuja la captura; lo único que no trae es el
+							     botón, así que ese va aquí abajo. -->
+							<div class="flex h-full flex-col items-center justify-center gap-6">
+								<EmptyState
+									icon={Puzzle}
+									iconClass="text-primary"
+									title="Configura tu primera API Key"
+									description="Genera una clave de acceso para autenticar de forma segura las solicitudes e integraciones disponibles."
+								/>
+								<Button
+									class="w-60"
+									data-testid="nueva-api-key"
+									onclick={irANueva}
+								>
+									Nueva API Key
+								</Button>
+							</div>
+						{/if}
 					{:else if vista === 'nueva'}
 						<p class="text-sm text-muted-foreground">Configuración de nueva API Key</p>
 
@@ -491,7 +693,11 @@
 					{/if}
 				</div>
 
-				{#if vista === 'nueva'}
+				{#if vista === 'lista' && apiKeys.length > 0}
+					<div class="flex items-center justify-end border-t border-border px-6 py-4">
+						<Button data-testid="cerrar-api-keys" onclick={cerrar}>Cerrar</Button>
+					</div>
+				{:else if vista === 'nueva'}
 					<!-- Los dos a la derecha, como en la captura. "Cancelar configuración"
 					     con el mismo variant="link" rojo que ya usan Calibración y la
 					     evaluación de prompts en el módulo hermano. -->
@@ -522,3 +728,35 @@
 		</div>
 	</Sheet.Content>
 </Sheet.Root>
+
+<!-- Revocar es irreversible: una llave revocada no se puede volver a activar,
+     porque su secret ya no existe en ningún lado. Va con `ConfirmarAccion`, que
+     es el `AlertDialog` del proyecto — y NO con `confirm()` del navegador, que
+     no se usa aquí. -->
+<ConfirmarAccion
+	abierto={llaveARevocar !== null}
+	titulo="¿Revocar esta API Key?"
+	mensaje={llaveARevocar
+		? `"${llaveARevocar.nombre}" dejará de funcionar de inmediato y no se puede reactivar: su secret ya no existe. Si la necesitas otra vez, hay que crear una nueva.`
+		: ''}
+	etiquetaConfirmar="Revocar"
+	onConfirmar={() => {
+		if (llaveARevocar) revocarApiKey(llaveARevocar.id);
+	}}
+	onCerrar={() => (llaveARevocar = null)}
+/>
+
+<!-- El aviso de que localStorage no aceptó la escritura. Mismo componente y
+     mismo criterio que en la Biblioteca: `soloAviso` porque el hecho ya ocurrió
+     y no hay nada que cancelar. Aquí pesa más que allá — una llave que no se
+     guardó no se puede recapturar, porque su secret se mostró una sola vez. -->
+<ConfirmarAccion
+	abierto={estadoApiKeys.falloAlGuardar}
+	variante="destructivo"
+	soloAviso
+	titulo="No se pudo guardar en este navegador"
+	mensaje="La API Key se generó, pero no quedó registrada en este navegador (almacenamiento lleno o bloqueado), así que no va a aparecer en el listado. Guarda el secret que tienes en pantalla antes de cerrar: no se vuelve a mostrar."
+	etiquetaConfirmar="Entendido"
+	onConfirmar={reconocerFallaDeGuardado}
+	onCerrar={reconocerFallaDeGuardado}
+/>
