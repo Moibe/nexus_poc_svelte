@@ -7,6 +7,7 @@
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Upload from '@lucide/svelte/icons/upload';
 	import { agregarDocumentoEjemplo, TENANT_OPERADOR } from '$lib/state/configuracion.svelte';
+	import { subirAlAlmacen } from '$lib/almacen/subir';
 
 	let {
 		abierto = false,
@@ -54,11 +55,26 @@
 		}
 	});
 
+	/**
+	 * Qué carga es la VIGENTE. Cada vez que el modal se limpia —al cerrarlo, o al
+	 * elegir otro archivo— sube, y con eso invalida lo que siga en vuelo de la
+	 * carga anterior: un PDF que pdf.js rechaza tarde, o una subida lenta.
+	 *
+	 * Sin esto, lo que terminaba tarde caía sobre el archivo que el usuario
+	 * eligió DESPUÉS: el fallo de un PDF ya descartado borraba la imagen nueva,
+	 * y una subida que sobrevivía a cerrar el modal guardaba una entrada con el
+	 * nombre del archivo nuevo y los bytes del viejo. Todo lo que continúa
+	 * después de un `await` compara su número contra este antes de tocar nada.
+	 */
+	let cargaVigente = 0;
+
 	function limpiarArchivo() {
+		cargaVigente += 1;
 		if (urlImagen) URL.revokeObjectURL(urlImagen);
 		archivo = null;
 		urlImagen = null;
 		esPdf = false;
+		cargandoPdf = false;
 		errorCarga = '';
 		zoom = 1;
 		guardando = false;
@@ -75,9 +91,10 @@
 		// Estas dos guardias no existían, y este era el ÚNICO de los tres
 		// dropzones sin ellas: el "Max 20 MB" de abajo era solo texto en
 		// pantalla y el `accept` del input no filtra lo que se suelta
-		// arrastrando. Importa más aquí que en los otros dos, porque lo que se
-		// suelta aquí termina en base64 dentro de localStorage: es el camino
-		// más corto para reventar la cuota.
+		// arrastrando. Nacieron cuando lo que se soltaba aquí terminaba en
+		// base64 dentro de localStorage (el camino más corto para reventar la
+		// cuota); desde el 2026-09-24 va al almacén, y siguen haciendo falta
+		// para no subir algo que el back va a rechazar.
 		const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
 		if (!EXTENSIONES.includes(ext)) {
 			limpiarArchivo();
@@ -115,6 +132,7 @@
 	let canvasEl = $state<HTMLCanvasElement>();
 
 	async function renderizarPdf(f: File) {
+		const carga = cargaVigente;
 		cargandoPdf = true;
 		try {
 			const pdfjsLib = await import('pdfjs-dist');
@@ -127,6 +145,8 @@
 			const pagina = await documento.getPage(1);
 			const viewport = pagina.getViewport({ scale: 1.75 });
 			await tick(); // el <canvas> nace con el {#if esPdf}; hay que esperar a que exista
+			// Si mientras tanto se eligió otro archivo, este canvas ya es suyo.
+			if (carga !== cargaVigente) return;
 			const canvas = canvasEl;
 			const ctx = canvas?.getContext('2d');
 			if (!canvas || !ctx) return;
@@ -134,10 +154,18 @@
 			canvas.height = viewport.height;
 			await pagina.render({ canvasContext: ctx, viewport }).promise;
 		} catch {
+			// Un PDF ya descartado que falla tarde no toca el archivo de ahora.
+			if (carga !== cargaVigente) return;
+			// De vuelta al dropzone, donde el error SÍ se ve. Antes solo se apagaba
+			// `esPdf` y el archivo quedaba puesto: la vista salía en blanco, el
+			// mensaje no aparecía, y "Subir" seguía habilitado y guardaba un PDF
+			// sin vista que ningún `<img>` podía pintar.
+			limpiarArchivo();
 			errorCarga = 'No se pudo mostrar este PDF. Intenta con otro archivo.';
-			esPdf = false;
 		} finally {
-			cargandoPdf = false;
+			// Si la carga cambió, `limpiarArchivo` ya bajó el indicador y el de la
+			// carga nueva le pertenece a ella.
+			if (carga === cargaVigente) cargandoPdf = false;
 		}
 	}
 
@@ -159,57 +187,58 @@
 	 * vive en el GCP de CSI. Ver el docstring de `servicios/almacen.py` en
 	 * nexus_back, donde quedó decidido el 2026-09-24.
 	 */
-	async function subirAlAlmacen(f: File | Blob, nombre: string) {
-		const cuerpo = new FormData();
-		cuerpo.append('archivo', f, nombre);
-		cuerpo.append('tenant', TENANT_OPERADOR);
-		let r: Response;
-		try {
-			r = await fetch('/api/archivos', { method: 'POST', body: cuerpo });
-		} catch {
-			errorCarga = 'No se pudo contactar al servidor para guardar el archivo.';
-			return null;
-		}
-		const datos = await r.json().catch(() => null);
+	async function subir(f: File | Blob, nombre: string, carga: number) {
+		const r = await subirAlAlmacen(f, nombre, TENANT_OPERADOR);
 		if (!r.ok) {
-			errorCarga = datos?.mensaje ?? `No se pudo guardar el archivo (${r.status}).`;
+			// El motivo de una carga que ya no es la vigente no se pinta sobre la
+			// de ahora: hablaría de un archivo que el usuario ya descartó.
+			if (carga === cargaVigente) errorCarga = r.mensaje;
 			return null;
 		}
-		return datos as { rutaRelativa: string; sha256: string; mime: string };
+		return r.puntero;
 	}
 
 	async function guardarDocumento() {
 		if (!tipoId || !archivo || guardando) return;
+		// Todo lo que se usa después de un `await` se fija AQUÍ: el estado del
+		// modal puede ser de otro archivo para cuando la subida responda.
+		const carga = cargaVigente;
+		const idTipo = tipoId;
+		const f = archivo;
+		const pdf = esPdf;
 		guardando = true;
+		errorCarga = '';
 		try {
 			// El ORIGINAL siempre. Antes solo sobrevivía el raster de la página 1 y
 			// el PDF completo se perdía — y el original es lo que Document AI va a
 			// querer el día que se etiqueten ejemplos.
-			const original = await subirAlAlmacen(archivo, archivo.name);
-			if (!original) return;
+			const original = await subir(f, f.name, carga);
+			// Si se cerró el modal o se eligió otro archivo mientras subía, lo que
+			// ya se subió se queda como objeto suelto en el almacén (barato, y el
+			// almacén dedupica) y aquí no se toca nada más.
+			if (!original || carga !== cargaVigente) return;
 
 			// Y además la VISTA, solo si el original no se puede pintar en un
 			// `<img>`. Para una imagen, el original ya es la vista.
 			let vista: { rutaRelativa: string; mime: string } | null = null;
-			if (esPdf) {
+			if (pdf) {
 				const png = await new Promise<Blob | null>((resolver) =>
 					canvasEl ? canvasEl.toBlob(resolver, 'image/png') : resolver(null)
 				);
+				if (carga !== cargaVigente) return;
 				if (!png) {
 					errorCarga = 'No se pudo preparar la vista del PDF.';
 					return;
 				}
-				const subida = await subirAlAlmacen(png, `${archivo.name}.png`);
-				if (!subida) return;
+				const subida = await subir(png, `${f.name}.png`, carga);
+				if (!subida || carga !== cargaVigente) return;
 				vista = subida;
 			}
 
-			const idNuevo = agregarDocumentoEjemplo(tipoId, {
-				nombre: archivo.name,
-				tipo: esPdf
-					? 'PDF'
-					: (archivo.type.split('/')[1] ?? archivo.name.split('.').pop() ?? '').toUpperCase(),
-				tamanoBytes: archivo.size,
+			const idNuevo = agregarDocumentoEjemplo(idTipo, {
+				nombre: f.name,
+				tipo: pdf ? 'PDF' : (f.type.split('/')[1] ?? f.name.split('.').pop() ?? '').toUpperCase(),
+				tamanoBytes: f.size,
 				rutaRelativa: original.rutaRelativa,
 				sha256: original.sha256,
 				mime: original.mime,
@@ -219,7 +248,9 @@
 			onGuardado?.(idNuevo);
 			cerrar();
 		} finally {
-			guardando = false;
+			// Si la carga cambió, `limpiarArchivo` ya bajó `guardando`, y el de una
+			// subida nueva que esté corriendo le pertenece a ella.
+			if (carga === cargaVigente) guardando = false;
 		}
 	}
 </script>
@@ -314,6 +345,22 @@
 							{/if}
 						</div>
 					</div>
+
+					<!-- El motivo de una subida fallida (almacén caído, archivo
+					     rechazado). Sin esto no se veía nunca: el mensaje del
+					     dropzone solo existe mientras NO hay archivo, y aquí siempre
+					     lo hay — "Subir" se apagaba un instante y volvía, sin decir
+					     por qué. Justo encima de la barra, que es donde está la
+					     mirada después de picar "Subir". -->
+					{#if errorCarga}
+						<p
+							role="alert"
+							data-testid="error-carga-documento"
+							class="absolute bottom-20 left-1/2 w-max max-w-[90%] -translate-x-1/2 rounded-lg border border-destructive/30 bg-white px-3 py-2 text-center text-xs text-destructive shadow-sm"
+						>
+							{errorCarga}
+						</p>
+					{/if}
 
 					<!-- Barra flotante: mismo lugar y forma que el resto del módulo, sin
 					     herramienta de recorte — aquí solo se confirma el documento. -->

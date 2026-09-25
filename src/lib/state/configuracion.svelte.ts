@@ -533,16 +533,21 @@ export type DocumentoEjemploInstancia = {
 	 * lo que Document AI va a querer el día que se etiqueten ejemplos. Guardar
 	 * ambos no desperdicia disco cuando coinciden: el almacén direcciona por
 	 * contenido, así que dos subidas de los mismos bytes son UN objeto.
+	 *
+	 * Un PDF viejo migrado trae `rutaVista` SIN `rutaRelativa`: de él solo
+	 * sobrevivió la página 1 como imagen. Ver `esPdfSinOriginal`.
 	 */
 	rutaVista?: string;
 	mimeVista?: string;
 	/**
 	 * LEGADO. Los bytes en base64, como se guardaban antes del 2026-09-24.
 	 *
-	 * Se sigue LEYENDO para que lo ya capturado no desaparezca, pero nada nuevo
-	 * lo escribe. Un documento viejo se pinta desde aquí y uno nuevo desde
-	 * `rutaRelativa` — `fuenteDeDocumento()` resuelve cuál toca, y es el único
-	 * lugar que debería preguntárselo.
+	 * Nada nuevo lo escribe, y lo que queda se va: al abrir Configuración,
+	 * `migrarEjemplos.ts` sube estos bytes al almacén y los cambia por su
+	 * puntero (ver `pasarEjemploAlAlmacen`). Mientras eso no pase —el almacén
+	 * caído, por ejemplo— el documento se sigue pintando desde aquí:
+	 * `fuenteDeDocumento()` resuelve cuál toca, y es el único lugar que debería
+	 * preguntárselo.
 	 */
 	dataUrl?: string;
 	/** ISO-8601 de cuándo se guardó este documento. */
@@ -579,6 +584,24 @@ export function fuenteDeDocumento(doc: DocumentoEjemploInstancia): string {
 		return `/api/archivos/${ruta}?mime=${encodeURIComponent(mime)}`;
 	}
 	return doc.dataUrl ?? '';
+}
+
+/**
+ * Un PDF del que solo existe la página 1 como imagen, sin el archivo original.
+ *
+ * Son los ejemplos subidos ANTES del 2026-09-24: entonces se guardaba solo el
+ * raster de la página 1 y el PDF se tiraba. La migración los mueve al almacén
+ * como VISTA —`rutaVista` sin `rutaRelativa`— en vez de hacerlos pasar por
+ * originales, para que lo que algún día necesite el PDF completo (Document
+ * AI, al etiquetar ejemplos) sepa que no está, en vez de recibir una imagen
+ * creyendo que es el documento. La pantalla lo marca para que se pueda
+ * volver a subir.
+ */
+export function esPdfSinOriginal(doc: DocumentoEjemploInstancia): boolean {
+	// La excepción: cuando pdf.js no podía abrir el PDF (con contraseña, o
+	// corrupto), el código viejo guardaba el PDF MISMO en `dataUrl`. Ese sí
+	// conserva su original, y la migración lo sube como tal.
+	return doc.tipo === 'PDF' && !doc.rutaRelativa && !doc.dataUrl?.startsWith('data:application/pdf');
 }
 
 /**
@@ -863,10 +886,12 @@ function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploInstancia {
 		typeof o.tipo === 'string' &&
 		typeof o.tamanoBytes === 'number' &&
 		typeof o.guardadoEn === 'string' &&
-		// Vale con que tenga UNA de las dos fuentes: los nuevos traen puntero al
-		// almacén, los de antes del 2026-09-24 traen los bytes. Uno sin ninguna
-		// no se puede pintar, así que se descarta como siempre se hizo.
+		// Vale con que tenga UNA fuente: los nuevos traen puntero al almacén, los
+		// de antes del 2026-09-24 traen los bytes, y un PDF viejo ya migrado trae
+		// solo su vista (ver `esPdfSinOriginal`). Uno sin ninguna no se puede
+		// pintar, así que se descarta como siempre se hizo.
 		((typeof o.rutaRelativa === 'string' && o.rutaRelativa !== '') ||
+			(typeof o.rutaVista === 'string' && o.rutaVista !== '') ||
 			(typeof o.dataUrl === 'string' && o.dataUrl !== ''))
 	);
 }
@@ -1594,6 +1619,133 @@ export function agregarDocumentoEjemplo(
 		return null;
 	}
 	return id;
+}
+
+/** Un ejemplo que todavía guarda sus bytes en base64 (`dataUrl`), con lo que
+ *  `migrarEjemplos.ts` necesita para subirlo y volver a encontrarlo después. */
+export type EjemploLegado = {
+	idTipo: string;
+	idDocumento: string;
+	nombre: string;
+	tipo: string;
+	dataUrl: string;
+};
+
+function esLegado(d: DocumentoEjemploInstancia): d is DocumentoEjemploInstancia & { dataUrl: string } {
+	return Boolean(d.dataUrl) && !d.rutaRelativa && !d.rutaVista;
+}
+
+/** Los ejemplos que faltan por migrar, en el orden en que aparecen. */
+export function ejemplosLegados(): EjemploLegado[] {
+	const lista: EjemploLegado[] = [];
+	for (const t of tiposDocumentales) {
+		for (const d of t.documentosEjemplo) {
+			if (esLegado(d)) {
+				lista.push({ idTipo: t.id, idDocumento: d.id, nombre: d.nombre, tipo: d.tipo, dataUrl: d.dataUrl });
+			}
+		}
+	}
+	return lista;
+}
+
+/**
+ * El documento de ese legado EN MEMORIA, solo si sigue ahí y sigue siendo el
+ * mismo. Comparar el `dataUrl` y no solo el id es lo que garantiza que el
+ * puntero que llega se pegue a los bytes que de verdad se subieron.
+ */
+function documentoDeLegado(e: EjemploLegado): DocumentoEjemploInstancia | null {
+	const doc = tiposDocumentales
+		.find((t) => t.id === e.idTipo)
+		?.documentosEjemplo.find((d) => d.id === e.idDocumento);
+	return doc && esLegado(doc) && doc.dataUrl === e.dataUrl ? doc : null;
+}
+
+/** El catálogo como está AHORA en disco, sin normalizar, o `null` si no se
+ *  puede leer. Ver `pasarEjemploAlAlmacen` para por qué no basta la memoria. */
+function leerCatalogoCrudo(): Record<string, unknown>[] | null {
+	const store = almacen();
+	if (!store) return null;
+	try {
+		const datos = JSON.parse(store.getItem(LLAVE_BIBLIOTECA) ?? '[]');
+		return Array.isArray(datos) ? datos : null;
+	} catch {
+		return null;
+	}
+}
+
+/** El mismo legado dentro del catálogo crudo: mismo tipo, mismo documento y
+ *  mismos bytes, todavía sin puntero. */
+function legadoEnCrudo(crudo: Record<string, unknown>[], e: EjemploLegado): Record<string, unknown> | null {
+	const tipo = crudo.find((t) => t?.id === e.idTipo);
+	const docs = Array.isArray(tipo?.documentosEjemplo) ? (tipo.documentosEjemplo as Record<string, unknown>[]) : [];
+	const doc = docs.find((d) => d?.id === e.idDocumento);
+	return doc && doc.dataUrl === e.dataUrl && !doc.rutaRelativa && !doc.rutaVista ? doc : null;
+}
+
+/**
+ * Si vale la pena subir ese legado: sigue igual en esta pestaña Y en disco.
+ * Mientras se subía el anterior pudo quitarse aquí, o quitarse o migrarse en
+ * otra pestaña; en cualquiera de esos casos subirlo solo dejaría un archivo
+ * huérfano en el almacén — uno que el usuario ya había decidido quitar.
+ */
+export function sigueSiendoLegado(e: EjemploLegado): boolean {
+	const crudo = leerCatalogoCrudo();
+	return documentoDeLegado(e) !== null && crudo !== null && legadoEnCrudo(crudo, e) !== null;
+}
+
+/**
+ * Cambia los bytes base64 de un ejemplo viejo por su puntero al almacén, una
+ * vez que el archivo ya se subió. Devuelve si quedó guardado.
+ *
+ * El puntero es de ORIGINAL (`rutaRelativa`) cuando los bytes viejos SON el
+ * archivo —una imagen, o un PDF que se guardó entero—, o de VISTA
+ * (`rutaVista`) para un PDF del que solo sobrevivió la página 1 — ver
+ * `esPdfSinOriginal`. El `id` del documento no cambia, y con eso sus recortes
+ * siguen siendo suyos.
+ *
+ * ESCRIBE SOBRE EL DISCO, NO DESDE LA MEMORIA, y es a propósito. Cada pestaña
+ * lee el catálogo UNA vez, al cargar, y nada la refresca después; si esto
+ * usara `guardarBiblioteca()`, que escribe el catálogo completo de la
+ * pestaña, abrir Configuración en una pestaña vieja bastaría para pisar lo
+ * que se hizo en otra —un tipo nuevo, una activación, un ejemplo quitado que
+ * resucitaría—, sin que el usuario tocara nada. Así que se lee lo que hay en
+ * disco, se cambia SOLO este documento y se escribe eso. Si en disco ya no
+ * está, o ya no trae esos bytes, no se escribe nada.
+ *
+ * Y por no pasar por `guardarBiblioteca()`, el aviso de "no se pudo guardar"
+ * no se toca, pase lo que pase: esto corre solo, en segundo plano, y no debe
+ * ni levantar un aviso por algo que el usuario no hizo, ni bajar uno que
+ * todavía no ha leído — con la cuota llena, migrar libera espacio y SÍ logra
+ * guardar, y eso habría cerrado el aviso del guardado que acaba de perder.
+ */
+export function pasarEjemploAlAlmacen(
+	e: EjemploLegado,
+	puntero: { rutaRelativa: string; sha256: string; mime: string } | { rutaVista: string; mimeVista: string }
+): boolean {
+	const store = almacen();
+	const crudo = leerCatalogoCrudo();
+	const enDisco = crudo ? legadoEnCrudo(crudo, e) : null;
+	if (!store || !crudo || !enDisco) return false;
+
+	Object.assign(enDisco, puntero);
+	delete enDisco.dataUrl;
+	try {
+		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify(crudo));
+	} catch {
+		// El disco sigue con los bytes y la memoria no se tocó: la próxima vez se
+		// intenta de nuevo. El objeto que ya se subió no estorba — el almacén
+		// dedupica, así que el reintento lo reusa.
+		return false;
+	}
+
+	// La memoria se alinea DESPUÉS, y solo si esta pestaña todavía tiene ese
+	// mismo legado: es lo que cambia el `src` de la pantalla a la del almacén.
+	const enMemoria = documentoDeLegado(e);
+	if (enMemoria) {
+		Object.assign(enMemoria, puntero);
+		delete enMemoria.dataUrl;
+	}
+	return true;
 }
 
 /**

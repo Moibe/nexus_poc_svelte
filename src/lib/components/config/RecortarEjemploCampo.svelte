@@ -113,6 +113,21 @@
 		}
 	});
 
+	// La fuente de la imagen se FIJA al abrir; no sigue al documento en vivo.
+	// La migración de ejemplos viejos (`migrarEjemplos.ts`) puede cambiar este
+	// mismo documento de sus bytes en base64 a su puntero en el almacén con el
+	// modal abierto, y si el `src` siguiera ese cambio el `<img>` recargaría
+	// debajo del usuario: mientras recarga —o para siempre, si esa lectura
+	// falla— `naturalWidth` vale 0 y "Guardar" no tiene de dónde recortar. Son
+	// los mismos bytes, así que no hay nada que ganar cambiándola a media
+	// edición. `.pre` para que la fuente ya esté puesta en el primer pintado.
+	let fuente = $state('');
+	$effect.pre(() => {
+		if (!abierto || !documento) return;
+		const doc = documento;
+		untrack(() => (fuente = fuenteDeDocumento(doc)));
+	});
+
 	let contenedorEl = $state<HTMLDivElement>();
 	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
 	// imagen original tal cual) — a diferencia del modal de carga, aquí ya no
@@ -304,7 +319,7 @@
 						>
 							<img
 								bind:this={imgEl}
-								src={fuenteDeDocumento(documento)}
+								src={fuente}
 								alt="Documento de ejemplo"
 								class="block max-w-full select-none"
 								draggable="false"

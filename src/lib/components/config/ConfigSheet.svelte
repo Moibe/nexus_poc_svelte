@@ -68,6 +68,7 @@
 		crearNuevaVersion,
 		cancelarNuevaVersion,
 		fuenteDeDocumento,
+		esPdfSinOriginal,
 		estadoBiblioteca,
 		reconocerFallaDeGuardado,
 		marcarCalibrado,
@@ -97,8 +98,17 @@
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
 	} from '$lib/state/configuracion.svelte';
+	import { migrarEjemplosAlAlmacen } from '$lib/state/migrarEjemplos';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
+
+	// Cada vez que se abre, se sacan del localStorage los bytes de los ejemplos
+	// viejos que todavía los traigan — ver `migrarEjemplos.ts`. Con todo
+	// migrado no hace ni una petición, así que repetirlo en cada apertura es
+	// gratis, y es lo que reintenta lo que falló la vez anterior.
+	$effect(() => {
+		if (open) untrack(() => void migrarEjemplosAlAlmacen());
+	});
 
 	// El módulo tiene cuatro vistas:
 	//  - 'biblioteca': la pantalla de entrada, con el listado de modelos (hoy
@@ -2258,6 +2268,30 @@
 										<p class="truncate text-sm font-medium text-foreground">{doc.nombre}</p>
 										<p class="text-xs text-muted-foreground">
 											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}
+											{#if esPdfSinOriginal(doc)}
+												<!-- Un PDF subido antes del 2026-09-24: de él solo quedó la
+												     página 1 como imagen (ver `esPdfSinOriginal`). Se marca
+												     para que se sepa cuál volver a subir si hace falta el
+												     documento completo. Aquí el trigger SÍ puede ser el
+												     <button> por default: no está dentro de otro botón, y así
+												     el tooltip también se abre con el teclado. -->
+												·
+												<Tooltip.Provider>
+													<Tooltip.Root>
+														<Tooltip.Trigger
+															data-testid="pdf-sin-original"
+															class="font-medium text-amber-700 underline decoration-dotted underline-offset-2"
+														>
+															solo la página 1
+														</Tooltip.Trigger>
+														<Tooltip.Content side="top" class="max-w-xs">
+															Este PDF se guardó antes de que se conservara el archivo original: solo
+															quedó su página 1, como imagen. Para tenerlo completo, quítalo y vuelve a
+															subirlo — al quitarlo se van también sus recortes.
+														</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											{/if}
 										</p>
 									</div>
 									<button
