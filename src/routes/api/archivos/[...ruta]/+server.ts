@@ -40,7 +40,18 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		// Un 404 aquí es normal y no es una falla: pasa con un ejemplo guardado
 		// antes de que existiera el almacén, o con uno que se borró del disco.
 		// Quien lo pinta muestra su propio hueco.
-		error(respuesta.status, `No se pudo leer el archivo (${respuesta.status}).`);
+		//
+		// El `detail` de nexus_back sí se pasa: lo redacta el back, no trae rutas
+		// del servidor, y es lo único que distingue "falta configurar el almacén"
+		// de "el NAS no contesta" cuando alguien diagnostica con curl.
+		let motivo = `No se pudo leer el archivo (${respuesta.status}).`;
+		try {
+			const cuerpo = await respuesta.json();
+			if (typeof cuerpo?.detail === 'string') motivo = cuerpo.detail;
+		} catch {
+			/* respuesta no-JSON: se queda el genérico */
+		}
+		error(respuesta.status, motivo);
 	}
 
 	const cuerpo = await respuesta.arrayBuffer();
