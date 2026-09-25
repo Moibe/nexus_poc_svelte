@@ -19,12 +19,18 @@
  * guarda como VISTA y no como original, a propósito — ver `esPdfSinOriginal`.
  * La excepción es el PDF que pdf.js no pudo abrir (con contraseña, corrupto):
  * ese se guardaba entero, y migra como el original que es.
+ *
+ * Y LOS RECORTES (desde el 2026-09-25). Cada uno guardaba, además de sus
+ * coordenadas, una copia en PNG del pedazo; ahora un recorte es solo sus
+ * coordenadas y se dibuja sobre el documento. Antes de subir nada se les
+ * quita esa copia del disco (`quitarImagenesDeRecortes`), sin red.
  */
 
 import { subirAlAlmacen } from '$lib/almacen/subir';
 import {
 	ejemplosLegados,
 	pasarEjemploAlAlmacen,
+	quitarImagenesDeRecortes,
 	sigueSiendoLegado,
 	TENANT_OPERADOR
 } from '$lib/state/configuracion.svelte';
@@ -111,6 +117,10 @@ export function migrarEjemplosAlAlmacen(): Promise<void> {
 }
 
 async function recorrer(): Promise<void> {
+	// Primero lo que no necesita red: la copia en PNG de los recortes viejos.
+	// Es lo que más espacio libera, y no depende de que el almacén conteste.
+	quitarImagenesDeRecortes();
+
 	// Uno por uno, a propósito: son pocos, y en paralelo un almacén caído
 	// recibiría N peticiones fallidas en vez de una.
 	for (const legado of ejemplosLegados()) {

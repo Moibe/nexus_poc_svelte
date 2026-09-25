@@ -609,18 +609,23 @@ export function esPdfSinOriginal(doc: DocumentoEjemploInstancia): boolean {
  * campo, sobre UNA instancia de documento — ver `TipoDocumentalGuardado.recortesPorDocumento`
  * para cómo se indexan las dos dimensiones (documento × campo).
  *
- * `imagenDataUrl` es el recorte YA HECHO — los píxeles reales dentro de
- * `recorte`, cortados de esa instancia y exportados como data URL — no un
- * texto. A propósito: en este punto nunca corrió ningún OCR sobre el
- * documento, así que mostrar un "texto extraído" sería inventar un resultado
- * que no existe. La imagen sí es honesta: es prueba de qué se seleccionó,
- * nada más. `recorte` (las 4 coordenadas) se conserva aparte porque sigue
- * siendo el dato que un futuro pipeline de extracción real necesitaría — la
- * imagen es solo para esta pantalla.
+ * Desde el 2026-09-25 un recorte ES sus 4 coordenadas, nada más. Antes
+ * guardaba además `imagenDataUrl`: los píxeles del pedazo exportados como PNG
+ * en base64, una copia por cada campo de cada ejemplo, que era lo que más
+ * cuota de localStorage gastaba de todo el módulo. Esa copia sobraba — el
+ * documento vive en el almacén y las coordenadas ya estaban — así que
+ * Calibración ahora dibuja la región sobre el documento mismo
+ * (`RecorteDeDocumento.svelte`), y los recortes viejos pierden su copia al
+ * abrir Configuración (`quitarImagenesDeRecortes`).
+ *
+ * Sigue siendo una IMAGEN lo que se muestra, no un texto, a propósito: en
+ * este punto nunca corrió ningún OCR sobre el documento, así que mostrar un
+ * "texto extraído" sería inventar un resultado que no existe. Y las
+ * coordenadas son justo lo que Document AI usa para etiquetar ejemplos:
+ * cajas sobre el documento original.
  */
 export type EjemploGuardado = {
 	recorte: Recorte;
-	imagenDataUrl: string;
 	/** ISO-8601 de cuándo se guardó este ejemplo. */
 	guardadoEn: string;
 };
@@ -746,8 +751,8 @@ export type TipoDocumentalGuardado = {
 	 * de la Biblioteca; el nombre es lo único de un campo que sobrevive un
 	 * refresh) — mismo criterio que ya regía cuando solo había un documento.
 	 * Detrás de "Guardar" en `RecortarEjemploCampo.svelte`. Ver
-	 * `EjemploGuardado`: incluye el recorte YA HECHO como imagen, no un texto
-	 * extraído — mostrarlo de vuelta en Calibración es justo lo que ya hace.
+	 * `EjemploGuardado`: son solo las coordenadas de la región, y Calibración
+	 * la muestra dibujándola sobre el documento (`RecorteDeDocumento.svelte`).
 	 */
 	recortesPorDocumento: Record<string, Record<string, EjemploGuardado>>;
 };
@@ -829,7 +834,6 @@ function esEjemploValido(e: unknown): e is EjemploGuardado {
 	if (typeof e !== 'object' || e === null) return false;
 	const d = e as Record<string, unknown>;
 	if (!esRecorteValido(d.recorte)) return false;
-	if (typeof d.imagenDataUrl !== 'string' || d.imagenDataUrl === '') return false;
 	if (typeof d.guardadoEn !== 'string') return false;
 	return true;
 }
@@ -840,18 +844,23 @@ function esEjemploValido(e: unknown): e is EjemploGuardado {
  * tipo documental, solo perderse esa entrada suya.
  *
  * Esto también migra en silencio los formatos VIEJOS: el del 2026-09-02 (un
- * `Recorte` suelto, solo `{x,y,w,h}`) y el del 2026-09-03 (`EjemploGuardado`
- * con un `documento` propio por campo) — ninguno pasa `esEjemploValido` tal
- * como quedó y se descarta. No hay forma de reconstruir la imagen que
- * faltaba a partir de solo 4 coordenadas, así que perder esas entradas
- * viejas es el costo real de cada migración — aceptable en esta etapa del
- * PoC, sin datos de producción en juego.
+ * `Recorte` suelto, solo `{x,y,w,h}`, sin `guardadoEn`) y el del 2026-09-03
+ * (`EjemploGuardado` con un `documento` propio por campo) — ninguno pasa
+ * `esEjemploValido` tal como quedó y se descarta; ninguno sobrevivía ya en
+ * disco, porque cualquier guardado posterior reescribió el catálogo sin ellos.
+ *
+ * Y lee SOLO `recorte` y `guardadoEn`: la copia en PNG que traían los recortes
+ * de antes del 2026-09-25 (`imagenDataUrl`) se queda afuera de la memoria, así
+ * que el siguiente guardado ya no la escribe. Del disco la quita
+ * `quitarImagenesDeRecortes` sin esperar a ese guardado.
  */
 function leerRecortesDeUnDocumento(d: unknown): Record<string, EjemploGuardado> {
 	if (typeof d !== 'object' || d === null) return {};
 	const resultado: Record<string, EjemploGuardado> = {};
 	for (const [nombreCampo, e] of Object.entries(d as Record<string, unknown>)) {
-		if (esEjemploValido(e)) resultado[nombreCampo] = e;
+		if (esEjemploValido(e)) {
+			resultado[nombreCampo] = { recorte: { ...e.recorte }, guardadoEn: e.guardadoEn };
+		}
 	}
 	return resultado;
 }
@@ -1749,12 +1758,50 @@ export function pasarEjemploAlAlmacen(
 }
 
 /**
+ * Quita del DISCO la copia en PNG que traían los recortes de antes del
+ * 2026-09-25 (`imagenDataUrl`). Devuelve cuántas quitó.
+ *
+ * La memoria ya no la tiene —`leerRecortesDeUnDocumento` la deja afuera—, así
+ * que cualquier guardado la borraría también; esto no espera a ese guardado,
+ * porque ese espacio es justo el que falta cuando la cuota se llena. Mismo
+ * cuidado que `pasarEjemploAlAlmacen`: lee lo que hay en disco, quita SOLO
+ * ese campo y escribe eso — sin pasar la memoria de esta pestaña encima de lo
+ * que haya hecho otra, y sin tocar el aviso de "no se pudo guardar". Si
+ * falla no pasa nada: la próxima vez se intenta de nuevo.
+ */
+export function quitarImagenesDeRecortes(): number {
+	const store = almacen();
+	const crudo = leerCatalogoCrudo();
+	if (!store || !crudo) return 0;
+	let quitadas = 0;
+	for (const tipo of crudo) {
+		const porDocumento = tipo?.recortesPorDocumento;
+		if (typeof porDocumento !== 'object' || porDocumento === null) continue;
+		for (const porCampo of Object.values(porDocumento as Record<string, unknown>)) {
+			if (typeof porCampo !== 'object' || porCampo === null) continue;
+			for (const ejemplo of Object.values(porCampo as Record<string, unknown>)) {
+				if (typeof ejemplo === 'object' && ejemplo !== null && 'imagenDataUrl' in ejemplo) {
+					delete (ejemplo as Record<string, unknown>).imagenDataUrl;
+					quitadas += 1;
+				}
+			}
+		}
+	}
+	if (quitadas === 0) return 0;
+	try {
+		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify(crudo));
+		return quitadas;
+	} catch {
+		return 0;
+	}
+}
+
+/**
  * Quita UNA instancia de documento de ejemplo — y con ella, TODOS los
  * recortes por campo que se hubieran hecho sobre ESA instancia en particular
  * (`recortesPorDocumento[idDocumento]` completo): un recorte guarda solo sus
- * 4 coordenadas más la imagen ya cortada, no una referencia al documento de
- * origen, así que sin esa instancia esas coordenadas ya no significan nada
- * recuperable. Las DEMÁS instancias del tipo (y sus recortes) no se tocan.
+ * 4 coordenadas SOBRE esa instancia, así que sin ella ya no hay de dónde
+ * sacar lo que marcaban. Las DEMÁS instancias del tipo (y sus recortes) no se tocan.
  */
 export function borrarDocumentoEjemplo(idTipo: string, idDocumento: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
@@ -1799,7 +1846,7 @@ export function guardarRecorteEjemplo(
 	idTipo: string,
 	idDocumento: string,
 	nombreCampo: string,
-	ejemplo: { recorte: Recorte; imagenDataUrl: string }
+	ejemplo: { recorte: Recorte }
 ): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
@@ -1816,8 +1863,9 @@ export function guardarRecorteEjemplo(
 	if (!guardarBiblioteca()) {
 		// Mismo motivo que en `agregarDocumentoEjemplo`: devolver `true` aquí
 		// cerraba el modal y marcaba el campo como etiquetado sin que el recorte
-		// existiera en disco. Y esta es la puerta que MÁS pesa — cada recorte es
-		// un PNG independiente en base64, no unos KB de texto.
+		// existiera en disco. Hasta el 2026-09-25 era además la puerta que MÁS
+		// pesaba (cada recorte traía un PNG en base64); ahora son 4 números, pero
+		// con la cuota llena por otra cosa igual puede fallar.
 		if (previo) tipo.recortesPorDocumento[idDocumento][nombreCampo] = previo;
 		else delete tipo.recortesPorDocumento[idDocumento][nombreCampo];
 		if (!habiaMapa) delete tipo.recortesPorDocumento[idDocumento];

@@ -46,6 +46,7 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
+	import RecorteDeDocumento from './RecorteDeDocumento.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import GenerarPrompts from './GenerarPrompts.svelte';
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
@@ -2551,19 +2552,22 @@
 										</div>
 
 										{#if ejemplo && camposExpandidos.has(campo.nombre)}
-											<!-- Lo que "Guardar" del modal de recorte dejó (2026-09-03):
-											     el recorte YA HECHO como imagen — nunca un texto, porque
-											     aquí no corrió ningún OCR todavía. El documento de origen
-											     ya se muestra arriba (una vez por instancia seleccionada),
+											<!-- Lo que "Guardar" del modal de recorte dejó: la región
+											     seleccionada, como imagen — nunca un texto, porque aquí
+											     no corrió ningún OCR todavía. Desde el 2026-09-25 no es
+											     una copia guardada del pedazo sino el documento mismo
+											     recortado con CSS en sus coordenadas (ver
+											     `RecorteDeDocumento.svelte`). El documento de origen ya
+											     se muestra arriba (una vez por instancia seleccionada),
 											     así que aquí no se repite su tarjeta. -->
 											<div class="mt-4 max-w-lg">
 												<p class="mb-2 text-xs font-medium text-muted-foreground">
 													Texto seleccionado
 												</p>
-												<img
-													src={ejemplo.imagenDataUrl}
+												<RecorteDeDocumento
+													fuente={fuenteDeDocumento(doc)}
+													recorte={ejemplo.recorte}
 													alt={`Recorte guardado para ${campo.nombre}`}
-													class="max-h-40 max-w-full rounded-lg border border-border object-contain"
 												/>
 											</div>
 										{/if}

@@ -117,28 +117,58 @@
 	// La migración de ejemplos viejos (`migrarEjemplos.ts`) puede cambiar este
 	// mismo documento de sus bytes en base64 a su puntero en el almacén con el
 	// modal abierto, y si el `src` siguiera ese cambio el `<img>` recargaría
-	// debajo del usuario: mientras recarga —o para siempre, si esa lectura
-	// falla— `naturalWidth` vale 0 y "Guardar" no tiene de dónde recortar. Son
-	// los mismos bytes, así que no hay nada que ganar cambiándola a media
-	// edición. `.pre` para que la fuente ya esté puesta en el primer pintado.
+	// debajo del usuario mientras dibuja — y si esa lectura falla, el documento
+	// desaparecería y no quedaría sobre qué recortar. Son los mismos bytes, así
+	// que no hay nada que ganar cambiándola a media edición. `.pre` para que la
+	// fuente ya esté puesta en el primer pintado.
+	/**
+	 * Si el documento de verdad se ve. Solo con 'listo' se puede dibujar y
+	 * guardar un rectángulo.
+	 *
+	 * Antes esto lo cuidaba, de rebote, la copia PNG del pedazo: sin imagen
+	 * cargada no había de dónde sacarla y "Guardar" no hacía nada. Desde que un
+	 * recorte es solo coordenadas (2026-09-25) hace falta decirlo explícito —
+	 * si no, con el almacén caído se dibujaba sobre el ícono de imagen rota y
+	 * se guardaban porcentajes de ESE cuadrito como si fueran del documento.
+	 */
+	let estadoDocumento = $state<'cargando' | 'listo' | 'fallo'>('cargando');
+
 	let fuente = $state('');
 	$effect.pre(() => {
 		if (!abierto || !documento) return;
 		const doc = documento;
-		untrack(() => (fuente = fuenteDeDocumento(doc)));
+		untrack(() => {
+			fuente = fuenteDeDocumento(doc);
+			estadoDocumento = 'cargando';
+		});
 	});
 
-	let contenedorEl = $state<HTMLDivElement>();
 	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
 	// imagen original tal cual) — a diferencia del modal de carga, aquí ya no
 	// hace falta distinguir PDF de imagen: siempre se muestra como `<img>`.
 	let imgEl = $state<HTMLImageElement>();
+
+	// Un `<img>` que ya estaba cargado (misma fuente, desde caché) no vuelve a
+	// disparar `load`: se mira su estado en cuanto existe.
+	$effect(() => {
+		const img = imgEl;
+		if (!abierto || !img) return;
+		untrack(() => {
+			if (img.complete) estadoDocumento = img.naturalWidth > 0 ? 'listo' : 'fallo';
+		});
+	});
+
+	let contenedorEl = $state<HTMLDivElement>();
 	let arrastre: 'nuevo' | 'mover' | 'nw' | 'ne' | 'sw' | 'se' | null = null;
 	let inicioPuntero = { x: 0, y: 0 };
 	let recorteAlIniciar: Recorte | null = null;
 
+	// En porcentaje de la IMAGEN, no del contenedor: el contenedor suma su
+	// borde, y el rectángulo (hijo absoluto del contenedor) y la miniatura de
+	// Calibración (`RecorteDeDocumento`) se miden contra la imagen. Así los
+	// tres —puntero, rectángulo y lo que se guarda— hablan del mismo marco.
 	function puntoPct(e: PointerEvent) {
-		const rect = contenedorEl!.getBoundingClientRect();
+		const rect = (imgEl ?? contenedorEl!).getBoundingClientRect();
 		return {
 			x: clamp(((e.clientX - rect.left) / rect.width) * 100, 0, 100),
 			y: clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 100)
@@ -157,61 +187,38 @@
 		recorte = null;
 	}
 
-	/**
-	 * Recorta los píxeles REALES dentro de `r` y los devuelve como data URL
-	 * PNG. Es lo que "Guardar" persiste como prueba de qué se seleccionó — a
-	 * propósito NO un texto: en este punto nunca corrió ningún OCR sobre el
-	 * documento, así que mostrar un "texto extraído" sería inventar un
-	 * resultado que no existe.
-	 *
-	 * Lee de `imgEl.naturalWidth/Height` (NO el tamaño mostrado en pantalla,
-	 * que puede ser menor por el `max-w-full`) para mapear el porcentaje del
-	 * recorte a los píxeles reales del documento compartido.
-	 */
-	function generarImagenRecorte(r: Recorte): string | null {
-		if (!imgEl || imgEl.naturalWidth === 0) return null;
-		const anchoFuente = imgEl.naturalWidth;
-		const altoFuente = imgEl.naturalHeight;
-		const sx = (r.x / 100) * anchoFuente;
-		const sy = (r.y / 100) * altoFuente;
-		const sw = (r.w / 100) * anchoFuente;
-		const sh = (r.h / 100) * altoFuente;
-		const destino = document.createElement('canvas');
-		destino.width = Math.max(1, Math.round(sw));
-		destino.height = Math.max(1, Math.round(sh));
-		const ctx = destino.getContext('2d');
-		if (!ctx) return null;
-		ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, destino.width, destino.height);
-		return destino.toDataURL('image/png');
-	}
-
 	// Cerrar el modal al guardar es la confirmación: vuelve a la lista de
 	// campos de "Calibración" de la que salió, mismo criterio que "Guardar
 	// configuración" del wizard.
+	//
+	// Se guardan SOLO las 4 coordenadas (desde el 2026-09-25). Antes se
+	// guardaba además una copia en PNG de los píxeles del pedazo, en base64
+	// dentro de localStorage: la puerta que más cuota gastaba de todo el
+	// módulo, para una imagen que se puede volver a sacar del documento cuando
+	// haga falta. Calibración ahora la dibuja así: `RecorteDeDocumento.svelte`.
 	function guardarCopia() {
 		if (!tipoId || !documento || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
-		const imagenDataUrl = generarImagenRecorte(recorte);
-		if (!imagenDataUrl) return;
-		const guardado = guardarRecorteEjemplo(tipoId, documento.id, campoNombre, { recorte, imagenDataUrl });
+		if (estadoDocumento !== 'listo') return;
+		const guardado = guardarRecorteEjemplo(tipoId, documento.id, campoNombre, { recorte: { ...recorte } });
 		if (!guardado) return;
 		cerrar();
 	}
 
 	function iniciarEnLienzo(e: PointerEvent) {
-		if (!modoRecorte) return;
+		if (!modoRecorte || estadoDocumento !== 'listo') return;
 		arrastre = 'nuevo';
 		inicioPuntero = puntoPct(e);
 		recorte = { x: inicioPuntero.x, y: inicioPuntero.y, w: 0, h: 0 };
 	}
 	function iniciarMover(e: PointerEvent) {
-		if (!modoRecorte || !recorte) return;
+		if (!modoRecorte || !recorte || estadoDocumento !== 'listo') return;
 		e.stopPropagation();
 		arrastre = 'mover';
 		inicioPuntero = puntoPct(e);
 		recorteAlIniciar = { ...recorte };
 	}
 	function iniciarRedimensionar(esquina: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) {
-		if (!recorte) return;
+		if (!recorte || estadoDocumento !== 'listo') return;
 		e.stopPropagation();
 		arrastre = esquina;
 		inicioPuntero = puntoPct(e);
@@ -305,7 +312,18 @@
 			</div>
 
 			<div class="relative min-h-0 flex-1 overflow-auto bg-muted/40 p-6">
-				{#if documento}
+				{#if documento && estadoDocumento === 'fallo'}
+					<!-- Mismo aviso que la miniatura de Calibración: sin el documento a
+					     la vista no hay sobre qué marcar, y dibujar sobre el ícono de
+					     imagen rota guardaría coordenadas de nada. -->
+					<p
+						data-testid="recortador-sin-documento"
+						class="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-white px-4 py-3 text-center text-sm text-muted-foreground"
+					>
+						No se pudo cargar el documento, así que por ahora no se puede marcar ni cambiar este
+						recorte. Lo ya guardado sigue igual; cierra e intenta de nuevo en unos minutos.
+					</p>
+				{:else if documento}
 					<div class="flex justify-center pb-16">
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -320,6 +338,10 @@
 							<img
 								bind:this={imgEl}
 								src={fuente}
+								onload={(e) =>
+									(estadoDocumento =
+										(e.currentTarget as HTMLImageElement).naturalWidth > 0 ? 'listo' : 'fallo')}
+								onerror={() => (estadoDocumento = 'fallo')}
 								alt="Documento de ejemplo"
 								class="block max-w-full select-none"
 								draggable="false"
@@ -427,7 +449,7 @@
 							<button
 								type="button"
 								data-testid="boton-guardar-recorte"
-								disabled={!recorte || recorte.w === 0 || recorte.h === 0}
+								disabled={!recorte || recorte.w === 0 || recorte.h === 0 || estadoDocumento !== 'listo'}
 								class="flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
 								onclick={guardarCopia}
 							>
