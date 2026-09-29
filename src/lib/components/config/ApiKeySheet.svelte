@@ -819,11 +819,20 @@
 		: ''}
 	etiquetaConfirmar="Revocar"
 	onConfirmar={() => {
+		// Se limpia AQUÍ, no solo en `onCerrar`. Confirmando, el diálogo NO dispara
+		// `onCerrar` —`abierto` es una expresión derivada y bits-ui no la puede
+		// apagar solo—, así que sin esto se quedaba trabado en pantalla con la
+		// revocación YA hecha detrás. Los otros cuatro usos de `ConfirmarAccion`
+		// del proyecto ya lo hacían así; este era el único que no. `onCerrar` sigue
+		// sirviendo para Cancelar y Escape, que sí pasan por ahí.
+		const objetivo = llaveARevocar;
+		llaveARevocar = null;
+		if (!objetivo) return;
 		// El aviso solo sale si la revocación se PERSISTIÓ. Si localStorage la
 		// rechazó, `revocarApiKey` la deshace y salta el otro aviso, el de fallo:
 		// decir "revocada correctamente" ahí sería la mentira más cara de esta
 		// pantalla, porque la llave seguiría viva.
-		if (llaveARevocar) avisoRevocada = revocarApiKey(llaveARevocar.id);
+		avisoRevocada = revocarApiKey(objetivo.id);
 	}}
 	onCerrar={() => (llaveARevocar = null)}
 />
