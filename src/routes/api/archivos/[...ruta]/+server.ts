@@ -15,9 +15,19 @@ import { error, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
+/** La única forma de ruta que tiene un objeto del almacén:
+ *  `{cliente}/{aa}/{bb}/{sha256}`. Todo lo demás se rechaza AQUÍ, antes de
+ *  reenviar con la llave del servidor. Sin esto, este BFF —que no pide
+ *  sesión— servía a cualquier navegador los registros internos del almacén
+ *  (`.registro/llaves.jsonl`, con los hashes de las llaves de todos los
+ *  clientes). nexus_back ya lo valida también; esto es el segundo cinturón. */
+const FORMA_OBJETO = /^[A-Za-z0-9_-]{1,64}\/([0-9a-f]{2})\/([0-9a-f]{2})\/([0-9a-f]{64})$/;
+
 export const GET: RequestHandler = async ({ params, url }) => {
 	const ruta = params.ruta ?? '';
 	if (ruta === '') error(400, 'Falta la ruta del archivo.');
+	const forma = FORMA_OBJETO.exec(ruta);
+	if (!forma || forma[1] + forma[2] !== forma[3].slice(0, 4)) error(404, 'No existe ese archivo.');
 
 	// El MIME lo decide quien guardó (el catálogo lo tiene) porque el almacén no
 	// lo persiste: en disco los objetos no tienen extensión. nexus_back lo valida

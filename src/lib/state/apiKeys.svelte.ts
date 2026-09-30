@@ -1,29 +1,27 @@
 /**
- * Las API keys emitidas.
+ * Las API keys de cliente.
  *
- * QUÉ SE GUARDA, Y QUÉ NO. Aquí vive la METADATA de cada llave —nombre,
- * descripción, id público, cuándo se creó, cuándo expira, si fue revocada— y
- * NUNCA el secret. Esa es toda la regla y es la que sostiene la promesa que
- * imprime la pantalla de alta ("no volveremos a mostrarlo después de cerrar
- * esta vista"): si el secret se guardara, el listado podría volver a enseñarlo y
- * esa frase sería mentira. Un sistema real hace exactamente esto, solo que del
- * lado del servidor y guardando además el HASH del secret para poder
- * verificarlo; aquí no hay nada que verificar todavía, así que ni el hash se
- * guarda.
+ * DESDE EL 2026-09-30 SON DE VERDAD. Las genera y las guarda nexus_back
+ * (`/llaves/`, vía el BFF `/api/llaves`), y un cliente las usa para mandar
+ * documentos a `POST /bandeja/`: abren esa ruta y ninguna otra, y lo que suban
+ * se va al cliente dueño de la llave. Este módulo guarda en memoria el listado
+ * que devolvió el servidor; nada de eso se escribe en el navegador.
  *
- * POR QUÉ localStorage. Es lo que hay: `nexus_back` no tiene concepto de API
- * keys. Mismo mecanismo que la Biblioteca de tipos documentales, con las mismas
- * tres precauciones que allá: llave versionada, lectura defensiva (lo que sale
- * de localStorage es entrada NO confiable) y un fallo de escritura que se
- * REPORTA en vez de tragarse — ver `estadoApiKeys`.
+ * EL SECRET, UNA SOLA VEZ. `emitirApiKey` devuelve el secret que generó el
+ * servidor y la pantalla lo muestra esa única vez. El servidor guarda solo su
+ * hash; el listado nunca lo trae. Es lo que sostiene la promesa que imprime la
+ * pantalla de alta ("no volveremos a mostrarlo después de cerrar esta vista").
+ *
+ * LAS DE ANTES SE BORRAN. Hasta ese día las llaves se generaban y guardaban en
+ * el `localStorage` de cada navegador, el servidor no las conocía y no
+ * autenticaban nada; tampoco se guardó nunca su hash, así que no hay forma de
+ * volverlas válidas. Se borran de ese navegador al cargar este módulo (pedido
+ * explícito, 2026-09-30: "las llaves viejas mejor bórralas").
  *
  * EL ESTADO NO SE GUARDA, SE CALCULA. "Expirada" sale de comparar `expiraEn`
- * contra el reloj, no de una bandera: una llave guardada como "activa" seguiría
- * diciéndolo para siempre, porque nada la vuelve a tocar después de emitirla.
- * Lo único que sí se persiste es la revocación, que es un hecho, no un cálculo.
+ * contra el reloj; lo único que se registra es la revocación, que es un hecho.
  */
 import { browser } from '$app/environment';
-import { generarApiKey } from '$lib/apiKeys/formato';
 
 export type EstadoApiKey = 'activa' | 'expirada' | 'revocada';
 
@@ -36,41 +34,40 @@ export type ApiKeyGuardada = {
 	/** ISO-8601. Se guarda en UTC y se formatea en la hora de quien mira. */
 	creadaEn: string;
 	expiraEn: string;
-	/** ISO-8601 o `null` si sigue viva. Es el ÚNICO estado que se persiste. */
+	/** ISO-8601 o `null` si sigue viva. Es el ÚNICO estado que se registra. */
 	revocadaEn: string | null;
 };
 
-const LLAVE = 'nexusdoc:api-keys:v1';
-
-/** Las llaves emitidas, de la más nueva a la más vieja. */
+/** Las llaves del servidor, de la más nueva a la más vieja. */
 export const apiKeys = $state<ApiKeyGuardada[]>([]);
 
-/** Lo mismo que `estadoBiblioteca` en `configuracion.svelte.ts`, y por la misma
- *  razón: un `catch` vacío haría que la pantalla confirmara guardados que no
- *  ocurrieron. Aquí importa más todavía — una llave perdida no se puede
- *  recapturar como un tipo documental, porque su secret ya no existe. */
-export const estadoApiKeys = $state<{ falloAlGuardar: boolean }>({ falloAlGuardar: false });
+export const estadoApiKeys = $state<{
+	/** Pidiendo el listado al servidor. */
+	cargando: boolean;
+	/** El listado no se pudo traer. Se muestra en la pantalla, con reintento. */
+	errorCarga: string;
+	/** Una emisión o una revocación que no salió como se pidió, dicho tal cual:
+	 *  la pantalla lo muestra en un aviso y lo baja con `reconocerError`. */
+	error: string;
+	/** Las llaves con una revocación en vuelo: su "Revocar" se apaga, para que
+	 *  un segundo clic no mande otra mientras la primera no contesta. */
+	revocando: string[];
+}>({ cargando: false, errorCarga: '', error: '', revocando: [] });
 
-export function reconocerFallaDeGuardado() {
-	estadoApiKeys.falloAlGuardar = false;
+export function reconocerError() {
+	estadoApiKeys.error = '';
 }
 
-function almacen(): Storage | null {
-	// En el render del servidor no hay `window`, y tocar localStorage ahí truena
-	// el render entero.
-	if (!browser) return null;
-	try {
-		return window.localStorage;
-	} catch {
-		// Puede LANZAR, no solo venir vacío: navegación privada y los navegadores
-		// con "datos de sitios" bloqueados tiran al acceder a la propiedad.
-		return null;
-	}
+/** En qué estado está una llave AHORA. Solo la revocación se registra; lo demás
+ *  se calcula contra el reloj. */
+export function estadoDe(llave: ApiKeyGuardada, ahora: number = Date.now()): EstadoApiKey {
+	if (llave.revocadaEn) return 'revocada';
+	if (Date.parse(llave.expiraEn) <= ahora) return 'expirada';
+	return 'activa';
 }
 
-/** Valida UNA llave venida de localStorage. `null` si no tiene la forma
- *  esperada: se descarta esa y las demás siguen, en vez de tirar el listado
- *  entero por una fila corrupta. */
+/** Valida UNA llave que llegó del servidor. `null` si no tiene la forma
+ *  esperada: se descarta esa y las demás siguen. */
 function leerLlave(cruda: unknown): ApiKeyGuardada | null {
 	if (typeof cruda !== 'object' || cruda === null) return null;
 	const d = cruda as Record<string, unknown>;
@@ -84,103 +81,162 @@ function leerLlave(cruda: unknown): ApiKeyGuardada | null {
 		creadaEn: d.creadaEn,
 		expiraEn: d.expiraEn,
 		revocadaEn:
-			typeof d.revocadaEn === 'string' && !Number.isNaN(Date.parse(d.revocadaEn))
-				? d.revocadaEn
-				: null
+			typeof d.revocadaEn === 'string' && !Number.isNaN(Date.parse(d.revocadaEn)) ? d.revocadaEn : null
 	};
-}
-
-function hidratar() {
-	const store = almacen();
-	if (!store) return;
-	const crudo = store.getItem(LLAVE);
-	if (!crudo) return;
-	try {
-		const datos: unknown = JSON.parse(crudo);
-		if (!Array.isArray(datos)) return;
-		for (const fila of datos) {
-			const llave = leerLlave(fila);
-			if (llave) apiKeys.push(llave);
-		}
-	} catch {
-		// JSON corrupto: se arranca vacío. No se borra la llave de localStorage a
-		// propósito, por si alguien quiere rescatarla a mano desde la consola.
-	}
-}
-
-hidratar();
-
-/** Escribe el listado completo. Devuelve si lo logró — quien llama TIENE que
- *  mirar el resultado, porque de eso depende que la pantalla diga la verdad. */
-function guardar(): boolean {
-	const store = almacen();
-	// Sin localStorage (render en servidor) no hay nada que escribir ni que
-	// reportar: no es un fallo, es que no hay navegador.
-	if (!store) return true;
-	try {
-		if (apiKeys.length === 0) store.removeItem(LLAVE);
-		else store.setItem(LLAVE, JSON.stringify($state.snapshot(apiKeys)));
-		estadoApiKeys.falloAlGuardar = false;
-		return true;
-	} catch {
-		// Cuota llena, almacenamiento bloqueado o modo privado. No se distingue el
-		// motivo: para quien mira la pantalla las tres cosas significan lo mismo.
-		estadoApiKeys.falloAlGuardar = true;
-		return false;
-	}
-}
-
-/** En qué estado está una llave AHORA. Ver la nota de arriba: solo la
- *  revocación se guarda; lo demás se calcula contra el reloj. */
-export function estadoDe(llave: ApiKeyGuardada, ahora: number = Date.now()): EstadoApiKey {
-	if (llave.revocadaEn) return 'revocada';
-	if (Date.parse(llave.expiraEn) <= ahora) return 'expirada';
-	return 'activa';
 }
 
 /**
- * Emite una llave nueva: genera el secret, guarda SOLO su metadata y devuelve el
- * secret para que la pantalla lo muestre esa única vez.
+ * ¿El servidor CONTESTÓ con un rechazo, o no se sabe qué pasó?
  *
- * Devuelve `guardada: false` si localStorage no aceptó la escritura. La llave se
- * devuelve igual —el secret ya existe y quien lo pidió tiene derecho a verlo—,
- * pero la pantalla tiene que avisar que NO va a aparecer en el listado. Fingir
- * que se guardó sería el mismo error que ya se corrigió en la Biblioteca.
+ * No es lo mismo, y la pantalla no debe afirmar lo que no sabe. Un 4xx o un
+ * 503 que devolvió nexus_back es un "no" seguro. Un 504 del BFF (se le acabó el
+ * tiempo esperando a nexus_back) o un error de red NO dicen nada: la operación
+ * pudo haberse hecho del otro lado — una llave emitida que nadie vio, o una
+ * revocación que sí ocurrió. En esos casos se recarga el listado para saberlo.
  */
-export function emitirApiKey(datos: {
+function sinRespuesta(status: number | null): boolean {
+	return status === null || status === 504;
+}
+
+async function motivo(r: Response): Promise<string> {
+	const cuerpo = await r.json().catch(() => null);
+	return typeof cuerpo?.mensaje === 'string' ? cuerpo.mensaje : `El servidor respondió ${r.status}.`;
+}
+
+/**
+ * Qué carga del listado es la vigente. Dos cargas pueden cruzarse (abrir y
+ * cerrar rápido, o una recarga mientras se revoca): solo la ÚLTIMA en empezar
+ * puede escribir el listado, para que una respuesta vieja no pise una más nueva
+ * —p. ej. que deje "Activa" una llave que se acaba de revocar—.
+ */
+let cargaVigente = 0;
+
+/** Trae el listado del servidor. */
+export async function cargarApiKeys(): Promise<void> {
+	const turno = ++cargaVigente;
+	estadoApiKeys.cargando = true;
+	try {
+		const r = await fetch('/api/llaves');
+		if (turno !== cargaVigente) return;
+		if (!r.ok) {
+			estadoApiKeys.errorCarga = await motivo(r);
+			return;
+		}
+		const datos = await r.json().catch(() => null);
+		if (turno !== cargaVigente) return;
+		const llaves = (Array.isArray(datos?.llaves) ? datos.llaves : [])
+			.map(leerLlave)
+			.filter((x: ApiKeyGuardada | null): x is ApiKeyGuardada => x !== null);
+		apiKeys.splice(0, apiKeys.length, ...llaves);
+		estadoApiKeys.errorCarga = '';
+	} catch {
+		if (turno === cargaVigente) estadoApiKeys.errorCarga = 'No se pudo contactar al servidor.';
+	} finally {
+		if (turno === cargaVigente) estadoApiKeys.cargando = false;
+	}
+}
+
+/**
+ * Emite una llave nueva EN EL SERVIDOR y devuelve el secret para mostrarlo esa
+ * única vez. `null` si no hay secret que mostrar, con el motivo en
+ * `estadoApiKeys.error`.
+ *
+ * Si el servidor la rechazó, no se perdió nada: el secret lo genera él, así
+ * que no existe. Si NO contestó, pudo quedar emitida sin que nadie viera su
+ * secret: se dice así, y se recarga el listado para que se vea y se revoque.
+ */
+export async function emitirApiKey(datos: {
 	nombre: string;
 	descripcion: string;
 	diasParaExpirar: number;
-}): { secret: string; llave: ApiKeyGuardada; guardada: boolean } {
-	const { id, secret } = generarApiKey();
-	const ahora = new Date();
-	const llave: ApiKeyGuardada = {
-		id,
-		nombre: datos.nombre.trim(),
-		descripcion: datos.descripcion.trim(),
-		creadaEn: ahora.toISOString(),
-		expiraEn: new Date(
-			ahora.getTime() + datos.diasParaExpirar * 24 * 60 * 60 * 1000
-		).toISOString(),
-		revocadaEn: null
-	};
-	// Al frente: la recién creada es la que se viene a ver.
-	apiKeys.unshift(llave);
-	const guardada = guardar();
-	// Si no se pudo guardar, no se deja una fila fantasma en pantalla que
-	// desaparecería al refrescar.
-	if (!guardada) apiKeys.shift();
-	return { secret, llave, guardada };
+}): Promise<{ secret: string; llave: ApiKeyGuardada } | null> {
+	let r: Response;
+	try {
+		r = await fetch('/api/llaves', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				nombre: datos.nombre.trim(),
+				descripcion: datos.descripcion.trim(),
+				dias: datos.diasParaExpirar
+			})
+		});
+	} catch {
+		return emisionIncierta();
+	}
+	if (sinRespuesta(r.status)) return emisionIncierta();
+	if (!r.ok) {
+		estadoApiKeys.error = `No se creó la API Key: ${await motivo(r)}`;
+		return null;
+	}
+	const cuerpo = await r.json().catch(() => null);
+	const llave = leerLlave(cuerpo?.llave);
+	if (typeof cuerpo?.secret !== 'string' || !llave) {
+		estadoApiKeys.error =
+			'El servidor respondió sin la llave. Si aparece en el listado, revócala y emite otra: su secret no se puede recuperar.';
+		void cargarApiKeys();
+		return null;
+	}
+	// Al frente: la recién creada es la que se viene a ver. Si una carga del
+	// listado ya la trajo, no se duplica.
+	if (!apiKeys.some((k) => k.id === llave.id)) apiKeys.unshift(llave);
+	return { secret: cuerpo.secret, llave };
 }
 
-/** Revoca una llave. Es lo único que se puede hacer con una llave ya emitida:
- *  no se puede "editar" un secret que nadie guardó, y borrarla del listado
- *  dejaría de contar que existió. Devuelve si se pudo persistir. */
-export function revocarApiKey(id: string): boolean {
-	const llave = apiKeys.find((k) => k.id === id);
-	if (!llave || llave.revocadaEn) return true;
-	llave.revocadaEn = new Date().toISOString();
-	const ok = guardar();
-	if (!ok) llave.revocadaEn = null;
-	return ok;
+function emisionIncierta(): null {
+	estadoApiKeys.error =
+		'No se pudo confirmar si la API Key se creó: el servidor no contestó a tiempo. Revisa el listado — si aparece una nueva, revócala y emite otra, porque su secret no se puede recuperar.';
+	void cargarApiKeys();
+	return null;
+}
+
+/**
+ * Revoca una llave EN EL SERVIDOR. Devuelve si quedó revocada.
+ *
+ * Revocar una que ya estaba revocada también es éxito (el servidor es
+ * idempotente). Si el servidor la rechazó, la llave SIGUE SIRVIENDO y se dice
+ * así. Si no contestó, no se sabe: se recarga el listado, y si ya viene
+ * revocada cuenta como éxito; si no, se dice que no se pudo confirmar.
+ */
+export async function revocarApiKey(id: string): Promise<boolean> {
+	const nombre = apiKeys.find((k) => k.id === id)?.nombre ?? id;
+	if (estadoApiKeys.revocando.includes(id)) return false;
+	estadoApiKeys.revocando.push(id);
+	try {
+		let r: Response | null = null;
+		try {
+			r = await fetch(`/api/llaves/${encodeURIComponent(id)}/revocar`, { method: 'POST' });
+		} catch {
+			r = null;
+		}
+		if (r && r.ok) {
+			const cuerpo = await r.json().catch(() => null);
+			// Se busca OTRA VEZ en el arreglo: una carga del listado pudo haber
+			// cambiado los objetos mientras esto esperaba, y escribirle al de antes
+			// no se vería en pantalla.
+			const actual = apiKeys.find((k) => k.id === id);
+			if (actual) actual.revocadaEn = typeof cuerpo?.revocadaEn === 'string' ? cuerpo.revocadaEn : new Date().toISOString();
+			return true;
+		}
+		if (r && !sinRespuesta(r.status)) {
+			estadoApiKeys.error = `No se revocó "${nombre}": ${await motivo(r)} La llave sigue activa.`;
+			return false;
+		}
+		await cargarApiKeys();
+		if (apiKeys.find((k) => k.id === id)?.revocadaEn) return true;
+		estadoApiKeys.error = `No se pudo confirmar si "${nombre}" quedó revocada: el servidor no contestó a tiempo. Revisa su estado en el listado e inténtalo de nuevo si sigue activa.`;
+		return false;
+	} finally {
+		const i = estadoApiKeys.revocando.indexOf(id);
+		if (i !== -1) estadoApiKeys.revocando.splice(i, 1);
+	}
+}
+
+// Las de antes: se borran de este navegador. Ver el docstring de arriba.
+if (browser) {
+	try {
+		window.localStorage.removeItem('nexusdoc:api-keys:v1');
+	} catch {
+		// localStorage bloqueado: no hay nada que borrar que se pueda leer.
+	}
 }

@@ -4,18 +4,18 @@
  *
  * La bandeja lo consulta cada pocos segundos (ver `sincronizarEntradasApi` en
  * `bandeja.svelte.ts`). El tenant NO lo manda el navegador: lo fija el
- * servidor (`TENANT_BANDEJA`), para que nadie pueda pedir la bandeja de otro
+ * servidor (`TENANT_CLIENTE`), para que nadie pueda pedir la bandeja de otro
  * cliente cambiando un parámetro.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_BANDEJA, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
 export const GET: RequestHandler = async () => {
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(TENANT_BANDEJA)}`), {
+		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(TENANT_CLIENTE)}`), {
 			headers: cabecerasNexus(),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});

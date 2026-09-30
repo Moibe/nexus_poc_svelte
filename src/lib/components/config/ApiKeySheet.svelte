@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	/**
 	 * Modal "Configuración de API Key" (capturas del 2026-09-23).
 	 *
@@ -51,15 +52,23 @@
 	import { PREFIJO } from '$lib/apiKeys/formato';
 	import {
 		apiKeys,
+		cargarApiKeys,
 		emitirApiKey,
 		revocarApiKey,
 		estadoDe,
 		estadoApiKeys,
-		reconocerFallaDeGuardado,
+		reconocerError,
 		type ApiKeyGuardada
 	} from '$lib/state/apiKeys.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
+
+	// El listado vive en el servidor (desde el 2026-09-30): se pide cada vez que
+	// se abre el módulo, así una llave revocada o emitida en otro navegador ya
+	// aparece como está. `untrack` para que el efecto dependa SOLO de `open`.
+	$effect(() => {
+		if (open) untrack(() => void cargarApiKeys());
+	});
 
 	/** La vista de entrada es el LISTADO, que por dentro decide si muestra las
 	 *  tarjetas o el estado vacío — son la misma pantalla con y sin llaves. */
@@ -120,18 +129,36 @@
 		}
 	}
 
-	/** El formato de la llave NO vive aquí: lo define `$lib/apiKeys/formato`,
-	 *  que es la especificación que `nexus_back` va a tener que reimplementar el
-	 *  día que las valide. Esta pantalla solo la pide y la muestra. */
-	function crearApiKey() {
-		secret = emitirApiKey({
-			nombre,
-			descripcion,
-			diasParaExpirar: Number(expiracion)
-		}).secret;
-		// Si no se pudo persistir, `emitirApiKey` ya prendió
-		// `estadoApiKeys.falloAlGuardar` y el aviso del final del archivo lo dice.
-		// El secret se muestra igual: existe, y quien lo pidió tiene derecho a verlo.
+	/** La llave la genera y la guarda el SERVIDOR (desde el 2026-09-30): esta
+	 *  pantalla la pide y muestra el secret que regresa, esa única vez. Mismo
+	 *  formato que especifica `$lib/apiKeys/formato`. */
+	let creando = $state(false);
+
+	async function crearApiKey() {
+		if (creando) return;
+		creando = true;
+		let emitida: Awaited<ReturnType<typeof emitirApiKey>> = null;
+		try {
+			emitida = await emitirApiKey({
+				nombre,
+				descripcion,
+				diasParaExpirar: Number(expiracion)
+			});
+		} finally {
+			creando = false;
+		}
+		// Si no se emitió, se queda en el formulario con lo capturado: el aviso
+		// del final del archivo dice por qué.
+		if (!emitida) return;
+		// Mientras se emite el módulo NO se deja cerrar (ver `escapeKeydownBehavior`
+		// y la X). Si aun así se cerró —desde fuera de este componente—, el secret
+		// NO se guarda en el estado: sobreviviría al cierre, porque el componente
+		// sigue montado, y aparecería la próxima vez que alguien abra el módulo.
+		if (!open) {
+			estadoApiKeys.error = `La API Key "${emitida.llave.nombre}" se creó, pero la ventana se cerró antes de mostrar su secret, que ya no se puede recuperar. Revócala desde el listado y emite otra.`;
+			return;
+		}
+		secret = emitida.secret;
 		// El borrador se limpia en cuanto la llave SE CREA. Si no, la siguiente
 		// alta nace con el nombre y la descripción de la anterior — y ahí el
 		// argumento de "no perder lo escrito" ya no aplica: lo escrito se usó.
@@ -231,6 +258,7 @@
 	/** Ir al alta. Se limpia lo que haya quedado de una vuelta anterior para que
 	 *  el formulario no herede el aviso de copiado ni un secret viejo. */
 	function irANueva() {
+		turnoAviso++;
 		avisoRevocada = false;
 		vista = 'nueva';
 	}
@@ -255,11 +283,11 @@
 	/** El renglón chico de cada tarjeta, que cambia con el estado.
 	 *
 	 *  OJO con el caso revocada: el diseño dice "Último uso: <fecha>" y aquí dice
-	 *  "Revocada el:". No es un descuido — no existe telemetría de uso: ninguna
-	 *  llave se ha usado nunca porque `nexus_back` no las conoce, así que un
-	 *  "último uso" sería una fecha inventada en la pantalla donde menos se puede
-	 *  inventar. La fecha de revocación sí es un hecho que tenemos. Cuando el back
-	 *  registre uso, esto vuelve al texto del diseño. */
+	 *  "Revocada el:". No es un descuido — el back todavía no registra cuándo se
+	 *  usa cada llave, así que un "último uso" sería una fecha inventada en la
+	 *  pantalla donde menos se puede inventar. La fecha de revocación sí es un
+	 *  hecho que tenemos. Cuando el back registre uso, esto vuelve al texto del
+	 *  diseño. */
 	function leyendaDe(llave: ApiKeyGuardada): string {
 		const estado = estadoDe(llave);
 		if (estado === 'revocada') return `Revocada el: ${fecha(llave.revocadaEn ?? '')}`;
@@ -310,6 +338,12 @@
 	 *  temporizador: quien revocó algo irreversible merece leerlo a su ritmo. */
 	let avisoRevocada = $state(false);
 
+	/** Sube cada vez que se sale del listado (al cerrar o al ir al alta). Una
+	 *  revocación que contesta DESPUÉS de eso ya no enciende el aviso verde: se
+	 *  encendería encima de otra pantalla, o al reabrir, sin que nadie hubiera
+	 *  hecho nada. El aviso de ERROR sí sale siempre: lo que dice es cierto. */
+	let turnoAviso = 0;
+
 	/** La llave que el menú `⋮` quiere revocar, esperando confirmación. */
 	let llaveARevocar = $state<ApiKeyGuardada | null>(null);
 
@@ -359,6 +393,7 @@
 		copiado = false;
 		errorCopiado = '';
 		avisoRevocada = false;
+		turnoAviso++;
 		limpiarTemporizador();
 	});
 
@@ -377,10 +412,9 @@
      el 600 sobre `green-50` da ~3.1:1 y AA pide 4.5:1 (la nota completa está
      allá).
 
-     OJO con lo que prometen los dos textos, que son literales de las capturas:
-     hablan de "solicitudes autenticadas en NexusDoc", y hoy ninguna llave
-     autentica nada porque `nexus_back` no las conoce. Se deja el copy del
-     diseño a pedido explícito ("eventualmente lo hará"). -->
+     Los dos textos son literales de las capturas y hablan de "solicitudes
+     autenticadas en NexusDoc". Desde el 2026-09-30 es cierto: una llave emitida
+     aquí autentica `POST /bandeja/` en nexus_back. -->
 {#snippet avisoVerde(testid: string, titulo: string, cuerpo: string)}
 	<div
 		data-testid={testid}
@@ -404,8 +438,8 @@
 	<Sheet.Content
 		showCloseButton={false}
 		data-testid="modal-api-key"
-		escapeKeydownBehavior={vista === 'creada' ? 'ignore' : 'close'}
-		interactOutsideBehavior={vista === 'creada' ? 'ignore' : 'close'}
+		escapeKeydownBehavior={vista === 'creada' || creando ? 'ignore' : 'close'}
+		interactOutsideBehavior={vista === 'creada' || creando ? 'ignore' : 'close'}
 		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[75%] data-[side=right]:xl:w-[70%]"
 	>
 		<!-- header . navigation -->
@@ -418,7 +452,8 @@
 			     estado vacío es "Cancelar configuración", que además limpia lo
 			     capturado; la X deja el borrador en pie (pero NO el secret). -->
 			<Sheet.Close
-				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+				disabled={creando}
+				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
 			>
 				<CancelSquareIcon />
 				<span class="sr-only">Cerrar</span>
@@ -546,7 +581,20 @@
 					</div>
 
 					{#if vista === 'lista'}
-						{#if apiKeys.length > 0}
+						{#if estadoApiKeys.errorCarga}
+							<div
+								data-testid="error-listado-api-keys"
+								class="mb-4 flex items-center justify-between gap-4 rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive"
+							>
+								<span>No se pudo traer el listado de API Keys: {estadoApiKeys.errorCarga}</span>
+								<Button variant="outline" size="sm" onclick={() => void cargarApiKeys()}>Reintentar</Button>
+							</div>
+						{/if}
+						{#if apiKeys.length === 0 && (estadoApiKeys.cargando || estadoApiKeys.errorCarga)}
+							{#if estadoApiKeys.cargando}
+								<p class="text-sm text-muted-foreground" data-testid="cargando-api-keys">Cargando API Keys…</p>
+							{/if}
+						{:else if apiKeys.length > 0}
 							<!-- Una tarjeta por llave (captura del 2026-09-24). El renglón chico
 							     dice `nxdoc | <creación>` y, tras el ícono de calendario, lo que
 							     corresponda a su estado — ver `leyendaDe`. -->
@@ -624,9 +672,12 @@
 												     no está activa: revocar algo vencido o ya revocado no
 												     cambia nada. El ícono es una aproximación — en la captura
 												     no se alcanza a distinguir cuál es. -->
+												<!-- Apagado también mientras SU revocación está en vuelo: un
+												     segundo clic mandaría otra antes de saber qué pasó con la
+												     primera. -->
 												<DropdownMenu.Item
 													data-testid="revocar-api-key"
-													disabled={estado !== 'activa'}
+													disabled={estado !== 'activa' || estadoApiKeys.revocando.includes(llave.id)}
 													class="h-11.5 gap-3 px-2 whitespace-nowrap text-destructive data-highlighted:text-destructive"
 													onSelect={() => (llaveARevocar = llave)}
 												>
@@ -673,6 +724,7 @@
 									<Label for="nombre-api-key">Nombre API Key *</Label>
 									<Input
 										id="nombre-api-key"
+										maxlength={100}
 										bind:value={nombre}
 										placeholder="Ej. Integración producción"
 									/>
@@ -699,6 +751,7 @@
 									<Label for="descripcion-api-key">Descripción *</Label>
 									<Textarea
 										id="descripcion-api-key"
+										maxlength={500}
 										bind:value={descripcion}
 										rows={3}
 										placeholder="Describe el propósito o uso de esta API Key"
@@ -790,10 +843,10 @@
 						</Button>
 						<Button
 							data-testid="crear-api-key"
-							disabled={!formularioCompleto}
+							disabled={!formularioCompleto || creando}
 							onclick={crearApiKey}
 						>
-							Crear API Key
+							{creando ? 'Creando…' : 'Crear API Key'}
 						</Button>
 					</div>
 				{:else if vista === 'creada'}
@@ -828,26 +881,28 @@
 		const objetivo = llaveARevocar;
 		llaveARevocar = null;
 		if (!objetivo) return;
-		// El aviso solo sale si la revocación se PERSISTIÓ. Si localStorage la
-		// rechazó, `revocarApiKey` la deshace y salta el otro aviso, el de fallo:
-		// decir "revocada correctamente" ahí sería la mentira más cara de esta
-		// pantalla, porque la llave seguiría viva.
-		avisoRevocada = revocarApiKey(objetivo.id);
+		// El aviso verde solo sale si el SERVIDOR la revocó. Si no, salta el aviso
+		// de error, que dice que la llave sigue activa: decir "revocada
+		// correctamente" ahí sería la mentira más cara de esta pantalla.
+		const turno = turnoAviso;
+		void revocarApiKey(objetivo.id).then((ok) => {
+			if (ok && turno === turnoAviso && open && vista === 'lista') avisoRevocada = true;
+		});
 	}}
 	onCerrar={() => (llaveARevocar = null)}
 />
 
-<!-- El aviso de que localStorage no aceptó la escritura. Mismo componente y
-     mismo criterio que en la Biblioteca: `soloAviso` porque el hecho ya ocurrió
-     y no hay nada que cancelar. Aquí pesa más que allá — una llave que no se
-     guardó no se puede recapturar, porque su secret se mostró una sola vez. -->
+<!-- Una emisión o una revocación que NO ocurrió. Mismo componente y mismo
+     criterio que en la Biblioteca: `soloAviso` porque no hay nada que
+     cancelar. El texto lo arma `apiKeys.svelte.ts` y dice qué NO pasó — en una
+     revocación fallida, que la llave SIGUE ACTIVA. -->
 <ConfirmarAccion
-	abierto={estadoApiKeys.falloAlGuardar}
+	abierto={estadoApiKeys.error !== ''}
 	variante="destructivo"
 	soloAviso
-	titulo="No se pudo guardar en este navegador"
-	mensaje="La API Key se generó, pero no quedó registrada en este navegador (almacenamiento lleno o bloqueado), así que no va a aparecer en el listado. Guarda el secret que tienes en pantalla antes de cerrar: no se vuelve a mostrar."
+	titulo="No se pudo completar"
+	mensaje={estadoApiKeys.error}
 	etiquetaConfirmar="Entendido"
-	onConfirmar={reconocerFallaDeGuardado}
-	onCerrar={reconocerFallaDeGuardado}
+	onConfirmar={reconocerError}
+	onCerrar={reconocerError}
 />
