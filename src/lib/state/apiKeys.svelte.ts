@@ -36,6 +36,29 @@ export type ApiKeyGuardada = {
 	expiraEn: string;
 	/** ISO-8601 o `null` si sigue viva. Es el ÚNICO estado que se registra. */
 	revocadaEn: string | null;
+	/** ISO-8601 de la última llamada con esta llave, o `null` si nunca se usó.
+	 *  Lo calcula el servidor a partir del registro de uso. */
+	ultimoUso: string | null;
+};
+
+/** Lo que devuelve `GET /api/llaves/{id}/metricas`. */
+export type ResumenUso = {
+	solicitudes: number;
+	exitosas: number;
+	errores: number;
+	porcentajeExito: number | null;
+	latenciaP50Ms: number | null;
+	bytes: number;
+};
+
+export type MetricasApiKey = {
+	desde: string;
+	hasta: string;
+	actual: ResumenUso;
+	anterior: ResumenUso;
+	porDia: { dia: string; solicitudes: number }[];
+	limiteSemanal: { consumo: number; limite: number; fraccion: number; avisoDesde: number; semanaDesde: string };
+	ultimoUso: string | null;
 };
 
 /** Las llaves del servidor, de la más nueva a la más vieja. */
@@ -81,8 +104,22 @@ function leerLlave(cruda: unknown): ApiKeyGuardada | null {
 		creadaEn: d.creadaEn,
 		expiraEn: d.expiraEn,
 		revocadaEn:
-			typeof d.revocadaEn === 'string' && !Number.isNaN(Date.parse(d.revocadaEn)) ? d.revocadaEn : null
+			typeof d.revocadaEn === 'string' && !Number.isNaN(Date.parse(d.revocadaEn)) ? d.revocadaEn : null,
+		ultimoUso: typeof d.ultimoUso === 'string' && !Number.isNaN(Date.parse(d.ultimoUso)) ? d.ultimoUso : null
 	};
+}
+
+/** Las métricas de una llave en un periodo. Lanza con el motivo si no se
+ *  pudieron traer: quien la llama decide cómo mostrarlo. */
+export async function cargarMetricas(id: string, desde: string, hasta: string): Promise<MetricasApiKey> {
+	let r: Response;
+	try {
+		r = await fetch(`/api/llaves/${encodeURIComponent(id)}/metricas?${new URLSearchParams({ desde, hasta })}`);
+	} catch {
+		throw new Error('No se pudo contactar al servidor.');
+	}
+	if (!r.ok) throw new Error(await motivo(r));
+	return (await r.json()) as MetricasApiKey;
 }
 
 /**

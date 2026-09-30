@@ -49,6 +49,7 @@
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import MetricasApiKey from './MetricasApiKey.svelte';
 	import { PREFIJO } from '$lib/apiKeys/formato';
 	import {
 		apiKeys,
@@ -290,7 +291,11 @@
 	 *  diseño. */
 	function leyendaDe(llave: ApiKeyGuardada): string {
 		const estado = estadoDe(llave);
-		if (estado === 'revocada') return `Revocada el: ${fecha(llave.revocadaEn ?? '')}`;
+		// Con uso registrado, revocada dice "Último uso", como el diseño; sin
+		// uso, la fecha de revocación sigue siendo el hecho que sí tenemos.
+		if (estado === 'revocada') {
+			return llave.ultimoUso ? `Último uso: ${fecha(llave.ultimoUso)}` : `Revocada el: ${fecha(llave.revocadaEn ?? '')}`;
+		}
 		if (estado === 'expirada') return `Expiró el: ${fecha(llave.expiraEn)}`;
 		const dias = Math.ceil((Date.parse(llave.expiraEn) - Date.now()) / (24 * 60 * 60 * 1000));
 		return `Expira en: ${dias} ${dias === 1 ? 'día' : 'días'}`;
@@ -344,6 +349,10 @@
 	 *  hecho nada. El aviso de ERROR sí sale siempre: lo que dice es cierto. */
 	let turnoAviso = 0;
 
+	/** La llave con "Métricas" desplegadas dentro de su tarjeta (capturas del
+	 *  2026-09-30). Una a la vez: abrir otra cierra la anterior. */
+	let metricasDeId = $state<string | null>(null);
+
 	/** La llave que el menú `⋮` quiere revocar, esperando confirmación. */
 	let llaveARevocar = $state<ApiKeyGuardada | null>(null);
 
@@ -394,6 +403,7 @@
 		errorCopiado = '';
 		avisoRevocada = false;
 		turnoAviso++;
+		metricasDeId = null;
 		limpiarTemporizador();
 	});
 
@@ -603,8 +613,9 @@
 									{@const estado = estadoDe(llave)}
 									<div
 										data-testid="tarjeta-api-key"
-										class="flex items-center gap-3 rounded-xl border border-border px-4 py-3"
+										class="rounded-xl border border-border px-4 py-3"
 									>
+									<div class="flex items-center gap-3">
 										<!-- Una llave que ya no sirve tiene que LEERSE así de un vistazo,
 										     no solo por su chip: revocada y expirada bajan el ícono y el
 										     nombre a gris. No se usa `opacity` sobre la tarjeta entera
@@ -653,17 +664,12 @@
 											     formato que el menú `⋮` del módulo hermano: renglón de
 											     46px, ícono de 16 en gris y rótulo. -->
 											<DropdownMenu.Content align="end" class="w-56 p-3">
-												<!-- "Métricas" NO tiene a dónde ir todavía: no existe la
-												     pantalla, y sobre todo no existe el dato — ninguna llave
-												     se ha usado nunca porque `nexus_back` no las conoce, que
-												     es la misma razón por la que el renglón de una llave
-												     revocada no dice "Último uso". Se deja SIN `onSelect`, no
-												     con uno vacío, para que al leer el código sea obvio que
-												     falta cablearlo — mismo criterio que "Generar prompt" en
-												     la Biblioteca. -->
+												<!-- Despliega "Métricas de consumo" dentro de la tarjeta
+												     (desde el 2026-09-30: el back ya registra cada llamada). -->
 												<DropdownMenu.Item
 													data-testid="metricas-api-key"
 													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() => (metricasDeId = metricasDeId === llave.id ? null : llave.id)}
 												>
 													<ChartLine class="size-4 text-muted-foreground" />
 													<span>Métricas</span>
@@ -686,6 +692,10 @@
 												</DropdownMenu.Item>
 											</DropdownMenu.Content>
 										</DropdownMenu.Root>
+									</div>
+									{#if metricasDeId === llave.id}
+										<MetricasApiKey id={llave.id} nombre={llave.nombre} onCerrar={() => (metricasDeId = null)} />
+									{/if}
 									</div>
 								{/each}
 							</div>
