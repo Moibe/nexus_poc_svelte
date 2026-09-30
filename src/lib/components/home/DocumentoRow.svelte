@@ -27,6 +27,25 @@
 	);
 </script>
 
+<!-- El nombre con la etiqueta de ORIGEN a su derecha (2026-09-30, a pedido
+     con captura): "MANUAL" o "API REST", en una etiqueta y no como un dato más
+     del renglón de abajo — con documentos llegando solos por la API, de dónde
+     vino cada uno es lo primero que se busca. Misma etiqueta gris que ya usa el
+     detalle del documento (`DetalleDocumentoSheet`), en mayúsculas como la
+     captura. Va en los tres estados de la fila: uno de la API también pasa por
+     "En cola" mientras se baja del almacén. -->
+{#snippet nombreConOrigen()}
+	<div class="flex items-start justify-between gap-2">
+		<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+		<span
+			data-testid="origen-documento"
+			class="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] leading-none font-medium tracking-wide text-muted-foreground uppercase"
+		>
+			{documento.origen}
+		</span>
+	</div>
+{/snippet}
+
 <div class="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
 	<Checkbox
 		checked={documento.seleccionado}
@@ -48,7 +67,7 @@
 		     de este archivo. Una barra en 0% se ve trabada; "En cola" dice lo que
 		     de verdad está pasando. -->
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+			{@render nombreConOrigen()}
 			<p class="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
 				<span class="size-1.5 rounded-full bg-muted-foreground/40"></span>
 				En cola
@@ -56,7 +75,7 @@
 		</div>
 	{:else if documento.estado === 'subiendo'}
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+			{@render nombreConOrigen()}
 			<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
 				<div
 					class="h-full rounded-full bg-primary transition-[width]"
@@ -67,10 +86,9 @@
 		<span class="shrink-0 text-xs tabular-nums text-muted-foreground">{documento.progreso}%</span>
 	{:else}
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium text-foreground">{documento.nombre}</p>
+			{@render nombreConOrigen()}
 			<p class="text-xs text-muted-foreground">
-				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {documento.origen} ·
-				{formatearFecha(documento.agregadoEn)}
+				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {formatearFecha(documento.agregadoEn)}
 			</p>
 			{#if problema}
 				<p class="mt-0.5 text-xs text-red-500">{problema}</p>
