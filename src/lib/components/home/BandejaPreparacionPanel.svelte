@@ -6,8 +6,26 @@
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import Play from '@lucide/svelte/icons/play';
 	import CircleX from '@lucide/svelte/icons/circle-x';
-	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
+	import { documentosEnBandeja, sincronizarEntradasApi } from '$lib/state/bandeja.svelte';
 	import { iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
+
+	// Lo que los clientes mandan por la API aparece solo: se consulta al entrar,
+	// cada 10 segundos, y en cuanto la pestaña vuelve a estar a la vista (así no
+	// hay que esperar el siguiente ciclo después de cambiar de ventana). Con la
+	// pestaña oculta no se consulta: nadie está mirando.
+	const CADA_MS = 10_000;
+	$effect(() => {
+		const consultar = () => {
+			if (document.visibilityState === 'visible') void sincronizarEntradasApi();
+		};
+		consultar();
+		const intervalo = setInterval(consultar, CADA_MS);
+		document.addEventListener('visibilitychange', consultar);
+		return () => {
+			clearInterval(intervalo);
+			document.removeEventListener('visibilitychange', consultar);
+		};
+	});
 
 	const seleccionados = $derived(documentosEnBandeja.filter((d) => d.seleccionado));
 

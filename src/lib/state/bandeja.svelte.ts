@@ -5,6 +5,12 @@
  * Es a propósito mientras el DBA termina SQL Server — cuando esté lista la
  * base, esto se reemplaza por datos reales vía nexus_back y HU027.
  *
+ * La excepción, desde el 2026-09-30, es lo que llega por la API de clientes
+ * (`POST /bandeja/` de nexus_back): eso SÍ vive en el servidor, y la bandeja
+ * lo trae con `sincronizarEntradasApi` — aparece con origen "API REST",
+ * sobrevive a refrescar y lo ven todos los navegadores. Lo que se sube a mano
+ * sigue siendo solo de esta pestaña.
+ *
  * Por lo mismo, la detección de duplicados de aquí SOLO ve lo que ya está en
  * esta lista en memoria en esta sesión del navegador — si refrescas la página
  * o subes el mismo archivo en otro momento, no hay historial contra el cual
@@ -22,7 +28,10 @@ export type DocumentoEnBandeja = {
 	nombre: string;
 	extension: string;
 	tamanioBytes: number;
-	origen: 'Manual';
+	origen: 'Manual' | 'API REST';
+	/** Solo para lo que llegó por la API: el id de su entrada en el servidor,
+	 *  con el que se retira de la bandeja al procesarla o descartarla. */
+	idEntrada?: string;
 	agregadoEn: Date;
 	estado: 'en_cola' | 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
@@ -34,7 +43,11 @@ export type DocumentoEnBandeja = {
 	// archivo en disco, no su contenido — el navegador lo lee cuando se le pide.
 	// Svelte no lo envuelve en un proxy de $state (solo lo hace con objetos
 	// planos y arrays), así que llega intacto a fetch().
-	archivo: File;
+	//
+	// `null` solo mientras un documento que llegó por la API todavía no se baja
+	// del almacén: en cuanto se baja, pasa por la misma revisión que uno subido
+	// a mano, y ningún documento sin archivo llega a 'listo'.
+	archivo: File | null;
 };
 
 /**
@@ -307,12 +320,142 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 export function moverDocumentoAlPipeline(id: string) {
 	const doc = documentosEnBandeja.find((d) => d.id === id);
 	if (doc?.hashSha256) huellasProcesadas.add(doc.hashSha256);
-	quitarDocumento(id);
+	quitarDocumento(id, 'pipeline');
 }
 
-export function quitarDocumento(id: string) {
+/** Saca un documento de la bandeja. Si llegó por la API, además le avisa al
+ *  servidor, para que no reaparezca en la siguiente consulta ni al refrescar. */
+export function quitarDocumento(id: string, motivo: 'pipeline' | 'descartado' = 'descartado') {
 	const indice = documentosEnBandeja.findIndex((doc) => doc.id === id);
-	if (indice !== -1) documentosEnBandeja.splice(indice, 1);
+	if (indice === -1) return;
+	const [doc] = documentosEnBandeja.splice(indice, 1);
+	if (doc.idEntrada) retirarEntrada(doc.idEntrada, motivo);
+}
+
+// ── Lo que llega por la API de clientes ────────────────────────────────────
+
+type EntradaApi = {
+	id: string;
+	rutaRelativa: string;
+	sha256: string;
+	tamanoBytes: number;
+	mime: string;
+	nombreOriginal: string;
+	recibidoEn: string;
+};
+
+/** Los mismos cuatro formatos que acepta `POST /bandeja/` y que procesa el
+ *  pipeline. La extensión sale del MIME y no del nombre: el nombre lo pone
+ *  el cliente y puede venir sin extensión o con una que no es. */
+const EXTENSION_POR_MIME: Record<string, string> = {
+	'application/pdf': 'PDF',
+	'image/jpeg': 'JPG',
+	'image/png': 'PNG',
+	'image/tiff': 'TIFF'
+};
+
+/**
+ * Entradas que ESTA pestaña ya sacó de la bandeja. Sin esto, una entrada
+ * recién mandada al pipeline podría volver a pintarse si la siguiente
+ * consulta llega antes de que el servidor registre el retiro.
+ */
+const entradasRetiradas = new Set<string>();
+
+function retirarEntrada(idEntrada: string, motivo: 'pipeline' | 'descartado') {
+	entradasRetiradas.add(idEntrada);
+	fetch(`/api/bandeja/${encodeURIComponent(idEntrada)}/retirar`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ motivo })
+	})
+		.then((r) => {
+			// Un 404 es que ya había salido (otro navegador la tomó primero): no es
+			// un problema. Cualquier otro fallo sí: al refrescar va a reaparecer.
+			if (!r.ok && r.status !== 404) {
+				console.warn(`[bandeja] No se pudo retirar la entrada ${idEntrada} (${r.status}).`);
+			}
+		})
+		.catch(() => console.warn(`[bandeja] No se pudo retirar la entrada ${idEntrada}: sin conexión.`));
+}
+
+let sincronizando = false;
+
+/**
+ * Trae lo que está pendiente en el servidor y pone al día la bandeja: agrega
+ * lo nuevo y quita lo que ya salió (porque otro navegador lo mandó al
+ * pipeline o lo descartó). Lo llama `BandejaPreparacionPanel` al montarse y
+ * cada pocos segundos. Si el servidor no contesta, no toca nada: lo ya
+ * pintado se queda y la siguiente consulta lo vuelve a intentar.
+ */
+export async function sincronizarEntradasApi() {
+	if (sincronizando) return;
+	sincronizando = true;
+	try {
+		const r = await fetch('/api/bandeja');
+		if (!r.ok) return;
+		const datos = await r.json().catch(() => null);
+		if (!Array.isArray(datos?.entradas)) return;
+		const entradas = datos.entradas as EntradaApi[];
+		const vigentes = new Set(entradas.map((e) => e.id));
+
+		for (let i = documentosEnBandeja.length - 1; i >= 0; i--) {
+			const d = documentosEnBandeja[i];
+			if (d.idEntrada && !vigentes.has(d.idEntrada)) documentosEnBandeja.splice(i, 1);
+		}
+
+		for (const e of entradas) {
+			if (entradasRetiradas.has(e.id)) continue;
+			if (documentosEnBandeja.some((d) => d.idEntrada === e.id)) continue;
+			const extension = EXTENSION_POR_MIME[e.mime];
+			if (!extension) continue; // el servidor no debería aceptarlo; no se inventa nada
+			const id = generarId();
+			documentosEnBandeja.push({
+				id,
+				idEntrada: e.id,
+				nombre: e.nombreOriginal || `archivo.${extension.toLowerCase()}`,
+				extension,
+				tamanioBytes: e.tamanoBytes,
+				origen: 'API REST',
+				agregadoEn: new Date(e.recibidoEn),
+				estado: 'en_cola',
+				progreso: 0,
+				hashSha256: null,
+				seleccionado: false,
+				archivo: null
+			});
+			colaDeLectura.push(() => traerDelAlmacen(id, e, extension.toLowerCase()));
+		}
+		drenarCola();
+	} catch {
+		/* sin conexión: se reintenta en la siguiente consulta */
+	} finally {
+		sincronizando = false;
+	}
+}
+
+/**
+ * Baja del almacén los bytes de una entrada de la API y la pasa por la MISMA
+ * revisión que un archivo subido a mano (huella, corrupto o protegido,
+ * duplicado): a partir de aquí son indistinguibles, salvo por su origen.
+ */
+async function traerDelAlmacen(id: string, e: EntradaApi, extension: string) {
+	if (!documentosEnBandeja.some((d) => d.id === id)) return; // la quitaron mientras esperaba
+	let archivo: File;
+	try {
+		const r = await fetch(`/api/archivos/${e.rutaRelativa}?mime=${encodeURIComponent(e.mime)}`);
+		if (!r.ok) throw new Error(String(r.status));
+		archivo = new File([await r.blob()], e.nombreOriginal || `archivo.${extension}`, { type: e.mime });
+	} catch {
+		// El almacén no contestó. Se quita de la vista SIN retirarla del servidor:
+		// la siguiente consulta la vuelve a traer y se intenta otra vez.
+		const i = documentosEnBandeja.findIndex((d) => d.id === id);
+		if (i !== -1) documentosEnBandeja.splice(i, 1);
+		return;
+	}
+	const doc = documentosEnBandeja.find((d) => d.id === id);
+	if (!doc) return;
+	doc.archivo = archivo;
+	await procesarArchivo(id, archivo, extension);
 }
 
 export function alternarSeleccion(id: string) {

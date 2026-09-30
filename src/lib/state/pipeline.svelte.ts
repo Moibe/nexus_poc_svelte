@@ -44,7 +44,7 @@ export type DocumentoEnPipeline = {
 	nombre: string;
 	extension: string;
 	tamanioBytes: number;
-	origen: 'Manual';
+	origen: DocumentoEnBandeja['origen'];
 	agregadoEn: Date;
 	hashSha256: string | null;
 	archivo: File;
@@ -110,7 +110,10 @@ let drenandoCola = false;
  *  lado. Un duplicado SÍ se puede mandar a propósito — es una decisión del
  *  usuario, y así lo contempla el diseño. */
 export function sePuedeProcesar(doc: DocumentoEnBandeja): boolean {
-	return doc.estado === 'listo' || doc.estado === 'duplicado';
+	// `archivo` siempre existe para 'listo'/'duplicado' (solo se llega ahí
+	// después de leerlo), pero lo que llega por la API nace sin él hasta que
+	// se baja del almacén: se exige explícito para que nunca entre uno vacío.
+	return (doc.estado === 'listo' || doc.estado === 'duplicado') && doc.archivo !== null;
 }
 
 /**
@@ -136,6 +139,7 @@ export async function iniciarPipeline() {
 	// bandeja se iría vaciando poco a poco y el usuario vería saltar las filas
 	// mientras las mira.
 	for (const doc of elegibles) {
+		if (!doc.archivo) continue; // sePuedeProcesar ya lo descartó; esto es para el tipo
 		const entrada: DocumentoEnPipeline = {
 			id: doc.id,
 			nombre: doc.nombre,

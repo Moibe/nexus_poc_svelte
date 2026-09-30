@@ -24,6 +24,17 @@ import { env } from '$env/dynamic/private';
 // API se mueve a otra máquina.
 const BASE = (env.NEXUS_API_URL ?? 'http://127.0.0.1:8083').replace(/\/+$/, '');
 
+/**
+ * De qué cliente muestra la bandeja de preparación lo que llegó por la API.
+ *
+ * PROVISIONAL: hoy el front no sabe de tenants — no hay sesión ni usuarios
+ * atados a un cliente —, así que la bandeja mira UN tenant fijo, el mismo con
+ * el que el cliente sube a `POST /bandeja/`. Cuando existan las llaves por
+ * cliente (paso 10 del plan) esto sale de la sesión del usuario, no de aquí.
+ * Default `demo`, para probar sin configurar nada.
+ */
+export const TENANT_BANDEJA = env.NEXUS_TENANT_BANDEJA || 'demo';
+
 export function urlNexus(ruta: string): string {
 	return `${BASE}${ruta.startsWith('/') ? ruta : `/${ruta}`}`;
 }
