@@ -104,4 +104,12 @@
 
 <EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoEstado} />
 
-<ExpedientesSheet bind:open={expedientesAbierto} />
+<!-- Desde el ⋮ de una tarjeta. Se cierra el expediente antes de abrir la otra
+     ventana: las dos son Sheet a la derecha, con la misma caja y el mismo
+     z-index, así que encimadas se taparían. -->
+<ExpedientesSheet
+	bind:open={expedientesAbierto}
+	alAbrirDetalle={(id) => ((expedientesAbierto = false), abrirDetalle(id))}
+	alAbrirRegistroOt={(id) => ((expedientesAbierto = false), abrirRegistroOt(id))}
+	alAbrirEstado={(id) => ((expedientesAbierto = false), abrirEstado(id))}
+/>

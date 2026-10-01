@@ -22,10 +22,9 @@
 	 *   · El frame pone **"Páginas 4"** en las seis tarjetas. El número de
 	 *     páginas solo lo sabe el OCR de un documento ya procesado, así que se
 	 *     muestra únicamente cuando se sabe.
-	 *   · El frame pone un **menú ⋮** en cada tarjeta. No se dibuja: no hay
-	 *     ninguna acción que ofrecer sobre un documento desde aquí, y un menú
-	 *     permanentemente vacío es ruido — la misma regla que ya se aplicó al
-	 *     ícono del relojito y a otros controles apagados de este proyecto.
+	 *   · (El **menú ⋮** de cada tarjeta se dejó fuera al principio por no
+	 *     tener acciones que ofrecer. Desde el 2026-10-01 sí las tiene, a
+	 *     pedido: Detalle, Registro de OT y Estado de ese documento.)
 	 *
 	 * Lo que sí se agrega y el frame no tiene: **de qué bandeja viene** cada
 	 * documento, porque la rejilla las mezcla y sin eso no se sabría.
@@ -51,7 +50,17 @@
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	let { open = $bindable(false) }: { open?: boolean } = $props();
+	let {
+		open = $bindable(false),
+		alAbrirDetalle,
+		alAbrirRegistroOt,
+		alAbrirEstado
+	}: {
+		open?: boolean;
+		alAbrirDetalle: (id: string) => void;
+		alAbrirRegistroOt: (id: string) => void;
+		alAbrirEstado: (id: string) => void;
+	} = $props();
 
 	const BANDEJA = 'Bandeja de preparación';
 	const PIPELINE = 'Pipeline documental';
@@ -74,7 +83,8 @@
 			fecha: d.agregadoEn,
 			paginas: d.resultado?.ocr?.page_count ?? null,
 			tipo: d.tipoDetectado,
-			bandeja: PIPELINE
+			bandeja: PIPELINE,
+			procesado: true
 		})),
 		...documentosEnBandeja.map((d) => ({
 			id: d.id,
@@ -84,7 +94,8 @@
 			fecha: d.agregadoEn,
 			paginas: null,
 			tipo: null,
-			bandeja: BANDEJA
+			bandeja: BANDEJA,
+			procesado: false
 		}))
 	]);
 </script>
@@ -190,7 +201,7 @@
 							data-testid="rejilla-expedientes"
 						>
 							{#each documentos as documento (documento.id)}
-								<TarjetaExpediente {documento} />
+								<TarjetaExpediente {documento} {alAbrirDetalle} {alAbrirRegistroOt} {alAbrirEstado} />
 							{/each}
 						</div>
 					{/if}

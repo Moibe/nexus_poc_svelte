@@ -14,6 +14,9 @@
 		/** El tipo documental detectado, cuando el clasificador lo identificó. */
 		tipo: string | null;
 		bandeja: string;
+		/** Si ya pasó por el pipeline. "Detalle" y "Registro de OT" leen el
+		 *  resultado del OCR, que antes de eso no existe. */
+		procesado: boolean;
 	};
 </script>
 
@@ -27,9 +30,24 @@
 	 * propio object URL que se revoca al desmontarse.
 	 */
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
+	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import Eye from '@lucide/svelte/icons/eye';
+	import FileBadge from '@lucide/svelte/icons/file-badge';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 
-	let { documento }: { documento: DocEnExpediente } = $props();
+	let {
+		documento,
+		alAbrirDetalle,
+		alAbrirRegistroOt,
+		alAbrirEstado
+	}: {
+		documento: DocEnExpediente;
+		alAbrirDetalle: (id: string) => void;
+		alAbrirRegistroOt: (id: string) => void;
+		alAbrirEstado: (id: string) => void;
+	} = $props();
 
 	const previa = usarVistaPrevia(() =>
 		documento.archivo ? { archivo: documento.archivo, extension: documento.extension } : null
@@ -72,6 +90,54 @@
 		<p class="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={documento.nombre}>
 			{documento.nombre}
 		</p>
+		<!-- El ⋮ del frame (2026-10-01, a pedido): las tres ventanas de UN
+		     documento. Mismo menú que el de las tarjetas de API Keys.
+		     "Detalle" y "Registro de OT" se apagan para lo que sigue en la
+		     Bandeja de preparación: leen el resultado del OCR, que todavía no
+		     existe. "Estado" sirve en las dos: la historia empieza al entrar. -->
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<button
+						{...props}
+						type="button"
+						aria-label="Más opciones de {documento.nombre}"
+						data-testid="menu-tarjeta-expediente"
+						class="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+					>
+						<MoreVerticalIcon />
+					</button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="end" class="w-52 p-2">
+				<DropdownMenu.Item
+					data-testid="expediente-detalle"
+					class="h-10 gap-3 px-2"
+					disabled={!documento.procesado}
+					onSelect={() => alAbrirDetalle(documento.id)}
+				>
+					<Eye class="size-4 text-muted-foreground" />
+					Detalle
+				</DropdownMenu.Item>
+				<DropdownMenu.Item
+					data-testid="expediente-registro-ot"
+					class="h-10 gap-3 px-2"
+					disabled={!documento.procesado}
+					onSelect={() => alAbrirRegistroOt(documento.id)}
+				>
+					<FileBadge class="size-4 text-muted-foreground" />
+					Registro de OT
+				</DropdownMenu.Item>
+				<DropdownMenu.Item
+					data-testid="expediente-estado"
+					class="h-10 gap-3 px-2"
+					onSelect={() => alAbrirEstado(documento.id)}
+				>
+					<Workflow class="size-4 text-muted-foreground" />
+					Estado
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
 	</div>
 	<p class="mt-1 text-xs text-muted-foreground">{meta}</p>
 	<p class="mt-1 text-xs text-muted-foreground">{documento.bandeja}</p>
