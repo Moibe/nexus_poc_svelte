@@ -22,6 +22,12 @@
 import { sha256 } from 'js-sha256';
 
 import { detectarProblema } from '$lib/documentos/validar';
+import {
+	ETIQUETA_BANDEJA,
+	anotarEstado,
+	eventoDeEntrada,
+	type EventoDeEstado
+} from './historialEstados';
 
 export type DocumentoEnBandeja = {
 	id: string;
@@ -48,6 +54,9 @@ export type DocumentoEnBandeja = {
 	// del almacén: en cuanto se baja, pasa por la misma revisión que uno subido
 	// a mano, y ningún documento sin archivo llega a 'listo'.
 	archivo: File | null;
+	/** Cada estado por el que ha pasado, con su hora. Se anota al momento; ver
+	 *  `historialEstados.ts`. Viaja con el documento al pipeline. */
+	historial: EventoDeEstado[];
 };
 
 /**
@@ -236,7 +245,8 @@ export function confirmarCargaPendiente() {
 			progreso: 0,
 			hashSha256: null,
 			seleccionado: false,
-			archivo
+			archivo,
+			historial: [eventoDeEntrada('Manual', new Date())]
 		});
 		colaDeLectura.push(() => procesarArchivo(id, archivo, extensionEnMinusculas));
 	}
@@ -266,10 +276,23 @@ function animarProgresoMientrasSube(id: string) {
 	}, INTERVALO_TICK_MS);
 }
 
+/** Cambia el estado Y lo anota. Es una sola función para que no se pueda
+ *  mover un documento sin dejar rastro. */
+function pasarA(doc: DocumentoEnBandeja, estado: DocumentoEnBandeja['estado']): void {
+	doc.estado = estado;
+	const dicho = ETIQUETA_BANDEJA[estado];
+	anotarEstado(doc.historial, {
+		estado,
+		etiqueta: dicho?.texto ?? estado,
+		fase: 'bandeja',
+		tono: dicho?.tono ?? 'proceso'
+	});
+}
+
 async function procesarArchivo(id: string, file: File, extension: string) {
 	const enTurno = documentosEnBandeja.find((d) => d.id === id);
 	if (!enTurno) return; // lo quitaron mientras esperaba turno
-	enTurno.estado = 'subiendo';
+	pasarA(enTurno, 'subiendo');
 
 	animarProgresoMientrasSube(id);
 
@@ -287,7 +310,7 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 		const perdido = documentosEnBandeja.find((d) => d.id === id);
 		if (perdido) {
 			perdido.progreso = 100;
-			perdido.estado = 'corrupto';
+			pasarA(perdido, 'corrupto');
 		}
 		return;
 	}
@@ -305,14 +328,14 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 	// va a poder procesarse aunque además sea duplicado, así que ese problema
 	// manda sobre la marca de duplicado.
 	if (problema) {
-		doc.estado = problema;
+		pasarA(doc, problema);
 		return;
 	}
 
 	const esDuplicado =
 		huellasProcesadas.has(hash) ||
 		documentosEnBandeja.some((d) => d.id !== id && d.hashSha256 === hash);
-	doc.estado = esDuplicado ? 'duplicado' : 'listo';
+	pasarA(doc, esDuplicado ? 'duplicado' : 'listo');
 }
 
 /** Saca un documento de la bandeja PORQUE entró al pipeline, recordando su
@@ -421,7 +444,10 @@ export async function sincronizarEntradasApi() {
 				progreso: 0,
 				hashSha256: null,
 				seleccionado: false,
-				archivo: null
+				archivo: null,
+				// La hora del SERVIDOR, que es cuando de verdad llegó: este
+				// navegador se entera hasta la siguiente consulta, segundos después.
+				historial: [eventoDeEntrada('API REST', new Date(e.recibidoEn))]
 			});
 			colaDeLectura.push(() => traerDelAlmacen(id, e, extension.toLowerCase()));
 		}

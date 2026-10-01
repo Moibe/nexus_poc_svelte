@@ -26,6 +26,7 @@ import {
 	tiposDocumentales
 } from './configuracion.svelte';
 import type { ResultadoIne } from '$lib/types/ine';
+import { anotarEstado, type EventoDeEstado } from './historialEstados';
 
 export type EstadoPipeline =
 	| 'en_cola' // esperando turno; ver NOTA sobre por qué se procesa de a uno
@@ -64,6 +65,9 @@ export type DocumentoEnPipeline = {
 	terminadoEn: Date | null;
 	resultado: ResultadoIne | null;
 	error: string | null;
+	/** Toda su historia de estados, incluida la que trae de la bandeja. Se anota
+	 *  al momento del cambio; ver `historialEstados.ts`. */
+	historial: EventoDeEstado[];
 };
 
 /**
@@ -109,6 +113,26 @@ let drenandoCola = false;
  *  confirmados, y uno protegido o corrupto no se va a poder abrir del otro
  *  lado. Un duplicado SÍ se puede mandar a propósito — es una decisión del
  *  usuario, y así lo contempla el diseño. */
+/**
+ * Cambia el estado Y lo anota en su historia. Es una sola función para que no
+ * se pueda mover un documento sin dejar rastro: los estados del pipeline se
+ * asignan en quince lugares distintos.
+ *
+ * La etiqueta se toma DESPUÉS de cambiar el estado y con `etiquetaDe`, que es
+ * la misma que ve la persona en el renglón — incluido el tipo detectado
+ * ("Procesando INE").
+ */
+function pasarA(doc: DocumentoEnPipeline, estado: EstadoPipeline): void {
+	doc.estado = estado;
+	const dicho = etiquetaDe(doc);
+	anotarEstado(doc.historial, {
+		estado,
+		etiqueta: dicho.texto,
+		fase: 'pipeline',
+		tono: dicho.tono
+	});
+}
+
 export function sePuedeProcesar(doc: DocumentoEnBandeja): boolean {
 	// `archivo` siempre existe para 'listo'/'duplicado' (solo se llega ahí
 	// después de leerlo), pero lo que llega por la API nace sin él hasta que
@@ -156,8 +180,18 @@ export async function iniciarPipeline() {
 			enviadoEn: new Date(),
 			terminadoEn: null,
 			resultado: null,
-			error: null
+			error: null,
+			// La historia VIENE de la bandeja: el documento es el mismo y su vida
+			// empezó allá. Se copia el arreglo para que las dos listas no queden
+			// compartiendo el mismo objeto.
+			historial: [...doc.historial]
 		};
+		anotarEstado(entrada.historial, {
+			estado: 'en_cola',
+			etiqueta: 'En cola del pipeline',
+			fase: 'pipeline',
+			tono: 'proceso'
+		});
 		documentosEnPipeline.push(entrada);
 		moverDocumentoAlPipeline(doc.id);
 	}
@@ -206,7 +240,7 @@ async function drenarCola() {
 				// cola siempre avance.
 				const vivo = documentosEnPipeline.find((d) => d.id === id);
 				if (vivo && vivo.estado === 'en_cola') {
-					vivo.estado = 'fallido';
+					pasarA(vivo, 'fallido');
 					vivo.terminadoEn = new Date();
 					vivo.error = err instanceof Error ? err.message : 'Error inesperado al procesar.';
 				}
@@ -225,7 +259,7 @@ async function procesarUno(id: string) {
 
 	const mime = MIME_POR_EXTENSION[doc.extension];
 	if (!mime) {
-		doc.estado = 'no_soportado';
+		pasarA(doc, 'no_soportado');
 		doc.terminadoEn = new Date();
 		doc.error = `Document AI no procesa archivos ${doc.extension}. Se aceptan PDF, JPG, JPEG y TIFF.`;
 		return;
@@ -237,7 +271,7 @@ async function procesarUno(id: string) {
 	// TIFF válido se rechazaría con "formato no soportado" sin motivo real.
 	const archivo = new File([doc.archivo], doc.nombre, { type: mime });
 
-	doc.estado = 'clasificando';
+	pasarA(doc, 'clasificando');
 	const categoria = await clasificar(id, archivo);
 	if (categoria === null) return; // clasificar() ya dejó el documento en 'fallido'
 
@@ -277,7 +311,7 @@ async function procesarUno(id: string) {
 		// no alcanzó a correr): para quien está viendo la pantalla el
 		// resultado es idéntico —no hay tipo configurado que aplique— y
 		// ofrecerle las mismas dos salidas es más útil que un error técnico.
-		vivo.estado = 'no_configurado';
+		pasarA(vivo, 'no_configurado');
 		vivo.terminadoEn = new Date();
 		return;
 	}
@@ -287,7 +321,7 @@ async function procesarUno(id: string) {
 	// queda pegado al documento a partir de aquí, así que el paso siguiente
 	// dice "Procesando INE" en vez de solo "Procesando" — ver `etiquetaDe`.
 	vivo.tipoDetectado = tipo.nombre;
-	vivo.estado = 'clasificado';
+	pasarA(vivo, 'clasificado');
 	await esperar(PAUSA_CLASIFICADO_MS);
 
 	// Se vuelve a buscar tras la espera: en ese segundo el documento pudo
@@ -301,7 +335,7 @@ async function procesarUno(id: string) {
 		// extraer. Va a revisión humana y no a 'fallido' porque el documento SÍ
 		// se entendió — lo que falta es la configuración del tipo, y eso no se
 		// arregla reintentando.
-		sigueVivo.estado = 'pendiente_revision';
+		pasarA(sigueVivo, 'pendiente_revision');
 		sigueVivo.terminadoEn = new Date();
 		sigueVivo.error = `Se identificó como "${tipo.nombre}", pero ese tipo documental no tiene un procesador de extracción asociado. Vuelve a activarlo desde el Módulo de configuración.`;
 		return;
@@ -326,7 +360,7 @@ async function procesarUno(id: string) {
 		// Mismo desenlace que el caso de arriba —`pendiente_revision` y no
 		// `fallido`— por la misma razón: el documento SÍ se entendió, lo que
 		// falta es trabajo de configuración, y eso no se arregla reintentando.
-		sigueVivo.estado = 'pendiente_revision';
+		pasarA(sigueVivo, 'pendiente_revision');
 		sigueVivo.terminadoEn = new Date();
 		// Corto a propósito: el renglón de la bandeja recorta a dos líneas, y
 		// la mitad accionable ("dónde se arregla") es justo la que se perdía.
@@ -345,7 +379,7 @@ async function procesarUno(id: string) {
 	// wizard, ni uno más, y las dos limpiezas propias de una credencial (el
 	// punto de `estado`, partir `fecha_registro`) dejan de aplicarse porque
 	// viven del lado de `/ia/ine`.
-	sigueVivo.estado = 'procesando';
+	pasarA(sigueVivo, 'procesando');
 	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
 }
 
@@ -392,7 +426,7 @@ async function clasificar(id: string, archivo: File): Promise<string | null> {
 		if (!vivo) return null; // lo quitaron mientras se clasificaba
 
 		if (!respuesta.ok || datos === null) {
-			vivo.estado = 'fallido';
+			pasarA(vivo, 'fallido');
 			vivo.terminadoEn = new Date();
 			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status} al clasificar.`;
 			return null;
@@ -405,7 +439,7 @@ async function clasificar(id: string, archivo: File): Promise<string | null> {
 	} catch (err) {
 		const vivo = documentosEnPipeline.find((d) => d.id === id);
 		if (vivo) {
-			vivo.estado = 'fallido';
+			pasarA(vivo, 'fallido');
 			vivo.terminadoEn = new Date();
 			vivo.error = err instanceof Error ? err.message : 'Error desconocido al clasificar.';
 		}
@@ -469,7 +503,7 @@ async function procesarRespuestaExtraccion(id: string, promesa: Promise<Response
 		vivo.terminadoEn = new Date();
 
 		if (!respuesta.ok || datos === null) {
-			vivo.estado = 'fallido';
+			pasarA(vivo, 'fallido');
 			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status}.`;
 			return;
 		}
@@ -482,11 +516,11 @@ async function procesarRespuestaExtraccion(id: string, promesa: Promise<Response
 		// clasificador SÍ ubicó el tipo documental, pero su extractor, ya
 		// viendo el documento con detalle, no encontró nada — un segundo
 		// chequeo, más fino, que puede discrepar del primero.
-		vivo.estado = datos?._metadata?.quality_alert ? 'no_reconocido' : 'procesado';
+		pasarA(vivo, datos?._metadata?.quality_alert ? 'no_reconocido' : 'procesado');
 	} catch (err) {
 		const vivo = documentosEnPipeline.find((d) => d.id === id);
 		if (!vivo) return;
-		vivo.estado = 'fallido';
+		pasarA(vivo, 'fallido');
 		vivo.terminadoEn = new Date();
 		vivo.error = err instanceof Error ? err.message : 'Error desconocido al llamar a la API.';
 	}
@@ -510,7 +544,7 @@ export function alternarSeleccionPipeline(id: string) {
 export function continuarSinConfiguracion(id: string) {
 	const doc = documentosEnPipeline.find((d) => d.id === id);
 	if (!doc || doc.estado !== 'no_configurado') return;
-	doc.estado = 'pendiente_revision';
+	pasarA(doc, 'pendiente_revision');
 }
 
 export function quitarDelPipeline(id: string) {

@@ -39,6 +39,7 @@
 	import Eye from '@lucide/svelte/icons/eye';
 	import FileBadge from '@lucide/svelte/icons/file-badge';
 	import Clock from '@lucide/svelte/icons/clock';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import Play from '@lucide/svelte/icons/play';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
@@ -46,8 +47,13 @@
 
 	let {
 		alAbrirDetalle,
-		alAbrirRegistroOt
-	}: { alAbrirDetalle: (id: string) => void; alAbrirRegistroOt: (id: string) => void } = $props();
+		alAbrirRegistroOt,
+		alAbrirEstado
+	}: {
+		alAbrirDetalle: (id: string) => void;
+		alAbrirRegistroOt: (id: string) => void;
+		alAbrirEstado: (id: string) => void;
+	} = $props();
 
 	// ── Bandeja de preparación ──────────────────────────────────────────────
 	const enBandeja = $derived(documentosEnBandeja.filter((d) => d.seleccionado));
@@ -113,7 +119,23 @@
 		//     todavía no existe.
 		//   - Descartar → es destructivo y merece su propio modal de
 		//     confirmación, no un confirm() del navegador.
+		// "Eventos" sigue apagado y sin `onclick`: necesita `audit_event`, que
+		// vive en SQL Server y todavía no existe. NO es lo mismo que "Estado",
+		// que sí funciona: aquélla sería la bitácora completa y duradera del
+		// documento (quién lo tocó, desde dónde, qué cambió), y ésta es la
+		// historia de sus estados tal como la vio este navegador.
 		{ etiqueta: 'Eventos', icono: Clock, testid: 'accion-eventos' },
+		// "Estado" (2026-10-01): la línea de tiempo de sus cambios de estado.
+		// Como "Detalle", exige UN documento: la ventana cuenta la historia de
+		// uno.
+		{
+			etiqueta: 'Estado',
+			icono: Workflow,
+			alHacerClic: unico ? () => alAbrirEstado(unico) : undefined,
+			testid: 'accion-estado'
+		},
+		// "Descartar" es destructivo y merece su propio modal de confirmación, no
+		// un confirm() del navegador; sigue sin cablear.
 		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-pipeline' }
 	]);
 

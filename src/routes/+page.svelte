@@ -4,6 +4,7 @@
 	import PipelineDocumentalPanel from '$lib/components/home/PipelineDocumentalPanel.svelte';
 	import DetalleDocumentoSheet from '$lib/components/home/DetalleDocumentoSheet.svelte';
 	import RegistroOtSheet from '$lib/components/home/RegistroOtSheet.svelte';
+	import EstadoProcesamientoSheet from '$lib/components/home/EstadoProcesamientoSheet.svelte';
 	import BarrasAccionesFlotantes from '$lib/components/home/BarrasAccionesFlotantes.svelte';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
@@ -28,6 +29,7 @@
 	let idPanel = $state<string | null>(null);
 	let detalleAbierto = $state(false);
 	let registroOtAbierto = $state(false);
+	let estadoAbierto = $state(false);
 
 	// Si hay alguna píldora flotando, las listas dejan un hueco al final para que
 	// no tape su último renglón. Se calcula aquí porque la píldora de UNA bandeja
@@ -40,17 +42,18 @@
 		idPanel === null ? null : (documentosEnPipeline.find((d) => d.id === idPanel) ?? null)
 	);
 
-	function abrirDetalle(id: string) {
+	/** Abre UNO y cierra los otros dos. Los tres son `Sheet` con `side="right"`:
+	 *  mismo z-index y misma caja, así que dos abiertos se taparían. */
+	function abrir(id: string, cual: 'detalle' | 'registroOt' | 'estado') {
 		idPanel = id;
-		registroOtAbierto = false;
-		detalleAbierto = true;
+		detalleAbierto = cual === 'detalle';
+		registroOtAbierto = cual === 'registroOt';
+		estadoAbierto = cual === 'estado';
 	}
 
-	function abrirRegistroOt(id: string) {
-		idPanel = id;
-		detalleAbierto = false;
-		registroOtAbierto = true;
-	}
+	const abrirDetalle = (id: string) => abrir(id, 'detalle');
+	const abrirRegistroOt = (id: string) => abrir(id, 'registroOt');
+	const abrirEstado = (id: string) => abrir(id, 'estado');
 </script>
 
 <svelte:head><title>NexusDoc AI — Inicio</title></svelte:head>
@@ -71,8 +74,14 @@
 	<div class="min-h-175"><PipelineDocumentalPanel espacioParaBarra={hayPildora} /></div>
 </div>
 
-<BarrasAccionesFlotantes alAbrirDetalle={abrirDetalle} alAbrirRegistroOt={abrirRegistroOt} />
+<BarrasAccionesFlotantes
+	alAbrirDetalle={abrirDetalle}
+	alAbrirRegistroOt={abrirRegistroOt}
+	alAbrirEstado={abrirEstado}
+/>
 
 <DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoPanel} />
 
 <RegistroOtSheet bind:open={registroOtAbierto} documento={documentoPanel} />
+
+<EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoPanel} />
