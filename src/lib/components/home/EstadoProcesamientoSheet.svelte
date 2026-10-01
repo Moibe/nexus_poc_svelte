@@ -46,14 +46,19 @@
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
 	import type { EventoDeEstado } from '$lib/state/historialEstados';
+	import type { DocumentoEnBandeja } from '$lib/state/bandeja.svelte';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 
 	let {
 		open = $bindable(false),
 		documento
-	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
+	}: { open?: boolean; documento: DocumentoEnPipeline | DocumentoEnBandeja | null } = $props();
 
-	const previa = usarVistaPrevia(() => documento);
+	// Lo que llegó por la API puede no tener bytes todavía (siguen en el
+	// almacén): sin archivo no hay vista previa.
+	const previa = usarVistaPrevia(() =>
+		documento?.archivo ? { archivo: documento.archivo, extension: documento.extension } : null
+	);
 
 	/** Del más reciente al más viejo, como en el frame. `toReversed` no muta:
 	 *  el historial del documento se queda en su orden natural. */

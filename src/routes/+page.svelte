@@ -47,6 +47,17 @@
 		idPanel === null ? null : (documentosEnPipeline.find((d) => d.id === idPanel) ?? null)
 	);
 
+	// "Estado" se abre también desde la Bandeja de preparación, así que busca en
+	// las dos. "Detalle" y "Registro de OT" siguen leyendo solo del Pipeline:
+	// sin OCR no tienen qué mostrar.
+	const documentoEstado = $derived(
+		idPanel === null
+			? null
+			: (documentosEnPipeline.find((d) => d.id === idPanel) ??
+					documentosEnBandeja.find((d) => d.id === idPanel) ??
+					null)
+	);
+
 	/** Abre UNO y cierra los otros dos. Los tres son `Sheet` con `side="right"`:
 	 *  mismo z-index y misma caja, así que dos abiertos se taparían. */
 	function abrir(id: string, cual: 'detalle' | 'registroOt' | 'estado') {
@@ -91,6 +102,6 @@
 
 <RegistroOtSheet bind:open={registroOtAbierto} documento={documentoPanel} />
 
-<EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoPanel} />
+<EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoEstado} />
 
 <ExpedientesSheet bind:open={expedientesAbierto} />

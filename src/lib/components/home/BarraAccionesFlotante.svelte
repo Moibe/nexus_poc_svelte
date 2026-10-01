@@ -98,6 +98,8 @@
 	// ofrecerlo.
 	const procesables = $derived(enBandeja.filter(sePuedeProcesar));
 
+	const unicoBandeja = $derived(enBandeja.length === 1 ? enBandeja[0].id : null);
+
 	// "Detalle" NO va en este grupo: un documento que sigue en la Bandeja
 	// todavía no tiene resultado de OCR que mostrar, así que ahí estaría apagado
 	// para siempre. Es el mismo criterio de cuando cada bandeja tenía su píldora:
@@ -114,6 +116,22 @@
 					}
 				]
 			: []),
+		// "Estado" y "Ver expediente" también aquí (2026-10-01, a pedido): un
+		// documento tiene historia desde que entra a la bandeja, no desde que
+		// llega al pipeline, y el expediente lista las dos bandejas. "Estado"
+		// exige UN documento, igual que en el grupo del Pipeline.
+		{
+			etiqueta: 'Estado',
+			icono: Workflow,
+			alHacerClic: unicoBandeja ? () => alAbrirEstado(unicoBandeja) : undefined,
+			testid: 'accion-estado-bandeja'
+		},
+		{
+			etiqueta: 'Ver expediente',
+			icono: FolderOpen,
+			alHacerClic: alAbrirExpedientes,
+			testid: 'accion-ver-expediente-bandeja'
+		},
 		// Sin comportamiento todavía: es destructivo y merece su propio modal de
 		// confirmación, no un confirm() del navegador.
 		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-bandeja' }
