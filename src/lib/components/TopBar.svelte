@@ -10,12 +10,14 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
 	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
+	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
-import Puzzle from '@lucide/svelte/icons/puzzle';
+	import Puzzle from '@lucide/svelte/icons/puzzle';
+	import Webhook from '@lucide/svelte/icons/webhook';
 
 	// El sheet se monta aquí junto al menú que lo abre; se renderiza en un portal
 	// sobre todo el documento, así que no importa que viva dentro del header.
@@ -23,6 +25,9 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 
 	/** El modal de "Configuración de API Key", hermano del anterior. */
 	let apiKeyAbierto = $state(false);
+
+	/** El modal de "Configuración de webhook", hermano de los dos anteriores. */
+	let webhooksAbierto = $state(false);
 
 	// Algo fuera del header puede pedir que se abra (hoy: "Configurar" en una
 	// fila del Pipeline documental). Aquí SOLO se abre; la bandera la apaga
@@ -55,7 +60,11 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 		// Agregada el 2026-09-23. Va al final del menú, que es donde la pone la
 		// captura del diseño, y con la pieza de rompecabezas que ahí se ve —no una
 		// llave, aunque semánticamente pegaría más.
-		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) }
+		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) },
+		// Agregada el 2026-09-30, junto a API Key: las dos son cosas que se
+		// configuran para que un tercero use NexusDoc. El ícono es de lucide, sin
+		// captura del menú que lo confirme.
+		{ etiqueta: 'Webhooks', icono: Webhook, alSeleccionar: () => (webhooksAbierto = true) }
 	];
 </script>
 
@@ -142,3 +151,4 @@ import Puzzle from '@lucide/svelte/icons/puzzle';
 
 <ConfigSheet bind:open={configAbierto} />
 <ApiKeySheet bind:open={apiKeyAbierto} />
+<WebhookSheet bind:open={webhooksAbierto} />
