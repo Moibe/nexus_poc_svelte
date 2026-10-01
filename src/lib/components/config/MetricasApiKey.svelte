@@ -15,36 +15,35 @@
 	 * la API responde 429 a esa llave, y aquí se dice así.
 	 */
 	import { onMount } from 'svelte';
-	import { Popover, RangeCalendar } from 'bits-ui';
-	import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date';
+	import { getLocalTimeZone, today } from '@internationalized/date';
 	import type { DateRange } from 'bits-ui';
-	import CalendarDays from '@lucide/svelte/icons/calendar-days';
-	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import EmptyState from '$lib/components/home/EmptyState.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import SelectorPeriodo from './SelectorPeriodo.svelte';
+	import { limitesDelPeriodo } from '$lib/metricas/periodo';
+	import { rotuloAnterior, tendencia as calcularTendencia, type Tendencia } from '$lib/metricas/tendencia';
 	import { cargarMetricas, type MetricasApiKey } from '$lib/state/apiKeys.svelte';
 
 	let { id, nombre, onCerrar }: { id: string; nombre: string; onCerrar: () => void } = $props();
 
 	const hoy = today(getLocalTimeZone());
 	let rango = $state<DateRange>({ start: hoy.subtract({ days: 29 }), end: hoy });
-	let calendarioAbierto = $state(false);
 
 	let metricas = $state<MetricasApiKey | null>(null);
 	let cargando = $state(false);
 	let error = $state('');
 
-	const iso = (d: CalendarDate) => d.toString();
-
 	async function cargar() {
-		if (!rango.start || !rango.end) return;
+		// El periodo viaja como instantes con la zona del navegador, no como
+		// fechas: ver `$lib/metricas/periodo`.
+		const limites = limitesDelPeriodo(rango);
+		if (!limites) return;
 		cargando = true;
 		error = '';
 		try {
-			metricas = await cargarMetricas(id, iso(rango.start as CalendarDate), iso(rango.end as CalendarDate));
+			metricas = await cargarMetricas(id, limites.desde, limites.hasta);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'No se pudieron traer las métricas.';
 		} finally {
@@ -54,57 +53,12 @@
 
 	onMount(cargar);
 
-	/** Al elegir los dos extremos se cierra el calendario y se recarga. */
-	function alCambiarRango(nuevo: DateRange) {
-		rango = nuevo;
-		if (nuevo.start && nuevo.end) {
-			calendarioAbierto = false;
-			void cargar();
-		}
-	}
-
-	const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-	function etiquetaFecha(d: CalendarDate | undefined): string {
-		if (!d) return '…';
-		const mes = MESES[d.month - 1];
-		return `${mes[0].toUpperCase()}${mes.slice(1)} ${String(d.day).padStart(2, '0')}, ${d.year}`;
-	}
-
 	const num = (n: number) => n.toLocaleString('es-MX');
 
-	/**
-	 * "▴ 12% vs. semana anterior". El servidor compara contra el periodo
-	 * anterior de la MISMA duración; el rótulo dice "semana" solo cuando el
-	 * periodo dura 7 días, que es lo que dibuja el diseño; si no, "periodo".
-	 * Para el % de éxito se muestran puntos porcentuales (pp), como el diseño.
-	 * Sin datos anteriores no se inventa una tendencia: se deja en blanco.
-	 */
-	const rotuloAnterior = $derived.by(() => {
-		if (!rango.start || !rango.end) return 'periodo anterior';
-		const dias = (rango.end as CalendarDate).compare(rango.start as CalendarDate) + 1;
-		return dias === 7 ? 'semana anterior' : 'periodo anterior';
-	});
-
-	type Tendencia = { texto: string; buena: boolean } | null;
-	function tendencia(actual: number | null, anterior: number | null, opciones: { pp?: boolean; menorEsMejor?: boolean } = {}): Tendencia {
-		if (actual === null || anterior === null) return null;
-		let delta: number;
-		let texto: string;
-		if (opciones.pp) {
-			delta = actual - anterior;
-			texto = `${Math.abs(delta).toFixed(1)} pp`;
-		} else {
-			if (anterior === 0) return null;
-			delta = ((actual - anterior) / anterior) * 100;
-			texto = `${Math.abs(Math.round(delta))}%`;
-		}
-		if (Math.abs(delta) < 0.05) return { texto: `sin cambio vs. ${rotuloAnterior}`, buena: true };
-		const sube = delta > 0;
-		return {
-			texto: `${sube ? '▴' : '▾'} ${texto} vs. ${rotuloAnterior}`,
-			buena: opciones.menorEsMejor ? !sube : sube
-		};
-	}
+	/** "▴ 12% vs. semana anterior": la lógica es compartida con los Webhooks
+	 *  (`$lib/metricas/tendencia`); aquí solo se le pasa el rótulo del periodo. */
+	const tendencia = (actual: number | null, anterior: number | null, opciones: { pp?: boolean; menorEsMejor?: boolean } = {}) =>
+		calcularTendencia(actual, anterior, rotuloAnterior(rango), opciones);
 
 	const consumo = $derived(metricas?.limiteSemanal ?? null);
 	const restantes = $derived(consumo ? Math.max(0, consumo.limite - consumo.consumo) : 0);
@@ -113,8 +67,8 @@
 	const hayDatos = $derived(metricas !== null && metricas.actual.solicitudes > 0);
 </script>
 
-{#snippet cifra(rotulo: string, valor: string, t: Tendencia)}
-	<div class="min-w-0">
+{#snippet cifra(rotulo: string, valor: string, t: Tendencia, linea = false)}
+	<div class="min-w-0 {linea ? 'sm:border-l sm:border-border sm:pl-6' : ''}">
 		<p class="text-xs text-muted-foreground">{rotulo}</p>
 		<p class="mt-0.5 text-base font-semibold text-foreground">{valor}</p>
 		{#if t}
@@ -157,79 +111,9 @@
 				</p>
 			</div>
 
-			<!-- El selector de periodo: el botón con el rango y el ícono de
-			     calendario, como en la captura, que abre el calendario de rango. -->
-			<Popover.Root bind:open={calendarioAbierto}>
-				<Popover.Trigger
-					data-testid="periodo-metricas"
-					class="flex shrink-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-				>
-					<span>{etiquetaFecha(rango.start as CalendarDate | undefined)}</span>
-					<span class="text-muted-foreground">–</span>
-					<span>{etiquetaFecha(rango.end as CalendarDate | undefined)}</span>
-					<CalendarDays class="size-4 text-muted-foreground" aria-hidden="true" />
-				</Popover.Trigger>
-				<Popover.Portal>
-					<Popover.Content
-						align="end"
-						sideOffset={6}
-						class="z-70 rounded-xl border border-border bg-popover p-4 shadow-lg"
-					>
-						<RangeCalendar.Root
-							value={rango}
-							onValueChange={alCambiarRango}
-							maxValue={hoy}
-							locale="es-MX"
-							weekdayFormat="short"
-							class="select-none"
-						>
-							{#snippet children({ months, weekdays })}
-								<RangeCalendar.Header class="flex items-center justify-between pb-3">
-									<RangeCalendar.PrevButton
-										class="flex size-8 items-center justify-center rounded-lg hover:bg-muted"
-									>
-										<ChevronLeft class="size-4" />
-									</RangeCalendar.PrevButton>
-									<RangeCalendar.Heading class="text-sm font-medium text-foreground" />
-									<RangeCalendar.NextButton
-										class="flex size-8 items-center justify-center rounded-lg hover:bg-muted"
-									>
-										<ChevronRight class="size-4" />
-									</RangeCalendar.NextButton>
-								</RangeCalendar.Header>
-								{#each months as month (month.value)}
-									<RangeCalendar.Grid class="w-full border-collapse">
-										<RangeCalendar.GridHead>
-											<RangeCalendar.GridRow class="flex">
-												{#each weekdays as day (day)}
-													<RangeCalendar.HeadCell
-														class="w-9 text-center text-xs font-normal text-muted-foreground"
-													>
-														{day.slice(0, 2)}
-													</RangeCalendar.HeadCell>
-												{/each}
-											</RangeCalendar.GridRow>
-										</RangeCalendar.GridHead>
-										<RangeCalendar.GridBody>
-											{#each month.weeks as weekDates (weekDates)}
-												<RangeCalendar.GridRow class="flex">
-													{#each weekDates as date (date)}
-														<RangeCalendar.Cell {date} month={month.value} class="p-0">
-															<RangeCalendar.Day
-																class="flex size-9 items-center justify-center text-sm text-foreground hover:bg-muted data-disabled:opacity-30 data-outside-month:opacity-0 data-selected:bg-primary/15 data-selection-end:rounded-r-lg data-selection-end:bg-primary data-selection-end:text-primary-foreground data-selection-start:rounded-l-lg data-selection-start:bg-primary data-selection-start:text-primary-foreground data-today:font-semibold"
-															/>
-														</RangeCalendar.Cell>
-													{/each}
-												</RangeCalendar.GridRow>
-											{/each}
-										</RangeCalendar.GridBody>
-									</RangeCalendar.Grid>
-								{/each}
-							{/snippet}
-						</RangeCalendar.Root>
-					</Popover.Content>
-				</Popover.Portal>
-			</Popover.Root>
+			<!-- El selector de periodo: el botón con el rango y el calendario de rango,
+			     como en la captura (componente compartido con los Webhooks). -->
+			<SelectorPeriodo bind:rango onCambio={cargar} />
 		</div>
 
 		<div class="border-t border-border px-4 py-4">
@@ -260,16 +144,17 @@
 					{@render cifra(
 						'% de Éxito',
 						a.porcentajeExito === null ? '—' : `${a.porcentajeExito.toFixed(1)}%`,
-						tendencia(a.porcentajeExito, b.porcentajeExito, { pp: true })
+						tendencia(a.porcentajeExito, b.porcentajeExito, { pp: true }),
+						true
 					)}
-					{@render cifra('Errores', num(a.errores), tendencia(a.errores, b.errores, { menorEsMejor: true }))}
+					{@render cifra('Errores', num(a.errores), tendencia(a.errores, b.errores, { menorEsMejor: true }), true)}
 					{@render cifra(
 						'Latencia P50 (Prom.)',
 						a.latenciaP50Ms === null ? '—' : `${num(a.latenciaP50Ms)} ms`,
 						tendencia(a.latenciaP50Ms, b.latenciaP50Ms, { menorEsMejor: true })
 					)}
 					{#if consumo}
-						<div class="min-w-0 sm:col-span-2">
+						<div class="min-w-0 sm:col-span-2 sm:border-l sm:border-border sm:pl-6">
 							<p class="text-xs text-muted-foreground">Consumo del límite semanal</p>
 							<div class="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted">
 								<div

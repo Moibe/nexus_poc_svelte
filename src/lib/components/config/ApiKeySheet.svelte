@@ -41,7 +41,6 @@
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
-	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import CalendarDays from '@lucide/svelte/icons/calendar-days';
 	import ChartLine from '@lucide/svelte/icons/chart-line';
@@ -50,6 +49,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import MetricasApiKey from './MetricasApiKey.svelte';
+	import AvisoVerde from './AvisoVerde.svelte';
 	import { PREFIJO } from '$lib/apiKeys/formato';
 	import {
 		apiKeys,
@@ -416,27 +416,12 @@
 </script>
 
 <!-- Los dos avisos verdes del módulo (capturas del 2026-09-24) son el MISMO
-     bloque con otro texto, así que va una sola vez. El estilo no se inventó:
-     es el del "Nuevo tipo documental agregado." del módulo hermano — borde y
-     degradado verdes, `BadgeCheck` relleno, y `green-700` para el texto porque
-     el 600 sobre `green-50` da ~3.1:1 y AA pide 4.5:1 (la nota completa está
-     allá).
+     bloque con otro texto: viven en `AvisoVerde.svelte`, compartido con los
+     Webhooks (ahí está la nota del estilo y del contraste AA).
 
      Los dos textos son literales de las capturas y hablan de "solicitudes
      autenticadas en NexusDoc". Desde el 2026-09-30 es cierto: una llave emitida
      aquí autentica `POST /bandeja/` en nexus_back. -->
-{#snippet avisoVerde(testid: string, titulo: string, cuerpo: string)}
-	<div
-		data-testid={testid}
-		class="mb-6 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
-	>
-		<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
-		<div class="min-w-0">
-			<p class="text-sm font-semibold text-green-700">{titulo}</p>
-			<p class="mt-1 max-w-2xl text-xs text-green-700">{cuerpo}</p>
-		</div>
-	</div>
-{/snippet}
 
 <Sheet.Root bind:open>
 	<!-- Mismo ancho que el Modulo de configuración: la cáscara es la misma y dos
@@ -560,10 +545,15 @@
 
 			<!-- El pie vive DENTRO de esta columna, no debajo del modal entero: en las
 			     capturas su línea divisoria arranca donde termina el sidebar. -->
-			<div class="flex min-h-0 flex-1 flex-col">
+			<!-- `min-w-0` es obligatorio: esta columna es un hijo flexible del renglón con
+			     el sidebar, y sin él (min-width: auto) crece al ancho de su contenido.
+			     Con un texto largo sin espacios —una URL de 800 caracteres, o un
+			     nombre de 100 sin cortes— la tarjeta medía miles de píxeles y se
+			     salía de la ventana, por más `truncate` que llevara adentro. -->
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
 				<div class="flex-1 overflow-y-auto p-8">
 					<!-- Los avisos del módulo. Son dos y comparten bloque (ver el snippet
-					     `avisoVerde` arriba): "API creada" en la vista del secret, y "API Key
+					     `AvisoVerde`): "API creada" en la vista del secret, y "API Key
 					     revocada" de vuelta en el listado.
 
 					     Van ARRIBA del contenido, no debajo: confirman lo que acabas de hacer,
@@ -576,17 +566,9 @@
 					     nada, así que no separa nada cuando no hay aviso. -->
 					<div role="status" aria-live="polite">
 						{#if vista === 'creada'}
-							{@render avisoVerde(
-								'aviso-api-creada',
-								'API creada correctamente',
-								'La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en NexusDoc.'
-							)}
+							<AvisoVerde testid="aviso-api-creada" titulo="API creada correctamente" cuerpo="La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en NexusDoc." />
 						{:else if avisoRevocada}
-							{@render avisoVerde(
-								'aviso-api-revocada',
-								'API Key revocada correctamente',
-								'La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en NexusDoc.'
-							)}
+							<AvisoVerde testid="aviso-api-revocada" titulo="API Key revocada correctamente" cuerpo="La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en NexusDoc." />
 						{/if}
 					</div>
 

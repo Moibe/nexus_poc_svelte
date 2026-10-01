@@ -1,20 +1,24 @@
 /**
- * BFF: métricas de consumo de una API Key en un periodo (`desde` y `hasta`
- * en AAAA-MM-DD). El tenant lo fija el servidor, como en el resto de `/llaves`.
+ * BFF: métricas de consumo de una API Key en un periodo. `desde` y `hasta` son
+ * dos instantes ISO 8601 con zona, `[desde, hasta)` (ver `$lib/metricas/periodo`
+ * para el porqué: fechas sueltas dejaban fuera lo de la tarde-noche). El tenant
+ * lo fija el servidor, como en el resto de `/llaves`.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { periodoValido } from '$lib/metricas/periodo';
 import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
-
-const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const id = params.id ?? '';
 	const desde = url.searchParams.get('desde') ?? '';
 	const hasta = url.searchParams.get('hasta') ?? '';
-	if (!id || !FECHA.test(desde) || !FECHA.test(hasta)) {
-		return json({ mensaje: 'Faltan la llave o el periodo (desde y hasta, AAAA-MM-DD).' }, { status: 400 });
+	if (!id || !periodoValido(desde, hasta)) {
+		return json(
+			{ mensaje: 'Faltan la llave o el periodo (desde y hasta, instantes ISO 8601 con zona, el fin después del inicio).' },
+			{ status: 400 }
+		);
 	}
 
 	let respuesta: Response;

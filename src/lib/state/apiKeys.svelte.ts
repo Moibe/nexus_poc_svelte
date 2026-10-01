@@ -52,10 +52,12 @@ export type ResumenUso = {
 };
 
 export type MetricasApiKey = {
+	/** El periodo, como se pidió (instantes con zona). */
 	desde: string;
 	hasta: string;
 	actual: ResumenUso;
 	anterior: ResumenUso;
+	/** Solicitudes por día, en la zona del periodo pedido (el día de quien consulta). */
 	porDia: { dia: string; solicitudes: number }[];
 	limiteSemanal: { consumo: number; limite: number; fraccion: number; avisoDesde: number; semanaDesde: string };
 	ultimoUso: string | null;
@@ -109,8 +111,9 @@ function leerLlave(cruda: unknown): ApiKeyGuardada | null {
 	};
 }
 
-/** Las métricas de una llave en un periodo. Lanza con el motivo si no se
- *  pudieron traer: quien la llama decide cómo mostrarlo. */
+/** Las métricas de una llave en un periodo (`desde` y `hasta`: instantes ISO
+ *  8601 con zona, `[desde, hasta)`; los arma `limitesDelPeriodo`). Lanza con el
+ *  motivo si no se pudieron traer: quien la llama decide cómo mostrarlo. */
 export async function cargarMetricas(id: string, desde: string, hasta: string): Promise<MetricasApiKey> {
 	let r: Response;
 	try {
