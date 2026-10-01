@@ -40,6 +40,7 @@
 	import FileBadge from '@lucide/svelte/icons/file-badge';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Workflow from '@lucide/svelte/icons/workflow';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import Play from '@lucide/svelte/icons/play';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
@@ -48,11 +49,13 @@
 	let {
 		alAbrirDetalle,
 		alAbrirRegistroOt,
-		alAbrirEstado
+		alAbrirEstado,
+		alAbrirExpedientes
 	}: {
 		alAbrirDetalle: (id: string) => void;
 		alAbrirRegistroOt: (id: string) => void;
 		alAbrirEstado: (id: string) => void;
+		alAbrirExpedientes: () => void;
 	} = $props();
 
 	// ── Bandeja de preparación ──────────────────────────────────────────────
@@ -133,6 +136,15 @@
 			icono: Workflow,
 			alHacerClic: unico ? () => alAbrirEstado(unico) : undefined,
 			testid: 'accion-estado'
+		},
+		// "Ver expediente" (2026-10-01) es la única que NO exige un documento
+		// único: abre la vista de expedientes, que hoy lista todos los documentos
+		// de las bandejas y no depende de cuál esté seleccionado.
+		{
+			etiqueta: 'Ver expediente',
+			icono: FolderOpen,
+			alHacerClic: alAbrirExpedientes,
+			testid: 'accion-ver-expediente'
 		},
 		// "Descartar" es destructivo y merece su propio modal de confirmación, no
 		// un confirm() del navegador; sigue sin cablear.

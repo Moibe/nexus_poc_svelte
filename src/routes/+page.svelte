@@ -5,6 +5,7 @@
 	import DetalleDocumentoSheet from '$lib/components/home/DetalleDocumentoSheet.svelte';
 	import RegistroOtSheet from '$lib/components/home/RegistroOtSheet.svelte';
 	import EstadoProcesamientoSheet from '$lib/components/home/EstadoProcesamientoSheet.svelte';
+	import ExpedientesSheet from '$lib/components/home/ExpedientesSheet.svelte';
 	import BarrasAccionesFlotantes from '$lib/components/home/BarrasAccionesFlotantes.svelte';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
@@ -30,6 +31,10 @@
 	let detalleAbierto = $state(false);
 	let registroOtAbierto = $state(false);
 	let estadoAbierto = $state(false);
+	// Los expedientes NO entran en el grupo de los tres de arriba: no son de UN
+	// documento —muestran todas las bandejas— así que no hay `idPanel` que
+	// fijar. Se abren y cierran por su cuenta.
+	let expedientesAbierto = $state(false);
 
 	// Si hay alguna píldora flotando, las listas dejan un hueco al final para que
 	// no tape su último renglón. Se calcula aquí porque la píldora de UNA bandeja
@@ -54,6 +59,7 @@
 	const abrirDetalle = (id: string) => abrir(id, 'detalle');
 	const abrirRegistroOt = (id: string) => abrir(id, 'registroOt');
 	const abrirEstado = (id: string) => abrir(id, 'estado');
+	const abrirExpedientes = () => (expedientesAbierto = true);
 </script>
 
 <svelte:head><title>NexusDoc AI — Inicio</title></svelte:head>
@@ -78,6 +84,7 @@
 	alAbrirDetalle={abrirDetalle}
 	alAbrirRegistroOt={abrirRegistroOt}
 	alAbrirEstado={abrirEstado}
+	alAbrirExpedientes={abrirExpedientes}
 />
 
 <DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoPanel} />
@@ -85,3 +92,5 @@
 <RegistroOtSheet bind:open={registroOtAbierto} documento={documentoPanel} />
 
 <EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoPanel} />
+
+<ExpedientesSheet bind:open={expedientesAbierto} />
