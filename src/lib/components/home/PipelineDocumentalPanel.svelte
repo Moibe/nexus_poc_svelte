@@ -2,65 +2,17 @@
 	import EmptyState from './EmptyState.svelte';
 	import PanelIconCluster from './PanelIconCluster.svelte';
 	import DocumentoPipelineRow from './DocumentoPipelineRow.svelte';
-	import BarraAccionesPanel, { type AccionPanel } from './BarraAccionesPanel.svelte';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
-	import Eye from '@lucide/svelte/icons/eye';
-	import FileBadge from '@lucide/svelte/icons/file-badge';
-	import Clock from '@lucide/svelte/icons/clock';
-	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	let {
-		alAbrirDetalle,
-		alAbrirRegistroOt
-	}: { alAbrirDetalle: (id: string) => void; alAbrirRegistroOt: (id: string) => void } = $props();
-
-	const seleccionados = $derived(documentosEnPipeline.filter((d) => d.seleccionado));
-
-	// El detalle es de UN documento: con varios seleccionados no se sabe cuál
-	// abrir. Antes esta cuenta tenía que sumar las dos bandejas para saber si
-	// "uno solo" era uno solo; ahora la pregunta se contesta dentro del panel.
-	const unico = $derived(seleccionados.length === 1 ? seleccionados[0].id : null);
-
-	// "Iniciar pipeline" NO va en esta barra: estos documentos ya pasaron por
-	// ahí. Coincide con Figma (HU001|106 muestra solo Detalle / Eventos /
-	// Descartar para un documento ya procesado).
-	const acciones = $derived<AccionPanel[]>([
-		{
-			etiqueta: 'Detalle',
-			icono: Eye,
-			alHacerClic: unico ? () => alAbrirDetalle(unico) : undefined,
-			testid: 'accion-detalle'
-		},
-		// "Registro de OT" se encendió el 2026-09-10. Abre una ventana de SOLO
-		// LECTURA con los campos que el extractor sacó del documento — que es lo
-		// que el usuario pidió al describirla: "una ventana como ésta [el
-		// detalle] pero que mostrará los resultados de la extracción de cada
-		// campo". Sigue SIN existir el acto de "registrar" una OT (asentar un
-		// folio, aprobar): no hay orden de trabajo como concepto en el back ni
-		// tabla donde asentarla. El nombre promete más de lo que hace, y es a
-		// propósito: es el nombre que pidió el usuario.
-		//
-		// Misma regla que "Detalle": exige UN documento, porque la ventana
-		// muestra los campos de uno.
-		{
-			etiqueta: 'Registro de OT',
-			icono: FileBadge,
-			alHacerClic: unico ? () => alAbrirRegistroOt(unico) : undefined,
-			testid: 'accion-registro-ot'
-		},
-		// Las dos de abajo siguen deshabilitadas y sin `onclick`, para que al leer
-		// el código sea obvio que faltan por cablear:
-		//   - Eventos   → necesita `audit_event`, que vive en SQL Server y
-		//     todavía no existe.
-		//   - Descartar → es destructivo y merece su propio modal de
-		//     confirmación, no un confirm() del navegador.
-		{ etiqueta: 'Eventos', icono: Clock, testid: 'accion-eventos' },
-		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-pipeline' }
-	]);
+	// La píldora de acciones de esta bandeja ya no se monta aquí: flota al pie de
+	// la ventana y la arma `BarrasAccionesFlotantes` (2026-10-01). Dentro de la
+	// columna no cabía. `espacioParaBarra` es lo único que queda de ella aquí: el
+	// hueco al final de la lista para que la píldora no tape el último renglón.
+	let { espacioParaBarra = false }: { espacioParaBarra?: boolean } = $props();
 </script>
 
-<div class="relative flex h-full flex-col gap-2.5 rounded-2xl border-2 border-border bg-card p-6">
+<div class="flex h-full flex-col gap-2.5 rounded-2xl border-2 border-border bg-card p-6">
 	<div class="flex items-center justify-between gap-3">
 		<div>
 			<p class="text-base font-medium text-foreground">Pipeline documental</p>
@@ -70,9 +22,9 @@
 	</div>
 
 	{#if documentosEnPipeline.length > 0}
-		<!-- El `pb-16` deja libre el carril de la barra: sin él, la píldora tapa
-		     el último renglón de una lista larga y no hay forma de llegar a él. -->
-		<div class={['flex flex-col gap-2 overflow-y-auto', seleccionados.length > 0 && 'pb-16']}>
+		<!-- El hueco deja libre el carril de la píldora flotante: sin él tapa el
+		     último renglón de una lista larga y no hay forma de llegar a él. -->
+		<div class={['flex flex-col gap-2 overflow-y-auto', espacioParaBarra && 'pb-16']}>
 			{#each documentosEnPipeline as documento (documento.id)}
 				<DocumentoPipelineRow {documento} />
 			{/each}
@@ -85,9 +37,5 @@
 				description="Los documentos aparecerán aquí una vez que sean enviados para su análisis"
 			/>
 		</div>
-	{/if}
-
-	{#if seleccionados.length > 0}
-		<BarraAccionesPanel {acciones} />
 	{/if}
 </div>

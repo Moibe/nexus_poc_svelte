@@ -4,13 +4,16 @@
 	import PipelineDocumentalPanel from '$lib/components/home/PipelineDocumentalPanel.svelte';
 	import DetalleDocumentoSheet from '$lib/components/home/DetalleDocumentoSheet.svelte';
 	import RegistroOtSheet from '$lib/components/home/RegistroOtSheet.svelte';
+	import BarrasAccionesFlotantes from '$lib/components/home/BarrasAccionesFlotantes.svelte';
+	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
-	// Los dos paneles laterales se controlan desde aquí y no dentro del panel
-	// del Pipeline porque son hermanos de las tres columnas, no hijos de una:
-	// montarlos dentro de la tarjeta los metería en un contenedor con
-	// `overflow-y-auto`. Sus disparadores viven los dos en esa columna (la fila
-	// y la barra de acciones) y les llegan por props.
+	// Los dos paneles laterales se controlan desde aquí, y desde el 2026-10-01
+	// también el carril de píldoras de acciones, por el mismo motivo: son
+	// hermanos de las tres columnas, no hijos de una. Montarlos dentro de una
+	// tarjeta los metería en un contenedor con `overflow-y-auto`, y a la píldora
+	// además la dejaría presa del ancho de la columna, que es justo lo que la
+	// rompía. Quien los dispara es la píldora, y le llega por props.
 	//
 	// Se guarda el ID y no el documento: así, si la extracción termina con el
 	// panel abierto, el $derived vuelve a leer el objeto vivo del estado y el
@@ -25,6 +28,13 @@
 	let idPanel = $state<string | null>(null);
 	let detalleAbierto = $state(false);
 	let registroOtAbierto = $state(false);
+
+	// Si hay alguna píldora flotando, las listas dejan un hueco al final para que
+	// no tape su último renglón. Se calcula aquí porque la píldora de UNA bandeja
+	// flota sobre las TRES columnas.
+	const hayPildora = $derived(
+		documentosEnBandeja.some((d) => d.seleccionado) || documentosEnPipeline.some((d) => d.seleccionado)
+	);
 
 	const documentoPanel = $derived(
 		idPanel === null ? null : (documentosEnPipeline.find((d) => d.id === idPanel) ?? null)
@@ -57,11 +67,11 @@
 
 <div class="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
 	<div class="min-h-175"><CargaDocumentalPanel /></div>
-	<div class="min-h-175"><BandejaPreparacionPanel /></div>
-	<div class="min-h-175">
-		<PipelineDocumentalPanel alAbrirDetalle={abrirDetalle} alAbrirRegistroOt={abrirRegistroOt} />
-	</div>
+	<div class="min-h-175"><BandejaPreparacionPanel espacioParaBarra={hayPildora} /></div>
+	<div class="min-h-175"><PipelineDocumentalPanel espacioParaBarra={hayPildora} /></div>
 </div>
+
+<BarrasAccionesFlotantes alAbrirDetalle={abrirDetalle} alAbrirRegistroOt={abrirRegistroOt} />
 
 <DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoPanel} />
 
