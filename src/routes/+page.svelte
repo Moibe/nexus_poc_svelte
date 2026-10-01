@@ -6,7 +6,7 @@
 	import RegistroOtSheet from '$lib/components/home/RegistroOtSheet.svelte';
 	import EstadoProcesamientoSheet from '$lib/components/home/EstadoProcesamientoSheet.svelte';
 	import ExpedientesSheet from '$lib/components/home/ExpedientesSheet.svelte';
-	import BarrasAccionesFlotantes from '$lib/components/home/BarrasAccionesFlotantes.svelte';
+	import BarraAccionesFlotante from '$lib/components/home/BarraAccionesFlotante.svelte';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
@@ -80,7 +80,7 @@
 	<div class="min-h-175"><PipelineDocumentalPanel espacioParaBarra={hayPildora} /></div>
 </div>
 
-<BarrasAccionesFlotantes
+<BarraAccionesFlotante
 	alAbrirDetalle={abrirDetalle}
 	alAbrirRegistroOt={abrirRegistroOt}
 	alAbrirEstado={abrirEstado}

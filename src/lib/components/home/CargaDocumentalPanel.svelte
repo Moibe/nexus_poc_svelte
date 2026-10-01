@@ -1,15 +1,12 @@
 <script lang="ts">
 	import EmptyState from './EmptyState.svelte';
 	import ArchivoPendienteRow from './ArchivoPendienteRow.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import ArrowDownIcon from '$lib/components/icons/ArrowDownIcon.svelte';
 	import {
 		agregarArchivosPendientes,
-		archivosPendientesDeCarga,
-		cancelarCargaPendiente,
-		confirmarCargaPendiente
+		archivosPendientesDeCarga
 	} from '$lib/state/bandeja.svelte';
 
 	let fileInput = $state<HTMLInputElement>();
@@ -120,20 +117,6 @@
 				{#each archivosPendientesDeCarga as archivo (archivo.id)}
 					<ArchivoPendienteRow {archivo} />
 				{/each}
-			</div>
-
-			<div class="flex items-center justify-end gap-3">
-				<Button
-					variant="link"
-					class="h-auto p-0 text-destructive"
-					onclick={cancelarCargaPendiente}
-				>
-					Cancelar
-				</Button>
-				<Button
-					disabled={!archivosPendientesDeCarga.some((a) => a.seleccionado)}
-					onclick={confirmarCargaPendiente}>Subir documentos</Button
-				>
 			</div>
 		</div>
 	{/if}
