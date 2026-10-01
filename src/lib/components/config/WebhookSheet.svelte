@@ -16,10 +16,11 @@
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
@@ -65,7 +66,13 @@
 	// Keys y en el Modulo de configuración—: quien cerró por accidente a media
 	// captura no debería perder lo escrito. Se limpia al cancelar y al crear.
 	let url = $state('');
-	let eventosElegidos = $state<EventoWebhook[]>(EVENTOS_WEBHOOK.map((e) => e.valor));
+	// Arranca VACÍO, como el diseño ("Selecciona uno o más eventos"). Antes
+	// venían todos marcados; con cuatro, y uno sin nada que lo dispare todavía,
+	// eso suscribiría a cosas que nadie eligió.
+	let eventosElegidos = $state<EventoWebhook[]>([]);
+	/** Igual que `urlTocada`: el "elige al menos uno" sale después de abrir y
+	 *  cerrar el menú sin elegir (o de intentar crear), no al llegar. */
+	let eventosTocados = $state(false);
 	/** El error de la URL se muestra cuando ya se tocó el campo (o se intentó
 	 *  crear): si no, "No parece una URL" saldría a media escritura. */
 	let urlTocada = $state(false);
@@ -103,7 +110,8 @@
 
 	function cancelar() {
 		url = '';
-		eventosElegidos = EVENTOS_WEBHOOK.map((e) => e.valor);
+		eventosElegidos = [];
+		eventosTocados = false;
 		urlTocada = false;
 		errorAlta = '';
 		vista = 'lista';
@@ -111,6 +119,7 @@
 
 	function crear() {
 		urlTocada = true;
+		eventosTocados = true;
 		if (!formularioCompleto) return;
 		const r = agregarWebhook({ url, eventos: eventosElegidos });
 		if (!r.ok) {
@@ -384,33 +393,85 @@
 									</p>
 								</div>
 
-								<fieldset class="space-y-3">
-									<legend class="text-sm font-medium text-foreground">Eventos *</legend>
+								<div class="space-y-2">
+									<p class="text-sm font-medium text-foreground" id="titulo-eventos-webhook">
+										Eventos de suscripción *
+									</p>
 									<p class="text-xs text-muted-foreground">
 										Elige de qué quieres que NexusDoc te avise.
 									</p>
-									{#each EVENTOS_WEBHOOK as e (e.valor)}
-										<label
-											class="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-4 py-3 transition-colors hover:bg-muted/50"
+									<!-- Desplegable con casillas, como el diseño. `closeOnSelect={false}`
+									     es lo que permite marcar varios sin que el menú se cierre en
+									     cada clic. El disparador repite lo elegido: cerrado, el menú
+									     tiene que seguir diciendo a qué estás suscrito. -->
+									<DropdownMenu.Root
+										onOpenChange={(abierto) => {
+											if (!abierto) eventosTocados = true;
+										}}
+									>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<button
+													{...props}
+													type="button"
+													aria-labelledby="titulo-eventos-webhook"
+													data-testid="desplegable-eventos-webhook"
+													class="flex h-11 w-full items-center justify-between gap-3 rounded-lg border border-border bg-background px-4 text-left text-sm transition-colors hover:bg-muted/40 data-[state=open]:[&>svg]:rotate-180"
+												>
+													<span
+														class="min-w-0 truncate {eventosElegidos.length === 0
+															? 'text-muted-foreground'
+															: 'text-foreground'}"
+													>
+														{eventosElegidos.length === 0
+															? 'Selecciona uno o más eventos'
+															: etiquetaEventos({ eventos: eventosElegidos })}
+													</span>
+													<ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" />
+												</button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content
+											align="start"
+											class="w-(--bits-dropdown-menu-anchor-width) p-2"
 										>
-											<Checkbox
-												data-testid="evento-{e.valor}"
-												class="mt-0.5"
-												checked={eventosElegidos.includes(e.valor)}
-												onCheckedChange={(v) => alternarEvento(e.valor, v === true)}
-											/>
-											<span class="min-w-0">
-												<span class="block text-sm font-medium text-foreground">{e.etiqueta}</span>
-												<span class="mt-0.5 block text-xs text-muted-foreground">{e.descripcion}</span>
-											</span>
-										</label>
-									{/each}
-									{#if eventosElegidos.length === 0}
+											{#each EVENTOS_WEBHOOK as e (e.valor)}
+												<DropdownMenu.CheckboxItem
+													data-testid="evento-{e.valor}"
+													closeOnSelect={false}
+													class="h-11 gap-3 pr-3 pl-3 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden"
+													checked={eventosElegidos.includes(e.valor)}
+													onCheckedChange={(v) => alternarEvento(e.valor, v === true)}
+													title={e.descripcion}
+												>
+													<!-- La casilla a la IZQUIERDA, como el diseño, en vez de la
+													     palomita a la derecha que trae el componente (oculta
+													     arriba). Es solo dibujo: el renglón entero ya es el
+													     `menuitemcheckbox`, y una casilla real adentro sería un
+													     control dentro de otro. Mismas clases que `Checkbox`. -->
+													<span
+														aria-hidden="true"
+														class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {eventosElegidos.includes(
+															e.valor
+														)
+															? 'border-primary bg-primary text-primary-foreground'
+															: 'border-input'}"
+													>
+														{#if eventosElegidos.includes(e.valor)}
+															<Check class="size-3.5" />
+														{/if}
+													</span>
+													{e.etiqueta}
+												</DropdownMenu.CheckboxItem>
+											{/each}
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+									{#if eventosTocados && eventosElegidos.length === 0}
 										<p class="text-xs text-destructive" data-testid="error-eventos-webhook">
-											Elige al menos un evento.
+											Elige al menos un evento de suscripción.
 										</p>
 									{/if}
-								</fieldset>
+								</div>
 							</div>
 						</div>
 					{/if}

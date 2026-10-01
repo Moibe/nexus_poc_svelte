@@ -31,13 +31,25 @@
 import { browser } from '$app/environment';
 
 /**
- * Los eventos a los que se puede suscribir un webhook. `valor` es el nombre
- * que lleva el aviso (`documento.completado`); `etiqueta` es como lo dice el
- * diseño (`Documento_completado`).
+ * Los eventos de suscripción de un webhook, en el orden del diseño. `valor` es
+ * el nombre que lleva el aviso (`documento.completado`); `etiqueta` es como lo
+ * dice el diseño (`Documento_completado`).
  *
  *   · completado → el documento se procesó y la extracción terminó.
- *   · rechazado  → no se pudo procesar: formato no admitido, tipo no
- *                  reconocido o sin configurar, o un error del servicio.
+ *   · fallido    → NexusDoc falló al procesarlo (un error del servicio). El
+ *                  documento puede estar bien: reintentar tiene sentido.
+ *   · rechazado  → el documento no se puede procesar como vino: formato no
+ *                  admitido o tipo no reconocido. Reintentar igual no sirve.
+ *   · expediente_completado → todos los documentos de un expediente
+ *                  terminaron. OJO: el expediente todavía no existe como
+ *                  concepto (ver `ExpedientesSheet.svelte`), así que hoy es una
+ *                  suscripción que se puede guardar pero que no tendría qué
+ *                  disparar aunque el envío existiera.
+ *
+ * "Fallido" y "rechazado" se separaron el 2026-10-01, cuando el diseño trajo
+ * los dos: hasta entonces "rechazado" cubría también el error del servicio. La
+ * línea que los divide es de quién es la culpa, porque eso decide qué hace el
+ * cliente: ante un fallido reintenta, ante un rechazado corrige el archivo.
  *
  * Avisar "archivo subido" no está: quien sube por la API ya recibe su 201. Lo
  * que el cliente no puede saber solo es qué pasó después.
@@ -49,9 +61,19 @@ export const EVENTOS_WEBHOOK = [
 		descripcion: 'El documento se procesó y la extracción terminó.'
 	},
 	{
+		valor: 'documento.fallido',
+		etiqueta: 'Documento_fallido',
+		descripcion: 'NexusDoc falló al procesarlo por un error del servicio; se puede reintentar.'
+	},
+	{
 		valor: 'documento.rechazado',
 		etiqueta: 'Documento_rechazado',
-		descripcion: 'No se pudo procesar: formato no admitido, tipo no reconocido o un error del servicio.'
+		descripcion: 'El documento no se puede procesar: formato no admitido o tipo no reconocido.'
+	},
+	{
+		valor: 'expediente.completado',
+		etiqueta: 'Expediente_completado',
+		descripcion: 'Todos los documentos de un expediente terminaron de procesarse.'
 	}
 ] as const;
 
@@ -228,7 +250,7 @@ export function agregarWebhook(datos: { url: string; eventos: EventoWebhook[] })
 	const url = validarUrlWebhook(datos.url);
 	if (!url.ok) return { ok: false, motivo: 'url', mensaje: url.motivo };
 	const eventos = EVENTOS_WEBHOOK.map((e) => e.valor).filter((v) => datos.eventos.includes(v));
-	if (eventos.length === 0) return { ok: false, motivo: 'eventos', mensaje: 'Elige al menos un evento.' };
+	if (eventos.length === 0) return { ok: false, motivo: 'eventos', mensaje: 'Elige al menos un evento de suscripción.' };
 
 	const store = almacen();
 	if (!store) return noSeGuardo();
