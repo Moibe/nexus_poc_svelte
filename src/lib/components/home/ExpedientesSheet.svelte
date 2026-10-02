@@ -23,8 +23,9 @@
 	 *     páginas solo lo sabe el OCR de un documento ya procesado, así que se
 	 *     muestra únicamente cuando se sabe.
 	 *   · (El **menú ⋮** de cada tarjeta se dejó fuera al principio por no
-	 *     tener acciones que ofrecer. Desde el 2026-10-01 sí las tiene, a
-	 *     pedido: Detalle, Registro de OT y Estado de ese documento.)
+	 *     tener acciones que ofrecer. Desde el 2026-10-01 sí las tiene, con las
+	 *     opciones del diseño: "Ver documento .JSON", "Ver campos extraídos" y
+	 *     "Descargar plantilla documental" —ver `TarjetaExpediente`—.)
 	 *
 	 * Lo que sí se agrega y el frame no tiene: **de qué bandeja viene** cada
 	 * documento, porque la rejilla las mezcla y sin eso no se sabría.
@@ -49,18 +50,43 @@
 	import TarjetaExpediente, { type DocEnExpediente } from './TarjetaExpediente.svelte';
 	import { documentosEnBandeja } from '$lib/state/bandeja.svelte';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
+	import { descargarPdf, sinExtension } from '$lib/documentos/descargar';
+	import { construirInforme } from '$lib/documentos/informeDocumento';
 
 	let {
 		open = $bindable(false),
-		alAbrirDetalle,
-		alAbrirRegistroOt,
-		alAbrirEstado
+		alVerJson,
+		alVerCampos
 	}: {
 		open?: boolean;
-		alAbrirDetalle: (id: string) => void;
-		alAbrirRegistroOt: (id: string) => void;
-		alAbrirEstado: (id: string) => void;
+		/** Abre el Detalle del documento, ya en su vista JSON. */
+		alVerJson: (id: string) => void;
+		/** Abre la ventana de los campos que sacó el extractor (Registro de OT). */
+		alVerCampos: (id: string) => void;
 	} = $props();
+
+	/** El documento cuya plantilla se está descargando: el PDF trae consigo
+	 *  cargar jsPDF, que la primera vez tarda lo suficiente para dos clics. */
+	let descargandoId = $state<string | null>(null);
+
+	/** "Descargar plantilla documental": el PDF con los datos extraídos del
+	 *  documento —el mismo informe que bajan Detalle y Registro de OT, armado en
+	 *  `informeDocumento.ts`—, con el título que dice de dónde salió. Se baja
+	 *  aquí mismo, sin cerrar el expediente: no hay ventana que abrir. */
+	async function descargarPlantilla(id: string) {
+		const doc = documentosEnPipeline.find((d) => d.id === id);
+		if (!doc || descargandoId) return;
+		descargandoId = id;
+		try {
+			await descargarPdf(construirInforme(doc, 'Plantilla documental'), `${sinExtension(doc.nombre)}-plantilla.pdf`);
+		} catch (error) {
+			// No hay toasts en el proyecto: igual que en Detalle, la falla va a la
+			// consola en vez de perderse.
+			console.error('[expedientes] No se pudo descargar la plantilla documental:', error);
+		} finally {
+			descargandoId = null;
+		}
+	}
 
 	const BANDEJA = 'Bandeja de preparación';
 	const PIPELINE = 'Pipeline documental';
@@ -201,7 +227,13 @@
 							data-testid="rejilla-expedientes"
 						>
 							{#each documentos as documento (documento.id)}
-								<TarjetaExpediente {documento} {alAbrirDetalle} {alAbrirRegistroOt} {alAbrirEstado} />
+								<TarjetaExpediente
+									{documento}
+									{alVerJson}
+									{alVerCampos}
+									alDescargarPlantilla={descargarPlantilla}
+									descargando={descargandoId === documento.id}
+								/>
 							{/each}
 						</div>
 					{/if}

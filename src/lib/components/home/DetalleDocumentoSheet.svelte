@@ -44,8 +44,9 @@
 
 	let {
 		open = $bindable(false),
+		modoJson = $bindable(false),
 		documento
-	}: { open?: boolean; documento: DocumentoEnPipeline | null } = $props();
+	}: { open?: boolean; documento: DocumentoEnPipeline | null; modoJson?: boolean } = $props();
 
 	const etiqueta = $derived(documento ? etiquetaDe(documento) : null);
 	// El PROMEDIO de todos los campos, no el mínimo (cambio pedido el
@@ -64,7 +65,9 @@
 	 *  por panel y NO se reinicia al cambiar de documento: quien se pasó a JSON
 	 *  está inspeccionando, y regresarlo al detalle en cada documento nuevo
 	 *  sería pelear contra lo que está haciendo. */
-	let modoJson = $state(false);
+	// `modoJson` llega como prop enlazable (2026-10-01): el expediente abre esta
+	// ventana YA en una vista ("Ver documento .JSON" / "Ver campos extraídos"). La
+	// guarda la página, así que se sigue recordando entre aperturas como antes.
 
 	/** El modal de "Filtros avanzados", que abre el reloj de la banda. */
 	let filtrosAbiertos = $state(false);

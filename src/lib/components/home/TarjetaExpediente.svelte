@@ -32,21 +32,24 @@
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import Eye from '@lucide/svelte/icons/eye';
-	import FileBadge from '@lucide/svelte/icons/file-badge';
-	import Workflow from '@lucide/svelte/icons/workflow';
+	import CodeXml from '@lucide/svelte/icons/code-xml';
+	import TableProperties from '@lucide/svelte/icons/table-properties';
+	import Download from '@lucide/svelte/icons/download';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 
 	let {
 		documento,
-		alAbrirDetalle,
-		alAbrirRegistroOt,
-		alAbrirEstado
+		alVerJson,
+		alVerCampos,
+		alDescargarPlantilla,
+		descargando = false
 	}: {
 		documento: DocEnExpediente;
-		alAbrirDetalle: (id: string) => void;
-		alAbrirRegistroOt: (id: string) => void;
-		alAbrirEstado: (id: string) => void;
+		alVerJson: (id: string) => void;
+		alVerCampos: (id: string) => void;
+		alDescargarPlantilla: (id: string) => void;
+		/** Su plantilla se está descargando: la opción se apaga mientras. */
+		descargando?: boolean;
 	} = $props();
 
 	const previa = usarVistaPrevia(() =>
@@ -90,11 +93,12 @@
 		<p class="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={documento.nombre}>
 			{documento.nombre}
 		</p>
-		<!-- El ⋮ del frame (2026-10-01, a pedido): las tres ventanas de UN
-		     documento. Mismo menú que el de las tarjetas de API Keys.
-		     "Detalle" y "Registro de OT" se apagan para lo que sigue en la
-		     Bandeja de preparación: leen el resultado del OCR, que todavía no
-		     existe. "Estado" sirve en las dos: la historia empieza al entrar. -->
+		<!-- El ⋮ con las opciones del diseño (2026-10-01, captura): "Ver documento
+		     .JSON" abre el Detalle ya en su vista JSON, "Ver campos extraídos" abre
+		     la ventana de los campos que sacó el extractor (Registro de OT) y
+		     "Descargar plantilla documental" baja el PDF con esos datos. Las tres
+		     leen el resultado del procesamiento, así que se apagan para lo que
+		     sigue en la Bandeja de preparación: ahí todavía no existe. -->
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
@@ -109,32 +113,33 @@
 					</button>
 				{/snippet}
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content align="end" class="w-52 p-2">
+			<DropdownMenu.Content align="end" class="w-72 p-2">
 				<DropdownMenu.Item
-					data-testid="expediente-detalle"
-					class="h-10 gap-3 px-2"
+					data-testid="expediente-json"
+					class="h-10 gap-3 px-2 whitespace-nowrap"
 					disabled={!documento.procesado}
-					onSelect={() => alAbrirDetalle(documento.id)}
+					onSelect={() => alVerJson(documento.id)}
 				>
-					<Eye class="size-4 text-muted-foreground" />
-					Detalle
+					<CodeXml class="size-4 text-muted-foreground" />
+					Ver documento .JSON
 				</DropdownMenu.Item>
 				<DropdownMenu.Item
-					data-testid="expediente-registro-ot"
-					class="h-10 gap-3 px-2"
+					data-testid="expediente-campos"
+					class="h-10 gap-3 px-2 whitespace-nowrap"
 					disabled={!documento.procesado}
-					onSelect={() => alAbrirRegistroOt(documento.id)}
+					onSelect={() => alVerCampos(documento.id)}
 				>
-					<FileBadge class="size-4 text-muted-foreground" />
-					Registro de OT
+					<TableProperties class="size-4 text-muted-foreground" />
+					Ver campos extraídos
 				</DropdownMenu.Item>
 				<DropdownMenu.Item
-					data-testid="expediente-estado"
-					class="h-10 gap-3 px-2"
-					onSelect={() => alAbrirEstado(documento.id)}
+					data-testid="expediente-plantilla"
+					class="h-10 gap-3 px-2 whitespace-nowrap"
+					disabled={!documento.procesado || descargando}
+					onSelect={() => alDescargarPlantilla(documento.id)}
 				>
-					<Workflow class="size-4 text-muted-foreground" />
-					Estado
+					<Download class="size-4 text-muted-foreground" />
+					Descargar plantilla documental
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>

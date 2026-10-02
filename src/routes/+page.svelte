@@ -67,6 +67,11 @@
 		estadoAbierto = cual === 'estado';
 	}
 
+	// La vista de Detalle y de Registro de OT (documento o JSON). Viven aquí para
+	// que el expediente pueda abrirlas ya en una (ver `ExpedientesSheet`); fuera
+	// de eso se recuerdan como siempre: quien se pasó a JSON sigue en JSON.
+	let detalleEnJson = $state(false);
+	let registroOtEnJson = $state(false);
 	const abrirDetalle = (id: string) => abrir(id, 'detalle');
 	const abrirRegistroOt = (id: string) => abrir(id, 'registroOt');
 	const abrirEstado = (id: string) => abrir(id, 'estado');
@@ -98,9 +103,9 @@
 	alAbrirExpedientes={abrirExpedientes}
 />
 
-<DetalleDocumentoSheet bind:open={detalleAbierto} documento={documentoPanel} />
+<DetalleDocumentoSheet bind:open={detalleAbierto} bind:modoJson={detalleEnJson} documento={documentoPanel} />
 
-<RegistroOtSheet bind:open={registroOtAbierto} documento={documentoPanel} />
+<RegistroOtSheet bind:open={registroOtAbierto} bind:modoJson={registroOtEnJson} documento={documentoPanel} />
 
 <EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoEstado} />
 
@@ -109,7 +114,6 @@
      z-index, así que encimadas se taparían. -->
 <ExpedientesSheet
 	bind:open={expedientesAbierto}
-	alAbrirDetalle={(id) => ((expedientesAbierto = false), abrirDetalle(id))}
-	alAbrirRegistroOt={(id) => ((expedientesAbierto = false), abrirRegistroOt(id))}
-	alAbrirEstado={(id) => ((expedientesAbierto = false), abrirEstado(id))}
+	alVerJson={(id) => ((expedientesAbierto = false), (detalleEnJson = true), abrirDetalle(id))}
+	alVerCampos={(id) => ((expedientesAbierto = false), (registroOtEnJson = false), abrirRegistroOt(id))}
 />
