@@ -6,7 +6,13 @@
  * mismo. Se extrajo en vez de copiarse porque son doce líneas cuyo valor está
  * en DOS decisiones sutiles —abajo— que en una copia se pierden en cuanto
  * alguien toque una de las dos pantallas y no la otra.
+ *
+ * Desde el 2026-10-02 también previsualiza PDF: su primera página, pintada por
+ * `miniaturaDePdf` (que cuida el rendimiento: una página, ancho acotado, caché
+ * y máximo dos renders a la vez). Mientras se pinta, `url` es `null` y se ve el
+ * ícono de archivo, como antes; si el PDF no se puede abrir, se queda así.
  */
+import { miniaturaDePdf } from '$lib/documentos/miniaturaPdf';
 
 /** Formatos que el navegador sabe pintar en un `<img>`.
  *
@@ -16,7 +22,7 @@
 const PREVISUALIZABLES = ['JPG', 'JPEG', 'PNG'];
 
 export function sePuedePrevisualizar(extension: string): boolean {
-	return PREVISUALIZABLES.includes(extension);
+	return PREVISUALIZABLES.includes(extension) || extension === 'PDF';
 }
 
 /**
@@ -47,10 +53,32 @@ export function usarVistaPrevia(
 			url = null;
 			return;
 		}
-		const creada = URL.createObjectURL(documento.archivo);
-		url = creada;
+		if (documento.extension !== 'PDF') {
+			const creada = URL.createObjectURL(documento.archivo);
+			url = creada;
+			return () => {
+				URL.revokeObjectURL(creada);
+				url = null;
+			};
+		}
+		// PDF: la miniatura llega después. Si para entonces el documento ya
+		// cambió (`vigente` en false), no se asigna y se revoca lo creado.
+		let vigente = true;
+		let creada: string | null = null;
+		url = null;
+		miniaturaDePdf(documento.archivo).then(
+			(blob) => {
+				if (!vigente) return;
+				creada = URL.createObjectURL(blob);
+				url = creada;
+			},
+			() => {
+				/* sin miniatura: se queda el ícono de archivo */
+			}
+		);
 		return () => {
-			URL.revokeObjectURL(creada);
+			vigente = false;
+			if (creada) URL.revokeObjectURL(creada);
 			url = null;
 		};
 	});
