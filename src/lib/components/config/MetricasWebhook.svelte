@@ -24,7 +24,17 @@
 	import { rotuloAnterior, tendencia as calcularTendencia, type Tendencia } from '$lib/metricas/tendencia';
 	import { cargarMetricasWebhook, type MetricasWebhook } from '$lib/state/webhooks.svelte';
 
-	let { id, onCerrar }: { id: string; onCerrar: () => void } = $props();
+	let {
+		id,
+		onCerrar,
+		onVerHistorial
+	}: {
+		id: string;
+		onCerrar: () => void;
+		/** Abre el historial de intentos del webhook: desde que el menú `⋮` es el
+		 *  del diseño, que no lo trae, se llega desde aquí (y desde el aviso rojo). */
+		onVerHistorial?: () => void;
+	} = $props();
 
 	const hoy = today(getLocalTimeZone());
 	let rango = $state<DateRange>({ start: hoy.subtract({ days: 29 }), end: hoy });
@@ -126,7 +136,12 @@
 		</div>
 	</div>
 
-	<div class="flex justify-end">
+	<div class="flex justify-end gap-3">
+		{#if onVerHistorial}
+			<Button variant="outline" data-testid="ver-historial-desde-metricas" onclick={onVerHistorial}>
+				Ver historial de intentos
+			</Button>
+		{/if}
 		<Button data-testid="cerrar-metricas" onclick={onCerrar}>Cerrar visualización</Button>
 	</div>
 </div>

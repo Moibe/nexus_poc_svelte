@@ -29,8 +29,15 @@
 	 * porque los reintentos, el estado y el historial de intentos existen—.
 	 * Con fallo, el botón de la tarjeta pasa a ser "Editar webhook" (captura
 	 * del mismo día): validar de nuevo la misma URL no tiene caso; lo que sigue
-	 * es corregirla. Editar reusa el formulario del alta y deja el webhook SIN
-	 * validar —el endpoint pudo cambiar—, así que vuelve "Validar conexión".
+	 * es corregirla. Editar reusa el formulario del alta; si cambia la URL el
+	 * webhook queda SIN validar —el endpoint es otro— y vuelve "Validar
+	 * conexión". Cambiar solo los eventos no toca la validación.
+	 *
+	 * EL MENÚ `⋮` ES EL DEL DISEÑO (captura del 2026-10-01): Editar, Métricas y,
+	 * tras una línea punteada, el interruptor de activo. Lo que salió de él
+	 * vive donde lleva cada camino: "Eliminar webhook" en la pantalla de
+	 * edición, y el historial de intentos en el panel de Métricas (y en el
+	 * enlace del aviso rojo).
 	 */
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -45,12 +52,11 @@
 	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
 	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import LapizFirmaIcon from '$lib/components/icons/LapizFirmaIcon.svelte';
 	import EmptyState from '$lib/components/home/EmptyState.svelte';
 	import Webhook from '@lucide/svelte/icons/webhook';
 	import ChartLine from '@lucide/svelte/icons/chart-line';
-	import History from '@lucide/svelte/icons/history';
 	import Power from '@lucide/svelte/icons/power';
-	import PowerOff from '@lucide/svelte/icons/power-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import AvisoVerde from './AvisoVerde.svelte';
@@ -90,6 +96,7 @@
 	let vista = $state<'lista' | 'nueva' | 'creado' | 'editar'>('lista');
 	/** El webhook que se está editando (vista `editar`). */
 	let editandoId = $state<string | null>(null);
+	const webhookEditado = $derived(editandoId ? (webhooks.find((x) => x.id === editandoId) ?? null) : null);
 
 	// El borrador del alta NO se limpia al cerrar el módulo —igual que en las API
 	// Keys y en el Modulo de configuración—: quien cerró por accidente a media
@@ -135,7 +142,7 @@
 	 *  al salir del listado o cerrar. No se auto-oculta con un temporizador: quien
 	 *  hizo algo merece leerlo a su ritmo. (El alta no lo usa: la confirma la
 	 *  vista del secret, "Webhook creado correctamente".) */
-	let aviso = $state<'validado' | 'eliminado' | 'editado' | null>(null);
+	let aviso = $state<'validado' | 'eliminado' | 'editado' | 'editado_sin_validar' | null>(null);
 
 	/** Lo que salió mal al validar cada webhook, para decirlo en SU tarjeta y
 	 *  no en un aviso general: es de ese endpoint.
@@ -228,7 +235,9 @@
 		delete errorValidacion[id];
 		versionHistorial[id] = (versionHistorial[id] ?? 0) + 1;
 		cancelar();
-		aviso = 'editado';
+		// Si cambió la URL quedó sin validar, y eso hay que decirlo: deja de
+		// recibir avisos hasta que se valide.
+		aviso = r.webhook.validadoEn ? 'editado' : 'editado_sin_validar';
 	}
 
 	async function crear() {
@@ -395,11 +404,17 @@
 					     la tarjeta de adentro: una región que se monta junto con su texto no
 					     se anuncia. Vacío no mide nada. -->
 					<div role="status" aria-live="polite">
-						{#if vista === 'lista' && aviso === 'editado'}
+						{#if vista === 'lista' && aviso === 'editado_sin_validar'}
 							<AvisoVerde
 								testid="aviso-webhook-editado"
 								titulo="Webhook actualizado correctamente"
 								cuerpo="Quedó sin validar: valida la conexión para que vuelva a recibir avisos."
+							/>
+						{:else if vista === 'lista' && aviso === 'editado'}
+							<AvisoVerde
+								testid="aviso-webhook-editado"
+								titulo="Webhook actualizado correctamente"
+								cuerpo="Los cambios aplican desde el siguiente aviso."
 							/>
 						{:else if vista === 'lista' && aviso === 'validado'}
 							<AvisoVerde
@@ -493,52 +508,56 @@
 														</button>
 													{/snippet}
 												</DropdownMenu.Trigger>
-												<DropdownMenu.Content align="end" class="w-56 p-3">
-													<!-- Sin validar: el historial y "Eliminar" (ver el docstring). -->
-													{#if validado}
-														<DropdownMenu.Item
-															data-testid="metricas-webhook"
-															class="h-11.5 gap-3 px-2 whitespace-nowrap"
-															onSelect={() => (metricasDeId = metricasDeId === w.id ? null : w.id)}
-														>
-															<ChartLine class="size-4 text-muted-foreground" />
-															<span>Métricas</span>
-														</DropdownMenu.Item>
-													{/if}
+												<DropdownMenu.Content align="end" class="w-60 p-3">
+													<!-- El menú del diseño (captura del 2026-10-01). -->
 													<DropdownMenu.Item
-														data-testid="historial-webhook"
+														data-testid="editar-webhook-menu"
 														class="h-11.5 gap-3 px-2 whitespace-nowrap"
-														onSelect={() => (historialDeId = historialDeId === w.id ? null : w.id)}
-													>
-														<History class="size-4 text-muted-foreground" />
-														<span>Historial de intentos</span>
-													</DropdownMenu.Item>
-													{#if validado}
-														<DropdownMenu.Item
-															data-testid="estado-webhook"
-															disabled={estadoWebhooks.enVuelo.includes(w.id)}
-															class="h-11.5 gap-3 px-2 whitespace-nowrap"
-															onSelect={() => alternarEstado(w)}
-														>
-															{#if w.estado === 'activo'}
-																<PowerOff class="size-4 text-muted-foreground" />
-																<span>Desactivar</span>
-															{:else}
-																<Power class="size-4 text-muted-foreground" />
-																<span>Activar</span>
-															{/if}
-														</DropdownMenu.Item>
-													{/if}
-													<!-- Rojo porque es irreversible: pide confirmación. -->
-													<DropdownMenu.Item
-														data-testid="eliminar-webhook"
 														disabled={estadoWebhooks.enVuelo.includes(w.id)}
-														class="h-11.5 gap-3 px-2 whitespace-nowrap text-destructive data-highlighted:text-destructive"
-														onSelect={() => (webhookAEliminar = w)}
+														onSelect={() => irAEditar(w)}
 													>
-														<Trash2 class="size-4" />
-														<span>Eliminar</span>
+														<LapizFirmaIcon class="size-4 text-muted-foreground" />
+														<span>Editar</span>
 													</DropdownMenu.Item>
+													<DropdownMenu.Item
+														data-testid="metricas-webhook"
+														class="h-11.5 gap-3 px-2 whitespace-nowrap"
+														onSelect={() => (metricasDeId = metricasDeId === w.id ? null : w.id)}
+													>
+														<ChartLine class="size-4 text-muted-foreground" />
+														<span>Métricas</span>
+													</DropdownMenu.Item>
+													<div role="separator" class="my-1.5 border-t border-dashed border-border"></div>
+													<!-- El interruptor de activo. No cierra el menú: se ve cómo cambia. La
+													     leyenda dice lo que hará ("Desactivar" si está activo). Sin validar
+													     se apaga: activo o no, no recibe avisos hasta validarse. -->
+													<DropdownMenu.CheckboxItem
+														data-testid="estado-webhook"
+														closeOnSelect={false}
+														checked={w.estado === 'activo'}
+														disabled={!validado || estadoWebhooks.enVuelo.includes(w.id)}
+														title={validado ? undefined : 'Disponible cuando el webhook esté validado'}
+														onCheckedChange={() => alternarEstado(w)}
+														class="h-11.5 gap-3 px-2 whitespace-nowrap [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden {w.estado ===
+															'activo'
+															? 'text-primary data-highlighted:text-primary'
+															: ''}"
+													>
+														<Power class="size-4 {w.estado === 'activo' ? '' : 'text-muted-foreground'}" />
+														<span class="flex-1">{w.estado === 'activo' ? 'Desactivar' : 'Activar'}</span>
+														<span
+															aria-hidden="true"
+															class="inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {w.estado === 'activo'
+																? 'bg-primary'
+																: 'bg-muted-foreground/30'}"
+														>
+															<span
+																class="size-4 rounded-full bg-white shadow transition-transform {w.estado === 'activo'
+																	? 'translate-x-4.5'
+																	: 'translate-x-0.5'}"
+															></span>
+														</span>
+													</DropdownMenu.CheckboxItem>
 												</DropdownMenu.Content>
 											</DropdownMenu.Root>
 										</div>
@@ -612,7 +631,11 @@
 											{/if}
 										{/if}
 										{#if metricasDeId === w.id}
-											<MetricasWebhook id={w.id} onCerrar={() => (metricasDeId = null)} />
+											<MetricasWebhook
+												id={w.id}
+												onCerrar={() => (metricasDeId = null)}
+												onVerHistorial={() => (historialDeId = w.id)}
+											/>
 										{/if}
 										{#if historialDeId === w.id}
 											{#key versionHistorial[w.id] ?? 0}
@@ -669,6 +692,12 @@
 									>
 										{mensajeUrl}
 									</p>
+									{#if vista === 'editar' && webhookEditado?.validadoEn && resultadoUrl.ok && resultadoUrl.url !== webhookEditado.url}
+										<p class="text-xs text-amber-700" data-testid="aviso-url-cambia">
+											Al cambiar la URL, el webhook quedará sin validar hasta que valides de nuevo la
+											conexión.
+										</p>
+									{/if}
 								</div>
 
 								<!-- La línea que separa a dónde se avisa de cómo y de qué, como en el
@@ -797,24 +826,44 @@
 						<Button data-testid="cerrar-webhooks" onclick={() => (open = false)}>Cerrar</Button>
 					</div>
 				{:else if vista === 'nueva' || vista === 'editar'}
-					<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
-						<Button
-							variant="link"
-							class="h-auto p-0 text-destructive"
-							data-testid="cancelar-webhook"
-							onclick={cancelar}
-						>
-							Cancelar configuración
-						</Button>
+					<div
+						class="flex items-center gap-4 border-t border-border px-6 py-4 {vista === 'editar'
+							? 'justify-between'
+							: 'justify-end'}"
+					>
+						<!-- Eliminar vive aquí desde que el menú `⋮` es el del diseño, que no
+						     lo trae: es a donde lleva "Editar". Pide confirmación. -->
 						{#if vista === 'editar'}
-							<Button data-testid="guardar-webhook" disabled={!formularioCompleto || creando} onclick={guardarEdicion}>
-								Guardar cambios
-							</Button>
-						{:else}
-							<Button data-testid="crear-webhook" disabled={!formularioCompleto || creando} onclick={crear}>
-								Crear webhook
+							<Button
+								variant="outline"
+								class="border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+								data-testid="eliminar-webhook"
+								disabled={creando || !webhookEditado}
+								onclick={() => (webhookAEliminar = webhookEditado)}
+							>
+								<Trash2 class="size-4" />
+								Eliminar webhook
 							</Button>
 						{/if}
+						<div class="flex items-center gap-4">
+							<Button
+								variant="link"
+								class="h-auto p-0 text-destructive"
+								data-testid="cancelar-webhook"
+								onclick={cancelar}
+							>
+								Cancelar configuración
+							</Button>
+							{#if vista === 'editar'}
+								<Button data-testid="guardar-webhook" disabled={!formularioCompleto || creando} onclick={guardarEdicion}>
+									Guardar cambios
+								</Button>
+							{:else}
+								<Button data-testid="crear-webhook" disabled={!formularioCompleto || creando} onclick={crear}>
+									Crear webhook
+								</Button>
+							{/if}
+						</div>
 					</div>
 				{:else if vista === 'creado'}
 					<div class="flex items-center justify-end border-t border-border px-6 py-4">
@@ -842,8 +891,12 @@
 		webhookAEliminar = null;
 		if (!objetivo) return;
 		if (metricasDeId === objetivo.id) metricasDeId = null;
+		if (historialDeId === objetivo.id) historialDeId = null;
 		void eliminarWebhook(objetivo.id).then((ok) => {
-			if (ok) aviso = 'eliminado';
+			if (!ok) return;
+			// Se eliminó desde su pantalla de edición: ya no hay qué editar.
+			if (editandoId === objetivo.id) cancelar();
+			aviso = 'eliminado';
 		});
 	}}
 	onCerrar={() => (webhookAEliminar = null)}
