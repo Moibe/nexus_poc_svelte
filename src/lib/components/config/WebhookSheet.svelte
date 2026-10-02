@@ -19,9 +19,14 @@
 	 * tarjeta sin validar muestra solo su URL, sus eventos y "Validar conexión";
 	 * el chip de estado y las opciones de Métricas y Desactivar aparecen cuando
 	 * su endpoint ya respondió al aviso de prueba. DESVIACIÓN DEL DISEÑO, a
-	 * propósito: la tarjeta sin validar conserva un `⋮` con solo "Eliminar". Sin
-	 * él, un webhook que nunca valida —una URL mal escrita, o una de ejemplo— se
-	 * quedaría atorado en el listado para siempre.
+	 * propósito: la tarjeta sin validar conserva un `⋮` con el historial y
+	 * "Eliminar". Sin él, un webhook que nunca valida —una URL mal escrita, o una
+	 * de ejemplo— se quedaría atorado en el listado para siempre.
+	 *
+	 * "CON FALLOS" (2026-10-01): validar hace hasta 5 intentos; si ninguno entra,
+	 * el servidor lo marca y la tarjeta lo dice con un chip rojo, junto con el
+	 * aviso de "Entrega del webhook fallida" del diseño —ya con su texto literal,
+	 * porque los reintentos, el estado y el historial de intentos existen—.
 	 */
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -39,6 +44,7 @@
 	import EmptyState from '$lib/components/home/EmptyState.svelte';
 	import Webhook from '@lucide/svelte/icons/webhook';
 	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import History from '@lucide/svelte/icons/history';
 	import Power from '@lucide/svelte/icons/power';
 	import PowerOff from '@lucide/svelte/icons/power-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -46,6 +52,7 @@
 	import AvisoVerde from './AvisoVerde.svelte';
 	import AvisoRojo from './AvisoRojo.svelte';
 	import MetricasWebhook from './MetricasWebhook.svelte';
+	import HistorialWebhook from './HistorialWebhook.svelte';
 	import SecretUnaVez from './SecretUnaVez.svelte';
 	import {
 		webhooks,
@@ -125,15 +132,15 @@
 
 	/** Lo que salió mal al validar cada webhook, para decirlo en SU tarjeta y
 	 *  no en un aviso general: es de ese endpoint.
-	 *   · `entrega`: la última entrega del aviso de prueba que NO salió (aviso
-	 *     rojo). Se queda hasta que otra la reemplace o se valide: si el
-	 *     servidor pide esperar antes de reintentar, ese detalle no se pierde.
+	 *   · `entrega`: la última validación cuyo aviso de prueba no entró en
+	 *     ninguno de sus intentos (aviso rojo). Se queda hasta que otra la
+	 *     reemplace o se valide: si el servidor pide esperar, no se pierde.
 	 *   · `texto`: algo que ni llegó a intentarse (pide esperar, el webhook ya
 	 *     no existe, el servidor no contestó). Texto corto; se borra al
 	 *     reintentar.
 	 *  Todo se borra al cerrar el módulo. */
 	let errorValidacion = $state<
-		Record<string, { entrega?: { motivo: string; intento: { en: string; codigo: number | null } }; texto?: string }>
+		Record<string, { entrega?: { intentos: number; en: string; codigo: number | null }; texto?: string }>
 	>({});
 
 	async function validar(w: WebhookGuardado) {
@@ -144,23 +151,24 @@
 		if (r.ok) {
 			delete errorValidacion[w.id];
 			aviso = 'validado';
-		} else if (r.intento) {
-			errorValidacion[w.id] = { entrega: { motivo: r.motivo, intento: r.intento } };
+		} else if (r.entrega) {
+			errorValidacion[w.id] = { entrega: r.entrega };
 		} else {
 			errorValidacion[w.id] = { entrega: previa, texto: r.motivo };
 		}
-	}
-
-	/** `01/10/2026 · 21:45:07`, en la hora de quien mira. Con segundos: es la hora
-	 *  de un intento, y sirve para buscarlo del lado del endpoint. */
-	function fechaHoraIntento(iso: string): string {
-		const f = new Date(iso);
-		const dos = (n: number) => String(n).padStart(2, '0');
-		return `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()} · ${dos(f.getHours())}:${dos(f.getMinutes())}:${dos(f.getSeconds())}`;
+		// Si su historial está abierto, que muestre los intentos que acaban de pasar.
+		versionHistorial[w.id] = (versionHistorial[w.id] ?? 0) + 1;
 	}
 
 	/** El webhook con "Métricas" desplegadas dentro de su tarjeta. Uno a la vez. */
 	let metricasDeId = $state<string | null>(null);
+
+	/** El webhook con su "Historial de intentos" desplegado. Uno a la vez. Se abre
+	 *  desde el `⋮` y desde el aviso rojo de la entrega fallida. */
+	let historialDeId = $state<string | null>(null);
+	/** Sube cada vez que se valida un webhook: el historial abierto se vuelve a
+	 *  pedir y muestra los intentos nuevos. */
+	let versionHistorial = $state<Record<string, number>>({});
 
 	/** El webhook que el menú `⋮` quiere eliminar, esperando confirmación. */
 	let webhookAEliminar = $state<WebhookGuardado | null>(null);
@@ -236,12 +244,15 @@
 		secret = '';
 		aviso = null;
 		metricasDeId = null;
+		historialDeId = null;
 		errorValidacion = {};
 	});
 
 	const ETIQUETA_ESTADO = {
 		activo: { texto: 'Activo', clase: 'bg-green-50 text-green-700', punto: 'bg-green-500' },
-		inactivo: { texto: 'Inactivo', clase: 'bg-muted text-muted-foreground', punto: 'bg-muted-foreground/60' }
+		inactivo: { texto: 'Inactivo', clase: 'bg-muted text-muted-foreground', punto: 'bg-muted-foreground/60' },
+		/** Sin validar, y su última validación no entró en ningún intento. */
+		con_fallos: { texto: 'Con fallos', clase: 'bg-red-50 text-red-700', punto: 'bg-red-500' }
 	};
 </script>
 
@@ -376,7 +387,7 @@
 						{:else if webhooks.length > 0}
 							<div class="flex flex-col gap-3">
 								{#each webhooks as w (w.id)}
-									{@const estado = ETIQUETA_ESTADO[w.estado]}
+									{@const estado = w.validadoEn !== null ? ETIQUETA_ESTADO[w.estado] : w.fallidaEn ? ETIQUETA_ESTADO.con_fallos : null}
 									{@const validado = w.validadoEn !== null}
 									{@const validando = estadoWebhooks.enVuelo.includes(w.id)}
 									{@const fallo = errorValidacion[w.id]}
@@ -409,8 +420,9 @@
 													{etiquetaEventos(w)}
 												</p>
 											</div>
-											<!-- El chip, solo ya validado: antes, ni activo ni inactivo dicen nada. -->
-											{#if validado}
+											<!-- El chip: el estado, ya validado; "Con fallos" si su última validación
+											     no entró. Pendiente, sin chip: ni activo ni inactivo dicen nada aún. -->
+											{#if estado}
 												<span
 													data-testid="chip-estado-webhook"
 													class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium {estado.clase}"
@@ -433,7 +445,7 @@
 													{/snippet}
 												</DropdownMenu.Trigger>
 												<DropdownMenu.Content align="end" class="w-56 p-3">
-													<!-- Sin validar, solo "Eliminar": ver el docstring. -->
+													<!-- Sin validar: el historial y "Eliminar" (ver el docstring). -->
 													{#if validado}
 														<DropdownMenu.Item
 															data-testid="metricas-webhook"
@@ -443,6 +455,16 @@
 															<ChartLine class="size-4 text-muted-foreground" />
 															<span>Métricas</span>
 														</DropdownMenu.Item>
+													{/if}
+													<DropdownMenu.Item
+														data-testid="historial-webhook"
+														class="h-11.5 gap-3 px-2 whitespace-nowrap"
+														onSelect={() => (historialDeId = historialDeId === w.id ? null : w.id)}
+													>
+														<History class="size-4 text-muted-foreground" />
+														<span>Historial de intentos</span>
+													</DropdownMenu.Item>
+													{#if validado}
 														<DropdownMenu.Item
 															data-testid="estado-webhook"
 															disabled={estadoWebhooks.enVuelo.includes(w.id)}
@@ -473,8 +495,8 @@
 										</div>
 										{#if !validado}
 											<!-- Abajo a la derecha, como en la captura. Mientras valida se
-											     apaga: el servidor espera hasta 10 s la respuesta del
-											     endpoint, y un segundo clic no adelanta nada. -->
+											     apaga: son hasta 5 intentos, que pueden tardar hasta un
+											     minuto, y un segundo clic no adelanta nada. -->
 											<div class="mt-3 flex flex-col items-end gap-1.5">
 												<Button
 													variant="outline"
@@ -490,30 +512,37 @@
 														Validar conexión
 													{/if}
 												</Button>
+												{#if validando}
+													<p class="text-right text-xs text-muted-foreground" data-testid="validando-webhook">
+														Se hacen hasta 5 intentos; puede tardar hasta un minuto.
+													</p>
+												{/if}
 												{#if fallo?.texto}
 													<p role="alert" data-testid="error-validacion-webhook" class="text-right text-xs text-destructive">
 														{fallo.texto}
 													</p>
 												{/if}
 											</div>
-											<!-- La entrega del aviso de prueba no salió (captura del
-											     2026-10-01). Forma y título del diseño; el TEXTO se ajustó a
-											     lo que de verdad pasa, porque el del diseño describe cosas que
-											     validar no hace: "después de 5 intentos" (validar es UN
-											     intento), "se marcó como 'Con fallos'" (no hay ese estado: sigue
-											     sin validar) y "revisa el historial de intentos" (no hay
-											     historial que abrir; la hora y el código de ESTE intento van
-											     aquí mismo). -->
+											<!-- La validación no entró en ninguno de sus intentos (captura del
+											     2026-10-01): forma, título y texto del diseño, literal. El número
+											     de intentos es el que de verdad hubo: 5, o 1 si la URL apunta a una
+											     dirección interna (eso no se reintenta). "historial de intentos" abre
+											     el historial de este webhook aquí mismo. -->
 											{#if fallo?.entrega}
 												{@const entrega = fallo.entrega}
 												<div class="mt-3">
 													<AvisoRojo testid="entrega-fallida-webhook" titulo="Entrega del webhook fallida">
-														<p>No fue posible entregar el aviso de prueba al endpoint receptor. {entrega.motivo}</p>
-														<p class="mt-1">
-															El webhook sigue sin validar. Intento del {fechaHoraIntento(entrega.intento.en)} ·
-															{entrega.intento.codigo !== null
-																? `código de respuesta ${entrega.intento.codigo}`
-																: 'sin respuesta del endpoint'}.
+														<p>
+															No fue posible entregar la información al endpoint receptor después de {entrega.intentos}
+															{entrega.intentos === 1 ? 'intento' : 'intentos'}. El webhook se marcó como “Con fallos”.
+															Revisa el
+															<button
+																type="button"
+																data-testid="abrir-historial-desde-aviso"
+																class="font-semibold underline underline-offset-2 hover:text-red-800"
+																onclick={() => (historialDeId = w.id)}
+															>historial de intentos</button>
+															para consultar los timestamps y códigos de respuesta registrados.
 														</p>
 													</AvisoRojo>
 												</div>
@@ -521,6 +550,11 @@
 										{/if}
 										{#if metricasDeId === w.id}
 											<MetricasWebhook id={w.id} onCerrar={() => (metricasDeId = null)} />
+										{/if}
+										{#if historialDeId === w.id}
+											{#key versionHistorial[w.id] ?? 0}
+												<HistorialWebhook id={w.id} onCerrar={() => (historialDeId = null)} />
+											{/key}
 										{/if}
 									</div>
 								{/each}

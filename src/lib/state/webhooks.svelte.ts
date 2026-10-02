@@ -96,6 +96,9 @@ export type WebhookGuardado = {
 	/** Cuándo respondió su endpoint al aviso de prueba (ISO-8601), o `null` si
 	 *  todavía no se valida. */
 	validadoEn: string | null;
+	/** Su última validación fallida: el aviso de prueba no entró en ninguno de
+	 *  sus intentos. Sin validar y con esto, la tarjeta dice "Con fallos". */
+	fallidaEn: string | null;
 };
 
 /** Los webhooks del servidor, del más nuevo al más viejo. */
@@ -193,7 +196,8 @@ function leerWebhook(crudo: unknown): WebhookGuardado | null {
 		// Una fecha ilegible se lee como NO validado: ante la duda, que se vuelva a
 		// validar antes que darlo por bueno.
 		validadoEn:
-			typeof d.validadoEn === 'string' && !Number.isNaN(Date.parse(d.validadoEn)) ? d.validadoEn : null
+			typeof d.validadoEn === 'string' && !Number.isNaN(Date.parse(d.validadoEn)) ? d.validadoEn : null,
+		fallidaEn: typeof d.fallidaEn === 'string' && !Number.isNaN(Date.parse(d.fallidaEn)) ? d.fallidaEn : null
 	};
 }
 
@@ -399,12 +403,13 @@ export function eliminarWebhook(id: string): Promise<boolean> {
 
 export type ResultadoValidacion =
 	| { ok: true }
-	/** `intento` está SOLO cuando el servidor sí intentó entregar el aviso de
-	 *  prueba y el endpoint no lo aceptó: cuándo y con qué código (`null` si no
-	 *  se llegó a hablar con él). Sin `intento` no hubo entrega —demasiados
-	 *  intentos, el webhook ya no existe, el servidor no contestó—, y la
-	 *  pantalla no lo presenta como "Entrega fallida". */
-	| { ok: false; motivo: string; intento?: { en: string; codigo: number | null } };
+	/** `entrega` está SOLO cuando el servidor sí intentó entregar el aviso de
+	 *  prueba y no entró en ninguno de sus intentos: cuántos fueron, cuándo
+	 *  terminó y el código del último (`null` si no se llegó a hablar con el
+	 *  endpoint). Sin `entrega` no hubo entrega —hay que esperar, el webhook ya
+	 *  no existe, el servidor no contestó—, y la pantalla no lo presenta como
+	 *  "Entrega fallida". */
+	| { ok: false; motivo: string; entrega?: { intentos: number; en: string; codigo: number | null } };
 
 /**
  * Valida la conexión de un webhook: el servidor le manda al endpoint un aviso de
@@ -432,10 +437,15 @@ export function validarWebhook(id: string): Promise<ResultadoValidacion> {
 					if (actual) actual.validadoEn = validado?.validadoEn ?? new Date().toISOString();
 					return { ok: true };
 				}
+				// "Con fallos" en el momento, sin esperar a recargar el listado.
+				const conFallos = leerWebhook(cuerpo?.webhook);
+				const actual = webhooks.find((w) => w.id === id);
+				if (actual) actual.fallidaEn = conFallos?.fallidaEn ?? new Date().toISOString();
 				return {
 					ok: false,
 					motivo: typeof cuerpo?.motivo === 'string' ? cuerpo.motivo : 'El endpoint no respondió como se esperaba.',
-					intento: {
+					entrega: {
+						intentos: typeof cuerpo?.intentos === 'number' ? cuerpo.intentos : 1,
 						en: new Date().toISOString(),
 						codigo: typeof cuerpo?.codigo === 'number' ? cuerpo.codigo : null
 					}
@@ -456,6 +466,56 @@ export function validarWebhook(id: string): Promise<ResultadoValidacion> {
 		},
 		{ ok: false, motivo: 'Ya se está validando.' }
 	);
+}
+
+/** Un intento de hablarle al endpoint de un webhook, como lo guarda el servidor. */
+export type IntentoWebhook = {
+	en: string;
+	/** `webhook.validacion`, o el tipo del aviso (`documento.completado`...). */
+	tipo: string;
+	/** Qué número de intento fue, dentro de su aviso. */
+	n: number | null;
+	ok: boolean;
+	/** El HTTP con el que respondió, o `null` si no se llegó a hablar con él. */
+	codigo: number | null;
+	ms: number | null;
+	motivo: string | null;
+	/** De las entregas de avisos: el `id` del documento que avisaban. */
+	entradaId: string | null;
+};
+
+function leerIntento(crudo: unknown): IntentoWebhook | null {
+	if (typeof crudo !== 'object' || crudo === null) return null;
+	const d = crudo as Record<string, unknown>;
+	if (typeof d.en !== 'string' || typeof d.tipo !== 'string') return null;
+	const numero = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+	return {
+		en: d.en,
+		tipo: d.tipo,
+		n: numero(d.n),
+		ok: d.ok === true,
+		codigo: numero(d.codigo),
+		ms: numero(d.ms),
+		motivo: typeof d.motivo === 'string' ? d.motivo : null,
+		entradaId: typeof d.entradaId === 'string' ? d.entradaId : null
+	};
+}
+
+/** El historial de intentos de un webhook, del más reciente al más viejo.
+ *  Lanza con el motivo si no se pudo traer: quien la llama decide cómo
+ *  mostrarlo. */
+export async function cargarHistorialWebhook(id: string): Promise<IntentoWebhook[]> {
+	let r: Response;
+	try {
+		r = await fetch(`/api/webhooks/${encodeURIComponent(id)}/intentos`);
+	} catch {
+		throw new Error('No se pudo contactar al servidor.');
+	}
+	if (!r.ok) throw new Error(await motivo(r));
+	const cuerpo = await r.json().catch(() => null);
+	return (Array.isArray(cuerpo?.intentos) ? cuerpo.intentos : [])
+		.map(leerIntento)
+		.filter((x: IntentoWebhook | null): x is IntentoWebhook => x !== null);
 }
 
 // Los de antes: se borran de este navegador. Ver el docstring de arriba.

@@ -38,6 +38,8 @@ export const POST: RequestHandler = async ({ params }) => {
 	return json({
 		validado: false,
 		motivo: typeof cuerpo?.motivo === 'string' ? cuerpo.motivo : 'El endpoint no respondió como se esperaba.',
-		codigo: typeof cuerpo?.codigo === 'number' ? cuerpo.codigo : null
+		codigo: typeof cuerpo?.codigo === 'number' ? cuerpo.codigo : null,
+		intentos: typeof cuerpo?.intentos === 'number' ? cuerpo.intentos : null,
+		webhook: cuerpo?.webhook ?? null
 	});
 };
