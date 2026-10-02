@@ -129,7 +129,7 @@ export type ResultadoUrl = { ok: true; url: string } | { ok: false; motivo: stri
  */
 export function validarUrlWebhook(texto: string): ResultadoUrl {
 	const limpio = texto.trim();
-	if (limpio === '') return { ok: false, motivo: 'Escribe la URL del endpoint.' };
+	if (limpio === '') return { ok: false, motivo: 'Escribe la URL de destino.' };
 	if (limpio.length > LARGO_MAXIMO_URL) {
 		return { ok: false, motivo: `La URL no puede pasar de ${LARGO_MAXIMO_URL} caracteres.` };
 	}
@@ -139,7 +139,7 @@ export function validarUrlWebhook(texto: string): ResultadoUrl {
 	} catch {
 		return {
 			ok: false,
-			motivo: 'No parece una URL válida. Ejemplo: https://servicios.empresa.com/webhooks/documentos'
+			motivo: 'No parece una URL válida. Ejemplo: https://api.empresa.com/webhooks/nexusdoc'
 		};
 	}
 	const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';

@@ -80,6 +80,10 @@
 	let errorAlta = $state('');
 
 	const resultadoUrl = $derived(validarUrlWebhook(url));
+	/** Lo que muestra el campo "Protocolo", que es de solo lectura. Sale de la
+	 *  URL y no es fijo: `validarUrlWebhook` exige https:// pero deja http://
+	 *  para localhost, y con esa URL de prueba un "HTTPS" fijo mentiría. */
+	const protocolo = $derived(resultadoUrl.ok && resultadoUrl.url.startsWith('http:') ? 'HTTP' : 'HTTPS');
 	const formularioCompleto = $derived(resultadoUrl.ok && eventosElegidos.length > 0);
 	const mensajeUrl = $derived(
 		errorAlta !== '' ? errorAlta : urlTocada && !resultadoUrl.ok ? resultadoUrl.motivo : ''
@@ -369,12 +373,12 @@
 
 							<div class="mt-6 space-y-6">
 								<div class="space-y-2">
-									<Label for="url-webhook">URL del endpoint *</Label>
+									<Label for="url-webhook">URL de destino *</Label>
 									<Input
 										id="url-webhook"
 										bind:value={url}
 										maxlength={LARGO_MAXIMO_URL}
-										placeholder="https://servicios.empresa.com/api/v1/webhooks/documentos"
+										placeholder="https://api.empresa.com/webhooks/nexusdoc"
 										aria-invalid={mensajeUrl !== ''}
 										aria-describedby="error-url-webhook"
 										oninput={() => (errorAlta = '')}
@@ -393,84 +397,106 @@
 									</p>
 								</div>
 
-								<div class="space-y-2">
-									<p class="text-sm font-medium text-foreground" id="titulo-eventos-webhook">
-										Eventos de suscripción *
-									</p>
-									<p class="text-xs text-muted-foreground">
-										Elige de qué quieres que NexusDoc te avise.
-									</p>
-									<!-- Desplegable con casillas, como el diseño. `closeOnSelect={false}`
-									     es lo que permite marcar varios sin que el menú se cierre en
-									     cada clic. El disparador repite lo elegido: cerrado, el menú
-									     tiene que seguir diciendo a qué estás suscrito. -->
-									<DropdownMenu.Root
-										onOpenChange={(abierto) => {
-											if (!abierto) eventosTocados = true;
-										}}
-									>
-										<DropdownMenu.Trigger>
-											{#snippet child({ props })}
-												<button
-													{...props}
-													type="button"
-													aria-labelledby="titulo-eventos-webhook"
-													data-testid="desplegable-eventos-webhook"
-													class="flex h-11 w-full items-center justify-between gap-3 rounded-lg border border-border bg-background px-4 text-left text-sm transition-colors hover:bg-muted/40 data-[state=open]:[&>svg]:rotate-180"
-												>
-													<span
-														class="min-w-0 truncate {eventosElegidos.length === 0
-															? 'text-muted-foreground'
-															: 'text-foreground'}"
-													>
-														{eventosElegidos.length === 0
-															? 'Selecciona uno o más eventos'
-															: etiquetaEventos({ eventos: eventosElegidos })}
-													</span>
-													<ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" />
-												</button>
-											{/snippet}
-										</DropdownMenu.Trigger>
-										<DropdownMenu.Content
-											align="start"
-											class="w-(--bits-dropdown-menu-anchor-width) p-2"
-										>
-											{#each EVENTOS_WEBHOOK as e (e.valor)}
-												<DropdownMenu.CheckboxItem
-													data-testid="evento-{e.valor}"
-													closeOnSelect={false}
-													class="h-11 gap-3 pr-3 pl-3 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden"
-													checked={eventosElegidos.includes(e.valor)}
-													onCheckedChange={(v) => alternarEvento(e.valor, v === true)}
-													title={e.descripcion}
-												>
-													<!-- La casilla a la IZQUIERDA, como el diseño, en vez de la
-													     palomita a la derecha que trae el componente (oculta
-													     arriba). Es solo dibujo: el renglón entero ya es el
-													     `menuitemcheckbox`, y una casilla real adentro sería un
-													     control dentro de otro. Mismas clases que `Checkbox`. -->
-													<span
-														aria-hidden="true"
-														class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {eventosElegidos.includes(
-															e.valor
-														)
-															? 'border-primary bg-primary text-primary-foreground'
-															: 'border-input'}"
-													>
-														{#if eventosElegidos.includes(e.valor)}
-															<Check class="size-3.5" />
-														{/if}
-													</span>
-													{e.etiqueta}
-												</DropdownMenu.CheckboxItem>
-											{/each}
-										</DropdownMenu.Content>
-									</DropdownMenu.Root>
-									{#if eventosTocados && eventosElegidos.length === 0}
-										<p class="text-xs text-destructive" data-testid="error-eventos-webhook">
-											Elige al menos un evento de suscripción.
+								<!-- La línea que separa a dónde se avisa de cómo y de qué, como en el
+								     diseño. -->
+								<div class="border-t border-border"></div>
+
+								<!-- Protocolo y eventos lado a lado: la misma rejilla que el alta de
+								     API Keys, que en pantallas angostas los apila. -->
+								<div class="grid gap-6 sm:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="protocolo-webhook">Protocolo *</Label>
+										<!-- Solo lectura: no hay nada que elegir. Ver `protocolo`. -->
+										<Input
+											id="protocolo-webhook"
+											data-testid="protocolo-webhook"
+											readonly
+											value={protocolo}
+											class="cursor-default bg-muted font-medium"
+										/>
+									</div>
+
+									<div class="space-y-2">
+										<!-- Con el estilo de `Label` (leading-none) para que los dos campos de
+										     la fila arranquen a la misma altura. No es un <label>: lo que
+										     nombra es un botón, que ya lo cita con `aria-labelledby`. -->
+										<p class="text-sm leading-none font-medium text-foreground" id="titulo-eventos-webhook">
+											Eventos de suscripción *
 										</p>
-									{/if}
+										<!-- Desplegable con casillas, como el diseño, con el mismo aspecto que
+										     el selector de "Expiración" del alta de API Keys. `closeOnSelect={false}`
+										     es lo que permite marcar varios sin que el menú se cierre en
+										     cada clic. El disparador repite lo elegido: cerrado, el menú
+										     tiene que seguir diciendo a qué estás suscrito. -->
+										<DropdownMenu.Root
+											onOpenChange={(abierto) => {
+												if (!abierto) eventosTocados = true;
+											}}
+										>
+											<DropdownMenu.Trigger>
+												{#snippet child({ props })}
+													<button
+														{...props}
+														type="button"
+														aria-labelledby="titulo-eventos-webhook"
+														data-testid="desplegable-eventos-webhook"
+														data-invalido={eventosTocados && eventosElegidos.length === 0}
+														class="flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-left text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[invalido=true]:border-destructive data-[invalido=true]:ring-3 data-[invalido=true]:ring-destructive/20 data-[state=open]:[&>svg]:rotate-180"
+													>
+														<span
+															class="min-w-0 truncate {eventosElegidos.length === 0
+																? 'text-muted-foreground'
+																: 'text-foreground'}"
+														>
+															{eventosElegidos.length === 0
+																? 'Selecciona uno o más eventos'
+																: etiquetaEventos({ eventos: eventosElegidos })}
+														</span>
+														<ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" />
+													</button>
+												{/snippet}
+											</DropdownMenu.Trigger>
+											<DropdownMenu.Content
+												align="start"
+												class="w-(--bits-dropdown-menu-anchor-width) p-2"
+											>
+												{#each EVENTOS_WEBHOOK as e (e.valor)}
+													<DropdownMenu.CheckboxItem
+														data-testid="evento-{e.valor}"
+														closeOnSelect={false}
+														class="h-11 gap-3 pr-3 pl-3 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden"
+														checked={eventosElegidos.includes(e.valor)}
+														onCheckedChange={(v) => alternarEvento(e.valor, v === true)}
+														title={e.descripcion}
+													>
+														<!-- La casilla a la IZQUIERDA, como el diseño, en vez de la
+														     palomita a la derecha que trae el componente (oculta
+														     arriba). Es solo dibujo: el renglón entero ya es el
+														     `menuitemcheckbox`, y una casilla real adentro sería un
+														     control dentro de otro. Mismas clases que `Checkbox`. -->
+														<span
+															aria-hidden="true"
+															class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {eventosElegidos.includes(
+																e.valor
+															)
+																? 'border-primary bg-primary text-primary-foreground'
+																: 'border-input'}"
+														>
+															{#if eventosElegidos.includes(e.valor)}
+																<Check class="size-3.5" />
+															{/if}
+														</span>
+														{e.etiqueta}
+													</DropdownMenu.CheckboxItem>
+												{/each}
+											</DropdownMenu.Content>
+										</DropdownMenu.Root>
+										{#if eventosTocados && eventosElegidos.length === 0}
+											<p class="text-xs text-destructive" data-testid="error-eventos-webhook">
+												Elige al menos un evento de suscripción.
+											</p>
+										{/if}
+									</div>
 								</div>
 							</div>
 						</div>
