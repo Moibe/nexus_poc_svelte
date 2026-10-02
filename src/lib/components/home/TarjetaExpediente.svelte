@@ -98,7 +98,10 @@
 		     la ventana de los campos que sacó el extractor (Registro de OT) y
 		     "Descargar plantilla documental" baja el PDF con esos datos. Las tres
 		     leen el resultado del procesamiento, así que se apagan para lo que
-		     sigue en la Bandeja de preparación: ahí todavía no existe. -->
+		     sigue en la Bandeja de preparación: ahí todavía no existe. Apagadas y
+		     sin más, parecían rotas ("les doy click y no pasa nada", 2026-10-02),
+		     y una opción apagada no muestra `title` (no recibe el puntero): por
+		     eso el menú lo dice en una nota al pie, que el diseño no trae. -->
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
@@ -141,6 +144,15 @@
 					<Download class="size-4 text-muted-foreground" />
 					Descargar plantilla documental
 				</DropdownMenu.Item>
+				{#if !documento.procesado}
+					<p
+						class="mt-1 border-t border-border px-2 pt-2 pb-1 text-xs text-muted-foreground"
+						data-testid="expediente-sin-resultado"
+					>
+						Se habilitan cuando el documento pase por el pipeline: sigue en la Bandeja de
+						preparación y todavía no tiene resultado. Selecciónalo ahí y usa “Iniciar pipeline”.
+					</p>
+				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 	</div>
