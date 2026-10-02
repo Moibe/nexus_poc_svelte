@@ -97,64 +97,55 @@
 		     .JSON" abre el Detalle ya en su vista JSON, "Ver campos extraídos" abre
 		     la ventana de los campos que sacó el extractor (Registro de OT) y
 		     "Descargar plantilla documental" baja el PDF con esos datos. Las tres
-		     leen el resultado del procesamiento, así que se apagan para lo que
-		     sigue en la Bandeja de preparación: ahí todavía no existe. Apagadas y
-		     sin más, parecían rotas ("les doy click y no pasa nada", 2026-10-02),
-		     y una opción apagada no muestra `title` (no recibe el puntero): por
-		     eso el menú lo dice en una nota al pie, que el diseño no trae. -->
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<button
-						{...props}
-						type="button"
-						aria-label="Más opciones de {documento.nombre}"
-						data-testid="menu-tarjeta-expediente"
-						class="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+		     leen el resultado del procesamiento, que lo que sigue en la Bandeja de
+		     preparación no tiene: ahí el ⋮ NO SE MUESTRA (2026-10-02, a pedido).
+		     Antes salía con las tres apagadas y parecía roto ("les doy click y no
+		     pasa nada"); una nota explicándolo tampoco convenció. Sin opciones
+		     que ofrecer, no hay menú. -->
+		{#if documento.procesado}
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							type="button"
+							aria-label="Más opciones de {documento.nombre}"
+							data-testid="menu-tarjeta-expediente"
+							class="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+						>
+							<MoreVerticalIcon />
+						</button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-72 p-2">
+					<DropdownMenu.Item
+						data-testid="expediente-json"
+						class="h-10 gap-3 px-2 whitespace-nowrap"
+						onSelect={() => alVerJson(documento.id)}
 					>
-						<MoreVerticalIcon />
-					</button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content align="end" class="w-72 p-2">
-				<DropdownMenu.Item
-					data-testid="expediente-json"
-					class="h-10 gap-3 px-2 whitespace-nowrap"
-					disabled={!documento.procesado}
-					onSelect={() => alVerJson(documento.id)}
-				>
-					<CodeXml class="size-4 text-muted-foreground" />
-					Ver documento .JSON
-				</DropdownMenu.Item>
-				<DropdownMenu.Item
-					data-testid="expediente-campos"
-					class="h-10 gap-3 px-2 whitespace-nowrap"
-					disabled={!documento.procesado}
-					onSelect={() => alVerCampos(documento.id)}
-				>
-					<TableProperties class="size-4 text-muted-foreground" />
-					Ver campos extraídos
-				</DropdownMenu.Item>
-				<DropdownMenu.Item
-					data-testid="expediente-plantilla"
-					class="h-10 gap-3 px-2 whitespace-nowrap"
-					disabled={!documento.procesado || descargando}
-					onSelect={() => alDescargarPlantilla(documento.id)}
-				>
-					<Download class="size-4 text-muted-foreground" />
-					Descargar plantilla documental
-				</DropdownMenu.Item>
-				{#if !documento.procesado}
-					<p
-						class="mt-1 border-t border-border px-2 pt-2 pb-1 text-xs text-muted-foreground"
-						data-testid="expediente-sin-resultado"
+						<CodeXml class="size-4 text-muted-foreground" />
+						Ver documento .JSON
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						data-testid="expediente-campos"
+						class="h-10 gap-3 px-2 whitespace-nowrap"
+						onSelect={() => alVerCampos(documento.id)}
 					>
-						Se habilitan cuando el documento pase por el pipeline: sigue en la Bandeja de
-						preparación y todavía no tiene resultado. Selecciónalo ahí y usa “Iniciar pipeline”.
-					</p>
-				{/if}
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
+						<TableProperties class="size-4 text-muted-foreground" />
+						Ver campos extraídos
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						data-testid="expediente-plantilla"
+						class="h-10 gap-3 px-2 whitespace-nowrap"
+						disabled={descargando}
+						onSelect={() => alDescargarPlantilla(documento.id)}
+					>
+						<Download class="size-4 text-muted-foreground" />
+						Descargar plantilla documental
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		{/if}
 	</div>
 	<p class="mt-1 text-xs text-muted-foreground">{meta}</p>
 	<p class="mt-1 text-xs text-muted-foreground">{documento.bandeja}</p>
