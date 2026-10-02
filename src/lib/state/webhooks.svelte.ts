@@ -1,6 +1,6 @@
 /**
  * Los webhooks configurados: endpoints de un cliente a los que NexusDoc le
- * avisará cuando un documento suyo termine de procesarse, falle o sea rechazado.
+ * avisa cuando un documento suyo termina de procesarse, falla o es rechazado.
  *
  * DESDE EL 2026-10-01 VIVEN EN EL SERVIDOR. Los registra y los guarda nexus_back
  * (`/webhooks/`, vía el BFF `/api/webhooks`), en un registro provisional en el
@@ -20,10 +20,11 @@
  * pantalla solo le ofrece "Validar conexión" —y eliminarlo—. `validadoEn` es
  * cuándo se validó; `null`, pendiente.
  *
- * TODAVÍA NO SE ENVÍAN AVISOS DE EVENTOS (el de prueba sí). Falta el envío —dispararlo desde el pipeline,
- * firmar, reintentar, registrar las entregas y la guarda contra SSRF al
- * entregar—. Hasta entonces registrar un webhook no hace que nadie reciba nada,
- * y las métricas salen vacías.
+ * LOS AVISOS DE EVENTOS SE ENVÍAN desde el 2026-10-01: cuando un documento que
+ * llegó por la API termina en el pipeline, el front se lo dice al servidor
+ * (`avisosWebhook.ts`), y el servidor lo entrega firmado a cada webhook
+ * validado, activo y suscrito, y lo reintenta si falla. Las métricas salen de
+ * esas entregas.
  *
  * LOS DE ANTES SE BORRAN. Hasta ese día vivían en el `localStorage` de cada
  * navegador, sin secret, y el servidor no los conocía. Se borran de ese
@@ -499,8 +500,7 @@ function leerResumen(cruda: unknown): ResumenEntregas | null {
  * por el BFF. Lanza con el motivo si no se pudieron traer: quien
  * la llama decide cómo mostrarlo.
  *
- * Hoy el BFF contesta siempre vacío, porque no hay entregas que contar (ver
- * el docstring del archivo). El formato ya es el definitivo.
+ * Salen de los intentos de entrega reales: cada intento es una solicitud.
  */
 export async function cargarMetricasWebhook(id: string, desde: string, hasta: string): Promise<MetricasWebhook> {
 	let r: Response;

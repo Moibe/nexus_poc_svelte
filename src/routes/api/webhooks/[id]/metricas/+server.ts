@@ -1,33 +1,20 @@
 /**
  * BFF: métricas de entregas de un webhook en un periodo. `desde` y `hasta` son
  * dos instantes ISO 8601 con zona, `[desde, hasta)`, igual que en las API Keys
- * (ver `$lib/metricas/periodo`).
+ * (ver `$lib/metricas/periodo`). El tenant lo fija el servidor.
  *
- * HOY CONTESTA SIEMPRE VACÍO, y es lo verdadero: todavía no hay backend que
- * envíe webhooks, así que no existe ninguna entrega que contar (ver el
- * docstring de `$lib/state/webhooks.svelte.ts`). El formato ya es el
- * definitivo; el día que exista el backend este archivo pasa a reenviar a
- * nexus_back —como `/api/llaves/[id]/metricas`— y la pantalla no cambia.
- *
- * Existe ya, y no como un valor fijo dentro del componente, para que la costura
- * quede donde va y para poder probar la pantalla con cifras (interceptando esta
- * ruta) sin tocar el código.
+ * Desde el 2026-10-01 reenvía a nexus_back, que las calcula de los intentos de
+ * entrega reales (cada intento es una solicitud). Hasta ese día contestaba
+ * siempre vacío, porque no se enviaba nada; el formato ya era este, así que la
+ * pantalla no cambió.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { periodoValido } from '$lib/metricas/periodo';
+import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
-const SIN_ENTREGAS = {
-	solicitudes: 0,
-	errores: 0,
-	tasaError: null,
-	p50Ms: null,
-	p90Ms: null,
-	p99Ms: null
-};
-
-export const GET: RequestHandler = ({ params, url }) => {
+export const GET: RequestHandler = async ({ params, url }) => {
 	const id = params.id ?? '';
 	const desde = url.searchParams.get('desde') ?? '';
 	const hasta = url.searchParams.get('hasta') ?? '';
@@ -37,8 +24,24 @@ export const GET: RequestHandler = ({ params, url }) => {
 			{ status: 400 }
 		);
 	}
-	return json(
-		{ desde, hasta, actual: SIN_ENTREGAS, anterior: SIN_ENTREGAS },
-		{ headers: { 'Cache-Control': 'no-store' } }
-	);
+
+	let respuesta: Response;
+	try {
+		const q = new URLSearchParams({ tenant: TENANT_CLIENTE, desde, hasta });
+		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/metricas?${q}`), {
+			headers: cabecerasNexus(),
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
+	} catch {
+		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
+	}
+	const cuerpo = await respuesta.json().catch(() => null);
+	if (!respuesta.ok) {
+		const detalle = cuerpo?.detail;
+		return json(
+			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
+			{ status: respuesta.status }
+		);
+	}
+	return json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
 };

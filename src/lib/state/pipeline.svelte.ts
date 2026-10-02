@@ -27,6 +27,7 @@ import {
 } from './configuracion.svelte';
 import type { ResultadoIne } from '$lib/types/ine';
 import { anotarEstado, type EventoDeEstado } from './historialEstados';
+import { avisarSiTermino } from './avisosWebhook';
 
 export type EstadoPipeline =
 	| 'en_cola' // esperando turno; ver NOTA sobre por qué se procesa de a uno
@@ -46,6 +47,12 @@ export type DocumentoEnPipeline = {
 	extension: string;
 	tamanioBytes: number;
 	origen: DocumentoEnBandeja['origen'];
+	/** Solo lo que llegó por la API: el id de su entrada en el servidor, que es
+	 *  el `id` que recibió el cliente al subirlo. Con él se le avisa al servidor
+	 *  cómo terminó, para sus webhooks (ver `avisosWebhook.ts`). */
+	idEntrada?: string;
+	/** Ya se le avisó al servidor cómo terminó: se avisa UNA vez por documento. */
+	avisado: boolean;
 	agregadoEn: Date;
 	hashSha256: string | null;
 	archivo: File;
@@ -131,6 +138,10 @@ function pasarA(doc: DocumentoEnPipeline, estado: EstadoPipeline): void {
 		fase: 'pipeline',
 		tono: dicho.tono
 	});
+	// Si con esto el pipeline terminó con un documento que llegó por la API, se
+	// le avisa al servidor para los webhooks del cliente. Aquí y no en cada uno
+	// de los quince lugares, por la misma razón que el historial.
+	avisarSiTermino(doc);
 }
 
 export function sePuedeProcesar(doc: DocumentoEnBandeja): boolean {
@@ -170,6 +181,8 @@ export async function iniciarPipeline() {
 			extension: doc.extension,
 			tamanioBytes: doc.tamanioBytes,
 			origen: doc.origen,
+			idEntrada: doc.idEntrada,
+			avisado: false,
 			agregadoEn: doc.agregadoEn,
 			hashSha256: doc.hashSha256,
 			archivo: doc.archivo,

@@ -9,8 +9,9 @@
 	 * anterior de la misma duración. El periodo se elige con el mismo calendario
 	 * de rango que las API Keys y arranca en los últimos 30 días.
 	 *
-	 * Hoy el servidor no tiene entregas que contar (el backend de webhooks
-	 * todavía no existe), así que lo normal es ver el estado vacío.
+	 * Las cifras salen de las entregas reales (desde el 2026-10-01): cada intento
+	 * de entrega, incluidos los reintentos, es una solicitud. Un webhook al que
+	 * todavía no le ha tocado ningún aviso muestra el estado vacío.
 	 */
 	import { onMount } from 'svelte';
 	import { getLocalTimeZone, today } from '@internationalized/date';

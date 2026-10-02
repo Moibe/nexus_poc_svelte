@@ -12,8 +12,8 @@
 	 *
 	 * DESDE EL 2026-10-01 VIVEN EN EL SERVIDOR, y cada uno nace con un secret de
 	 * firma que se muestra UNA vez, en la vista `creado` (captura de ese día).
-	 * Todavía no se envía ningún aviso: ver el docstring de
-	 * `$lib/state/webhooks.svelte`.
+	 * Los avisos de eventos se envían desde ese mismo día, solo a webhooks
+	 * validados y activos: ver el docstring de `$lib/state/webhooks.svelte`.
 	 *
 	 * VALIDADO ANTES DE USARSE (2026-10-01, a pedido con dos capturas). Una
 	 * tarjeta sin validar muestra solo su URL, sus eventos y "Validar conexión";
