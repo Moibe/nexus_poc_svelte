@@ -33,7 +33,8 @@
 	let estadoAbierto = $state(false);
 	// Los expedientes NO entran en el grupo de los tres de arriba: no son de UN
 	// documento —muestran todas las bandejas— así que no hay `idPanel` que
-	// fijar. Se abren y cierran por su cuenta.
+	// fijar. Se abren y cierran por su cuenta, y Detalle y Registro de OT se
+	// pueden abrir ENCIMA de ellos (ver el comentario de `<ExpedientesSheet>`).
 	let expedientesAbierto = $state(false);
 
 	// Si hay alguna píldora flotando, las listas dejan un hueco al final para que
@@ -103,17 +104,25 @@
 	alAbrirExpedientes={abrirExpedientes}
 />
 
+<!-- Desde el ⋮ de una tarjeta, Detalle y Registro de OT se abren ENCIMA del
+     expediente, sin cerrarlo: al fondo se ve el expediente y no las bandejas, y
+     al cerrarlas se vuelve a él, que es de donde se vino (2026-10-02; antes se
+     cerraba y la X regresaba a las bandejas).
+
+     Por eso el expediente va ANTES que ellas, y el orden importa: los cuatro son
+     Sheet a la derecha con el mismo z-index, así que encima se pinta el que va
+     después en el body, y cada Sheet mete su contenido en el body en el orden
+     en que se monta, que es este. Puesto después, el expediente taparía la
+     ventana que se abrió desde él. Escape y el clic fuera cierran solo la de
+     arriba: bits-ui le da esos eventos a la capa abierta más reciente. -->
+<ExpedientesSheet
+	bind:open={expedientesAbierto}
+	alVerJson={(id) => ((detalleEnJson = true), abrirDetalle(id))}
+	alVerCampos={(id) => ((registroOtEnJson = false), abrirRegistroOt(id))}
+/>
+
 <DetalleDocumentoSheet bind:open={detalleAbierto} bind:modoJson={detalleEnJson} documento={documentoPanel} />
 
 <RegistroOtSheet bind:open={registroOtAbierto} bind:modoJson={registroOtEnJson} documento={documentoPanel} />
 
 <EstadoProcesamientoSheet bind:open={estadoAbierto} documento={documentoEstado} />
-
-<!-- Desde el ⋮ de una tarjeta. Se cierra el expediente antes de abrir la otra
-     ventana: las dos son Sheet a la derecha, con la misma caja y el mismo
-     z-index, así que encimadas se taparían. -->
-<ExpedientesSheet
-	bind:open={expedientesAbierto}
-	alVerJson={(id) => ((expedientesAbierto = false), (detalleEnJson = true), abrirDetalle(id))}
-	alVerCampos={(id) => ((expedientesAbierto = false), (registroOtEnJson = false), abrirRegistroOt(id))}
-/>
