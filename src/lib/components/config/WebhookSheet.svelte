@@ -27,6 +27,10 @@
 	 * el servidor lo marca y la tarjeta lo dice con un chip rojo, junto con el
 	 * aviso de "Entrega del webhook fallida" del diseño —ya con su texto literal,
 	 * porque los reintentos, el estado y el historial de intentos existen—.
+	 * Con fallo, el botón de la tarjeta pasa a ser "Editar webhook" (captura
+	 * del mismo día): validar de nuevo la misma URL no tiene caso; lo que sigue
+	 * es corregirla. Editar reusa el formulario del alta y deja el webhook SIN
+	 * validar —el endpoint pudo cambiar—, así que vuelve "Validar conexión".
 	 */
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -61,6 +65,7 @@
 		registrarWebhook,
 		cambiarEstadoWebhook,
 		eliminarWebhook,
+		editarWebhook,
 		validarWebhook,
 		cargarWebhooks,
 		reconocerError,
@@ -82,7 +87,9 @@
 
 	/** La vista de entrada es el LISTADO, que por dentro decide si muestra las
 	 *  tarjetas o el estado vacío. `creado` es la del secret recién generado. */
-	let vista = $state<'lista' | 'nueva' | 'creado'>('lista');
+	let vista = $state<'lista' | 'nueva' | 'creado' | 'editar'>('lista');
+	/** El webhook que se está editando (vista `editar`). */
+	let editandoId = $state<string | null>(null);
 
 	// El borrador del alta NO se limpia al cerrar el módulo —igual que en las API
 	// Keys y en el Modulo de configuración—: quien cerró por accidente a media
@@ -128,7 +135,7 @@
 	 *  al salir del listado o cerrar. No se auto-oculta con un temporizador: quien
 	 *  hizo algo merece leerlo a su ritmo. (El alta no lo usa: la confirma la
 	 *  vista del secret, "Webhook creado correctamente".) */
-	let aviso = $state<'validado' | 'eliminado' | null>(null);
+	let aviso = $state<'validado' | 'eliminado' | 'editado' | null>(null);
 
 	/** Lo que salió mal al validar cada webhook, para decirlo en SU tarjeta y
 	 *  no en un aviso general: es de ese endpoint.
@@ -185,7 +192,43 @@
 		eventosTocados = false;
 		urlTocada = false;
 		errorAlta = '';
+		editandoId = null;
 		vista = 'lista';
+	}
+
+	/** Abre el formulario con lo que el webhook ya tiene. */
+	function irAEditar(w: WebhookGuardado) {
+		aviso = null;
+		errorAlta = '';
+		url = w.url;
+		eventosElegidos = [...w.eventos];
+		urlTocada = false;
+		eventosTocados = false;
+		editandoId = w.id;
+		vista = 'editar';
+	}
+
+	async function guardarEdicion() {
+		urlTocada = true;
+		eventosTocados = true;
+		const id = editandoId;
+		if (!id || !formularioCompleto || creando) return;
+		creando = true;
+		let r: Awaited<ReturnType<typeof editarWebhook>>;
+		try {
+			r = await editarWebhook(id, { url, eventos: eventosElegidos });
+		} finally {
+			creando = false;
+		}
+		if (!r.ok) {
+			if (r.mensaje) errorAlta = r.mensaje;
+			return;
+		}
+		// El aviso rojo era de la URL de antes: ya no aplica.
+		delete errorValidacion[id];
+		versionHistorial[id] = (versionHistorial[id] ?? 0) + 1;
+		cancelar();
+		aviso = 'editado';
 	}
 
 	async function crear() {
@@ -252,7 +295,7 @@
 		activo: { texto: 'Activo', clase: 'bg-green-50 text-green-700', punto: 'bg-green-500' },
 		inactivo: { texto: 'Inactivo', clase: 'bg-muted text-muted-foreground', punto: 'bg-muted-foreground/60' },
 		/** Sin validar, y su última validación no entró en ningún intento. */
-		con_fallos: { texto: 'Con fallos', clase: 'bg-red-50 text-red-700', punto: 'bg-red-500' }
+		con_fallos: { texto: 'Con fallo', clase: 'bg-red-50 text-red-700', punto: 'bg-red-500' }
 	};
 </script>
 
@@ -352,7 +395,13 @@
 					     la tarjeta de adentro: una región que se monta junto con su texto no
 					     se anuncia. Vacío no mide nada. -->
 					<div role="status" aria-live="polite">
-						{#if vista === 'lista' && aviso === 'validado'}
+						{#if vista === 'lista' && aviso === 'editado'}
+							<AvisoVerde
+								testid="aviso-webhook-editado"
+								titulo="Webhook actualizado correctamente"
+								cuerpo="Quedó sin validar: valida la conexión para que vuelva a recibir avisos."
+							/>
+						{:else if vista === 'lista' && aviso === 'validado'}
 							<AvisoVerde
 								testid="aviso-webhook-validado"
 								titulo="Conexión validada correctamente"
@@ -498,20 +547,34 @@
 											     apaga: son hasta 5 intentos, que pueden tardar hasta un
 											     minuto, y un segundo clic no adelanta nada. -->
 											<div class="mt-3 flex flex-col items-end gap-1.5">
-												<Button
-													variant="outline"
-													size="sm"
-													data-testid="validar-webhook"
-													disabled={validando}
-													onclick={() => validar(w)}
-												>
-													{#if validando}
-														<LoaderCircle class="size-4 animate-spin" />
-														Validando…
-													{:else}
-														Validar conexión
-													{/if}
-												</Button>
+												{#if w.fallidaEn && !validando}
+													<!-- Con fallo, lo que sigue es corregir el endpoint, no
+													     volver a probar el mismo (captura del 2026-10-01). -->
+													<Button
+														variant="outline"
+														size="sm"
+														data-testid="editar-webhook"
+														disabled={estadoWebhooks.enVuelo.includes(w.id)}
+														onclick={() => irAEditar(w)}
+													>
+														Editar webhook
+													</Button>
+												{:else}
+													<Button
+														variant="outline"
+														size="sm"
+														data-testid="validar-webhook"
+														disabled={validando}
+														onclick={() => validar(w)}
+													>
+														{#if validando}
+															<LoaderCircle class="size-4 animate-spin" />
+															Validando…
+														{:else}
+															Validar conexión
+														{/if}
+													</Button>
+												{/if}
 												{#if validando}
 													<p class="text-right text-xs text-muted-foreground" data-testid="validando-webhook">
 														Se hacen hasta 5 intentos; puede tardar hasta un minuto.
@@ -574,8 +637,10 @@
 								</Button>
 							</div>
 						{/if}
-					{:else if vista === 'nueva'}
-						<p class="text-sm text-muted-foreground">Configuración de nuevo webhook</p>
+					{:else if vista === 'nueva' || vista === 'editar'}
+						<p class="text-sm text-muted-foreground">
+							{vista === 'editar' ? 'Edición de webhook' : 'Configuración de nuevo webhook'}
+						</p>
 
 						<div class="mt-4 rounded-xl border border-border p-6">
 							<p class="text-sm text-muted-foreground">Completa la información requerida.</p>
@@ -731,7 +796,7 @@
 					<div class="flex items-center justify-end border-t border-border px-6 py-4">
 						<Button data-testid="cerrar-webhooks" onclick={() => (open = false)}>Cerrar</Button>
 					</div>
-				{:else if vista === 'nueva'}
+				{:else if vista === 'nueva' || vista === 'editar'}
 					<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 						<Button
 							variant="link"
@@ -741,9 +806,15 @@
 						>
 							Cancelar configuración
 						</Button>
-						<Button data-testid="crear-webhook" disabled={!formularioCompleto || creando} onclick={crear}>
-							Crear webhook
-						</Button>
+						{#if vista === 'editar'}
+							<Button data-testid="guardar-webhook" disabled={!formularioCompleto || creando} onclick={guardarEdicion}>
+								Guardar cambios
+							</Button>
+						{:else}
+							<Button data-testid="crear-webhook" disabled={!formularioCompleto || creando} onclick={crear}>
+								Crear webhook
+							</Button>
+						{/if}
 					</div>
 				{:else if vista === 'creado'}
 					<div class="flex items-center justify-end border-t border-border px-6 py-4">

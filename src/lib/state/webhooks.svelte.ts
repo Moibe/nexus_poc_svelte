@@ -305,6 +305,64 @@ function altaIncierta(): { ok: false; mensaje: null } {
 	return { ok: false, mensaje: null };
 }
 
+export type ResultadoEdicion =
+	| { ok: true; webhook: WebhookGuardado }
+	/** Igual que en el alta: `mensaje` lo explica el formulario; `null` es que
+	 *  ya quedó en `estadoWebhooks.error`. */
+	| { ok: false; mensaje: string | null };
+
+/**
+ * Le cambia la URL y los eventos a un webhook EN EL SERVIDOR. Queda sin validar
+ * —el endpoint pudo cambiar— y conserva su secret.
+ *
+ * Si NO contestó, no se sabe si se guardó: se dice así y se recarga el listado.
+ */
+export async function editarWebhook(
+	id: string,
+	datos: { url: string; eventos: EventoWebhook[] }
+): Promise<ResultadoEdicion> {
+	const url = validarUrlWebhook(datos.url);
+	if (!url.ok) return { ok: false, mensaje: url.motivo };
+	const eventos = EVENTOS_WEBHOOK.map((e) => e.valor).filter((v) => datos.eventos.includes(v));
+	if (eventos.length === 0) return { ok: false, mensaje: 'Elige al menos un evento de suscripción.' };
+	const incierto = (): { ok: false; mensaje: null } => {
+		estadoWebhooks.error =
+			'No se pudo confirmar si se guardaron los cambios: el servidor no contestó a tiempo. Revisa el webhook en el listado.';
+		void cargarWebhooks();
+		return { ok: false, mensaje: null };
+	};
+	let r: Response;
+	try {
+		r = await fetch(`/api/webhooks/${encodeURIComponent(id)}/editar`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: url.url, eventos })
+		});
+	} catch {
+		return incierto();
+	}
+	if (sinRespuesta(r.status)) return incierto();
+	if (r.status === 400 || r.status === 409) return { ok: false, mensaje: await motivo(r) };
+	if (r.status === 404) {
+		estadoWebhooks.error = 'Ese webhook ya no está en tu listado: lo eliminaron desde otro lado.';
+		void cargarWebhooks();
+		return { ok: false, mensaje: null };
+	}
+	if (!r.ok) {
+		estadoWebhooks.error = `No se guardaron los cambios: ${await motivo(r)}`;
+		return { ok: false, mensaje: null };
+	}
+	const webhook = leerWebhook((await r.json().catch(() => null))?.webhook);
+	if (!webhook) {
+		void cargarWebhooks();
+		estadoWebhooks.error = 'El servidor respondió sin el webhook. Revisa el listado.';
+		return { ok: false, mensaje: null };
+	}
+	const actual = webhooks.find((w) => w.id === id);
+	if (actual) Object.assign(actual, webhook);
+	return { ok: true, webhook };
+}
+
 /** Marca un webhook con un cambio en vuelo mientras corre `trabajo`. Si ya
  *  tenía uno, no hace nada y devuelve `siOcupado`. */
 async function conCambioEnVuelo<T>(id: string, trabajo: () => Promise<T>, siOcupado: T): Promise<T> {
