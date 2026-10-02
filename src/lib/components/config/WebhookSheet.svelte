@@ -10,8 +10,10 @@
 	 * métricas— sale de las capturas; el alta y el estado vacío NO tenían
 	 * frame, y se armaron con el mismo vocabulario del módulo hermano.
 	 *
-	 * PRIMERA ETAPA: todo vive en este navegador y todavía no se envía nada (ver
-	 * el docstring de `$lib/state/webhooks.svelte`).
+	 * DESDE EL 2026-10-01 VIVEN EN EL SERVIDOR, y cada uno nace con un secret de
+	 * firma que se muestra UNA vez, en la vista `creado` (captura de ese día).
+	 * Todavía no se envía ningún aviso: ver el docstring de
+	 * `$lib/state/webhooks.svelte`.
 	 */
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -34,15 +36,16 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import AvisoVerde from './AvisoVerde.svelte';
 	import MetricasWebhook from './MetricasWebhook.svelte';
+	import SecretUnaVez from './SecretUnaVez.svelte';
 	import {
 		webhooks,
 		estadoWebhooks,
 		EVENTOS_WEBHOOK,
-		agregarWebhook,
+		registrarWebhook,
 		cambiarEstadoWebhook,
 		eliminarWebhook,
-		recargarWebhooks,
-		reconocerFallaDeGuardado,
+		cargarWebhooks,
+		reconocerError,
 		validarUrlWebhook,
 		etiquetaEventos,
 		LARGO_MAXIMO_URL,
@@ -52,15 +55,16 @@
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	// Cada vez que se abre, la lista se pone al día con el disco: otra pestaña
-	// pudo haber cambiado algo. `untrack` para que el efecto dependa SOLO de `open`.
+	// El listado vive en el servidor (desde el 2026-10-01): se pide cada vez que
+	// se abre el módulo, así lo que se hizo en otro navegador ya aparece como
+	// está. `untrack` para que el efecto dependa SOLO de `open`.
 	$effect(() => {
-		if (open) untrack(() => recargarWebhooks());
+		if (open) untrack(() => void cargarWebhooks());
 	});
 
 	/** La vista de entrada es el LISTADO, que por dentro decide si muestra las
-	 *  tarjetas o el estado vacío. */
-	let vista = $state<'lista' | 'nueva'>('lista');
+	 *  tarjetas o el estado vacío. `creado` es la del secret recién generado. */
+	let vista = $state<'lista' | 'nueva' | 'creado'>('lista');
 
 	// El borrador del alta NO se limpia al cerrar el módulo —igual que en las API
 	// Keys y en el Modulo de configuración—: quien cerró por accidente a media
@@ -76,8 +80,15 @@
 	/** El error de la URL se muestra cuando ya se tocó el campo (o se intentó
 	 *  crear): si no, "No parece una URL" saldría a media escritura. */
 	let urlTocada = $state(false);
-	/** Un rechazo del alta que no es de forma (URL repetida, o no se guardó). */
+	/** Un rechazo del alta que el formulario sabe explicar (URL repetida, o una
+	 *  que el servidor no aceptó). */
 	let errorAlta = $state('');
+	/** Registrando en el servidor: "Crear webhook" se apaga y el módulo no se deja
+	 *  cerrar, como en las API Keys. */
+	let creando = $state(false);
+	/** El secret recién generado, mientras se muestra (vista `creado`). Se
+	 *  destruye con "Listo" y al cerrar. */
+	let secret = $state('');
 
 	const resultadoUrl = $derived(validarUrlWebhook(url));
 	/** Lo que muestra el campo "Protocolo", que es de solo lectura. Sale de la
@@ -95,10 +106,11 @@
 			: eventosElegidos.filter((v) => v !== valor);
 	}
 
-	/** Lo que confirma el aviso verde: se prende al crear o eliminar y se apaga
-	 *  al salir del listado o cerrar. No se auto-oculta con un temporizador: quien
-	 *  hizo algo irreversible merece leerlo a su ritmo. */
-	let aviso = $state<'creado' | 'eliminado' | null>(null);
+	/** Lo que confirma el aviso verde: se prende al eliminar y se apaga al salir
+	 *  del listado o cerrar. No se auto-oculta con un temporizador: quien hizo
+	 *  algo irreversible merece leerlo a su ritmo. (El alta ya no lo usa: la
+	 *  confirma la vista del secret, "Webhook creado correctamente".) */
+	let aviso = $state<'eliminado' | null>(null);
 
 	/** El webhook con "Métricas" desplegadas dentro de su tarjeta. Uno a la vez. */
 	let metricasDeId = $state<string | null>(null);
@@ -121,31 +133,60 @@
 		vista = 'lista';
 	}
 
-	function crear() {
+	async function crear() {
 		urlTocada = true;
 		eventosTocados = true;
-		if (!formularioCompleto) return;
-		const r = agregarWebhook({ url, eventos: eventosElegidos });
+		if (!formularioCompleto || creando) return;
+		creando = true;
+		let r: Awaited<ReturnType<typeof registrarWebhook>>;
+		try {
+			r = await registrarWebhook({ url, eventos: eventosElegidos });
+		} finally {
+			creando = false;
+		}
 		if (!r.ok) {
-			// "No se guardó" ya prendió su propio aviso: aquí solo quedan los rechazos
-			// que el formulario puede explicar. Se queda en el formulario con lo
-			// capturado; no se perdió nada.
-			if (r.motivo !== 'guardado') errorAlta = r.mensaje;
+			// Un rechazo que el formulario sabe explicar se muestra bajo la URL; lo
+			// demás ya prendió el aviso general. Se queda en el formulario con lo
+			// capturado: no se perdió nada.
+			if (r.mensaje) errorAlta = r.mensaje;
 			return;
 		}
+		// El borrador se limpia en cuanto el webhook SE CREA: lo escrito ya se usó,
+		// y el siguiente alta no debe nacer con la URL del anterior.
 		cancelar();
-		aviso = 'creado';
+		// Mientras se registra el módulo no se deja cerrar. Si aun así se cerró
+		// —desde fuera de este componente—, el secret NO se guarda en el estado:
+		// sobreviviría al cierre y aparecería la próxima vez que alguien abra el
+		// módulo. Mismo criterio que las API Keys.
+		if (!open) {
+			estadoWebhooks.error =
+				'El webhook se registró, pero la ventana se cerró antes de mostrar su secret, que ya no se puede recuperar. Elimínalo desde el listado y vuelve a crearlo.';
+			return;
+		}
+		secret = r.secret;
+		vista = 'creado';
+	}
+
+	/** "Listo" regresa al listado —donde el recién creado aparece Activo— y de
+	 *  paso destruye el secret: si se quedara en memoria, volver a esta vista lo
+	 *  mostraría otra vez. */
+	function listo() {
+		secret = '';
+		vista = 'lista';
 	}
 
 	function alternarEstado(w: WebhookGuardado) {
-		cambiarEstadoWebhook(w.id, w.estado === 'activo' ? 'inactivo' : 'activo');
+		void cambiarEstadoWebhook(w.id, w.estado === 'activo' ? 'inactivo' : 'activo');
 	}
 
-	/** Cerrar el módulo no borra el borrador, pero sí vuelve al listado y apaga
-	 *  el aviso y las métricas abiertas. */
+	/** Cerrar el módulo no borra el borrador, pero sí vuelve al listado, apaga
+	 *  el aviso y las métricas abiertas, y DESTRUYE el secret: sin eso, cerrar con
+	 *  la X y reabrir mostraría el mismo secret otra vez, y la pantalla promete no
+	 *  volver a mostrarlo. */
 	$effect(() => {
 		if (open) return;
 		vista = 'lista';
+		secret = '';
 		aviso = null;
 		metricasDeId = null;
 	});
@@ -163,6 +204,8 @@
 	<Sheet.Content
 		showCloseButton={false}
 		data-testid="modal-webhooks"
+		escapeKeydownBehavior={vista === 'creado' || creando ? 'ignore' : 'close'}
+		interactOutsideBehavior={vista === 'creado' || creando ? 'ignore' : 'close'}
 		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[75%] data-[side=right]:xl:w-[70%]"
 	>
 		<!-- header . navigation -->
@@ -170,8 +213,13 @@
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
 				Configuración de webhook
 			</Sheet.Title>
+			<!-- Con el secret en pantalla, Escape y el clic fuera se IGNORAN (ver
+			     `escapeKeydownBehavior`): cerrar lo destruye para siempre. Quedan la
+			     X y "Listo", que son salidas deliberadas. Mientras se registra, ni
+			     la X: el secret llegaría a una ventana cerrada. -->
 			<Sheet.Close
-				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+				disabled={creando}
+				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
 			>
 				<CancelSquareIcon />
 				<span class="sr-only">Cerrar</span>
@@ -245,13 +293,7 @@
 					     la tarjeta de adentro: una región que se monta junto con su texto no
 					     se anuncia. Vacío no mide nada. -->
 					<div role="status" aria-live="polite">
-						{#if vista === 'lista' && aviso === 'creado'}
-							<AvisoVerde
-								testid="aviso-webhook-creado"
-								titulo="Webhook registrado correctamente"
-								cuerpo="El endpoint quedó guardado con los eventos que elegiste."
-							/>
-						{:else if vista === 'lista' && aviso === 'eliminado'}
+						{#if vista === 'lista' && aviso === 'eliminado'}
 							<AvisoVerde
 								testid="aviso-webhook-eliminado"
 								titulo="Webhook eliminado correctamente"
@@ -261,7 +303,23 @@
 					</div>
 
 					{#if vista === 'lista'}
-						{#if webhooks.length > 0}
+						{#if estadoWebhooks.errorCarga}
+							<div
+								data-testid="error-listado-webhooks"
+								class="mb-4 flex items-center justify-between gap-4 rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive"
+							>
+								<span>No se pudo traer el listado de webhooks: {estadoWebhooks.errorCarga}</span>
+								<Button variant="outline" size="sm" onclick={() => void cargarWebhooks()}>Reintentar</Button>
+							</div>
+						{/if}
+						<!-- Sin datos todavía (cargando, o la carga falló): ni tarjetas ni
+						     estado vacío, porque "Configura tu primer Webhook" afirmaría que no
+						     hay ninguno cuando no se sabe. -->
+						{#if webhooks.length === 0 && (estadoWebhooks.cargando || estadoWebhooks.errorCarga)}
+							{#if estadoWebhooks.cargando}
+								<p class="text-sm text-muted-foreground" data-testid="cargando-webhooks">Cargando webhooks…</p>
+							{/if}
+						{:else if webhooks.length > 0}
 							<div class="flex flex-col gap-3">
 								{#each webhooks as w (w.id)}
 									{@const estado = ETIQUETA_ESTADO[w.estado]}
@@ -321,6 +379,7 @@
 													</DropdownMenu.Item>
 													<DropdownMenu.Item
 														data-testid="estado-webhook"
+														disabled={estadoWebhooks.enVuelo.includes(w.id)}
 														class="h-11.5 gap-3 px-2 whitespace-nowrap"
 														onSelect={() => alternarEstado(w)}
 													>
@@ -335,6 +394,7 @@
 													<!-- Rojo porque es irreversible: pide confirmación. -->
 													<DropdownMenu.Item
 														data-testid="eliminar-webhook"
+														disabled={estadoWebhooks.enVuelo.includes(w.id)}
 														class="h-11.5 gap-3 px-2 whitespace-nowrap text-destructive data-highlighted:text-destructive"
 														onSelect={() => (webhookAEliminar = w)}
 													>
@@ -365,7 +425,7 @@
 								</Button>
 							</div>
 						{/if}
-					{:else}
+					{:else if vista === 'nueva'}
 						<p class="text-sm text-muted-foreground">Configuración de nuevo webhook</p>
 
 						<div class="mt-4 rounded-xl border border-border p-6">
@@ -500,6 +560,21 @@
 								</div>
 							</div>
 						</div>
+					{:else}
+						<!-- El secret recién generado (captura del 2026-10-01). El diseño titula
+						     "Key creada correctamente", copiado de la pantalla de las API Keys;
+						     aquí dice "Webhook", que es lo que se creó. Importa: este secret NO
+						     es una API Key. La API Key la usa el cliente para LLAMAR a NexusDoc;
+						     este secret lo usa NexusDoc para FIRMAR lo que le manda al cliente. -->
+						<p class="text-sm text-muted-foreground">Configuración de nuevo webhook</p>
+						<div class="mt-4 rounded-xl border border-border p-6" data-testid="webhook-creado">
+							<h3 class="text-base font-medium text-foreground">Webhook creado correctamente</h3>
+							<p class="mt-2 text-sm text-muted-foreground">
+								Guarda el secret en un lugar seguro. Por motivos de seguridad, no volveremos a
+								mostrarlo después de cerrar esta vista.
+							</p>
+							<SecretUnaVez {secret} testid="secret-webhook" />
+						</div>
 					{/if}
 				</div>
 
@@ -517,9 +592,13 @@
 						>
 							Cancelar configuración
 						</Button>
-						<Button data-testid="crear-webhook" disabled={!formularioCompleto} onclick={crear}>
+						<Button data-testid="crear-webhook" disabled={!formularioCompleto || creando} onclick={crear}>
 							Crear webhook
 						</Button>
+					</div>
+				{:else if vista === 'creado'}
+					<div class="flex items-center justify-end border-t border-border px-6 py-4">
+						<Button data-testid="listo-webhook" onclick={listo}>Listo</Button>
 					</div>
 				{/if}
 			</div>
@@ -543,21 +622,23 @@
 		webhookAEliminar = null;
 		if (!objetivo) return;
 		if (metricasDeId === objetivo.id) metricasDeId = null;
-		if (eliminarWebhook(objetivo.id)) aviso = 'eliminado';
+		void eliminarWebhook(objetivo.id).then((ok) => {
+			if (ok) aviso = 'eliminado';
+		});
 	}}
 	onCerrar={() => (webhookAEliminar = null)}
 />
 
-<!-- El aviso de que el navegador no aceptó la escritura. Mismo componente y mismo
-     criterio que en la Biblioteca: `soloAviso` porque el hecho ya ocurrió y no
-     hay nada que cancelar. -->
+<!-- Un alta, un cambio de estado o una baja que no salió como se pidió, dicho tal
+     cual. Mismo aviso que el módulo de API Keys: `soloAviso` porque el hecho ya
+     ocurrió y no hay nada que cancelar. -->
 <ConfirmarAccion
-	abierto={estadoWebhooks.falloAlGuardar}
+	abierto={estadoWebhooks.error !== ''}
 	variante="destructivo"
 	soloAviso
-	titulo="No se pudo guardar en este navegador"
-	mensaje="El cambio no quedó guardado (almacenamiento lleno o bloqueado). Sigue como estaba. Inténtalo de nuevo; si persiste, libera espacio o revisa que el navegador permita guardar datos de este sitio."
+	titulo="No se pudo completar"
+	mensaje={estadoWebhooks.error}
 	etiquetaConfirmar="Entendido"
-	onConfirmar={reconocerFallaDeGuardado}
-	onCerrar={reconocerFallaDeGuardado}
+	onConfirmar={reconocerError}
+	onCerrar={reconocerError}
 />
