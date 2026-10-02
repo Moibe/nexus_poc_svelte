@@ -397,7 +397,14 @@ export function eliminarWebhook(id: string): Promise<boolean> {
 	);
 }
 
-export type ResultadoValidacion = { ok: true } | { ok: false; motivo: string };
+export type ResultadoValidacion =
+	| { ok: true }
+	/** `intento` está SOLO cuando el servidor sí intentó entregar el aviso de
+	 *  prueba y el endpoint no lo aceptó: cuándo y con qué código (`null` si no
+	 *  se llegó a hablar con él). Sin `intento` no hubo entrega —demasiados
+	 *  intentos, el webhook ya no existe, el servidor no contestó—, y la
+	 *  pantalla no lo presenta como "Entrega fallida". */
+	| { ok: false; motivo: string; intento?: { en: string; codigo: number | null } };
 
 /**
  * Valida la conexión de un webhook: el servidor le manda al endpoint un aviso de
@@ -427,7 +434,11 @@ export function validarWebhook(id: string): Promise<ResultadoValidacion> {
 				}
 				return {
 					ok: false,
-					motivo: typeof cuerpo?.motivo === 'string' ? cuerpo.motivo : 'El endpoint no respondió como se esperaba.'
+					motivo: typeof cuerpo?.motivo === 'string' ? cuerpo.motivo : 'El endpoint no respondió como se esperaba.',
+					intento: {
+						en: new Date().toISOString(),
+						codigo: typeof cuerpo?.codigo === 'number' ? cuerpo.codigo : null
+					}
 				};
 			}
 			if (r && r.status === 404) {

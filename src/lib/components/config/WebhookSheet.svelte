@@ -44,6 +44,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import AvisoVerde from './AvisoVerde.svelte';
+	import AvisoRojo from './AvisoRojo.svelte';
 	import MetricasWebhook from './MetricasWebhook.svelte';
 	import SecretUnaVez from './SecretUnaVez.svelte';
 	import {
@@ -122,17 +123,40 @@
 	 *  vista del secret, "Webhook creado correctamente".) */
 	let aviso = $state<'validado' | 'eliminado' | null>(null);
 
-	/** Por qué falló la última validación de cada webhook, para decirlo en SU
-	 *  tarjeta y no en un aviso general: el motivo es de ese endpoint. Se borra al
-	 *  reintentar y al cerrar el módulo. */
-	let errorValidacion = $state<Record<string, string>>({});
+	/** Lo que salió mal al validar cada webhook, para decirlo en SU tarjeta y
+	 *  no en un aviso general: es de ese endpoint.
+	 *   · `entrega`: la última entrega del aviso de prueba que NO salió (aviso
+	 *     rojo). Se queda hasta que otra la reemplace o se valide: si el
+	 *     servidor pide esperar antes de reintentar, ese detalle no se pierde.
+	 *   · `texto`: algo que ni llegó a intentarse (pide esperar, el webhook ya
+	 *     no existe, el servidor no contestó). Texto corto; se borra al
+	 *     reintentar.
+	 *  Todo se borra al cerrar el módulo. */
+	let errorValidacion = $state<
+		Record<string, { entrega?: { motivo: string; intento: { en: string; codigo: number | null } }; texto?: string }>
+	>({});
 
 	async function validar(w: WebhookGuardado) {
 		aviso = null;
-		delete errorValidacion[w.id];
+		const previa = errorValidacion[w.id]?.entrega;
+		errorValidacion[w.id] = { entrega: previa };
 		const r = await validarWebhook(w.id);
-		if (r.ok) aviso = 'validado';
-		else errorValidacion[w.id] = r.motivo;
+		if (r.ok) {
+			delete errorValidacion[w.id];
+			aviso = 'validado';
+		} else if (r.intento) {
+			errorValidacion[w.id] = { entrega: { motivo: r.motivo, intento: r.intento } };
+		} else {
+			errorValidacion[w.id] = { entrega: previa, texto: r.motivo };
+		}
+	}
+
+	/** `01/10/2026 · 21:45:07`, en la hora de quien mira. Con segundos: es la hora
+	 *  de un intento, y sirve para buscarlo del lado del endpoint. */
+	function fechaHoraIntento(iso: string): string {
+		const f = new Date(iso);
+		const dos = (n: number) => String(n).padStart(2, '0');
+		return `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()} · ${dos(f.getHours())}:${dos(f.getMinutes())}:${dos(f.getSeconds())}`;
 	}
 
 	/** El webhook con "Métricas" desplegadas dentro de su tarjeta. Uno a la vez. */
@@ -355,6 +379,7 @@
 									{@const estado = ETIQUETA_ESTADO[w.estado]}
 									{@const validado = w.validadoEn !== null}
 									{@const validando = estadoWebhooks.enVuelo.includes(w.id)}
+									{@const fallo = errorValidacion[w.id]}
 									<div
 										data-testid="tarjeta-webhook"
 										data-validado={validado}
@@ -465,12 +490,34 @@
 														Validar conexión
 													{/if}
 												</Button>
-												{#if errorValidacion[w.id]}
+												{#if fallo?.texto}
 													<p role="alert" data-testid="error-validacion-webhook" class="text-right text-xs text-destructive">
-														{errorValidacion[w.id]}
+														{fallo.texto}
 													</p>
 												{/if}
 											</div>
+											<!-- La entrega del aviso de prueba no salió (captura del
+											     2026-10-01). Forma y título del diseño; el TEXTO se ajustó a
+											     lo que de verdad pasa, porque el del diseño describe cosas que
+											     validar no hace: "después de 5 intentos" (validar es UN
+											     intento), "se marcó como 'Con fallos'" (no hay ese estado: sigue
+											     sin validar) y "revisa el historial de intentos" (no hay
+											     historial que abrir; la hora y el código de ESTE intento van
+											     aquí mismo). -->
+											{#if fallo?.entrega}
+												{@const entrega = fallo.entrega}
+												<div class="mt-3">
+													<AvisoRojo testid="entrega-fallida-webhook" titulo="Entrega del webhook fallida">
+														<p>No fue posible entregar el aviso de prueba al endpoint receptor. {entrega.motivo}</p>
+														<p class="mt-1">
+															El webhook sigue sin validar. Intento del {fechaHoraIntento(entrega.intento.en)} ·
+															{entrega.intento.codigo !== null
+																? `código de respuesta ${entrega.intento.codigo}`
+																: 'sin respuesta del endpoint'}.
+														</p>
+													</AvisoRojo>
+												</div>
+											{/if}
 										{/if}
 										{#if metricasDeId === w.id}
 											<MetricasWebhook id={w.id} onCerrar={() => (metricasDeId = null)} />
