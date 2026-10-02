@@ -127,24 +127,37 @@
 		{/if}
 	</div>
 
-	{#if enProceso}
-		<span class="shrink-0 text-xs text-muted-foreground" aria-hidden="true">…</span>
-	{:else if documento.resultado?.confianza_promedio != null}
-		<!-- El PROMEDIO de la confianza de todos los campos (cambio pedido el
-		     2026-09-10; antes era el mínimo). Tiene que ser el MISMO número que
-		     muestran "Detalle" y "Registro de OT" bajo el rótulo "Nivel de
-		     confianza obtenida": que el renglón y el panel del mismo documento
-		     dijeran porcentajes distintos sería un error, no un matiz. -->
-		<span class="shrink-0 text-xs tabular-nums text-muted-foreground">
-			<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
-			     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
-			     decir qué tan confiable fue la lectura, mostrar un 100 falso es
-			     justo el error que no se puede permitir. Dos decimales es además
-			     la precisión real: el back redondea a 2 al convertir de 0-1 a
-			     0-100 (`_a_cien` en servicios/ia.py). -->
-			{documento.resultado.confianza_promedio.toFixed(2)}%
+	<!-- Columna derecha: el porcentaje y, debajo, la etiqueta de origen (Manual /
+	     API REST), la misma píldora que trae la fila de la bandeja (2026-10-02,
+	     a pedido: "ponla abajo del porcentaje, ambos centrados"). Los dos van
+	     centrados entre sí; si no hay porcentaje (en proceso o sin resultado),
+	     la etiqueta se queda sola en su lugar. -->
+	<div class="flex shrink-0 flex-col items-center gap-1">
+		{#if enProceso}
+			<span class="text-xs text-muted-foreground" aria-hidden="true">…</span>
+		{:else if documento.resultado?.confianza_promedio != null}
+			<!-- El PROMEDIO de la confianza de todos los campos (cambio pedido el
+			     2026-09-10; antes era el mínimo). Tiene que ser el MISMO número que
+			     muestran "Detalle" y "Registro de OT" bajo el rótulo "Nivel de
+			     confianza obtenida": que el renglón y el panel del mismo documento
+			     dijeran porcentajes distintos sería un error, no un matiz. -->
+			<span class="text-xs tabular-nums text-muted-foreground">
+				<!-- toFixed(2), NO toFixed(1): con un decimal, 99.98 se imprime como
+				     "100.0" — un cien que no existe. En una pantalla cuyo trabajo es
+				     decir qué tan confiable fue la lectura, mostrar un 100 falso es
+				     justo el error que no se puede permitir. Dos decimales es además
+				     la precisión real: el back redondea a 2 al convertir de 0-1 a
+				     0-100 (`_a_cien` en servicios/ia.py). -->
+				{documento.resultado.confianza_promedio.toFixed(2)}%
+			</span>
+		{/if}
+		<span
+			data-testid="origen-documento"
+			class="rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] leading-none font-medium tracking-wide text-muted-foreground uppercase"
+		>
+			{documento.origen}
 		</span>
-	{/if}
+	</div>
 	</div>
 
 	<!-- Las dos salidas de un documento cuyo tipo no está configurado. Van en su
