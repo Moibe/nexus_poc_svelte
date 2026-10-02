@@ -15,7 +15,12 @@
  * el listado nunca lo trae, que es lo que sostiene la promesa de la pantalla
  * ("no volveremos a mostrarlo después de cerrar esta vista").
  *
- * TODAVÍA NO SE ENVÍA NADA. Falta el envío —dispararlo desde el pipeline,
+ * VALIDADO ANTES DE USARSE (2026-10-01). Un webhook nace sin validar: hasta que
+ * su endpoint responde 2xx a un aviso de prueba firmado (`validarWebhook`), la
+ * pantalla solo le ofrece "Validar conexión" —y eliminarlo—. `validadoEn` es
+ * cuándo se validó; `null`, pendiente.
+ *
+ * TODAVÍA NO SE ENVÍAN AVISOS DE EVENTOS (el de prueba sí). Falta el envío —dispararlo desde el pipeline,
  * firmar, reintentar, registrar las entregas y la guarda contra SSRF al
  * entregar—. Hasta entonces registrar un webhook no hace que nadie reciba nada,
  * y las métricas salen vacías.
@@ -87,6 +92,9 @@ export type WebhookGuardado = {
 	estado: EstadoWebhook;
 	/** ISO-8601, en UTC. */
 	creadoEn: string;
+	/** Cuándo respondió su endpoint al aviso de prueba (ISO-8601), o `null` si
+	 *  todavía no se valida. */
+	validadoEn: string | null;
 };
 
 /** Los webhooks del servidor, del más nuevo al más viejo. */
@@ -180,7 +188,11 @@ function leerWebhook(crudo: unknown): WebhookGuardado | null {
 		creadoEn:
 			typeof d.creadoEn === 'string' && !Number.isNaN(Date.parse(d.creadoEn))
 				? d.creadoEn
-				: new Date(0).toISOString()
+				: new Date(0).toISOString(),
+		// Una fecha ilegible se lee como NO validado: ante la duda, que se vuelva a
+		// validar antes que darlo por bueno.
+		validadoEn:
+			typeof d.validadoEn === 'string' && !Number.isNaN(Date.parse(d.validadoEn)) ? d.validadoEn : null
 	};
 }
 
@@ -381,6 +393,56 @@ export function eliminarWebhook(id: string): Promise<boolean> {
 			return false;
 		},
 		false
+	);
+}
+
+export type ResultadoValidacion = { ok: true } | { ok: false; motivo: string };
+
+/**
+ * Valida la conexión de un webhook: el servidor le manda al endpoint un aviso de
+ * prueba firmado (Standard Webhooks) y lo da por validado si responde 2xx.
+ *
+ * Que el endpoint no responda bien no es un error de la pantalla: se devuelve
+ * el motivo para decirlo en SU tarjeta, no en un aviso general. Si el servidor
+ * NO contestó, no se sabe si se validó: se recarga el listado y se ve.
+ */
+export function validarWebhook(id: string): Promise<ResultadoValidacion> {
+	return conCambioEnVuelo<ResultadoValidacion>(
+		id,
+		async () => {
+			let r: Response | null = null;
+			try {
+				r = await fetch(`/api/webhooks/${encodeURIComponent(id)}/validar`, { method: 'POST' });
+			} catch {
+				r = null;
+			}
+			if (r && r.ok) {
+				const cuerpo = await r.json().catch(() => null);
+				if (cuerpo?.validado === true) {
+					const validado = leerWebhook(cuerpo.webhook);
+					const actual = webhooks.find((w) => w.id === id);
+					if (actual) actual.validadoEn = validado?.validadoEn ?? new Date().toISOString();
+					return { ok: true };
+				}
+				return {
+					ok: false,
+					motivo: typeof cuerpo?.motivo === 'string' ? cuerpo.motivo : 'El endpoint no respondió como se esperaba.'
+				};
+			}
+			if (r && r.status === 404) {
+				await cargarWebhooks();
+				return { ok: false, motivo: 'Este webhook ya no existe: lo eliminaron desde otro lado.' };
+			}
+			// Demasiados intentos, sin cifrado, etc.: el servidor dice por qué.
+			if (r && !sinRespuesta(r.status)) return { ok: false, motivo: await motivo(r) };
+			await cargarWebhooks();
+			if (webhooks.find((w) => w.id === id)?.validadoEn) return { ok: true };
+			return {
+				ok: false,
+				motivo: 'No se pudo confirmar la validación: el servidor no contestó a tiempo. Inténtalo de nuevo.'
+			};
+		},
+		{ ok: false, motivo: 'Ya se está validando.' }
 	);
 }
 

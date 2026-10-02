@@ -14,6 +14,14 @@
 	 * firma que se muestra UNA vez, en la vista `creado` (captura de ese día).
 	 * Todavía no se envía ningún aviso: ver el docstring de
 	 * `$lib/state/webhooks.svelte`.
+	 *
+	 * VALIDADO ANTES DE USARSE (2026-10-01, a pedido con dos capturas). Una
+	 * tarjeta sin validar muestra solo su URL, sus eventos y "Validar conexión";
+	 * el chip de estado y las opciones de Métricas y Desactivar aparecen cuando
+	 * su endpoint ya respondió al aviso de prueba. DESVIACIÓN DEL DISEÑO, a
+	 * propósito: la tarjeta sin validar conserva un `⋮` con solo "Eliminar". Sin
+	 * él, un webhook que nunca valida —una URL mal escrita, o una de ejemplo— se
+	 * quedaría atorado en el listado para siempre.
 	 */
 	import { untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -34,6 +42,7 @@
 	import Power from '@lucide/svelte/icons/power';
 	import PowerOff from '@lucide/svelte/icons/power-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import AvisoVerde from './AvisoVerde.svelte';
 	import MetricasWebhook from './MetricasWebhook.svelte';
 	import SecretUnaVez from './SecretUnaVez.svelte';
@@ -44,6 +53,7 @@
 		registrarWebhook,
 		cambiarEstadoWebhook,
 		eliminarWebhook,
+		validarWebhook,
 		cargarWebhooks,
 		reconocerError,
 		validarUrlWebhook,
@@ -106,11 +116,24 @@
 			: eventosElegidos.filter((v) => v !== valor);
 	}
 
-	/** Lo que confirma el aviso verde: se prende al eliminar y se apaga al salir
-	 *  del listado o cerrar. No se auto-oculta con un temporizador: quien hizo
-	 *  algo irreversible merece leerlo a su ritmo. (El alta ya no lo usa: la
-	 *  confirma la vista del secret, "Webhook creado correctamente".) */
-	let aviso = $state<'eliminado' | null>(null);
+	/** Lo que confirma el aviso verde: se prende al validar o eliminar y se apaga
+	 *  al salir del listado o cerrar. No se auto-oculta con un temporizador: quien
+	 *  hizo algo merece leerlo a su ritmo. (El alta no lo usa: la confirma la
+	 *  vista del secret, "Webhook creado correctamente".) */
+	let aviso = $state<'validado' | 'eliminado' | null>(null);
+
+	/** Por qué falló la última validación de cada webhook, para decirlo en SU
+	 *  tarjeta y no en un aviso general: el motivo es de ese endpoint. Se borra al
+	 *  reintentar y al cerrar el módulo. */
+	let errorValidacion = $state<Record<string, string>>({});
+
+	async function validar(w: WebhookGuardado) {
+		aviso = null;
+		delete errorValidacion[w.id];
+		const r = await validarWebhook(w.id);
+		if (r.ok) aviso = 'validado';
+		else errorValidacion[w.id] = r.motivo;
+	}
 
 	/** El webhook con "Métricas" desplegadas dentro de su tarjeta. Uno a la vez. */
 	let metricasDeId = $state<string | null>(null);
@@ -189,6 +212,7 @@
 		secret = '';
 		aviso = null;
 		metricasDeId = null;
+		errorValidacion = {};
 	});
 
 	const ETIQUETA_ESTADO = {
@@ -293,7 +317,13 @@
 					     la tarjeta de adentro: una región que se monta junto con su texto no
 					     se anuncia. Vacío no mide nada. -->
 					<div role="status" aria-live="polite">
-						{#if vista === 'lista' && aviso === 'eliminado'}
+						{#if vista === 'lista' && aviso === 'validado'}
+							<AvisoVerde
+								testid="aviso-webhook-validado"
+								titulo="Conexión validada correctamente"
+								cuerpo="El endpoint respondió al aviso de prueba firmado. Ya puedes administrar el webhook desde su menú."
+							/>
+						{:else if vista === 'lista' && aviso === 'eliminado'}
 							<AvisoVerde
 								testid="aviso-webhook-eliminado"
 								titulo="Webhook eliminado correctamente"
@@ -323,7 +353,13 @@
 							<div class="flex flex-col gap-3">
 								{#each webhooks as w (w.id)}
 									{@const estado = ETIQUETA_ESTADO[w.estado]}
-									<div data-testid="tarjeta-webhook" class="rounded-xl border border-border px-4 py-3">
+									{@const validado = w.validadoEn !== null}
+									{@const validando = estadoWebhooks.enVuelo.includes(w.id)}
+									<div
+										data-testid="tarjeta-webhook"
+										data-validado={validado}
+										class="rounded-xl border border-border px-4 py-3"
+									>
 										<div class="flex items-center gap-3">
 											<span
 												class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card {w.estado ===
@@ -348,13 +384,16 @@
 													{etiquetaEventos(w)}
 												</p>
 											</div>
-											<span
-												data-testid="chip-estado-webhook"
-												class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium {estado.clase}"
-											>
-												<span class="size-1.5 rounded-full {estado.punto}"></span>
-												{estado.texto}
-											</span>
+											<!-- El chip, solo ya validado: antes, ni activo ni inactivo dicen nada. -->
+											{#if validado}
+												<span
+													data-testid="chip-estado-webhook"
+													class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium {estado.clase}"
+												>
+													<span class="size-1.5 rounded-full {estado.punto}"></span>
+													{estado.texto}
+												</span>
+											{/if}
 											<DropdownMenu.Root>
 												<DropdownMenu.Trigger>
 													{#snippet child({ props })}
@@ -369,28 +408,31 @@
 													{/snippet}
 												</DropdownMenu.Trigger>
 												<DropdownMenu.Content align="end" class="w-56 p-3">
-													<DropdownMenu.Item
-														data-testid="metricas-webhook"
-														class="h-11.5 gap-3 px-2 whitespace-nowrap"
-														onSelect={() => (metricasDeId = metricasDeId === w.id ? null : w.id)}
-													>
-														<ChartLine class="size-4 text-muted-foreground" />
-														<span>Métricas</span>
-													</DropdownMenu.Item>
-													<DropdownMenu.Item
-														data-testid="estado-webhook"
-														disabled={estadoWebhooks.enVuelo.includes(w.id)}
-														class="h-11.5 gap-3 px-2 whitespace-nowrap"
-														onSelect={() => alternarEstado(w)}
-													>
-														{#if w.estado === 'activo'}
-															<PowerOff class="size-4 text-muted-foreground" />
-															<span>Desactivar</span>
-														{:else}
-															<Power class="size-4 text-muted-foreground" />
-															<span>Activar</span>
-														{/if}
-													</DropdownMenu.Item>
+													<!-- Sin validar, solo "Eliminar": ver el docstring. -->
+													{#if validado}
+														<DropdownMenu.Item
+															data-testid="metricas-webhook"
+															class="h-11.5 gap-3 px-2 whitespace-nowrap"
+															onSelect={() => (metricasDeId = metricasDeId === w.id ? null : w.id)}
+														>
+															<ChartLine class="size-4 text-muted-foreground" />
+															<span>Métricas</span>
+														</DropdownMenu.Item>
+														<DropdownMenu.Item
+															data-testid="estado-webhook"
+															disabled={estadoWebhooks.enVuelo.includes(w.id)}
+															class="h-11.5 gap-3 px-2 whitespace-nowrap"
+															onSelect={() => alternarEstado(w)}
+														>
+															{#if w.estado === 'activo'}
+																<PowerOff class="size-4 text-muted-foreground" />
+																<span>Desactivar</span>
+															{:else}
+																<Power class="size-4 text-muted-foreground" />
+																<span>Activar</span>
+															{/if}
+														</DropdownMenu.Item>
+													{/if}
 													<!-- Rojo porque es irreversible: pide confirmación. -->
 													<DropdownMenu.Item
 														data-testid="eliminar-webhook"
@@ -404,6 +446,32 @@
 												</DropdownMenu.Content>
 											</DropdownMenu.Root>
 										</div>
+										{#if !validado}
+											<!-- Abajo a la derecha, como en la captura. Mientras valida se
+											     apaga: el servidor espera hasta 10 s la respuesta del
+											     endpoint, y un segundo clic no adelanta nada. -->
+											<div class="mt-3 flex flex-col items-end gap-1.5">
+												<Button
+													variant="outline"
+													size="sm"
+													data-testid="validar-webhook"
+													disabled={validando}
+													onclick={() => validar(w)}
+												>
+													{#if validando}
+														<LoaderCircle class="size-4 animate-spin" />
+														Validando…
+													{:else}
+														Validar conexión
+													{/if}
+												</Button>
+												{#if errorValidacion[w.id]}
+													<p role="alert" data-testid="error-validacion-webhook" class="text-right text-xs text-destructive">
+														{errorValidacion[w.id]}
+													</p>
+												{/if}
+											</div>
+										{/if}
 										{#if metricasDeId === w.id}
 											<MetricasWebhook id={w.id} onCerrar={() => (metricasDeId = null)} />
 										{/if}
