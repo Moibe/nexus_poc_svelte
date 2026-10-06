@@ -17,8 +17,9 @@
 	 * un adorno fijo en "Manual". Ahora elige entre cuatro, pero solo dos hacen
 	 * algo: Manual (el dropzone de siempre) y API, que en vez del dropzone
 	 * explica cómo mandar documentos por la API y enlaza al Swagger público.
-	 * SharePoint y SFTP se listan apagados, con "Próximamente": todavía no hay
-	 * conector detrás, y ofrecerlos activos prometería algo que no existe.
+	 * SharePoint y SFTP se listan apagados: todavía no hay conector detrás, y
+	 * ofrecerlos activos prometería algo que no existe. (Llevaban la leyenda
+	 * "Próximamente" a la derecha; se quitó el 2026-10-06, a pedido.)
 	 *
 	 * La elección vive en el componente, no se persiste: es un modo de ver la
 	 * bandeja, no una configuración.
@@ -103,9 +104,7 @@
 						onSelect={() => (origen = o.valor)}
 					>
 						<span class="flex-1">{o.texto}</span>
-						{#if !o.disponible}
-							<span class="text-xs text-muted-foreground">Próximamente</span>
-						{:else if origen === o.valor}
+						{#if origen === o.valor}
 							<Check class="size-4 text-primary" />
 						{/if}
 					</DropdownMenu.Item>
