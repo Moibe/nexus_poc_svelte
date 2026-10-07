@@ -7,6 +7,18 @@
 	import NotificationBellIcon from '$lib/components/icons/NotificationBellIcon.svelte';
 	import SettingGearIcon from '$lib/components/icons/SettingGearIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import LogOut from '@lucide/svelte/icons/log-out';
+	import type { Usuario } from '$lib/server/sesion';
+
+	let { usuario = null }: { usuario?: Usuario | null } = $props();
+
+	/** Cerrar sesión: el BFF revoca en nexus_back y borra las cookies; luego al
+	 *  login. `location` y no `goto`: así se vacía todo el estado en memoria
+	 *  (bandejas, pipeline), que era del usuario que se fue. */
+	async function cerrarSesion() {
+		await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+		window.location.assign('/acceso/iniciar-sesion');
+	}
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
 	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
@@ -132,18 +144,37 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<div class="h-6 w-px bg-border"></div>
+			<!-- El usuario de la sesión (Sprint 1, HU03). Hasta el 2026-10-07 era un
+			     nombre fijo. El rol todavía no existe en la sesión (llega con HU07),
+			     así que dice "Administrador de plataforma" o "Usuario". -->
 			<div class="flex items-center gap-3">
 				<div>
-					<p class="text-sm font-medium text-foreground">Moisés Briseño Estrello</p>
-					<p class="text-xs text-muted-foreground">Administrador</p>
+					<p class="text-sm font-medium text-foreground" data-testid="usuario-nombre">{usuario?.nombre ?? '—'}</p>
+					<p class="text-xs text-muted-foreground">
+						{usuario?.esAdminPlataforma ? 'Administrador de plataforma' : 'Usuario'}
+					</p>
 				</div>
-				<button
-					type="button"
-					aria-label="Más opciones"
-					class="flex size-6 items-center justify-center rounded-lg bg-muted transition-colors hover:bg-border"
-				>
-					<MoreVerticalIcon />
-				</button>
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<button
+								{...props}
+								type="button"
+								aria-label="Más opciones"
+								data-testid="menu-usuario"
+								class="flex size-6 items-center justify-center rounded-lg bg-muted transition-colors hover:bg-border data-[state=open]:bg-border"
+							>
+								<MoreVerticalIcon />
+							</button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end" class="w-52">
+						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="cerrar-sesion" onSelect={cerrarSesion}>
+							<LogOut class="size-4 text-muted-foreground" />
+							Cerrar sesión
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 			</div>
 		</div>
 	</div>
