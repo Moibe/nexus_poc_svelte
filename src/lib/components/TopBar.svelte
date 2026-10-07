@@ -8,6 +8,7 @@
 	import SettingGearIcon from '$lib/components/icons/SettingGearIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import Network from '@lucide/svelte/icons/network';
 	import type { Usuario } from '$lib/server/sesion';
 
 	let { usuario = null }: { usuario?: Usuario | null } = $props();
@@ -48,10 +49,16 @@
 		if (pedidoDeConfiguracion.nuevoTipo) configAbierto = true;
 	});
 
-	const navItems = [
+	// "Organizaciones" (HU02) solo para el administrador de plataforma: es quien
+	// las crea. Un usuario de organización ni la ve ni puede entrar (la página
+	// lo regresa al inicio).
+	const navItems = $derived([
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
+		...(usuario?.esAdminPlataforma
+			? [{ href: '/organizaciones', label: 'Organizaciones', icon: Network }]
+			: []),
 		{ href: '/usuarios', label: 'Usuarios', icon: UserStatusIcon }
-	];
+	]);
 
 	// Menú del engrane. Todavía SIN navegación: son solo las opciones visibles.
 	//

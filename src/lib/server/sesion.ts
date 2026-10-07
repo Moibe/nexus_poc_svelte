@@ -84,6 +84,19 @@ export function guardarSesion(cookies: Cookies, sesion: SesionEmitida, segura: b
 	cookies.set(COOKIE_REFRESH, sesion.refreshToken, { ...base, maxAge: segundosHasta(sesion.refreshExpiraEn, 7 * 24 * 3600) });
 }
 
+/**
+ * Las cabeceras para llamar a nexus_back EN NOMBRE del usuario de la sesión:
+ * la llave de servicio más su JWT como Bearer. Los endpoints que distinguen
+ * por rol (organizaciones) necesitan las dos cosas; la llave sola solo dice
+ * "esto viene del front", no quién pide.
+ */
+export function cabecerasConSesion(cookies: Cookies, extra?: HeadersInit): Headers {
+	const cabeceras = cabecerasNexus(extra);
+	const token = cookies.get(COOKIE_ACCESO);
+	if (token) cabeceras.set('Authorization', `Bearer ${token}`);
+	return cabeceras;
+}
+
 export function borrarSesion(cookies: Cookies): void {
 	cookies.delete(COOKIE_ACCESO, { path: '/' });
 	cookies.delete(COOKIE_REFRESH, { path: '/' });
