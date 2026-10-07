@@ -16,6 +16,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	import logo from '$lib/assets/nexus-logo.png';
+	import BanderaMexico from '$lib/components/icons/BanderaMexico.svelte';
 
 	let { children } = $props();
 </script>
@@ -31,13 +32,7 @@
 				class="flex h-8 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground"
 				aria-label="Idioma: Español"
 			>
-				<span class="inline-block h-3 w-4 overflow-hidden rounded-[2px]" aria-hidden="true">
-					<span class="flex h-full w-full">
-						<span class="h-full w-1/3 bg-[#006847]"></span>
-						<span class="h-full w-1/3 bg-white"></span>
-						<span class="h-full w-1/3 bg-[#ce1126]"></span>
-					</span>
-				</span>
+				<BanderaMexico class="h-3 w-[18px] rounded-[2px] ring-1 ring-black/10" />
 				(ES) Español
 				<ChevronDown class="size-3.5 text-muted-foreground" />
 			</button>
