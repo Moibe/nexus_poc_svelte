@@ -30,6 +30,9 @@ export type Usuario = {
 	nombre: string;
 	esAdminPlataforma: boolean;
 	debeCambiarContrasena: boolean;
+	/** Su rol en la organización a la que pertenece, si pertenece a alguna
+	 *  (HU07). El administrador de plataforma no tiene. */
+	rol: string | null;
 };
 
 /** Lo que nexus_back devuelve en /auth/login y /auth/refresh. */
@@ -65,7 +68,8 @@ export async function usuarioDeToken(token: string | undefined): Promise<Usuario
 			email: String(payload.eml ?? ''),
 			nombre: String(payload.nom ?? ''),
 			esAdminPlataforma: payload.adm === true,
-			debeCambiarContrasena: payload.dcc === true
+			debeCambiarContrasena: payload.dcc === true,
+			rol: typeof payload.rol === 'string' ? payload.rol : null
 		};
 	} catch {
 		return null;

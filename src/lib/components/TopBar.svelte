@@ -13,6 +13,24 @@
 
 	let { usuario = null }: { usuario?: Usuario | null } = $props();
 
+	/** Lo que va bajo el nombre. Los códigos son los de `servicios/roles.py`;
+	 *  si llegara uno nuevo que aquí no esté, se muestra "Usuario" en vez de un
+	 *  código en mayúsculas. */
+	const NOMBRE_DE_ROL: Record<string, string> = {
+		ADMIN: 'Administrador',
+		SUPERVISOR: 'Supervisor',
+		ANALISTA: 'Analista',
+		OPERADOR: 'Operador',
+		COMPLIANCE_OFFICER: 'Compliance Officer',
+		AUDITOR: 'Auditor',
+		VIEWER: 'Viewer'
+	};
+	const etiquetaDeRol = $derived(
+		usuario?.esAdminPlataforma
+			? 'Administrador de plataforma'
+			: (usuario?.rol && NOMBRE_DE_ROL[usuario.rol]) || 'Usuario'
+	);
+
 	/** Cerrar sesión: el BFF revoca en nexus_back y borra las cookies; luego al
 	 *  login. `location` y no `goto`: así se vacía todo el estado en memoria
 	 *  (bandejas, pipeline), que era del usuario que se fue. */
@@ -157,9 +175,7 @@
 			<div class="flex items-center gap-3">
 				<div>
 					<p class="text-sm font-medium text-foreground" data-testid="usuario-nombre">{usuario?.nombre ?? '—'}</p>
-					<p class="text-xs text-muted-foreground">
-						{usuario?.esAdminPlataforma ? 'Administrador de plataforma' : 'Usuario'}
-					</p>
+					<p class="text-xs text-muted-foreground" data-testid="usuario-rol">{etiquetaDeRol}</p>
 				</div>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
