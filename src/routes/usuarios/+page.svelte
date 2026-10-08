@@ -11,10 +11,16 @@
 	 *   · Con usuarios: la tabla del diseño (ID, nombre con su correo debajo,
 	 *     rol, fecha de registro y estatus), con buscador y selección.
 	 *
-	 * La barra flotante del diseño trae cuatro acciones: aquí solo **Editar**,
-	 * que es HU07. "Reenviar invitación" necesita correo (no hay en este
-	 * sprint), y "Desactivar" y "Cerrar sesión" son HU08 y HU05 — ofrecerlas
-	 * apagadas prometería algo que todavía no pasa.
+	 * La barra flotante del diseño trae cuatro acciones; aquí van tres:
+	 * **Editar** (HU07), **Desactivar/Reactivar** (HU08, HU09) y **Cerrar
+	 * sesión** (HU05). Falta "Reenviar invitación", que necesita correo y en
+	 * este sprint no hay.
+	 *
+	 * Una desviación: el diseño, antes de desactivar, muestra "Usuario con
+	 * casos HITL asignados" para reasignar sus casos. La cola HITL todavía no
+	 * existe —ningún caso está asignado a nadie—, así que esa pantalla se
+	 * omite: no habría a quién reasignar ni qué. El texto de la confirmación sí
+	 * menciona el proceso HITL, tal cual lo escribió el diseño.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -23,7 +29,11 @@
 	import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import UserRoundX from '@lucide/svelte/icons/user-round-x';
+	import UserRoundCheck from '@lucide/svelte/icons/user-round-check';
+	import LogOut from '@lucide/svelte/icons/log-out';
 
+	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import UsuarioSheet from '$lib/components/usuarios/UsuarioSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -34,6 +44,11 @@
 
 	let abierto = $state(false);
 	let editando = $state<UsuarioDeOrganizacion | null>(null);
+	let motivoAbierto = $state(false);
+	let accionMotivo = $state<'desactivar' | 'cerrar-sesion'>('desactivar');
+	let objetivo = $state<UsuarioDeOrganizacion | null>(null);
+	let reactivando = $state(false);
+	let errorAccion = $state('');
 	let busqueda = $state('');
 	let seleccionado = $state<string | null>(null);
 
@@ -60,6 +75,36 @@
 	function abrirEdicion(usuario: UsuarioDeOrganizacion) {
 		editando = usuario;
 		abierto = true;
+	}
+
+	function pedirMotivo(usuario: UsuarioDeOrganizacion, accion: 'desactivar' | 'cerrar-sesion') {
+		objetivo = usuario;
+		accionMotivo = accion;
+		errorAccion = '';
+		motivoAbierto = true;
+	}
+
+	/** Reactivar no pide motivo en el diseño: devuelve el acceso y ya. */
+	async function reactivar(usuario: UsuarioDeOrganizacion) {
+		if (reactivando) return;
+		reactivando = true;
+		errorAccion = '';
+		try {
+			const r = await fetch(`/api/usuarios/${usuario.guid}/estado`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ activo: true, motivo: 'Reactivación de acceso.' })
+			});
+			if (!r.ok) {
+				const datos = await r.json().catch(() => null);
+				errorAccion = datos?.mensaje ?? 'No se pudo reactivar la cuenta.';
+				return;
+			}
+			seleccionado = null;
+			await invalidateAll();
+		} finally {
+			reactivando = false;
+		}
 	}
 </script>
 
@@ -204,7 +249,7 @@
 	<!-- La píldora del diseño, con la única acción que ya existe. -->
 	<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
 		<div
-			class="pointer-events-auto flex items-center gap-2 rounded-xl bg-[#111827] px-3 py-2 shadow-lg"
+			class="pointer-events-auto flex items-center gap-1 rounded-xl bg-[#111827] px-3 py-2 shadow-lg"
 			data-testid="acciones-usuario"
 		>
 			<button
@@ -216,9 +261,60 @@
 				<Pencil class="size-3.5" />
 				Editar
 			</button>
+			{#if elegido.activo}
+				<button
+					type="button"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-white/10"
+					data-testid="desactivar-usuario"
+					onclick={() => pedirMotivo(elegido, 'desactivar')}
+				>
+					<UserRoundX class="size-3.5" />
+					Desactivar
+				</button>
+				<button
+					type="button"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-white/10"
+					data-testid="cerrar-sesion-usuario"
+					onclick={() => pedirMotivo(elegido, 'cerrar-sesion')}
+				>
+					<LogOut class="size-3.5" />
+					Cerrar sesión
+				</button>
+			{:else}
+				<button
+					type="button"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+					data-testid="reactivar-usuario"
+					disabled={reactivando}
+					onclick={() => reactivar(elegido)}
+				>
+					<UserRoundCheck class="size-3.5" />
+					{reactivando ? 'Reactivando…' : 'Reactivar'}
+				</button>
+			{/if}
 		</div>
 	</div>
 {/if}
+
+{#if errorAccion}
+	<p
+		class="fixed inset-x-0 bottom-24 z-50 text-center text-xs text-destructive"
+		role="alert"
+		data-testid="error-accion-usuario"
+	>
+		{errorAccion}
+	</p>
+{/if}
+
+<MotivoSheet
+	bind:open={motivoAbierto}
+	accion={accionMotivo}
+	usuario={objetivo}
+	alTerminar={async () => {
+		seleccionado = null;
+		await invalidateAll();
+	}}
+/>
 
 <UsuarioSheet
 	bind:open={abierto}
