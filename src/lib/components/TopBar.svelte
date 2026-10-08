@@ -9,9 +9,14 @@
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Network from '@lucide/svelte/icons/network';
+	import UserCircle from '@lucide/svelte/icons/circle-user-round';
+	import PerfilSheet from '$lib/components/perfil/PerfilSheet.svelte';
 	import type { Usuario } from '$lib/server/sesion';
 
 	let { usuario = null }: { usuario?: Usuario | null } = $props();
+
+	/** El panel "Perfil" (HU12 y HU13), que abre el menú de la cuenta. */
+	let perfilAbierto = $state(false);
 
 	/** Lo que va bajo el nombre. Los códigos son los de `servicios/roles.py`;
 	 *  si llegara uno nuevo que aquí no esté, se muestra "Usuario" en vez de un
@@ -192,6 +197,10 @@
 						{/snippet}
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content align="end" class="w-52">
+						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="mi-perfil" onSelect={() => (perfilAbierto = true)}>
+							<UserCircle class="size-4 text-muted-foreground" />
+							Mi perfil
+						</DropdownMenu.Item>
 						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="cerrar-sesion" onSelect={cerrarSesion}>
 							<LogOut class="size-4 text-muted-foreground" />
 							Cerrar sesión
@@ -203,6 +212,7 @@
 	</div>
 </header>
 
+<PerfilSheet bind:open={perfilAbierto} rolVisible={etiquetaDeRol} />
 <ConfigSheet bind:open={configAbierto} />
 <ApiKeySheet bind:open={apiKeyAbierto} />
 <WebhookSheet bind:open={webhooksAbierto} />
