@@ -552,7 +552,7 @@
 																: 'bg-muted-foreground/30'}"
 														>
 															<span
-																class="size-4 rounded-full bg-white shadow transition-transform {w.estado === 'activo'
+																class="size-4 rounded-full bg-card shadow transition-transform {w.estado === 'activo'
 																	? 'translate-x-4.5'
 																	: 'translate-x-0.5'}"
 															></span>

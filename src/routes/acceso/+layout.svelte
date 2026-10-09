@@ -57,7 +57,7 @@
 		<!-- Carpetas: la idea de la fotografía del diseño, en formas planas. -->
 		{#each [0, 1, 2, 3, 4, 5] as i (i)}
 			<div
-				class="absolute rounded-t-[28px] border border-white/25 bg-white/10 backdrop-blur-[1px]"
+				class="absolute rounded-t-[28px] border border-white/25 bg-card/10 backdrop-blur-[1px]"
 				style="left: {6 + i * 9}%; top: {18 + i * 7}%; width: 78%; height: 120%; transform: skewY(-10deg); opacity: {0.35 + i * 0.1};"
 			></div>
 		{/each}

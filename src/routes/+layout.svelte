@@ -3,11 +3,18 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import { page } from '$app/state';
+	import { tema } from '$lib/tema.svelte';
 
 	let { children, data } = $props();
 	// Las pantallas de acceso (login, primer acceso) traen su propia cáscara:
 	// sin barra superior ni pie, con la ilustración a la derecha.
 	const enAcceso = $derived(page.url.pathname.startsWith('/acceso'));
+
+	// El tema se aplica en cuanto hay navegador: antes de esto el documento
+	// está en claro, que es el default del CSS.
+	$effect(() => {
+		tema.iniciar();
+	});
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>

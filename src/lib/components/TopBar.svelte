@@ -10,6 +10,11 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Network from '@lucide/svelte/icons/network';
 	import UserCircle from '@lucide/svelte/icons/circle-user-round';
+	import Moon from '@lucide/svelte/icons/moon';
+	import Globe from '@lucide/svelte/icons/globe';
+	import Check from '@lucide/svelte/icons/check';
+	import { tema } from '$lib/tema.svelte';
+	import { APP_NOMBRE, APP_VERSION } from '$lib/version';
 	import PerfilSheet from '$lib/components/perfil/PerfilSheet.svelte';
 	import type { Usuario } from '$lib/server/sesion';
 
@@ -17,6 +22,9 @@
 
 	/** El panel "Perfil" (HU12 y HU13), que abre el menú de la cuenta. */
 	let perfilAbierto = $state(false);
+	/** El submenú de idioma. Hoy solo hay español; se deja porque está en el
+	 *  diseño y porque el día que haya otro, el lugar ya existe. */
+	let idiomaAbierto = $state(false);
 
 	/** Lo que va bajo el nombre. Los códigos son los de `servicios/roles.py`;
 	 *  si llegara uno nuevo que aquí no esté, se muestra "Usuario" en vez de un
@@ -110,7 +118,7 @@
 	];
 </script>
 
-<header class="sticky top-0 z-40 border-b border-border bg-white">
+<header class="sticky top-0 z-40 border-b border-border bg-card">
 	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-6 px-6">
 		<div class="flex items-center gap-6">
 			<a href="/" class="flex items-center">
@@ -140,14 +148,14 @@
 			<button
 				type="button"
 				aria-label="Buscar"
-				class="flex size-8 items-center justify-center rounded-lg border border-border bg-white transition-colors hover:bg-muted"
+				class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted"
 			>
 				<SearchIcon />
 			</button>
 			<button
 				type="button"
 				aria-label="Notificaciones"
-				class="flex size-8 items-center justify-center rounded-lg border border-border bg-white transition-colors hover:bg-muted"
+				class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted"
 			>
 				<NotificationBellIcon />
 			</button>
@@ -158,7 +166,7 @@
 							{...props}
 							type="button"
 							aria-label="Configuración"
-							class="flex size-8 items-center justify-center rounded-lg border border-border bg-white transition-colors hover:bg-muted data-[state=open]:bg-muted"
+							class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted data-[state=open]:bg-muted"
 						>
 							<SettingGearIcon />
 						</button>
@@ -196,15 +204,66 @@
 							</button>
 						{/snippet}
 					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-52">
+					<!-- El menú del diseño (captura del 2026-10-09): perfil, línea
+					     punteada, modo oscuro con interruptor e idioma, otra línea, y
+					     al pie la versión. -->
+					<DropdownMenu.Content align="end" class="w-60 p-2">
 						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="mi-perfil" onSelect={() => (perfilAbierto = true)}>
 							<UserCircle class="size-4 text-muted-foreground" />
 							Mi perfil
 						</DropdownMenu.Item>
+
+						<div role="separator" class="my-1.5 border-t border-dashed border-border"></div>
+
+						<!-- No cierra el menú: se ve el cambio de tema al instante. -->
+						<DropdownMenu.CheckboxItem
+							class="gap-3 py-2.5 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:hidden"
+							data-testid="modo-oscuro"
+							closeOnSelect={false}
+							checked={tema.oscuro}
+							onCheckedChange={() => tema.alternar()}
+						>
+							<Moon class="size-4 text-muted-foreground" />
+							<span class="flex-1">Modo oscuro</span>
+							<span
+								aria-hidden="true"
+								class="inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tema.oscuro
+									? 'bg-primary'
+									: 'bg-muted-foreground/30'}"
+							>
+								<span
+									class="size-4 rounded-full bg-card shadow transition-transform {tema.oscuro
+										? 'translate-x-4.5'
+										: 'translate-x-0.5'}"
+								></span>
+							</span>
+						</DropdownMenu.CheckboxItem>
+
+						<DropdownMenu.Sub bind:open={idiomaAbierto}>
+							<DropdownMenu.SubTrigger class="gap-3 py-2.5" data-testid="idioma">
+								<Globe class="size-4 text-muted-foreground" />
+								<span class="flex-1">Idioma</span>
+							</DropdownMenu.SubTrigger>
+							<DropdownMenu.SubContent class="w-44 p-2">
+								<!-- La app está solo en español: la opción se muestra elegida
+								     y no hay otra. Cuando haya una segunda, va aquí. -->
+								<DropdownMenu.Item class="gap-3 py-2.5" data-testid="idioma-es">
+									<span class="flex-1">Español</span>
+									<Check class="size-4 text-primary" />
+								</DropdownMenu.Item>
+							</DropdownMenu.SubContent>
+						</DropdownMenu.Sub>
+
+						<div role="separator" class="my-1.5 border-t border-dashed border-border"></div>
+
 						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="cerrar-sesion" onSelect={cerrarSesion}>
 							<LogOut class="size-4 text-muted-foreground" />
 							Cerrar sesión
 						</DropdownMenu.Item>
+
+						<p class="px-2 pt-2 text-xs text-muted-foreground" data-testid="version-app">
+							v{APP_VERSION} · {APP_NOMBRE}
+						</p>
 					</DropdownMenu.Content>
 				</DropdownMenu.Root>
 			</div>

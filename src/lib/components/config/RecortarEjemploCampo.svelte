@@ -318,7 +318,7 @@
 					     imagen rota guardaría coordenadas de nada. -->
 					<p
 						data-testid="recortador-sin-documento"
-						class="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-white px-4 py-3 text-center text-sm text-muted-foreground"
+						class="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-card px-4 py-3 text-center text-sm text-muted-foreground"
 					>
 						No se pudo cargar el documento, así que por ahora no se puede marcar ni cambiar este
 						recorte. Lo ya guardado sigue igual; cierra e intenta de nuevo en unos minutos.
@@ -328,7 +328,7 @@
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							bind:this={contenedorEl}
-							class="relative inline-block touch-none border border-border bg-white shadow-sm"
+							class="relative inline-block touch-none border border-border bg-card shadow-sm"
 							style="transform: scale({zoom}); transform-origin: top center;"
 							onpointerdown={iniciarEnLienzo}
 							onpointermove={moverPuntero}
@@ -410,7 +410,7 @@
 						<button
 							type="button"
 							aria-label="Alejar"
-							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-card/10 disabled:pointer-events-none disabled:opacity-40"
 							disabled={zoom <= 0.5}
 							onclick={() => (zoom = clamp(zoom - 0.25, 0.5, 2.5))}
 						>
@@ -419,20 +419,20 @@
 						<button
 							type="button"
 							aria-label="Acercar"
-							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-card/10 disabled:pointer-events-none disabled:opacity-40"
 							disabled={zoom >= 2.5}
 							onclick={() => (zoom = clamp(zoom + 0.25, 0.5, 2.5))}
 						>
 							<ZoomIn class="size-4" />
 						</button>
-						<span class="mx-1 h-5 w-px bg-white/20"></span>
+						<span class="mx-1 h-5 w-px bg-card/20"></span>
 						<button
 							type="button"
 							data-testid="boton-recortar"
 							aria-pressed={modoRecorte}
 							class="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors {modoRecorte
-								? 'bg-white/15'
-								: 'hover:bg-white/10'}"
+								? 'bg-card/15'
+								: 'hover:bg-card/10'}"
 							onclick={activarRecorte}
 						>
 							<Crop class="size-4" />
@@ -441,7 +441,7 @@
 						{#if modoRecorte}
 							<button
 								type="button"
-								class="rounded-full px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-white/10"
+								class="rounded-full px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-card/10"
 								onclick={cancelarRecorte}
 							>
 								Cancelar

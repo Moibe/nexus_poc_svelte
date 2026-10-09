@@ -64,7 +64,7 @@
 	{#each grupos as grupo, iGrupo (grupo.bandeja)}
 		{#if conNombre}
 			{#if iGrupo > 0}
-				<span class="h-5 w-px shrink-0 bg-white/15" aria-hidden="true"></span>
+				<span class="h-5 w-px shrink-0 bg-card/15" aria-hidden="true"></span>
 			{/if}
 			<span
 				class="shrink-0 pr-1 pl-2.5 text-[11px] whitespace-nowrap text-white/50"
@@ -76,7 +76,7 @@
 		{#each grupo.acciones as accion, iAccion (grupo.bandeja + ':' + accion.etiqueta)}
 			{@const Icono = accion.icono}
 			{#if conNombre || iGrupo > 0 || iAccion > 0}
-				<span class="h-5 w-px shrink-0 bg-white/15" aria-hidden="true"></span>
+				<span class="h-5 w-px shrink-0 bg-card/15" aria-hidden="true"></span>
 			{/if}
 			<button
 				type="button"
@@ -85,7 +85,7 @@
 				onclick={accion.alHacerClic}
 				class="{claseBoton} {accion.peligro
 					? 'text-red-500 enabled:hover:bg-red-500/10'
-					: 'text-[#f9fafb] enabled:hover:bg-white/10'}"
+					: 'text-[#f9fafb] enabled:hover:bg-card/10'}"
 			>
 				<Icono class="size-4 shrink-0" />
 				{accion.etiqueta}

@@ -254,7 +254,7 @@
 		>
 			<button
 				type="button"
-				class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/10"
+				class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-card/10"
 				data-testid="editar-usuario"
 				onclick={() => abrirEdicion(elegido)}
 			>
@@ -264,7 +264,7 @@
 			{#if elegido.activo}
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-white/10"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
 					data-testid="desactivar-usuario"
 					onclick={() => pedirMotivo(elegido, 'desactivar')}
 				>
@@ -273,7 +273,7 @@
 				</button>
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-white/10"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
 					data-testid="cerrar-sesion-usuario"
 					onclick={() => pedirMotivo(elegido, 'cerrar-sesion')}
 				>
@@ -283,7 +283,7 @@
 			{:else}
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-card/10 disabled:opacity-50"
 					data-testid="reactivar-usuario"
 					disabled={reactivando}
 					onclick={() => reactivar(elegido)}

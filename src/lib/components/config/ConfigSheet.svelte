@@ -2332,7 +2332,7 @@
 										     lectura, sin manijas de arrastrar/redimensionar, más una
 										     etiqueta con el nombre del campo para saber cuál es cuál. -->
 									<div class="mt-3 max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-4">
-										<div class="relative inline-block border border-border bg-white shadow-sm">
+										<div class="relative inline-block border border-border bg-card shadow-sm">
 											<img
 												src={fuenteDeDocumento(doc)}
 												alt={`Documento completo de ${doc.nombre}, con los recortes marcados`}

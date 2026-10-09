@@ -329,7 +329,7 @@
 				{:else}
 					<div class="flex justify-center pb-16">
 						<div
-							class="relative inline-block border border-border bg-white shadow-sm"
+							class="relative inline-block border border-border bg-card shadow-sm"
 							style="transform: scale({zoom}); transform-origin: top center;"
 						>
 							{#if esPdf}
@@ -339,7 +339,7 @@
 							{/if}
 
 							{#if cargandoPdf}
-								<div class="absolute inset-0 flex items-center justify-center bg-white/70">
+								<div class="absolute inset-0 flex items-center justify-center bg-card/70">
 									<p class="text-sm text-muted-foreground">Cargando documento…</p>
 								</div>
 							{/if}
@@ -356,7 +356,7 @@
 						<p
 							role="alert"
 							data-testid="error-carga-documento"
-							class="absolute bottom-20 left-1/2 w-max max-w-[90%] -translate-x-1/2 rounded-lg border border-destructive/30 bg-white px-3 py-2 text-center text-xs text-destructive shadow-sm"
+							class="absolute bottom-20 left-1/2 w-max max-w-[90%] -translate-x-1/2 rounded-lg border border-destructive/30 bg-card px-3 py-2 text-center text-xs text-destructive shadow-sm"
 						>
 							{errorCarga}
 						</p>
@@ -370,7 +370,7 @@
 						<button
 							type="button"
 							aria-label="Alejar"
-							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-card/10 disabled:pointer-events-none disabled:opacity-40"
 							disabled={zoom <= 0.5}
 							onclick={() => (zoom = clamp(zoom - 0.25, 0.5, 2.5))}
 						>
@@ -379,13 +379,13 @@
 						<button
 							type="button"
 							aria-label="Acercar"
-							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
+							class="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-card/10 disabled:pointer-events-none disabled:opacity-40"
 							disabled={zoom >= 2.5}
 							onclick={() => (zoom = clamp(zoom + 0.25, 0.5, 2.5))}
 						>
 							<ZoomIn class="size-4" />
 						</button>
-						<span class="mx-1 h-5 w-px bg-white/20"></span>
+						<span class="mx-1 h-5 w-px bg-card/20"></span>
 						<button
 							type="button"
 							data-testid="boton-guardar-documento"
