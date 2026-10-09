@@ -5,8 +5,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	server: {
-		port: 7000,
-		// Sin esto, si el 7000 está ocupado Vite se brinca al 7001 sin avisar y
+		// El mismo puerto que en el servidor de CSI, para que un número sea
+		// siempre el mismo proyecto: prod 3400, dev 3401.
+		port: 3400,
+		// Sin esto, si el 3400 está ocupado Vite se brinca al 3401 sin avisar y
 		// terminas hablándole a un server viejo sin darte cuenta. Mejor que truene.
 		strictPort: true
 	},
