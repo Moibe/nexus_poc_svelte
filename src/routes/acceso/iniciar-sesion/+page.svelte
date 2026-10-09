@@ -71,6 +71,10 @@
 			}
 			if (codigo === 'correo_invalido' || codigo === 'correo_no_existe') {
 				errorCorreo = cuerpo.mensaje;
+				// El correo que no existe también gasta intentos (los cinco son de
+				// uno o de otro), así que el aviso tiene que salir aquí igual.
+				if (codigo === 'correo_no_existe')
+					intentosRestantes = typeof cuerpo.intentosRestantes === 'number' ? cuerpo.intentosRestantes : null;
 			} else if (codigo === 'credenciales') {
 				errorContrasena = cuerpo.mensaje;
 				intentosRestantes = typeof cuerpo.intentosRestantes === 'number' ? cuerpo.intentosRestantes : null;
