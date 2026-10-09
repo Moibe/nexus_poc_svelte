@@ -5,9 +5,9 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id ?? '';
 	const datos = await request.json().catch(() => null);
 	const estado = datos?.estado;
@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/estado`), {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: TENANT_CLIENTE, estado }),
+			body: JSON.stringify({ tenant: tenantDe(locals), estado }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

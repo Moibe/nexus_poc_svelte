@@ -5,9 +5,9 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ params, locals }) => {
 	const id = params.id ?? '';
 	if (!id) return json({ mensaje: 'Falta el webhook.' }, { status: 400 });
 
@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ params }) => {
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/eliminar`), {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: TENANT_CLIENTE }),
+			body: JSON.stringify({ tenant: tenantDe(locals) }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

@@ -25,16 +25,27 @@ import { env } from '$env/dynamic/private';
 const BASE = (env.NEXUS_API_URL ?? 'http://127.0.0.1:8083').replace(/\/+$/, '');
 
 /**
- * El cliente (tenant) con el que opera este front: de él muestra la bandeja lo
- * que llega por la API, y a él pertenecen las API Keys que emite el módulo
- * "API Key".
- *
- * PROVISIONAL: hoy el front no sabe de tenants — no hay sesión ni usuarios
- * atados a un cliente —, así que opera con UNO fijo. Cuando haya un segundo
- * cliente, esto sale de la sesión del usuario (y las llaves, de un campo al
- * emitirlas), no de aquí. Default `demo`, para probar sin configurar nada.
+ * El espacio del ADMINISTRADOR DE PLATAFORMA, que no pertenece a ninguna
+ * organización. Su trabajo es crearlas (HU02), pero conserva un espacio propio
+ * para probar la carga de documentos, las API Keys y los webhooks sin entrar a
+ * la organización de nadie.
  */
-export const TENANT_CLIENTE = env.NEXUS_TENANT || 'demo';
+const TENANT_PLATAFORMA = env.NEXUS_TENANT || 'demo';
+
+/**
+ * El tenant con el que opera QUIEN PIDE (HU11).
+ *
+ * Hasta el 2026-10-09 era una constante: daba igual quién entrara, veía la
+ * misma bandeja, las mismas API Keys y los mismos webhooks. Ahora sale de la
+ * organización de su sesión, así que dos organizaciones no se ven entre sí.
+ *
+ * Lo decide SIEMPRE el servidor, nunca el navegador: por eso es esta función y
+ * no un parámetro de la petición. Quien no tiene organización (el
+ * administrador de plataforma) opera en el espacio de plataforma.
+ */
+export function tenantDe(locals: App.Locals): string {
+	return locals.usuario?.tenantGuid || TENANT_PLATAFORMA;
+}
 
 export function urlNexus(ruta: string): string {
 	return `${BASE}${ruta.startsWith('/') ? ruta : `/${ruta}`}`;

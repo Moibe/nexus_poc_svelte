@@ -10,11 +10,11 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
 const texto = (x: unknown): string | null => (typeof x === 'string' && x.trim() !== '' ? x : null);
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
 	const datos = await request.json().catch(() => null);
 	const tipo = texto(datos?.tipo);
 	const entradaId = texto(datos?.entradaId);
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
 			body: JSON.stringify({
-				tenant: TENANT_CLIENTE,
+				tenant: tenantDe(locals),
 				tipo,
 				entradaId,
 				tipoDocumental: texto(datos?.tipoDocumental),

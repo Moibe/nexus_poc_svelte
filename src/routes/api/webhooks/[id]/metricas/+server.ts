@@ -12,9 +12,9 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { periodoValido } from '$lib/metricas/periodo';
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ params, url, locals }) => {
 	const id = params.id ?? '';
 	const desde = url.searchParams.get('desde') ?? '';
 	const hasta = url.searchParams.get('hasta') ?? '';
@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
 	let respuesta: Response;
 	try {
-		const q = new URLSearchParams({ tenant: TENANT_CLIENTE, desde, hasta });
+		const q = new URLSearchParams({ tenant: tenantDe(locals), desde, hasta });
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/metricas?${q}`), {
 			headers: cabecerasNexus(),
 			signal: AbortSignal.timeout(TIMEOUT_MS)

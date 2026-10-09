@@ -6,11 +6,11 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
 const MOTIVOS = new Set(['pipeline', 'descartado']);
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const id = params.id ?? '';
 	const datos = await request.json().catch(() => null);
 	const motivo = typeof datos?.motivo === 'string' ? datos.motivo : '';
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	const cuerpo = new FormData();
-	cuerpo.append('tenant', TENANT_CLIENTE);
+	cuerpo.append('tenant', tenantDe(locals));
 	cuerpo.append('motivo', motivo);
 	let respuesta: Response;
 	try {

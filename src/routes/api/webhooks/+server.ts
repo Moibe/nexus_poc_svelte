@@ -3,7 +3,7 @@
  *
  * Los registra y los guarda nexus_back (`/webhooks/`) desde el 2026-10-01;
  * hasta ese día vivían en el `localStorage` de cada navegador. El tenant lo fija
- * el servidor (`TENANT_CLIENTE`), no el navegador, igual que en las API Keys.
+ * el servidor desde la sesión (`tenantDe`), no el navegador, igual que en las API Keys.
  *
  * El POST devuelve el SECRET de firma, una sola vez. Por eso la respuesta lleva
  * `Cache-Control: no-store`, como la de nexus_back: que ni el navegador ni un
@@ -14,17 +14,17 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
 function motivoDe(cuerpo: unknown, status: number): string {
 	const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
 	return typeof detalle === 'string' ? detalle : `nexus_back respondió ${status}.`;
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ locals }) => {
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/webhooks/?tenant=${encodeURIComponent(TENANT_CLIENTE)}`), {
+		respuesta = await fetch(urlNexus(`/webhooks/?tenant=${encodeURIComponent(tenantDe(locals))}`), {
 			headers: cabecerasNexus(),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
@@ -36,7 +36,7 @@ export const GET: RequestHandler = async () => {
 	return json({ webhooks: Array.isArray(cuerpo?.webhooks) ? cuerpo.webhooks : [] });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
 	const datos = await request.json().catch(() => null);
 	const url = typeof datos?.url === 'string' ? datos.url : '';
 	const eventos = Array.isArray(datos?.eventos)
@@ -51,7 +51,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		respuesta = await fetch(urlNexus('/webhooks/'), {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: TENANT_CLIENTE, url, eventos }),
+			body: JSON.stringify({ tenant: tenantDe(locals), url, eventos }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

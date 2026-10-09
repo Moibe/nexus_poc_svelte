@@ -5,15 +5,15 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
 	const id = params.id ?? '';
 	if (!id) return json({ mensaje: 'Falta el webhook.' }, { status: 400 });
 
 	let respuesta: Response;
 	try {
-		const q = new URLSearchParams({ tenant: TENANT_CLIENTE, limite: '50' });
+		const q = new URLSearchParams({ tenant: tenantDe(locals), limite: '50' });
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/intentos?${q}`), {
 			headers: cabecerasNexus(),
 			signal: AbortSignal.timeout(TIMEOUT_MS)

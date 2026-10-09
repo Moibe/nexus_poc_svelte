@@ -3,7 +3,7 @@
  *
  * Las genera y las guarda nexus_back (`/llaves/`), no el navegador: desde el
  * 2026-09-30 son llaves de verdad, que un cliente usa para mandar documentos a
- * `POST /bandeja/`. El tenant lo fija el servidor (`TENANT_CLIENTE`), no el
+ * `POST /bandeja/`. El tenant lo fija el servidor desde la sesión (`tenantDe`), no el
  * navegador, igual que en la bandeja.
  *
  * El POST devuelve el SECRET, una sola vez. Por eso la respuesta lleva
@@ -13,17 +13,17 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
 
 function motivoDe(cuerpo: unknown, status: number): string {
 	const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
 	return typeof detalle === 'string' ? detalle : `nexus_back respondió ${status}.`;
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ locals }) => {
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/llaves/?tenant=${encodeURIComponent(TENANT_CLIENTE)}`), {
+		respuesta = await fetch(urlNexus(`/llaves/?tenant=${encodeURIComponent(tenantDe(locals))}`), {
 			headers: cabecerasNexus(),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
@@ -35,7 +35,7 @@ export const GET: RequestHandler = async () => {
 	return json({ llaves: Array.isArray(cuerpo?.llaves) ? cuerpo.llaves : [] });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
 	const datos = await request.json().catch(() => null);
 	const nombre = typeof datos?.nombre === 'string' ? datos.nombre : '';
 	const descripcion = typeof datos?.descripcion === 'string' ? datos.descripcion : '';
@@ -49,7 +49,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		respuesta = await fetch(urlNexus('/llaves/'), {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: TENANT_CLIENTE, nombre, descripcion, dias }),
+			body: JSON.stringify({ tenant: tenantDe(locals), nombre, descripcion, dias }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

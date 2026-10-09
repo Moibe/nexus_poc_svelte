@@ -33,6 +33,9 @@ export type Usuario = {
 	/** Su rol en la organización a la que pertenece, si pertenece a alguna
 	 *  (HU07). El administrador de plataforma no tiene. */
 	rol: string | null;
+	/** El guid de su organización, o `null` si no pertenece a ninguna. Es lo
+	 *  que aísla sus datos de los de las demás (HU11). */
+	tenantGuid: string | null;
 };
 
 /** Lo que nexus_back devuelve en /auth/login y /auth/refresh. */
@@ -69,7 +72,8 @@ export async function usuarioDeToken(token: string | undefined): Promise<Usuario
 			nombre: String(payload.nom ?? ''),
 			esAdminPlataforma: payload.adm === true,
 			debeCambiarContrasena: payload.dcc === true,
-			rol: typeof payload.rol === 'string' ? payload.rol : null
+			rol: typeof payload.rol === 'string' ? payload.rol : null,
+			tenantGuid: typeof payload.tnt === 'string' ? payload.tnt : null
 		};
 	} catch {
 		return null;
