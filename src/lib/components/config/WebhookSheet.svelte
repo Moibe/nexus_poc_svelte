@@ -885,8 +885,8 @@
 		: ''}
 	etiquetaConfirmar="Eliminar"
 	onConfirmar={() => {
-		// Se limpia AQUÍ, no solo en `onCerrar`: confirmando, el diálogo no dispara
-		// `onCerrar` (mismo motivo que en el módulo de API Keys).
+		// Se limpia AQUÍ además de en `onCerrar` (mismo caso que en el módulo de
+		// API Keys: redundante desde que `ConfirmarAccion` avisa al confirmar).
 		const objetivo = webhookAEliminar;
 		webhookAEliminar = null;
 		if (!objetivo) return;

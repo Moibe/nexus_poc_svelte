@@ -40,6 +40,25 @@
 		 *  cierre y el diálogo quedaría atascado abierto. */
 		onCerrar: () => void;
 	} = $props();
+
+	/** Confirmar NO dispara el `onOpenChange` de bits-ui: `abierto` entra como
+	 *  prop de una vía, así que el componente nunca se entera de que se cerró.
+	 *  Hasta el 2026-10-09 cada pantalla tapaba ese hueco por su cuenta
+	 *  limpiando también dentro de `onConfirmar`; a la de "Nueva organización"
+	 *  se le olvidó y el diálogo de salir del registro se quedaba pegado en
+	 *  pantalla con el panel ya cerrado detrás. Se arregla aquí, una vez, para
+	 *  que `onCerrar` cumpla lo que promete y nadie más caiga en lo mismo. */
+	let cerrandoPorConfirmar = $state(false);
+
+	$effect(() => {
+		if (abierto) cerrandoPorConfirmar = false;
+	});
+
+	function confirmar() {
+		cerrandoPorConfirmar = true;
+		onConfirmar();
+		onCerrar();
+	}
 </script>
 
 <!--
@@ -67,7 +86,8 @@
 <AlertDialogPrimitive.Root
 	open={abierto}
 	onOpenChange={(v) => {
-		if (!v) onCerrar();
+		// Si bits-ui llegara a avisar también al confirmar, no se avisa doble.
+		if (!v && !cerrandoPorConfirmar) onCerrar();
 	}}
 >
 	<AlertDialogPrimitive.Portal>
@@ -113,7 +133,7 @@
 						{/snippet}
 					</AlertDialogPrimitive.Cancel>
 				{/if}
-				<AlertDialogPrimitive.Action onclick={onConfirmar}>
+				<AlertDialogPrimitive.Action onclick={confirmar}>
 					{#snippet child({ props })}
 						<Button
 							{...props}

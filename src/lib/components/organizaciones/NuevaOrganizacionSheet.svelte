@@ -111,6 +111,9 @@
 		creada = null;
 		recuperacionAbierta = true;
 		sugerenciasAbiertas = false;
+		// Si no, al salir del registro el diálogo de confirmación se quedaba
+		// abierto con el panel ya cerrado detrás, y no había cómo quitarlo.
+		confirmarSalida = false;
 	}
 
 	function intentarCerrar() {
