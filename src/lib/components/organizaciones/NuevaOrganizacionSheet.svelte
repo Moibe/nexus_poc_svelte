@@ -27,6 +27,7 @@
 	import Network from '@lucide/svelte/icons/network';
 
 	import CampoTelefono from './CampoTelefono.svelte';
+	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
 	import SecretUnaVez from '$lib/components/config/SecretUnaVez.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -57,6 +58,7 @@
 	let sugerenciasAbiertas = $state(false);
 	let enviando = $state(false);
 	let errorEmail = $state('');
+	let errorRecEmail = $state('');
 	let errorGeneral = $state('');
 	let coincidencias = $state<{ nombre: string; slug: string }[]>([]);
 	let slugPropuesto = $state('');
@@ -69,12 +71,28 @@
 		'¿Estas seguro de cancelar el registro?'
 	].join('\n\n');
 
-	const RE_CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+	const correoAdmin = $derived(validarCorreo(adminEmail));
+	/** El de recuperación es opcional: vacío está bien, pero si trae algo tiene
+	 *  que ser un correo. NO entra en `completo`: vive en un desplegable que
+	 *  puede estar cerrado, y apagar el botón por algo que no se ve deja a la
+	 *  persona atorada sin pista —justo lo que venimos a quitar—. Lo rechaza el
+	 *  servidor y el aviso sale aquí abajo. */
+	const correoRecuperacion = $derived(validarCorreo(recEmail, false));
 	const completo = $derived(
 		nombre.trim().length > 0 &&
 			adminNombre.trim().length > 0 &&
 			adminTelefono.trim().length > 0 &&
-			RE_CORREO.test(adminEmail.trim())
+			correoAdmin.ok
+	);
+
+	/** Se avisa al SALIR del campo, no mientras se teclea. */
+	let adminTocado = $state(false);
+	let recTocado = $state(false);
+	const mensajeAdmin = $derived(
+		errorEmail !== '' ? errorEmail : adminTocado && !correoAdmin.ok ? correoAdmin.motivo : ''
+	);
+	const mensajeRecuperacion = $derived(
+		errorRecEmail !== '' ? errorRecEmail : recTocado && !correoRecuperacion.ok ? correoRecuperacion.motivo : ''
 	);
 	const hayCambios = $derived(
 		[nombre, adminNombre, adminTelefono, adminEmail, recTelefono, recEmail].some((v) => v.trim().length > 0)
@@ -105,7 +123,8 @@
 
 	function limpiar() {
 		nombre = adminNombre = adminTelefono = adminEmail = recTelefono = recEmail = '';
-		errorEmail = errorGeneral = '';
+		errorEmail = errorRecEmail = errorGeneral = '';
+		adminTocado = recTocado = false;
 		coincidencias = [];
 		slugPropuesto = '';
 		creada = null;
@@ -128,7 +147,15 @@
 	async function crear() {
 		if (!completo || enviando) return;
 		enviando = true;
-		errorEmail = errorGeneral = '';
+		errorEmail = errorRecEmail = errorGeneral = '';
+		// Al intentar crear ya no hay nada "a medio escribir": si el correo de
+		// recuperación está mal, se dice ahora y no después del viaje al servidor.
+		recTocado = true;
+		if (!correoRecuperacion.ok) {
+			enviando = false;
+			recuperacionAbierta = true; // si el desplegable está cerrado, el aviso no se vería
+			return;
+		}
 		try {
 			const r = await fetch('/api/organizaciones', {
 				method: 'POST',
@@ -147,8 +174,13 @@
 			});
 			const cuerpo = await r.json().catch(() => null);
 			if (!r.ok) {
-				if (cuerpo?.codigo === 'correo_registrado') errorEmail = cuerpo.mensaje;
-				else errorGeneral = cuerpo?.mensaje ?? 'No se pudo crear la organización. Intenta de nuevo.';
+				// Cada aviso bajo SU campo; la línea de abajo queda para lo demás.
+				if (cuerpo?.codigo === 'correo_registrado' || cuerpo?.codigo === 'correo_invalido')
+					errorEmail = cuerpo.mensaje;
+				else if (cuerpo?.codigo === 'correo_recuperacion_invalido') {
+					errorRecEmail = cuerpo.mensaje;
+					recuperacionAbierta = true;
+				} else errorGeneral = cuerpo?.mensaje ?? 'No se pudo crear la organización. Intenta de nuevo.';
 				return;
 			}
 			creada = cuerpo as Creada;
@@ -333,14 +365,16 @@
 								type="email"
 								placeholder="Ingresa correo electrónico"
 								bind:value={adminEmail}
+								maxlength={LARGO_MAXIMO_CORREO}
 								oninput={() => (errorEmail = '')}
-								aria-invalid={errorEmail ? 'true' : undefined}
+								onblur={() => (adminTocado = true)}
+								aria-invalid={mensajeAdmin ? 'true' : undefined}
 								class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 							/>
-							{#if errorEmail}
+							{#if mensajeAdmin}
 								<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-correo-admin">
 									<TriangleAlert class="mt-0.5 size-3 shrink-0" />
-									{errorEmail}
+									{mensajeAdmin}
 								</p>
 							{/if}
 						</div>
@@ -379,8 +413,18 @@
 									type="email"
 									placeholder="Ingresa correo electrónico"
 									bind:value={recEmail}
-									class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+									maxlength={LARGO_MAXIMO_CORREO}
+									oninput={() => (errorRecEmail = '')}
+									onblur={() => (recTocado = true)}
+									aria-invalid={mensajeRecuperacion ? 'true' : undefined}
+									class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 								/>
+								{#if mensajeRecuperacion}
+									<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-correo-recuperacion">
+										<TriangleAlert class="mt-0.5 size-3 shrink-0" />
+										{mensajeRecuperacion}
+									</p>
+								{/if}
 							</div>
 						</div>
 					{/if}

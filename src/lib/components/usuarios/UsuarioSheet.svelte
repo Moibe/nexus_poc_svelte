@@ -18,6 +18,7 @@
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import UserPen from '@lucide/svelte/icons/user-pen';
 
+	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
 	import SecretUnaVez from '$lib/components/config/SecretUnaVez.svelte';
 	import CampoTelefono from '$lib/components/organizaciones/CampoTelefono.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
@@ -48,14 +49,23 @@
 	let creada = $state<{ usuario: { nombre: string; email: string }; contrasenaTemporal: string } | null>(null);
 
 	const esEdicion = $derived(editando !== null);
-	const RE_CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-	const completo = $derived(nombre.trim().length > 0 && (esEdicion || RE_CORREO.test(email.trim())) && rol !== '');
+	const correo = $derived(validarCorreo(email));
+	const completo = $derived(nombre.trim().length > 0 && (esEdicion || correo.ok) && rol !== '');
+
+	/** El aviso de formato NO sale mientras se teclea —pintar de rojo un "a@" a
+	 *  medio escribir es ruido—, sino al salir del campo. En edición el correo
+	 *  va deshabilitado: ahí no hay nada que corregir, así que no se avisa. */
+	let correoTocado = $state(false);
+	const mensajeCorreo = $derived(
+		esEdicion ? '' : errorEmail !== '' ? errorEmail : correoTocado && !correo.ok ? correo.motivo : ''
+	);
 
 	/** Al abrir, el panel se llena con lo que haya (editar) o se vacía (crear). */
 	$effect(() => {
 		if (!open) return;
 		creada = null;
 		errorEmail = errorGeneral = '';
+		correoTocado = false;
 		nombre = editando?.nombre ?? '';
 		email = editando?.email ?? '';
 		telefono = (editando?.telefono ?? '').replace(/^\+52\s*/, '');
@@ -81,7 +91,10 @@
 			});
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
-				if (datos?.codigo === 'correo_registrado') errorEmail = datos.mensaje;
+				// `correo_invalido` es el formato visto por el servidor: va bajo el
+				// campo, no en la línea de abajo, que queda lejos y no lo señala.
+				if (datos?.codigo === 'correo_registrado' || datos?.codigo === 'correo_invalido')
+					errorEmail = datos.mensaje;
 				else errorGeneral = datos?.mensaje ?? 'No se pudo guardar. Intenta de nuevo.';
 				return;
 			}
@@ -171,14 +184,16 @@
 							placeholder="Ingresa correo electrónico"
 							bind:value={email}
 							disabled={esEdicion}
+							maxlength={LARGO_MAXIMO_CORREO}
 							oninput={() => (errorEmail = '')}
-							aria-invalid={errorEmail ? 'true' : undefined}
+							onblur={() => (correoTocado = true)}
+							aria-invalid={mensajeCorreo ? 'true' : undefined}
 							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-muted disabled:text-muted-foreground aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 						/>
-						{#if errorEmail}
+						{#if mensajeCorreo}
 							<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-correo-usuario">
 								<TriangleAlert class="mt-0.5 size-3 shrink-0" />
-								{errorEmail}
+								{mensajeCorreo}
 							</p>
 						{:else if esEdicion}
 							<p class="text-xs text-muted-foreground">El correo no se puede cambiar: es con el que inicia sesión.</p>

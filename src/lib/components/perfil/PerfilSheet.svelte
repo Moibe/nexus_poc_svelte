@@ -31,6 +31,7 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import CampoTelefono from '$lib/components/organizaciones/CampoTelefono.svelte';
 	import MedidorContrasena from '$lib/components/acceso/MedidorContrasena.svelte';
+	import { LARGO_MAXIMO_CORREO, correoValido, validarCorreo } from '$lib/acceso/correo';
 	import { cumpleTodas } from '$lib/acceso/reglasContrasena';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -74,8 +75,19 @@
 	const sinNumero = (t: string | null | undefined) => (t ?? '').replace(/^\+52\s*/, '');
 	const conNumero = (t: string) => (t.trim() ? `+52 ${t.trim()}` : null);
 
+	/** El chip "Incompleto" mira que el correo guardado SIRVA, no solo que haya
+	 *  algo: un "pepito" heredado apagaba el chip y la recuperación se daba por
+	 *  resuelta cuando no lo estaba. */
 	const recuperacionCompleta = $derived(
-		Boolean(perfil?.recuperacion?.email?.trim()) && Boolean(perfil?.recuperacion?.telefono?.trim())
+		correoValido(perfil?.recuperacion?.email ?? '') && Boolean(perfil?.recuperacion?.telefono?.trim())
+	);
+
+	/** Opcional: vacío está bien. Se avisa al salir del campo. */
+	const correoRecuperacion = $derived(validarCorreo(recEmail, false));
+	let recTocado = $state(false);
+	let errorRecEmail = $state('');
+	const mensajeRecuperacion = $derived(
+		errorRecEmail !== '' ? errorRecEmail : recTocado && !correoRecuperacion.ok ? correoRecuperacion.motivo : ''
 	);
 	const nombreCompleto = $derived(
 		[perfil?.nombre, perfil?.apellidoPaterno, perfil?.apellidoMaterno].filter(Boolean).join(' ')
@@ -114,6 +126,8 @@
 		materno = perfil.apellidoMaterno;
 		telefono = sinNumero(perfil.telefono);
 		recEmail = perfil.recuperacion?.email ?? '';
+		recTocado = false;
+		errorRecEmail = '';
 		recTelefono = sinNumero(perfil.recuperacion?.telefono);
 		actual = nueva = confirmacion = '';
 		editando = bloque;
@@ -121,8 +135,15 @@
 
 	async function guardarDatos() {
 		if (!perfil || guardando) return;
+		// Solo se frena cuando la persona está EDITANDO recuperación: el bloque
+		// personal reenvía el correo guardado, y si ese viene malo de antes no se
+		// le puede negar guardar su nombre por un campo que no tiene en pantalla.
+		if (editando === 'recuperacion') {
+			recTocado = true;
+			if (!correoRecuperacion.ok) return;
+		}
 		guardando = true;
-		error = '';
+		error = errorRecEmail = '';
 		try {
 			const r = await fetch('/api/auth/perfil', {
 				method: 'POST',
@@ -137,7 +158,9 @@
 			});
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
-				error = datos?.mensaje ?? 'No se pudieron guardar los cambios.';
+				// Bajo su campo si es del correo de recuperación; si no, al pie.
+				if (datos?.codigo === 'correo_recuperacion_invalido') errorRecEmail = datos.mensaje;
+				else error = datos?.mensaje ?? 'No se pudieron guardar los cambios.';
 				return;
 			}
 			perfil = datos.usuario;
@@ -180,6 +203,10 @@
 
 	const CLASE_INPUT =
 		'h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
+	/** Igual, pero sabe pintarse de rojo. Aparte porque `CLASE_INPUT` la usan
+	 *  también los campos de contraseña, que no validan formato. */
+	const CLASE_INPUT_VALIDABLE =
+		CLASE_INPUT + ' aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20';
 </script>
 
 {#snippet lapiz(bloque: 'personal' | 'recuperacion' | 'seguridad', etiqueta: string)}
@@ -314,8 +341,17 @@
 									type="email"
 									placeholder="Ingresa correo de recuperación"
 									bind:value={recEmail}
-									class={CLASE_INPUT}
+									maxlength={LARGO_MAXIMO_CORREO}
+									oninput={() => (errorRecEmail = '')}
+									onblur={() => (recTocado = true)}
+									aria-invalid={mensajeRecuperacion ? 'true' : undefined}
+									class={CLASE_INPUT_VALIDABLE}
 								/>
+								{#if mensajeRecuperacion}
+									<p class="text-xs text-destructive" data-testid="error-correo-recuperacion-perfil">
+										{mensajeRecuperacion}
+									</p>
+								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="r-tel" class="text-xs text-muted-foreground">Número de teléfono</label>
