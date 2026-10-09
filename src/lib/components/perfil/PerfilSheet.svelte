@@ -74,16 +74,6 @@
 	const sinNumero = (t: string | null | undefined) => (t ?? '').replace(/^\+52\s*/, '');
 	const conNumero = (t: string) => (t.trim() ? `+52 ${t.trim()}` : null);
 
-	/** La recuperación no puede repetir el correo con el que se entra ni el
-	 *  teléfono propio: si se pierde ese dato, repetirlo no recupera nada. */
-	const soloDigitos = (v: string) => v.replace(/\D/g, '');
-	const recTelRepetido = $derived(
-		soloDigitos(recTelefono).length > 0 && soloDigitos(recTelefono) === soloDigitos(telefono)
-	);
-	const recEmailRepetido = $derived(
-		recEmail.trim().length > 0 && recEmail.trim().toLowerCase() === (perfil?.email ?? '').toLowerCase()
-	);
-
 	const recuperacionCompleta = $derived(
 		Boolean(perfil?.recuperacion?.email?.trim()) && Boolean(perfil?.recuperacion?.telefono?.trim())
 	);
@@ -326,20 +316,10 @@
 									bind:value={recEmail}
 									class={CLASE_INPUT}
 								/>
-								{#if recEmailRepetido}
-									<p class="text-xs text-destructive" data-testid="error-rec-email">
-										Debe ser distinto al correo con el que inicias sesión.
-									</p>
-								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="r-tel" class="text-xs text-muted-foreground">Número de teléfono</label>
 								<CampoTelefono id="r-tel" bind:value={recTelefono} placeholder="Ingresa numero de teléfono" />
-								{#if recTelRepetido}
-									<p class="text-xs text-destructive" data-testid="error-rec-tel">
-										Debe ser distinto a tu teléfono celular.
-									</p>
-								{/if}
 							</div>
 						</div>
 					{:else}
@@ -465,7 +445,7 @@
 						{guardando ? 'Guardando…' : 'Guardar cambios'}
 					</Button>
 				{:else}
-					<Button data-testid="guardar-perfil" disabled={!nombre.trim() || recTelRepetido || recEmailRepetido || guardando} onclick={guardarDatos}>
+					<Button data-testid="guardar-perfil" disabled={!nombre.trim() || guardando} onclick={guardarDatos}>
 						{guardando ? 'Guardando…' : 'Guardar cambios'}
 					</Button>
 				{/if}

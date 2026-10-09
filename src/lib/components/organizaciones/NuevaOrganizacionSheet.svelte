@@ -70,22 +70,11 @@
 	].join('\n\n');
 
 	const RE_CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-	/** La recuperación sirve si se pierde el acceso al dato principal: repetirlo
-	 *  no recupera nada. Se comparan sin espacios ni mayúsculas. */
-	const soloDigitos = (v: string) => v.replace(/\D/g, '');
-	const recTelRepetido = $derived(
-		soloDigitos(recTelefono).length > 0 && soloDigitos(recTelefono) === soloDigitos(adminTelefono)
-	);
-	const recEmailRepetido = $derived(
-		recEmail.trim().length > 0 && recEmail.trim().toLowerCase() === adminEmail.trim().toLowerCase()
-	);
 	const completo = $derived(
 		nombre.trim().length > 0 &&
 			adminNombre.trim().length > 0 &&
 			adminTelefono.trim().length > 0 &&
-			RE_CORREO.test(adminEmail.trim()) &&
-			!recTelRepetido &&
-			!recEmailRepetido
+			RE_CORREO.test(adminEmail.trim())
 	);
 	const hayCambios = $derived(
 		[nombre, adminNombre, adminTelefono, adminEmail, recTelefono, recEmail].some((v) => v.trim().length > 0)
@@ -379,12 +368,6 @@
 							<div class="flex flex-col gap-1.5">
 								<label for="rec-tel" class="text-sm font-medium text-foreground">Teléfono celular</label>
 								<CampoTelefono id="rec-tel" bind:value={recTelefono} />
-								{#if recTelRepetido}
-									<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-rec-tel">
-										<TriangleAlert class="mt-0.5 size-3 shrink-0" />
-										Debe ser distinto al teléfono del administrador.
-									</p>
-								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="rec-email" class="text-sm font-medium text-foreground">Correo electrónico</label>
@@ -393,15 +376,8 @@
 									type="email"
 									placeholder="Ingresa correo electrónico"
 									bind:value={recEmail}
-									aria-invalid={recEmailRepetido ? 'true' : undefined}
-									class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
+									class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 								/>
-								{#if recEmailRepetido}
-									<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-rec-email">
-										<TriangleAlert class="mt-0.5 size-3 shrink-0" />
-										Debe ser distinto al correo del administrador.
-									</p>
-								{/if}
 							</div>
 						</div>
 					{/if}
