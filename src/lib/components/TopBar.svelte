@@ -83,12 +83,27 @@
 	// "Organizaciones" (HU02) solo para el administrador de plataforma: es quien
 	// las crea. Un usuario de organización ni la ve ni puede entrar (la página
 	// lo regresa al inicio).
+	//
+	// "Usuarios" (HU06) solo para quien puede administrarlos: el administrador
+	// de una organización, y el de plataforma, que ahí encuentra la explicación
+	// de por qué esa pantalla no es suya. A un Supervisor o a un Analista no se
+	// les ofrece: el servidor les responde 403 igual, y enseñar una puerta
+	// cerrada no sirve de nada (pedido de Moibe, 2026-10-09).
+	//
+	// El rol sale del JWT, que dura 15 minutos: a quien acaban de ascender a
+	// administrador, la opción le aparece al renovarse la sesión. La pantalla
+	// sí funciona desde el primer momento, porque ahí manda el servidor.
+	const puedeAdministrarUsuarios = $derived(
+		Boolean(usuario?.esAdminPlataforma) || usuario?.rol === 'ADMIN'
+	);
 	const navItems = $derived([
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
 		...(usuario?.esAdminPlataforma
 			? [{ href: '/organizaciones', label: 'Organizaciones', icon: Network }]
 			: []),
-		{ href: '/usuarios', label: 'Usuarios', icon: UserStatusIcon }
+		...(puedeAdministrarUsuarios
+			? [{ href: '/usuarios', label: 'Usuarios', icon: UserStatusIcon }]
+			: [])
 	]);
 
 	// Menú del engrane. Todavía SIN navegación: son solo las opciones visibles.

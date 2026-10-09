@@ -119,25 +119,18 @@
 </div>
 
 {#if data.sinOrganizacion}
-	<!-- El administrador de plataforma no pertenece a ninguna organización: los
-	     usuarios de cada una los administra el administrador de ESA. -->
+	<!-- Solo le toca al administrador de plataforma, que no pertenece a ninguna
+	     organización: los usuarios de cada una los administra el administrador de
+	     ESA. A quien no administra ninguna, el `load` lo manda al inicio antes de
+	     llegar aquí, así que esta rama es suya y de nadie más. -->
 	<div class="mt-8 flex flex-col items-center gap-3 rounded-2xl border-2 border-border bg-card py-20 text-center">
 		<Users class="size-8 text-muted-foreground" />
 		<p class="text-sm font-medium text-foreground">Esta pantalla es de una organización</p>
-		{#if data.esAdminPlataforma}
-			<p class="max-w-md text-xs text-muted-foreground">
-				Los usuarios los administra quien administra cada organización. En
-				<a href="/organizaciones" class="font-medium text-primary hover:underline">Organizaciones</a> puedes crear
-				una y dar de alta a su administrador.
-			</p>
-		{:else}
-			<!-- Un usuario con rol distinto de ADMIN: no se le ofrece un enlace a
-			     Organizaciones, que no puede abrir. -->
-			<p class="max-w-md text-xs text-muted-foreground">
-				Tu cuenta no administra ninguna organización. Si necesitas dar de alta o cambiar usuarios, pídeselo a
-				quien administra la tuya.
-			</p>
-		{/if}
+		<p class="max-w-md text-xs text-muted-foreground">
+			Los usuarios los administra quien administra cada organización. En
+			<a href="/organizaciones" class="font-medium text-primary hover:underline">Organizaciones</a> puedes crear
+			una y dar de alta a su administrador.
+		</p>
 	</div>
 {:else if usuarios.length === 0}
 	<div class="mt-8 flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center">
