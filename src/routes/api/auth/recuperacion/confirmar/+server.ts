@@ -53,6 +53,6 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress,
 				: { codigo: 'error', mensaje: typeof detalle === 'string' ? detalle : `El servidor respondió ${respuesta.status}.` };
 		return json(error, { status: respuesta.status, headers: { 'Cache-Control': 'no-store' } });
 	}
-	borrarSesion(cookies);
+	borrarSesion(cookies, url.protocol === 'https:');
 	return json({ ok: true, sesionesCerradas: true }, { headers: { 'Cache-Control': 'no-store' } });
 };

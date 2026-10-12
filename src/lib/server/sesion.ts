@@ -105,9 +105,24 @@ export function cabecerasConSesion(cookies: Cookies, extra?: HeadersInit): Heade
 	return cabeceras;
 }
 
-export function borrarSesion(cookies: Cookies): void {
-	cookies.delete(COOKIE_ACCESO, { path: '/' });
-	cookies.delete(COOKIE_REFRESH, { path: '/' });
+/**
+ * Borra las dos cookies de sesión. `segura` es la MISMA que se le pasó a
+ * `guardarSesion` (`url.protocol === 'https:'`), y no es un detalle.
+ *
+ * SvelteKit, si no se le dice nada, borra con el atributo `Secure` a todo host
+ * que no sea `localhost`. Pero las cookies se CREARON sin `Secure` cuando el
+ * sitio va por HTTP, y los navegadores IGNORAN un `Secure` que llega por HTTP
+ * plano. Resultado, hasta el 2026-10-12: en el servidor de CSI, al que se entra
+ * por `http://172.10.30.15:3400`, "Cerrar sesión" no borraba nada y dejaba la
+ * sesión puesta. En `localhost` sí funcionaba, y como TODAS las pruebas corren
+ * ahí, nadie lo vio (ver `probar-cookies-http.mjs`).
+ *
+ * Borrar con el mismo `secure` con que se creó funciona en los tres casos: HTTP
+ * por IP, HTTPS por dominio y localhost.
+ */
+export function borrarSesion(cookies: Cookies, segura: boolean): void {
+	cookies.delete(COOKIE_ACCESO, { path: '/', secure: segura });
+	cookies.delete(COOKIE_REFRESH, { path: '/', secure: segura });
 }
 
 /**
@@ -134,17 +149,36 @@ export async function renovarSesion(
 	}
 }
 
-/** Avisa a nexus_back que la sesión termina. Nunca falla hacia quien llama. */
-export async function cerrarSesionEnBack(refresh: string | undefined): Promise<void> {
-	if (!refresh) return;
-	try {
-		await fetch(urlNexus('/auth/logout'), {
-			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ refreshToken: refresh }),
-			signal: AbortSignal.timeout(10_000)
-		});
-	} catch {
-		/* la cookie se borra igual; la sesión vence sola en el back */
+/**
+ * Avisa a nexus_back que la sesión termina. NUNCA falla hacia quien llama: la
+ * persona pidió salir y las cookies se van igual. Devuelve si el back
+ * confirmó, para que quien llama pueda dejarlo dicho en el log.
+ *
+ * Reintenta UNA vez si el back no contesta o responde con un error de
+ * servidor. Antes no miraba el resultado: con el back caído, el front decía
+ * "listo", borraba las cookies y la sesión seguía viva allá hasta 7 días, sin
+ * un solo renglón que lo contara.
+ */
+export async function cerrarSesionEnBack(
+	refresh: string | undefined,
+	ip?: string,
+	userAgent?: string | null
+): Promise<boolean> {
+	if (!refresh) return true;
+	for (let intento = 1; intento <= 2; intento++) {
+		try {
+			const r = await fetch(urlNexus('/auth/logout'), {
+				method: 'POST',
+				headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
+				body: JSON.stringify({ refreshToken: refresh, ip, userAgent }),
+				signal: AbortSignal.timeout(10_000)
+			});
+			if (r.ok) return true;
+			console.warn(`[sesion] /auth/logout respondió ${r.status} (intento ${intento} de 2)`);
+			if (r.status < 500) return false; // un 4xx no se arregla reintentando
+		} catch (e) {
+			console.warn(`[sesion] no se pudo avisar el cierre de sesión al back (intento ${intento} de 2): ${String(e)}`);
+		}
 	}
+	return false;
 }

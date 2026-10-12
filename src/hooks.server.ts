@@ -69,7 +69,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				guardarSesion(event.cookies, renovada, event.url.protocol === 'https:');
 				usuario = await usuarioDeToken(renovada.accessToken);
 			} else {
-				borrarSesion(event.cookies);
+				borrarSesion(event.cookies, event.url.protocol === 'https:');
 			}
 		}
 	}

@@ -10,7 +10,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 import { COOKIE_ACCESO, borrarSesion } from '$lib/server/sesion';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const token = cookies.get(COOKIE_ACCESO);
 	if (!token) return json({ codigo: 'sin_sesion', mensaje: 'Tu sesión terminó. Vuelve a iniciar sesión.' }, { status: 401 });
 	const datos = await request.json().catch(() => null);
@@ -40,7 +40,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				: { codigo: 'error', mensaje: typeof detalle === 'string' ? detalle : `El servidor respondió ${respuesta.status}.` };
 		return json(error, { status: respuesta.status, headers: { 'Cache-Control': 'no-store' } });
 	}
-	if (resultado?.sesionesCerradas) borrarSesion(cookies);
+	if (resultado?.sesionesCerradas) borrarSesion(cookies, url.protocol === 'https:');
 	return json(
 		{ ok: true, sesionesCerradas: Boolean(resultado?.sesionesCerradas) },
 		{ headers: { 'Cache-Control': 'no-store' } }
