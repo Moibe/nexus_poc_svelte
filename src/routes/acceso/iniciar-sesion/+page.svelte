@@ -54,8 +54,13 @@
 				// El layout raíz publica el usuario de la sesión; tras entrar hay
 				// que recargar esos datos, si no la barra y "Bienvenido" se quedan
 				// con el usuario nulo de antes.
-				await invalidateAll();
+				// `volver` se lee ANTES de invalidar: `invalidateAll()` vuelve a pedir
+				// los datos de esta ruta y, como ya hay sesión, el guard de
+				// `hooks.server.ts` los redirige a "/", con lo que la URL pierde el
+				// parámetro. Leído después (como estuvo hasta el 2026-10-12), `volver`
+				// llegaba siempre vacío y nadie regresaba a donde iba.
 				const volver = page.url.searchParams.get('volver');
+				await invalidateAll();
 				if (cuerpo?.usuario?.debeCambiarContrasena) await goto('/acceso/bienvenido');
 				else await goto(volver && volver.startsWith('/') && !volver.startsWith('//') ? volver : '/');
 				return;

@@ -10,7 +10,7 @@
 import { error, redirect } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
-import { cabecerasConSesion } from '$lib/server/sesion';
+import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion';
 import type { PageServerLoad } from './$types';
 
 export type Organizacion = {
@@ -24,7 +24,7 @@ export type Organizacion = {
 	admin: { guid: string; nombre: string; email: string; telefono: string | null } | null;
 };
 
-export const load: PageServerLoad = async ({ locals, cookies }) => {
+export const load: PageServerLoad = async ({ locals, cookies, url }) => {
 	if (!locals.usuario?.esAdminPlataforma) redirect(303, '/');
 
 	let respuesta: Response;
@@ -35,6 +35,10 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 		});
 	} catch {
 		error(504, 'No se pudo contactar al servidor.');
+	}
+	// La sesión de este JWT se cerró (HU05): al login, no a una página de error.
+	if (respuesta.status === 401 && sesionCerrada(await respuesta.clone().json().catch(() => null))) {
+		irAlLogin(cookies, url);
 	}
 	if (!respuesta.ok) error(respuesta.status, 'No se pudieron cargar las organizaciones.');
 	const cuerpo = await respuesta.json().catch(() => null);

@@ -15,7 +15,7 @@
  * cambiar la contraseña: el primer acceso).
  */
 
-import type { Cookies } from '@sveltejs/kit';
+import { redirect, type Cookies } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { jwtVerify } from 'jose';
 
@@ -123,6 +123,27 @@ export function cabecerasConSesion(cookies: Cookies, extra?: HeadersInit): Heade
 export function borrarSesion(cookies: Cookies, segura: boolean): void {
 	cookies.delete(COOKIE_ACCESO, { path: '/', secure: segura });
 	cookies.delete(COOKIE_REFRESH, { path: '/', secure: segura });
+}
+
+/**
+ * nexus_back dijo `sesion_cerrada`: el JWT todavía no vence, pero su SESIÓN ya
+ * se cerró (la cerró la persona en otro dispositivo, un administrador, o se
+ * restableció su contraseña; HU05). Se tiran las cookies y se manda al login,
+ * con la ruta a la que iba para volver después.
+ *
+ * Sin esto, a quien le revocan la sesión le saldría una página de error en vez
+ * de la pantalla de login. Solo para ESE código: un `sesion_invalida` ("el token
+ * venció") es una carrera normal de vencimiento y no debe tirar el refresh, que
+ * `hooks.server.ts` usa para renovar solo.
+ */
+export function sesionCerrada(cuerpo: unknown): boolean {
+	return (cuerpo as { detail?: { codigo?: string } } | null)?.detail?.codigo === 'sesion_cerrada';
+}
+
+/** Cierra las cookies y redirige al login. No devuelve: `redirect` lanza. */
+export function irAlLogin(cookies: Cookies, url: URL): never {
+	borrarSesion(cookies, url.protocol === 'https:');
+	redirect(303, `/acceso/iniciar-sesion?volver=${encodeURIComponent(url.pathname + url.search)}`);
 }
 
 /**

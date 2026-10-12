@@ -12,11 +12,11 @@
 import { error, redirect } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
-import { cabecerasConSesion } from '$lib/server/sesion';
+import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion';
 import type { Rol, UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ cookies, locals }) => {
+export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	const esAdminPlataforma = Boolean(locals.usuario?.esAdminPlataforma);
 	const pedir = (ruta: string) =>
 		fetch(urlNexus(ruta), { headers: cabecerasConSesion(cookies), signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -28,6 +28,9 @@ export const load: PageServerLoad = async ({ cookies, locals }) => {
 		error(504, 'No se pudo contactar al servidor.');
 	}
 	const cuerpo = await lista.json().catch(() => null);
+
+	// La sesión de este JWT se cerró (HU05): al login, no a una página de error.
+	if (lista.status === 401 && sesionCerrada(cuerpo)) irAlLogin(cookies, url);
 
 	if (lista.status === 403 && cuerpo?.detail?.codigo === 'sin_organizacion') {
 		// Quien NO administra una organización no tiene nada que hacer aquí: se
