@@ -172,10 +172,11 @@
 		<span class="text-[11px] text-muted-foreground">¿Olvidaste tu cuenta?</span>
 		<span class="h-px flex-1 bg-border"></span>
 	</div>
-	<!-- HU10 (restablecer contraseña) todavía no existe: el enlace lleva a la
-	     misma pantalla, para no prometer una ruta vacía. -->
+	<!-- HU10: el texto es el del Figma ("¿Olvidaste tu cuenta?" y "Restablecer
+	     acceso a tu cuenta"), aunque el criterio CA-1 llame a la opción
+	     "Recuperar acceso". -->
 	<a
-		href="/acceso/iniciar-sesion"
+		href="/acceso/recuperar"
 		class="flex items-center justify-center gap-1 text-xs font-medium text-primary hover:underline"
 		data-testid="restablecer-acceso"
 	>

@@ -1,6 +1,8 @@
 <script lang="ts">
-	/** HU04 · "Contraseña actualizada". Se llega sin sesión (el cambio en el
-	 *  primer acceso cierra todas); "Iniciar sesión" vuelve al login. */
+	/** HU04 y HU10 · "Contraseña actualizada". Se llega sin sesión (tanto el
+	 *  cambio en el primer acceso como el restablecimiento cierran todas);
+	 *  "Iniciar sesión" vuelve al login. Los textos son los mismos en las dos
+	 *  historias: así lo dibuja el Figma. */
 	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 

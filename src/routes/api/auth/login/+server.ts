@@ -9,11 +9,9 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { identificadorDeNavegador } from '$lib/server/navegador';
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 import { guardarSesion, type SesionEmitida } from '$lib/server/sesion';
-
-/** Cookie del identificador de navegador, la que agrupa los intentos fallidos. */
-const COOKIE_NAVEGADOR = 'nx_navegador';
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress, url }) => {
 	const datos = await request.json().catch(() => null);
@@ -23,22 +21,9 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress,
 		return json({ codigo: 'faltan_datos', mensaje: 'Escribe tu correo y tu contraseña.' }, { status: 400 });
 	}
 
-	// Identificador anónimo de ESTE navegador. Contra él cuenta el back los
-	// cinco intentos fallidos, sean de correo o de contraseña: un correo que no
-	// existe no tiene cuenta donde anotarlos. Por navegador y no por IP porque
-	// en la oficina todos salen por la misma y se bloquearían entre ellos.
-	// No identifica a nadie: es un número al azar y no sale de las cookies.
-	let navegador = cookies.get(COOKIE_NAVEGADOR);
-	if (!navegador) {
-		navegador = crypto.randomUUID();
-		cookies.set(COOKIE_NAVEGADOR, navegador, {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: url.protocol === 'https:',
-			maxAge: 60 * 60 * 24 * 365
-		});
-	}
+	// Contra este identificador cuenta el back los cinco intentos fallidos, sean
+	// de correo o de contraseña (ver `$lib/server/navegador`).
+	const navegador = identificadorDeNavegador(cookies, url);
 
 	let respuesta: Response;
 	try {

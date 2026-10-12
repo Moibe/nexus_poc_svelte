@@ -9,7 +9,13 @@ export const REGLAS = [
 	{ clave: 'mayuscula', texto: 'Mayúscula', cumple: (c: string) => /[A-ZÁÉÍÓÚÑÜ]/.test(c) },
 	{ clave: 'minuscula', texto: 'Minúscula', cumple: (c: string) => /[a-záéíóúñü]/.test(c) },
 	{ clave: 'numero', texto: 'Número', cumple: (c: string) => /\d/.test(c) },
-	{ clave: 'especial', texto: 'Carácter especial', cumple: (c: string) => /[^A-Za-z0-9\s]/.test(c) }
+	// Los signos de puntuación ASCII, que es EXACTAMENTE lo que acepta el
+	// servidor (`string.punctuation`). Hasta el 2026-10-12 esta regla era "todo
+	// lo que no sea letra ASCII, número ni espacio", y dejaba pasar una `ñ`, una
+	// `á` o un `€`: el medidor pintaba los cinco chips en verde y "Muy segura",
+	// el botón se encendía y el servidor la rechazaba al final. Los rangos son
+	// los de la tabla ASCII: ! a /, : a @, [ a `, y { a ~.
+	{ clave: 'especial', texto: 'Carácter especial', cumple: (c: string) => /[!-\/:-@\[-`{-~]/.test(c) }
 ] as const;
 
 export type Nivel = { texto: string; valor: number; tono: 'debil' | 'media' | 'segura' | 'muy_segura' };

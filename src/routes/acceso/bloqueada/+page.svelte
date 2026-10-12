@@ -6,6 +6,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import UserLock from '@lucide/svelte/icons/user-lock';
 
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -43,4 +44,16 @@
 			Volver a intentar
 		</Button>
 	{/if}
+	<!-- DESVIACIÓN: el Figma de esta pantalla no trae este enlace. Se agrega
+	     porque es donde más falta hace: quien llega aquí acaba de agotar sus
+	     cinco intentos, o sea que casi seguro no se sabe su contraseña. Con la
+	     recuperación, además, el bloqueo de este navegador se levanta. -->
+	<a
+		href="/acceso/recuperar"
+		class="mt-6 flex items-center justify-center gap-1 text-xs font-medium text-primary hover:underline"
+		data-testid="restablecer-acceso-bloqueada"
+	>
+		Restablecer acceso a tu cuenta
+		<ArrowUpRight class="size-3.5" />
+	</a>
 </div>

@@ -1,14 +1,19 @@
 <script lang="ts">
 	/**
 	 * La tarjeta "Seguridad de la contraseña" del diseño: candado, nivel a la
-	 * derecha (Débil … Muy segura), barra de progreso y los cinco chips de las
-	 * reglas, que se ponen verdes conforme se cumplen.
+	 * derecha (Débil … Muy segura), barra de progreso y las reglas.
+	 *
+	 * Dos variantes, porque el diseño dibuja dos:
+	 *   - `chips` (default, primer acceso / HU04): los cinco chips de las
+	 *     reglas, que se ponen verdes conforme se cumplen.
+	 *   - `ayuda` (recuperar contraseña / HU10): en vez de chips, un párrafo
+	 *     con las mismas reglas escritas. Se ve menos, pero es lo que dibujó UX.
 	 */
 	import Lock from '@lucide/svelte/icons/lock';
 
 	import { REGLAS, nivelDe } from '$lib/acceso/reglasContrasena';
 
-	let { contrasena }: { contrasena: string } = $props();
+	let { contrasena, variante = 'chips' }: { contrasena: string; variante?: 'chips' | 'ayuda' } = $props();
 
 	const nivel = $derived(nivelDe(contrasena));
 	const COLOR = {
@@ -36,18 +41,25 @@
 	<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
 		<div class="h-full rounded-full transition-all {COLOR[nivel.tono]}" style="width: {nivel.valor * 100}%"></div>
 	</div>
-	<ul class="mt-3 flex flex-wrap gap-1.5" aria-label="Reglas de la contraseña">
-		{#each REGLAS as regla (regla.clave)}
-			{@const ok = regla.cumple(contrasena)}
-			<li
-				data-testid="regla-{regla.clave}"
-				data-cumple={ok}
-				class="rounded-md border px-2 py-1 text-[11px] leading-none font-medium transition-colors {ok
-					? 'border-green-200 bg-green-50 text-green-700'
-					: 'border-border bg-muted text-muted-foreground'}"
-			>
-				{regla.texto}
-			</li>
-		{/each}
-	</ul>
+	{#if variante === 'ayuda'}
+		<p class="mt-3 text-xs text-muted-foreground" data-testid="ayuda-contrasena">
+			Para proteger tu cuenta, utiliza una contraseña segura de al menos 12 caracteres, incluyendo una letra
+			mayúscula, una letra minúscula, un número y un carácter especial.
+		</p>
+	{:else}
+		<ul class="mt-3 flex flex-wrap gap-1.5" aria-label="Reglas de la contraseña">
+			{#each REGLAS as regla (regla.clave)}
+				{@const ok = regla.cumple(contrasena)}
+				<li
+					data-testid="regla-{regla.clave}"
+					data-cumple={ok}
+					class="rounded-md border px-2 py-1 text-[11px] leading-none font-medium transition-colors {ok
+						? 'border-green-200 bg-green-50 text-green-700'
+						: 'border-border bg-muted text-muted-foreground'}"
+				>
+					{regla.texto}
+				</li>
+			{/each}
+		</ul>
+	{/if}
 </div>
