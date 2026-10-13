@@ -54,7 +54,7 @@ const CON_O_SIN_SESION = new Set(['/acceso/restablecer-contrasena', '/acceso/enl
 /** Lo único que puede ver quien todavía debe cambiar su contraseña. */
 const PRIMER_ACCESO = new Set(['/acceso/bienvenido', '/acceso/nueva-contrasena']);
 
-export const handle: Handle = async ({ event, resolve }) => {
+const puerta: Handle = async ({ event, resolve }) => {
 	const ruta = event.url.pathname.replace(/\/+$/, '') || '/';
 
 	// Los endpoints del acceso no piden sesión: son los que la crean o cierran.
@@ -96,4 +96,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Sesión completa: las pantallas de entrada ya no tienen sentido.
 	if (SIN_SESION.has(ruta) || PRIMER_ACCESO.has(ruta)) redirect(303, '/');
 	return resolve(event);
+};
+
+/**
+ * Lo que sirve la app —páginas y datos— no se guarda en el caché del navegador
+ * (`no-store`), salvo lo que un endpoint pida a propósito.
+ *
+ * Sin esto, al cerrar sesión y dar "Atrás" el navegador reabre la pantalla
+ * protegida desde su caché (el historial NO revalida) y la muestra con los
+ * datos y el nombre de quien ya se fue, sin preguntarle nada al servidor. Con
+ * `no-store` la vuelve a pedir, y la puerta de arriba lo manda al login. Medido
+ * el 2026-10-12 (HU05) con `probar-boton-atras.mjs`.
+ */
+export const handle: Handle = async (entrada) => {
+	const respuesta = await puerta(entrada);
+	if (!respuesta.headers.has('cache-control')) {
+		try {
+			respuesta.headers.set('cache-control', 'no-store');
+		} catch {
+			// Cabeceras inmutables (una respuesta reenviada tal cual): se deja como está.
+		}
+	}
+	return respuesta;
 };

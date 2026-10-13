@@ -9,6 +9,10 @@
 	 *
 	 * Al terminar, la confirmación del diseño ("La cuenta fue desactivada" /
 	 * "Sesión finalizada") se muestra en este mismo panel.
+	 *
+	 * Lo abre el administrador de una organización (desde Usuarios) o el de
+	 * plataforma (desde Organizaciones, con `organizacion`): en ese segundo caso
+	 * "Cerrar sesión" va por la ruta que cuelga de la organización.
 	 */
 	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -24,11 +28,16 @@
 		open = $bindable(false),
 		accion,
 		usuario,
+		organizacion = null,
 		alTerminar
 	}: {
 		open?: boolean;
 		accion: 'desactivar' | 'cerrar-sesion';
 		usuario: UsuarioDeOrganizacion | null;
+		/** El guid de la organización del usuario, cuando quien actúa es el
+		 *  administrador de plataforma. Solo aplica a `cerrar-sesion`: desactivar
+		 *  sigue siendo del administrador de la organización. */
+		organizacion?: string | null;
 		alTerminar: () => Promise<void> | void;
 	} = $props();
 
@@ -46,7 +55,15 @@
 			etiqueta: 'Motivo de cierre de sesión',
 			boton: 'Cerrar sesión',
 			hechoTitulo: 'Sesión finalizada',
-			hechoCuerpo: 'El usuario deberá iniciar sesión nuevamente para acceder a la plataforma.'
+			// Se apartó del literal del diseño a propósito (2026-10-12): decía "El
+			// usuario deberá iniciar sesión nuevamente para acceder a la
+			// plataforma", y hoy eso no se cumple del todo. El back rechaza al
+			// instante lo que decide él, pero lo que decide solo el front (bandeja,
+			// llaves, webhooks) acepta el JWT hasta que venza (`AUTH_ACCESO_MIN`,
+			// 15 minutos por defecto). Cuando esa 2ª etapa esté hecha (README de
+			// nexus_back, "Limitación conocida"), volver al texto del diseño.
+			hechoCuerpo:
+				'Sus sesiones fueron cerradas y no podrá renovarlas: tendrá que iniciar sesión nuevamente. Algunas pantallas pueden seguir funcionando hasta 15 minutos más.'
 		}
 	} as const;
 
@@ -72,7 +89,9 @@
 			const ruta =
 				accion === 'desactivar'
 					? `/api/usuarios/${usuario.guid}/estado`
-					: `/api/usuarios/${usuario.guid}/cerrar-sesion`;
+					: organizacion
+						? `/api/organizaciones/${organizacion}/usuarios/${usuario.guid}/cerrar-sesion`
+						: `/api/usuarios/${usuario.guid}/cerrar-sesion`;
 			const cuerpo = accion === 'desactivar' ? { activo: false, motivo: motivo.trim() } : { motivo: motivo.trim() };
 			const r = await fetch(ruta, {
 				method: 'POST',

@@ -8,10 +8,11 @@
 	 *     todas, y "Nueva organización" al pie); a la derecha la tarjeta de la
 	 *     seleccionada y su listado de usuarios.
 	 *
-	 * El listado de usuarios se queda en su estado vacío a propósito: crear
-	 * usuarios dentro de una organización es HU06, todavía sin construir. El
-	 * único usuario que existe hoy es el administrador que nace con el alta, y
-	 * ese se ve en la tarjeta de arriba.
+	 * El listado de usuarios es de solo lectura —crearlos y editarlos es del
+	 * administrador de cada organización, en Usuarios— y trae una sola acción:
+	 * "Cerrar sesión" (HU05 CA-4), que el criterio da también al administrador de
+	 * plataforma. Esa tabla NO sale del diseño (el Figma de esta pantalla solo
+	 * trae el estado vacío): se armó con el mismo lenguaje que la de Usuarios.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -21,10 +22,13 @@
 	import ListFilter from '@lucide/svelte/icons/list-filter';
 	import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
 	import Users from '@lucide/svelte/icons/users';
+	import LogOut from '@lucide/svelte/icons/log-out';
 
 	import NuevaOrganizacionSheet from '$lib/components/organizaciones/NuevaOrganizacionSheet.svelte';
+	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import type { UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 
 	let { data } = $props();
 
@@ -47,6 +51,62 @@
 		if (!iso) return '—';
 		const d = new Date(iso);
 		return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+	}
+
+	function fechaHora(iso: string | null): string {
+		if (!iso) return '—';
+		const d = new Date(iso);
+		return `${fecha(iso)} | ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+	}
+
+	// ── Usuarios de la organización seleccionada ────────────────────────────
+
+	/** Los de la organización que se está viendo; `null` mientras se piden. */
+	let usuarios = $state<UsuarioDeOrganizacion[] | null>(null);
+	let errorUsuarios = $state('');
+	let motivoAbierto = $state(false);
+	let objetivo = $state<UsuarioDeOrganizacion | null>(null);
+
+	/** Solo el guid, para que el efecto de abajo no se repita cuando
+	 *  `invalidateAll()` trae objetos nuevos de la MISMA organización. */
+	const verGuid = $derived(seleccionada?.guid ?? null);
+
+	/** Número de la última petición: una respuesta que llega con otro número es de
+	 *  una organización que ya no se está viendo, y se ignora. */
+	let peticion = 0;
+
+	async function cargarUsuarios(guid: string) {
+		const mia = ++peticion;
+		usuarios = null;
+		errorUsuarios = '';
+		try {
+			const r = await fetch(`/api/organizaciones/${guid}/usuarios`);
+			const cuerpo = await r.json().catch(() => null);
+			if (mia !== peticion) return;
+			if (r.status === 401 && cuerpo?.codigo === 'sesion_cerrada') {
+				// Se cerró la sesión de quien mira (HU05): el `load` de esta página lo
+				// manda al login.
+				await invalidateAll();
+				return;
+			}
+			if (!r.ok) {
+				errorUsuarios = cuerpo?.mensaje ?? 'No se pudieron cargar los usuarios.';
+				return;
+			}
+			usuarios = cuerpo?.usuarios ?? [];
+		} catch {
+			if (mia === peticion) errorUsuarios = 'No se pudo contactar al servidor. Intenta de nuevo.';
+		}
+	}
+
+	$effect(() => {
+		const guid = verGuid;
+		if (guid) cargarUsuarios(guid);
+	});
+
+	function pedirCierre(usuario: UsuarioDeOrganizacion) {
+		objetivo = usuario;
+		motivoAbierto = true;
 	}
 </script>
 
@@ -197,24 +257,112 @@
 					<Users class="size-4 text-muted-foreground" />
 					<p class="text-sm font-medium text-foreground">Listado de usuarios</p>
 					<span class="text-xs text-muted-foreground">Usuarios de organización</span>
+					{#if usuarios}
+						<span class="ml-auto text-xs text-muted-foreground" data-testid="total-usuarios-organizacion">
+							{usuarios.length}
+							{usuarios.length === 1 ? 'usuario total' : 'usuarios totales'}
+						</span>
+					{/if}
 				</div>
 
-				<!-- HU06 (crear usuarios dentro de la organización) todavía no existe:
-				     el listado se queda en su estado vacío, sin inventar filas. -->
-				<div class="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-					<span class="flex size-12 items-center justify-center rounded-xl border-2 border-border bg-background">
-						<Users class="size-5 text-muted-foreground" />
-					</span>
-					<p class="text-sm font-medium text-foreground">Aquí aparecerán los usuarios registrados</p>
-					<p class="max-w-sm text-xs text-muted-foreground">
-						Aquí podrás visualizar y supervisar los usuarios creados por los administradores de cada organización
-						dentro de NexusDoc.
+				{#if errorUsuarios}
+					<div
+						class="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center"
+						data-testid="usuarios-organizacion-error"
+					>
+						<p class="text-sm text-destructive">{errorUsuarios}</p>
+						<Button variant="outline" size="sm" onclick={() => verGuid && cargarUsuarios(verGuid)}>
+							Reintentar
+						</Button>
+					</div>
+				{:else if usuarios === null}
+					<p
+						class="flex-1 py-16 text-center text-xs text-muted-foreground"
+						data-testid="usuarios-organizacion-cargando"
+					>
+						Cargando usuarios…
 					</p>
-				</div>
+				{:else if usuarios.length === 0}
+					<!-- Una organización nace con su administrador, así que este estado casi
+					     no se ve; se deja el del diseño por si el administrador no está. -->
+					<div class="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+						<span class="flex size-12 items-center justify-center rounded-xl border-2 border-border bg-background">
+							<Users class="size-5 text-muted-foreground" />
+						</span>
+						<p class="text-sm font-medium text-foreground">Aquí aparecerán los usuarios registrados</p>
+						<p class="max-w-sm text-xs text-muted-foreground">
+							Aquí podrás visualizar y supervisar los usuarios creados por los administradores de cada
+							organización dentro de NexusDoc.
+						</p>
+					</div>
+				{:else}
+					<div class="mt-4 overflow-x-auto">
+						<table class="w-full text-left text-sm">
+							<thead>
+								<tr class="border-y border-border text-xs text-muted-foreground">
+									<th class="py-2.5 pr-4 pl-2 font-normal">ID</th>
+									<th class="py-2.5 pr-4 font-normal">Nombre del usuario</th>
+									<th class="py-2.5 pr-4 font-normal">Rol asignado</th>
+									<th class="py-2.5 pr-4 font-normal">Fecha de registro</th>
+									<th class="py-2.5 pr-4 font-normal">Estatus</th>
+									<th class="py-2.5 pr-2 text-right font-normal"><span class="sr-only">Acciones</span></th>
+								</tr>
+							</thead>
+							<tbody data-testid="tabla-usuarios-organizacion">
+								{#each usuarios as usuario (usuario.guid)}
+									<tr class="border-b border-border last:border-0" data-testid="usuario-organizacion">
+										<td class="py-3 pr-4 pl-2 text-xs text-muted-foreground">{usuario.numero}</td>
+										<td class="min-w-0 py-3 pr-4">
+											<p class="truncate font-medium text-foreground">{usuario.nombre}</p>
+											<p class="truncate text-xs text-muted-foreground">{usuario.email}</p>
+										</td>
+										<td class="py-3 pr-4 text-foreground">{usuario.rolNombre}</td>
+										<td class="py-3 pr-4 text-xs text-muted-foreground">{fechaHora(usuario.creadoEn)}</td>
+										<td class="py-3 pr-4">
+											<span
+												class="rounded-md px-2 py-0.5 text-xs font-medium {usuario.activo
+													? 'bg-green-50 text-green-700'
+													: 'bg-muted text-muted-foreground'}"
+											>
+												{usuario.activo ? 'Activo' : 'Inactivo'}
+											</span>
+										</td>
+										<td class="py-3 pr-2 text-right">
+											<!-- Sin sesión que cerrar a quien está desactivado (ya no tiene), ni a uno
+											     mismo (para eso está el menú de la cuenta). -->
+											{#if usuario.activo && usuario.guid !== data.usuario?.guid}
+												<button
+													type="button"
+													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted"
+													data-testid="cerrar-sesion-organizacion"
+													aria-label={`Cerrar la sesión de ${usuario.nombre}`}
+													onclick={() => pedirCierre(usuario)}
+												>
+													<LogOut class="size-3.5" />
+													Cerrar sesión
+												</button>
+											{/if}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
 			{/if}
 		</section>
 	</div>
 {/if}
+
+<!-- La lista no muestra si alguien tiene sesión, así que cerrar una no cambia nada
+     en pantalla: no hay nada que recargar al terminar. -->
+<MotivoSheet
+	bind:open={motivoAbierto}
+	accion="cerrar-sesion"
+	usuario={objetivo}
+	organizacion={verGuid}
+	alTerminar={() => {}}
+/>
 
 <NuevaOrganizacionSheet
 	bind:open={nuevaAbierta}
