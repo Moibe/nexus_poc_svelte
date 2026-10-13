@@ -38,6 +38,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 			detalle && typeof detalle === 'object'
 				? detalle
 				: { codigo: 'error', mensaje: typeof detalle === 'string' ? detalle : `El servidor respondió ${respuesta.status}.` };
+		// La contraseña temporal caducó (HU06 CA-5): el back ya cerró esa sesión, aquí se tiran las cookies para que la
+		// pantalla de "enlace caducado" no rebote a quien todavía tendría que cambiar su contraseña.
+		if (error.codigo === 'activacion_vencida') borrarSesion(cookies, url.protocol === 'https:');
 		return json(error, { status: respuesta.status, headers: { 'Cache-Control': 'no-store' } });
 	}
 	if (resultado?.sesionesCerradas) borrarSesion(cookies, url.protocol === 'https:');

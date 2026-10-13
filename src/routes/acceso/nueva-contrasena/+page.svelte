@@ -44,6 +44,12 @@
 				await goto('/acceso/contrasena-actualizada');
 				return;
 			}
+			// Entró a tiempo pero no terminó: la contraseña temporal caducó (HU06 CA-5). El BFF ya tiró las cookies.
+			if (cuerpo?.codigo === 'activacion_vencida') {
+				await invalidateAll();
+				await goto('/acceso/activacion-caducada');
+				return;
+			}
 			errorGeneral = cuerpo?.mensaje ?? 'No se pudo cambiar la contraseña. Intenta de nuevo.';
 		} finally {
 			enviando = false;

@@ -59,6 +59,8 @@ const SIN_SESION = new Set([
 	'/acceso/bloqueada',
 	'/acceso/desactivada',
 	'/acceso/contrasena-actualizada',
+	// HU06 CA-5: la contraseña temporal caducó.
+	'/acceso/activacion-caducada',
 	// HU10: recuperar la contraseña.
 	'/acceso/recuperar',
 	'/acceso/restablecer-contrasena',

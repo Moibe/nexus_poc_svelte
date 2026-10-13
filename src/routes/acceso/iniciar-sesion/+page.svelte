@@ -10,6 +10,7 @@
 	 *                         que quedan ("después de N intentos más…")
 	 *   · bloqueada         → pantalla "Has alcanzado el número máximo…" (423)
 	 *   · desactivada       → pantalla "Tu cuenta se encuentra desactivada" (403)
+ *   · activacion_vencida → pantalla "Tu enlace de activación ha caducado" (403, HU06 CA-5)
 	 * Si entra y debe cambiar la contraseña (primer acceso), va a "Bienvenido".
 	 */
 	import { goto, invalidateAll } from '$app/navigation';
@@ -72,6 +73,10 @@
 			}
 			if (codigo === 'desactivada') {
 				await goto('/acceso/desactivada');
+				return;
+			}
+			if (codigo === 'activacion_vencida') {
+				await goto('/acceso/activacion-caducada');
 				return;
 			}
 			if (codigo === 'correo_invalido' || codigo === 'correo_no_existe') {
