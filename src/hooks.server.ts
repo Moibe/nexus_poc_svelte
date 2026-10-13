@@ -90,14 +90,20 @@ const puerta: Handle = async ({ event, resolve }) => {
 				guardarSesion(event.cookies, r.sesion, segura);
 				token = r.sesion.accessToken;
 				verificado = await verificarToken(token);
-				recienEmitida = true;
+				// "Recién emitida" es SOLO la renovación que esta petición pidió o esperó. Si llegó con el
+				// refresh viejo dentro de la gracia (`reutilizada`), la sesión nueva pudo cerrarse desde que
+				// se emitió (cierre forzado, desactivación, restablecimiento): se le pregunta al back como
+				// a cualquier otra, y si dice que no, `borrarSesion` pisa las cookies que se acaban de poner.
+				recienEmitida = !r.reutilizada;
 			} else if (r.tipo === 'rechazada') {
 				// El back dijo que ese refresh ya no sirve: ahora sí, las cookies se van.
 				borrarSesion(event.cookies, segura);
 				borradas = true;
 			} else {
 				// No se pudo saber (back caído, 503, timeout): las cookies se quedan. El
-				// refresh sigue valiendo y la siguiente petición renueva sola.
+				// refresh sigue valiendo y la siguiente petición renueva sola (salvo que el back
+				// lo haya canjeado justo antes de que se agotara la espera: caso raro, ver
+				// `renovarSesion`).
 				sinRespuesta = true;
 			}
 		}

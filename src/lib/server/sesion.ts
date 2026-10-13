@@ -128,7 +128,6 @@ const VIGENCIA_COMPROBACION_MS = 3_000;
  *  el back colgado, cada una esperaría el timeout completo. */
 const VIGENCIA_DESCONOCIDA_MS = 1_500;
 const TIMEOUT_COMPROBACION_MS = 2_000;
-const MAX_COMPROBACIONES = 1_000;
 
 const comprobadas = new Map<string, { hasta: number; estado: Promise<EstadoSesion> }>();
 
@@ -164,6 +163,7 @@ async function consultarSesion(token: string): Promise<EstadoSesion> {
  * mientras se pregunta comparten la misma pregunta.
  */
 export function estadoDeSesion(token: string, usuarioGuid: string, sesionGuid: string): Promise<EstadoSesion> {
+	podarMemoria();
 	const ahora = Date.now();
 	// Persona Y sesión: con solo la sesión, la respuesta "viva" de un token valdría 3 s
 	// para cualquier otro token firmado con el mismo `sid`.
@@ -175,9 +175,6 @@ export function estadoDeSesion(token: string, usuarioGuid: string, sesionGuid: s
 	void entrada.estado.then((estado) => {
 		if (estado === 'desconocida') entrada.hasta = Date.now() + VIGENCIA_DESCONOCIDA_MS;
 	});
-	if (comprobadas.size > MAX_COMPROBACIONES) {
-		for (const [clave, e] of comprobadas) if (e.hasta <= ahora) comprobadas.delete(clave);
-	}
 	return entrada.estado;
 }
 
@@ -271,7 +268,10 @@ export function irAlLogin(cookies: Cookies, url: URL): never {
 
 /**
  * Lo que pasó al pedir una renovación. Importa distinguirlo:
- *   · `renovada`     — el back emitió una sesión nueva.
+ *   · `renovada`     — el back emitió una sesión nueva. `reutilizada` es `true` cuando este
+ *                      resultado NO lo pidió ni lo esperó la petición, sino que se le concedió
+ *                      por la gracia (llegó con el refresh viejo después de que la renovación
+ *                      ya había terminado): la sesión pudo cerrarse desde entonces.
  *   · `rechazada`    — el back contestó EXPLÍCITAMENTE que ese refresh ya no sirve
  *                      (revocado, rotado, vencido, de una cuenta desactivada). Es lo
  *                      único que justifica tirar las cookies.
@@ -283,16 +283,30 @@ export function irAlLogin(cookies: Cookies, url: URL): never {
  *                      reinicia o el almacén se cae.
  */
 export type ResultadoRenovacion =
-	| { tipo: 'renovada'; sesion: SesionEmitida }
+	| { tipo: 'renovada'; sesion: SesionEmitida; reutilizada: boolean }
 	| { tipo: 'rechazada' }
 	| { tipo: 'sin_respuesta' };
 
-/** Una renovación no necesita los 130 s de las llamadas pesadas: si el back no
- *  contesta en esto, se considera `sin_respuesta`. */
-const TIMEOUT_RENOVACION_MS = 10_000;
-/** Cuánto se recuerda el resultado de una renovación (ver `renovarSesion`). */
+/** Una renovación no necesita los 130 s de las llamadas pesadas, pero tampoco se corta a los 10:
+ *  el back tarda lo que tarde en conseguir su candado (medido: más de 3 s al reconstruir un
+ *  registro de medio millón de renglones), y si se corta DESPUÉS de que canjeó el refresh, la
+ *  persona se queda con un refresh que ya no sirve. Si no contesta en esto, es `sin_respuesta`. */
+const TIMEOUT_RENOVACION_MS = 30_000;
+/** Cuánto se recuerda el resultado de una renovación, contado desde que el back CONTESTA (ver `renovarSesion`). */
 const RETENCION_RENOVACION_MS = 5_000;
-const renovaciones = new Map<string, { hasta: number; resultado: Promise<ResultadoRenovacion> }>();
+/** `hasta` vale `Infinity` mientras la llamada sigue en curso: una entrada pendiente no vence ni se reemplaza. */
+const renovaciones = new Map<string, { hasta: number; resuelta: boolean; resultado: Promise<ResultadoRenovacion> }>();
+
+/**
+ * Suelta lo vencido de `renovaciones` (que guarda los tokens de la sesión nueva) y de `comprobadas`.
+ * Se llama al usarlas, en vez de con un temporizador que mantendría vivo el proceso: lo vencido se va
+ * en la primera petición que llegue después.
+ */
+function podarMemoria(): void {
+	const ahora = Date.now();
+	for (const [clave, e] of renovaciones) if (e.hasta <= ahora) renovaciones.delete(clave);
+	for (const [clave, e] of comprobadas) if (e.hasta <= ahora) comprobadas.delete(clave);
+}
 
 async function pedirRenovacion(refresh: string, ip: string, userAgent: string | null): Promise<ResultadoRenovacion> {
 	try {
@@ -304,7 +318,7 @@ async function pedirRenovacion(refresh: string, ip: string, userAgent: string | 
 		});
 		if (r.ok) {
 			const sesion = (await r.json().catch(() => null)) as SesionEmitida | null;
-			if (sesion?.accessToken && sesion.refreshToken) return { tipo: 'renovada', sesion };
+			if (sesion?.accessToken && sesion.refreshToken) return { tipo: 'renovada', sesion, reutilizada: false };
 			console.warn('[sesion] /auth/refresh contestó 200 sin una sesión legible: no se tiran las cookies');
 			return { tipo: 'sin_respuesta' };
 		}
@@ -327,27 +341,43 @@ async function pedirRenovacion(refresh: string, ip: string, userAgent: string | 
  * demás —y esos rechazos tiraban las cookies recién emitidas—. Sin compartirla, con
  * ocho peticiones a la vez siete recibían 401 (`probar-renovacion.mjs`).
  *
- * El resultado se recuerda unos segundos: el navegador manda con el refresh VIEJO las
- * peticiones que salieron antes de recibir las cookies nuevas. Es la gracia que casi
- * todo esquema de rotación concede. Un `sin_respuesta` no se recuerda: el siguiente
- * intento debe volver a preguntar.
+ * El resultado se recuerda unos segundos, CONTADOS DESDE QUE EL BACK CONTESTA (no desde que
+ * se le preguntó: con un back lento la gracia se habría gastado esperando): el navegador
+ * manda con el refresh VIEJO las peticiones que salieron antes de recibir las cookies
+ * nuevas. Es la gracia que casi todo esquema de rotación concede. Lo que se entrega
+ * después de resuelta va marcado (`reutilizada`): esa sesión pudo cerrarse desde que se
+ * emitió, y el guard se lo pregunta al back en vez de darla por buena.
  *
- * La clave es el propio refresh: vive esos segundos en la memoria del servidor, igual
- * que las cookies de la sesión nueva que guarda el resultado.
+ * Mientras la llamada está en curso nadie la reemplaza: todas esperan la misma. Una segunda
+ * llamada con el refresh que el back ya canjeó respondería 401 y tiraría las cookies de una
+ * sesión viva. Un `sin_respuesta` no se recuerda: el siguiente intento debe volver a preguntar;
+ * si fue un timeout, puede ocultar que el back SÍ canjeó el refresh, y entonces el viejo ya no
+ * sirve y la persona tendrá que volver a entrar (la sesión nueva, huérfana, vence sola). Con 30 s
+ * de espera es un caso raro.
+ *
+ * La clave es el propio refresh: vive esos segundos en la memoria del servidor (se suelta en la
+ * primera petición que llegue después, ver `podarMemoria`), igual que las cookies de la sesión
+ * nueva que guarda el resultado.
  */
 export function renovarSesion(refresh: string, ip: string, userAgent: string | null): Promise<ResultadoRenovacion> {
-	const ahora = Date.now();
-	const clave = refresh;
-	const guardada = renovaciones.get(clave);
-	if (guardada && guardada.hasta > ahora) return guardada.resultado;
-	const entrada = { hasta: ahora + RETENCION_RENOVACION_MS, resultado: pedirRenovacion(refresh, ip, userAgent) };
-	renovaciones.set(clave, entrada);
-	void entrada.resultado.then((r) => {
-		if (r.tipo === 'sin_respuesta' && renovaciones.get(clave) === entrada) renovaciones.delete(clave);
-	});
-	if (renovaciones.size > MAX_COMPROBACIONES) {
-		for (const [k, e] of renovaciones) if (e.hasta <= ahora) renovaciones.delete(k);
+	podarMemoria();
+	const guardada = renovaciones.get(refresh);
+	if (guardada) {
+		// En curso: todas esperan LA MISMA llamada.
+		if (!guardada.resuelta) return guardada.resultado;
+		// Ya resuelta y dentro de la gracia (lo vencido lo soltó `podarMemoria`): se entrega, marcada.
+		return guardada.resultado.then((r) => (r.tipo === 'renovada' ? { ...r, reutilizada: true } : r));
 	}
+	const entrada = { hasta: Infinity, resuelta: false, resultado: pedirRenovacion(refresh, ip, userAgent) };
+	renovaciones.set(refresh, entrada);
+	void entrada.resultado.then((r) => {
+		entrada.resuelta = true;
+		if (r.tipo === 'sin_respuesta') {
+			if (renovaciones.get(refresh) === entrada) renovaciones.delete(refresh);
+		} else {
+			entrada.hasta = Date.now() + RETENCION_RENOVACION_MS;
+		}
+	});
 	return entrada.resultado;
 }
 
