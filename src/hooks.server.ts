@@ -20,20 +20,36 @@
  *      el enlace no debe ser rebotado al inicio, o el enlace se moriría en
  *      silencio.
  *
+ * Un JWT vigente NO basta (HU05, 2ª etapa, 2026-10-13): su sesión pudo cerrarse
+ * (la persona, un administrador, un restablecimiento de contraseña) o la cuenta
+ * desactivarse, y el JWT vale hasta que venza. Antes de dejar pasar se le
+ * pregunta a nexus_back si la sesión sigue viva (`estadoDeSesion`, con la
+ * respuesta guardada unos segundos). Si no, se tiran las cookies: las pantallas
+ * van al login (o a "cuenta desactivada") y las rutas `/api/*` responden 401
+ * `sesion_cerrada` (o 403 `desactivada`). Si el back no contesta se DEJA PASAR.
+ *
+ * Lo mismo con la renovación del JWT vencido: solo un rechazo EXPLÍCITO del back
+ * (401 `sesion_invalida` o `sesion_vencida`) tira las cookies; si no contestó
+ * (caído, 503, timeout) se conservan y se responde 503, para que la persona no
+ * pierda una sesión que sigue valiendo cuando el back vuelva. Las peticiones con el
+ * mismo refresh comparten una sola renovación (ver `renovarSesion`).
+ *
  * Hasta el 2026-10-07 el front no tenía sesión: cualquiera con la URL veía y
  * operaba todo (ver la nota de seguridad que llevaba abierta desde el
  * 2026-10-01). Esto la cierra.
  */
 
-import { json, redirect, type Handle } from '@sveltejs/kit';
+import { error, json, redirect, type Handle } from '@sveltejs/kit';
 
 import {
 	COOKIE_ACCESO,
 	COOKIE_REFRESH,
 	borrarSesion,
+	cabecerasParaBorrarSesion,
+	estadoDeSesion,
 	guardarSesion,
 	renovarSesion,
-	usuarioDeToken
+	verificarToken
 } from '$lib/server/sesion';
 
 /** Se ven sin sesión. "Contraseña actualizada" va aquí porque al cambiarla en
@@ -60,17 +76,44 @@ const puerta: Handle = async ({ event, resolve }) => {
 	// Los endpoints del acceso no piden sesión: son los que la crean o cierran.
 	if (ruta.startsWith('/api/auth/')) return resolve(event);
 
-	let usuario = await usuarioDeToken(event.cookies.get(COOKIE_ACCESO));
-	if (!usuario) {
+	const segura = event.url.protocol === 'https:';
+	let token = event.cookies.get(COOKIE_ACCESO);
+	let verificado = await verificarToken(token);
+	let recienEmitida = false;
+	let borradas = false; // se tiraron las cookies en esta petición
+	let sinRespuesta = false; // el back no contestó al renovar: no se sabe si hay sesión
+	if (!verificado) {
 		const refresh = event.cookies.get(COOKIE_REFRESH);
 		if (refresh) {
-			const renovada = await renovarSesion(refresh, event.getClientAddress(), event.request.headers.get('user-agent'));
-			if (renovada) {
-				guardarSesion(event.cookies, renovada, event.url.protocol === 'https:');
-				usuario = await usuarioDeToken(renovada.accessToken);
+			const r = await renovarSesion(refresh, event.getClientAddress(), event.request.headers.get('user-agent'));
+			if (r.tipo === 'renovada') {
+				guardarSesion(event.cookies, r.sesion, segura);
+				token = r.sesion.accessToken;
+				verificado = await verificarToken(token);
+				recienEmitida = true;
+			} else if (r.tipo === 'rechazada') {
+				// El back dijo que ese refresh ya no sirve: ahora sí, las cookies se van.
+				borrarSesion(event.cookies, segura);
+				borradas = true;
 			} else {
-				borrarSesion(event.cookies, event.url.protocol === 'https:');
+				// No se pudo saber (back caído, 503, timeout): las cookies se quedan. El
+				// refresh sigue valiendo y la siguiente petición renueva sola.
+				sinRespuesta = true;
 			}
+		}
+	}
+	let usuario = verificado?.usuario ?? null;
+
+	// ¿Su sesión sigue viva? Una sesión que el back acaba de emitir sí (no se pregunta).
+	let sinSesionPor: 'cerrada' | 'desactivada' | null = null;
+	if (verificado && token && !recienEmitida) {
+		const estado = await estadoDeSesion(token, verificado.usuario.guid, verificado.sesionGuid);
+		if (estado === 'cerrada' || estado === 'inexistente') sinSesionPor = 'cerrada';
+		else if (estado === 'desactivada') sinSesionPor = 'desactivada';
+		if (sinSesionPor) {
+			borrarSesion(event.cookies, segura);
+			borradas = true;
+			usuario = null;
 		}
 	}
 	event.locals.usuario = usuario;
@@ -78,7 +121,25 @@ const puerta: Handle = async ({ event, resolve }) => {
 	const esApi = ruta.startsWith('/api/');
 	if (!usuario) {
 		if (SIN_SESION.has(ruta)) return resolve(event);
-		if (esApi) return json({ mensaje: 'Tu sesión terminó. Vuelve a iniciar sesión.', codigo: 'sin_sesion' }, { status: 401 });
+		if (sinRespuesta) {
+			// Sin saber quién es no se puede servir nada protegido, pero tampoco decirle
+			// "tu sesión terminó": no terminó, el servidor no contestó.
+			const mensaje = 'No se pudo comprobar tu sesión porque el servidor no responde. Intenta de nuevo en unos segundos.';
+			if (esApi) return json({ mensaje, codigo: 'sin_servidor' }, { status: 503 });
+			error(503, mensaje);
+		}
+		// Una `Response` devuelta directamente no lleva las cookies que se borraron arriba:
+		// se le ponen a mano (ver `cabecerasParaBorrarSesion`). Los `redirect` sí las llevan.
+		const headers = borradas ? cabecerasParaBorrarSesion(event.cookies, segura) : undefined;
+		if (sinSesionPor === 'desactivada') {
+			if (esApi) return json({ mensaje: 'Tu cuenta está desactivada.', codigo: 'desactivada' }, { status: 403, headers });
+			redirect(303, '/acceso/desactivada');
+		}
+		if (esApi) {
+			return sinSesionPor === 'cerrada'
+				? json({ mensaje: 'Tu sesión se cerró. Vuelve a iniciar sesión.', codigo: 'sesion_cerrada' }, { status: 401, headers })
+				: json({ mensaje: 'Tu sesión terminó. Vuelve a iniciar sesión.', codigo: 'sin_sesion' }, { status: 401, headers });
+		}
 		const volver = ruta === '/' ? '' : `?volver=${encodeURIComponent(event.url.pathname + event.url.search)}`;
 		redirect(303, `/acceso/iniciar-sesion${volver}`);
 	}

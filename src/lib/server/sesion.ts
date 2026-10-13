@@ -9,10 +9,16 @@
  *     renueva el JWT sin que el usuario se entere.
  *
  * El JWT se verifica AQUÍ, con el mismo secreto que lo firmó (`AUTH_JWT_SECRET`
- * en el .env de los dos procesos), sin llamar a nexus_back en cada petición.
- * Los claims son los que emite `servicios/auth.py` del back: `sub` (guid),
- * `sid` (sesión), `eml`, `nom`, `adm` (admin de plataforma) y `dcc` (debe
- * cambiar la contraseña: el primer acceso).
+ * en el .env de los dos procesos). Los claims son los que emite
+ * `servicios/auth.py` del back: `sub` (guid), `sid` (sesión), `eml`, `nom`,
+ * `adm` (admin de plataforma) y `dcc` (debe cambiar la contraseña: el primer
+ * acceso).
+ *
+ * Que el JWT valga NO prueba que su sesión siga abierta: se pudo cerrar (la
+ * persona, un administrador, un restablecimiento) o la cuenta desactivarse, y el
+ * JWT vale hasta que venza (15 minutos). Hasta el 2026-10-13 las rutas que decide
+ * solo el front lo aceptaban igual. Ahora el guard le pregunta a nexus_back si la
+ * sesión sigue viva (`estadoDeSesion`), guardando la respuesta unos segundos.
  */
 
 import { redirect, type Cookies } from '@sveltejs/kit';
@@ -59,25 +65,120 @@ function secreto(): Uint8Array | null {
 	return s && s.length >= 32 ? new TextEncoder().encode(s) : null;
 }
 
-/** El usuario que dice un JWT de acceso válido y vigente, o `null`. */
-export async function usuarioDeToken(token: string | undefined): Promise<Usuario | null> {
+/** Lo que dice un JWT de acceso válido y vigente: la persona y la sesión de la que salió. */
+export type TokenVerificado = { usuario: Usuario; sesionGuid: string };
+
+/**
+ * Verifica un JWT de acceso (firma, emisor y vigencia). `null` si no vale.
+ *
+ * Exige `sid`, igual que el verificador del back (`require: [exp, sub, sid]`): un
+ * token sin él no se puede preguntar si su sesión sigue viva, y aceptarlo dejaría
+ * pasar sin la comprobación de la 2ª etapa de HU05.
+ */
+export async function verificarToken(token: string | undefined): Promise<TokenVerificado | null> {
 	const clave = secreto();
 	if (!token || !clave) return null;
 	try {
-		const { payload } = await jwtVerify(token, clave, { algorithms: ['HS256'], issuer: 'nexusdoc' });
-		if (typeof payload.sub !== 'string') return null;
+		const { payload } = await jwtVerify(token, clave, {
+			algorithms: ['HS256'],
+			issuer: 'nexusdoc',
+			requiredClaims: ['sub', 'sid', 'exp']
+		});
+		if (typeof payload.sub !== 'string' || typeof payload.sid !== 'string' || !payload.sid) return null;
 		return {
-			guid: payload.sub,
-			email: String(payload.eml ?? ''),
-			nombre: String(payload.nom ?? ''),
-			esAdminPlataforma: payload.adm === true,
-			debeCambiarContrasena: payload.dcc === true,
-			rol: typeof payload.rol === 'string' ? payload.rol : null,
-			tenantGuid: typeof payload.tnt === 'string' ? payload.tnt : null
+			usuario: {
+				guid: payload.sub,
+				email: String(payload.eml ?? ''),
+				nombre: String(payload.nom ?? ''),
+				esAdminPlataforma: payload.adm === true,
+				debeCambiarContrasena: payload.dcc === true,
+				rol: typeof payload.rol === 'string' ? payload.rol : null,
+				tenantGuid: typeof payload.tnt === 'string' ? payload.tnt : null
+			},
+			// El guid de la sesión NO va en `Usuario`: ese objeto se publica al navegador.
+			sesionGuid: payload.sid
 		};
 	} catch {
 		return null;
 	}
+}
+
+/** El usuario que dice un JWT de acceso válido y vigente, o `null`. */
+export async function usuarioDeToken(token: string | undefined): Promise<Usuario | null> {
+	return (await verificarToken(token))?.usuario ?? null;
+}
+
+/**
+ * Lo que nexus_back dice de la sesión de un JWT (`GET /auth/sesion`):
+ *   · `viva`        — sigue abierta.
+ *   · `cerrada`     — se cerró (la persona, un administrador, un restablecimiento
+ *                     de contraseña) o nunca existió: ante la duda se rechaza.
+ *   · `desactivada` — la cuenta se desactivó.
+ *   · `inexistente` — la persona ya no existe.
+ *   · `desconocida` — no se pudo saber: el back no contestó, tardó o dijo otra
+ *                     cosa. NO es una mala noticia: el guard deja pasar (ver abajo).
+ */
+export type EstadoSesion = 'viva' | 'cerrada' | 'desactivada' | 'inexistente' | 'desconocida';
+
+/** Cuánto se guarda lo que contestó el back. Es lo máximo que tarda en notarse un
+ *  cierre de sesión en las rutas que decide solo el front, a cambio de no
+ *  preguntar en cada petición (la bandeja sola consulta cada 10 segundos). */
+const VIGENCIA_COMPROBACION_MS = 3_000;
+/** Si no se pudo saber, se vuelve a intentar pronto, pero no en cada petición: con
+ *  el back colgado, cada una esperaría el timeout completo. */
+const VIGENCIA_DESCONOCIDA_MS = 1_500;
+const TIMEOUT_COMPROBACION_MS = 2_000;
+const MAX_COMPROBACIONES = 1_000;
+
+const comprobadas = new Map<string, { hasta: number; estado: Promise<EstadoSesion> }>();
+
+async function consultarSesion(token: string): Promise<EstadoSesion> {
+	try {
+		const r = await fetch(urlNexus('/auth/sesion'), {
+			headers: cabecerasNexus({ Authorization: `Bearer ${token}` }),
+			signal: AbortSignal.timeout(TIMEOUT_COMPROBACION_MS)
+		});
+		if (r.ok) {
+			const estado = ((await r.json().catch(() => null)) as { estado?: string } | null)?.estado;
+			if (estado === 'viva' || estado === 'cerrada' || estado === 'desactivada' || estado === 'inexistente') return estado;
+		}
+		console.warn(`[sesion] /auth/sesion respondió ${r.status}: se deja pasar`);
+	} catch (e) {
+		console.warn(`[sesion] /auth/sesion no contestó (${e instanceof Error ? e.name : 'error'}): se deja pasar`);
+	}
+	return 'desconocida';
+}
+
+/**
+ * ¿Sigue viva la sesión de este JWT? Se lo pregunta a nexus_back, que es quien
+ * sabe: el guard no tiene dónde mirarlo.
+ *
+ * Se DEJA PASAR cuando no se puede saber (`desconocida`). Es a propósito: el
+ * guard corre en cada petición, y un back caído, lento o mal configurado no debe
+ * dejar a todo el mundo fuera de la app. Solo se rechaza con una respuesta
+ * explícita del back. El costo es que, mientras el back no conteste, un cierre de
+ * sesión no se nota —igual que antes de esta consulta—; lo que sí pasa por el
+ * back (usuarios, organizaciones) lo sigue rechazando él mismo.
+ *
+ * La respuesta se guarda `VIGENCIA_COMPROBACION_MS`, y las peticiones que llegan
+ * mientras se pregunta comparten la misma pregunta.
+ */
+export function estadoDeSesion(token: string, usuarioGuid: string, sesionGuid: string): Promise<EstadoSesion> {
+	const ahora = Date.now();
+	// Persona Y sesión: con solo la sesión, la respuesta "viva" de un token valdría 3 s
+	// para cualquier otro token firmado con el mismo `sid`.
+	const clave = `${usuarioGuid}:${sesionGuid}`;
+	const guardada = comprobadas.get(clave);
+	if (guardada && guardada.hasta > ahora) return guardada.estado;
+	const entrada = { hasta: ahora + VIGENCIA_COMPROBACION_MS, estado: consultarSesion(token) };
+	comprobadas.set(clave, entrada);
+	void entrada.estado.then((estado) => {
+		if (estado === 'desconocida') entrada.hasta = Date.now() + VIGENCIA_DESCONOCIDA_MS;
+	});
+	if (comprobadas.size > MAX_COMPROBACIONES) {
+		for (const [clave, e] of comprobadas) if (e.hasta <= ahora) comprobadas.delete(clave);
+	}
+	return entrada.estado;
 }
 
 function segundosHasta(iso: string, minimo: number): number {
@@ -126,6 +227,28 @@ export function borrarSesion(cookies: Cookies, segura: boolean): void {
 }
 
 /**
+ * Las cabeceras `Set-Cookie` que borran la sesión, para una respuesta que `handle`
+ * devuelve DIRECTAMENTE (un `json(...)` en vez de `resolve(...)`).
+ *
+ * SvelteKit solo agrega a la respuesta las cookies que se tocaron con
+ * `cookies.set/delete` cuando pasa por `resolve` o es un `redirect`; a una
+ * `Response` devuelta tal cual no se las pone (medido el 2026-10-13). Sin esto, las
+ * rutas `/api/*` contestaban 401 pero el navegador conservaba las cookies de una
+ * sesión que ya no sirve, y cada petición volvía a gastar una renovación fallida
+ * contra el back hasta que vencía el refresh (7 días).
+ */
+export function cabecerasParaBorrarSesion(cookies: Cookies, segura: boolean): Headers {
+	const cabeceras = new Headers();
+	for (const nombre of [COOKIE_ACCESO, COOKIE_REFRESH]) {
+		cabeceras.append(
+			'set-cookie',
+			cookies.serialize(nombre, '', { path: '/', httpOnly: true, sameSite: 'lax', secure: segura, maxAge: 0 })
+		);
+	}
+	return cabeceras;
+}
+
+/**
  * nexus_back dijo `sesion_cerrada`: el JWT todavía no vence, pero su SESIÓN ya
  * se cerró (la cerró la persona en otro dispositivo, un administrador, o se
  * restableció su contraseña; HU05). Se tiran las cookies y se manda al login,
@@ -147,27 +270,85 @@ export function irAlLogin(cookies: Cookies, url: URL): never {
 }
 
 /**
- * Renueva la sesión con el refresh token. Devuelve la sesión nueva, o `null`
- * si nexus_back la rechazó (revocada, vencida, usuario desactivado) o no
- * contestó: en ambos casos el usuario tiene que volver a entrar.
+ * Lo que pasó al pedir una renovación. Importa distinguirlo:
+ *   · `renovada`     — el back emitió una sesión nueva.
+ *   · `rechazada`    — el back contestó EXPLÍCITAMENTE que ese refresh ya no sirve
+ *                      (revocado, rotado, vencido, de una cuenta desactivada). Es lo
+ *                      único que justifica tirar las cookies.
+ *   · `sin_respuesta`— no se pudo saber: red, timeout, 5xx, 429, llave de servicio
+ *                      mal puesta… Las cookies se CONSERVAN: el refresh sigue valiendo
+ *                      y la siguiente petición renueva sola cuando el back vuelva.
+ *                      Tirarlas aquí (como se hizo unas horas, el 2026-10-13) deja
+ *                      sin sesión a quien estaba dentro cada vez que el back se
+ *                      reinicia o el almacén se cae.
  */
-export async function renovarSesion(
-	refresh: string,
-	ip: string,
-	userAgent: string | null
-): Promise<SesionEmitida | null> {
+export type ResultadoRenovacion =
+	| { tipo: 'renovada'; sesion: SesionEmitida }
+	| { tipo: 'rechazada' }
+	| { tipo: 'sin_respuesta' };
+
+/** Una renovación no necesita los 130 s de las llamadas pesadas: si el back no
+ *  contesta en esto, se considera `sin_respuesta`. */
+const TIMEOUT_RENOVACION_MS = 10_000;
+/** Cuánto se recuerda el resultado de una renovación (ver `renovarSesion`). */
+const RETENCION_RENOVACION_MS = 5_000;
+const renovaciones = new Map<string, { hasta: number; resultado: Promise<ResultadoRenovacion> }>();
+
+async function pedirRenovacion(refresh: string, ip: string, userAgent: string | null): Promise<ResultadoRenovacion> {
 	try {
 		const r = await fetch(urlNexus('/auth/refresh'), {
 			method: 'POST',
 			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
 			body: JSON.stringify({ refreshToken: refresh, ip, userAgent }),
-			signal: AbortSignal.timeout(TIMEOUT_MS)
+			signal: AbortSignal.timeout(TIMEOUT_RENOVACION_MS)
 		});
-		if (!r.ok) return null;
-		return (await r.json()) as SesionEmitida;
-	} catch {
-		return null;
+		if (r.ok) {
+			const sesion = (await r.json().catch(() => null)) as SesionEmitida | null;
+			if (sesion?.accessToken && sesion.refreshToken) return { tipo: 'renovada', sesion };
+			console.warn('[sesion] /auth/refresh contestó 200 sin una sesión legible: no se tiran las cookies');
+			return { tipo: 'sin_respuesta' };
+		}
+		const codigo = ((await r.json().catch(() => null)) as { detail?: { codigo?: string } } | null)?.detail?.codigo;
+		if (r.status === 401 && (codigo === 'sesion_invalida' || codigo === 'sesion_vencida')) return { tipo: 'rechazada' };
+		console.warn(`[sesion] /auth/refresh respondió ${r.status}${codigo ? ' ' + codigo : ''}: no se tiran las cookies`);
+	} catch (e) {
+		console.warn(`[sesion] /auth/refresh no contestó (${e instanceof Error ? e.name : 'error'}): no se tiran las cookies`);
 	}
+	return { tipo: 'sin_respuesta' };
+}
+
+/**
+ * Renueva la sesión con el refresh token.
+ *
+ * Las peticiones que llegan con el MISMO refresh comparten UNA sola renovación. Un
+ * refresh es de un solo uso: al vencer el JWT, el sondeo de la bandeja, una acción de
+ * la persona y la precarga de una pantalla salen juntos con el mismo `nx_refresh`, y si
+ * cada una renovara por su cuenta el back rotaría con la primera y rechazaría a las
+ * demás —y esos rechazos tiraban las cookies recién emitidas—. Sin compartirla, con
+ * ocho peticiones a la vez siete recibían 401 (`probar-renovacion.mjs`).
+ *
+ * El resultado se recuerda unos segundos: el navegador manda con el refresh VIEJO las
+ * peticiones que salieron antes de recibir las cookies nuevas. Es la gracia que casi
+ * todo esquema de rotación concede. Un `sin_respuesta` no se recuerda: el siguiente
+ * intento debe volver a preguntar.
+ *
+ * La clave es el propio refresh: vive esos segundos en la memoria del servidor, igual
+ * que las cookies de la sesión nueva que guarda el resultado.
+ */
+export function renovarSesion(refresh: string, ip: string, userAgent: string | null): Promise<ResultadoRenovacion> {
+	const ahora = Date.now();
+	const clave = refresh;
+	const guardada = renovaciones.get(clave);
+	if (guardada && guardada.hasta > ahora) return guardada.resultado;
+	const entrada = { hasta: ahora + RETENCION_RENOVACION_MS, resultado: pedirRenovacion(refresh, ip, userAgent) };
+	renovaciones.set(clave, entrada);
+	void entrada.resultado.then((r) => {
+		if (r.tipo === 'sin_respuesta' && renovaciones.get(clave) === entrada) renovaciones.delete(clave);
+	});
+	if (renovaciones.size > MAX_COMPROBACIONES) {
+		for (const [k, e] of renovaciones) if (e.hasta <= ahora) renovaciones.delete(k);
+	}
+	return entrada.resultado;
 }
 
 /**

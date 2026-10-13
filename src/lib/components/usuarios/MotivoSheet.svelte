@@ -55,15 +55,12 @@
 			etiqueta: 'Motivo de cierre de sesión',
 			boton: 'Cerrar sesión',
 			hechoTitulo: 'Sesión finalizada',
-			// Se apartó del literal del diseño a propósito (2026-10-12): decía "El
-			// usuario deberá iniciar sesión nuevamente para acceder a la
-			// plataforma", y hoy eso no se cumple del todo. El back rechaza al
-			// instante lo que decide él, pero lo que decide solo el front (bandeja,
-			// llaves, webhooks) acepta el JWT hasta que venza (`AUTH_ACCESO_MIN`,
-			// 15 minutos por defecto). Cuando esa 2ª etapa esté hecha (README de
-			// nexus_back, "Limitación conocida"), volver al texto del diseño.
-			hechoCuerpo:
-				'Sus sesiones fueron cerradas y no podrá renovarlas: tendrá que iniciar sesión nuevamente. Algunas pantallas pueden seguir funcionando hasta 15 minutos más.'
+			// Es el literal del diseño. Del 2026-10-12 al 2026-10-13 dijo otra cosa
+			// ("...no podrá renovarlas... algunas pantallas pueden seguir funcionando
+			// hasta 15 minutos más") porque no era del todo cierto: lo que decide solo
+			// el front aceptaba el JWT hasta que venciera. La 2ª etapa de HU05 (el
+			// guard le pregunta al back si la sesión sigue viva) lo volvió cierto.
+			hechoCuerpo: 'El usuario deberá iniciar sesión nuevamente para acceder a la plataforma.'
 		}
 	} as const;
 
