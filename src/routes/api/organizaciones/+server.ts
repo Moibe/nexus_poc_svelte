@@ -2,9 +2,9 @@
  * BFF: crear una organización (HU02). Reenvía a nexus_back con el JWT de la
  * cookie, porque allá solo pasa un administrador de plataforma.
  *
- * La respuesta trae la **contraseña temporal** del administrador nuevo: no hay
- * correo en este sprint, así que la pantalla se la muestra al super admin una
- * sola vez. De ahí el `no-store`.
+ * El back le manda su bienvenida por correo al administrador nuevo. La respuesta
+ * trae su **contraseña temporal** SOLO si el correo no salió, y entonces la
+ * pantalla se la muestra al super admin una sola vez. De ahí el `no-store`.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';

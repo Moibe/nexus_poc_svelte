@@ -12,11 +12,12 @@
 	 * el aviso del diseño con los dos chips (ID encontrado / ID asignado). No
 	 * bloquea nada: el nombre puede repetirse, el ID no.
 	 *
-	 * **Sin correo** (decisión del 2026-10-07): al crear, el servidor devuelve
-	 * la contraseña temporal del administrador y esta pantalla la muestra UNA
-	 * vez, para que el super admin la entregue por donde pueda. Por eso se
-	 * reusa `SecretUnaVez`, el mismo componente de las API Keys y del secret de
-	 * los webhooks.
+	 * **El correo de bienvenida**: al crear, el servidor le manda al administrador de
+	 * la organización sus accesos por correo y esta pantalla lo dice. Si el correo
+	 * NO salió (este ambiente no manda correo, o el servicio falló), el servidor
+	 * devuelve la contraseña temporal y esta pantalla la muestra UNA vez, para que
+	 * el super admin la entregue por donde pueda: por eso sigue usando `SecretUnaVez`,
+	 * el mismo componente de las API Keys y del secret de los webhooks.
 	 */
 	import { tick } from 'svelte';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -28,6 +29,8 @@
 
 	import CampoTelefono from './CampoTelefono.svelte';
 	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
+	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import SecretUnaVez from '$lib/components/config/SecretUnaVez.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -46,7 +49,16 @@
 		alCrear: () => Promise<void> | void;
 	} = $props();
 
-	type Creada = { organizacion: { nombre: string; slug: string }; admin: { email: string }; contrasenaTemporal: string };
+	/** Lo que contestó el alta. Si el correo SALIÓ (`correoEnviado`), la contraseña temporal no viene: el administrador
+	 *  de la organización la tiene en su bandeja. Si no (`correoMotivo`: `sin_canal` o `fallo`), viene aquí y se
+	 *  muestra una sola vez, como siempre. */
+	type Creada = {
+		organizacion: { nombre: string; slug: string };
+		admin: { email: string };
+		correoEnviado?: boolean;
+		correoMotivo?: string | null;
+		contrasenaTemporal?: string;
+	};
 
 	let nombre = $state('');
 	let adminNombre = $state('');
@@ -222,7 +234,7 @@
 		</div>
 
 		{#if creada}
-			<!-- Sin correo: la contraseña temporal se muestra aquí, una vez. -->
+			<!-- Si el correo salió, la contraseña va solo por correo; si no, se muestra aquí, una vez. -->
 			<div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
 				<div class="flex items-center gap-3">
 					<span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -237,11 +249,26 @@
 						</p>
 					</div>
 				</div>
-				<p class="text-sm text-muted-foreground">
-					Entrega estos accesos a <span class="font-medium text-foreground">{creada.admin.email}</span>. La
-					contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
-				</p>
-				<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal" />
+				{#if creada.correoEnviado}
+					<AvisoVerde
+						testid="correo-enviado-organizacion"
+						titulo="Enviamos sus accesos por correo"
+						cuerpo="Los mandamos a {creada.admin.email}. La contraseña temporal viaja solo por ese correo y se le pedirá cambiarla al entrar."
+					/>
+				{:else}
+					{#if creada.correoMotivo === 'fallo'}
+						<AvisoRojo testid="correo-no-enviado-organizacion" titulo="No pudimos enviar el correo">
+							Entrégale tú estos accesos: la contraseña no se vuelve a mostrar.
+						</AvisoRojo>
+					{/if}
+					<p class="text-sm text-muted-foreground">
+						Entrega estos accesos a <span class="font-medium text-foreground">{creada.admin.email}</span>. La
+						contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
+					</p>
+					{#if creada.contrasenaTemporal}
+						<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal" />
+					{/if}
+				{/if}
 			</div>
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 				<Button

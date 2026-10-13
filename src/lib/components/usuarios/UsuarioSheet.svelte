@@ -11,14 +11,17 @@
 	 * crear, "Crear nuevo usuario" se enciende con nombre, correo válido y un
 	 * rol elegido.
 	 *
-	 * Sin correo (decisión del 2026-10-07): al crear se muestra la contraseña
-	 * temporal UNA vez, con el mismo componente que las API Keys.
+	 * Al crear, el servidor le manda su bienvenida por correo y esta pantalla lo dice.
+	 * Solo si el correo NO salió se muestra la contraseña temporal UNA vez, con el
+	 * mismo componente que las API Keys.
 	 */
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import UserPen from '@lucide/svelte/icons/user-pen';
 
 	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
+	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import SecretUnaVez from '$lib/components/config/SecretUnaVez.svelte';
 	import CampoTelefono from '$lib/components/organizaciones/CampoTelefono.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
@@ -46,7 +49,15 @@
 	let enviando = $state(false);
 	let errorEmail = $state('');
 	let errorGeneral = $state('');
-	let creada = $state<{ usuario: { nombre: string; email: string }; contrasenaTemporal: string } | null>(null);
+	/** Lo que contestó el alta. Si el correo SALIÓ (`correoEnviado`), la contraseña temporal no viene: la persona la
+	 *  tiene en su bandeja. Si no (`correoMotivo`: `sin_canal` en un ambiente que no manda correo, `fallo` si el
+	 *  servicio no pudo), viene aquí y se muestra una sola vez, como siempre. */
+	let creada = $state<{
+		usuario: { nombre: string; email: string };
+		correoEnviado?: boolean;
+		correoMotivo?: string | null;
+		contrasenaTemporal?: string;
+	} | null>(null);
 
 	const esEdicion = $derived(editando !== null);
 	const correo = $derived(validarCorreo(email));
@@ -134,12 +145,29 @@
 					<h2 class="text-lg font-medium text-foreground" data-testid="usuario-creado">
 						{creada.usuario.nombre} ya tiene acceso
 					</h2>
-					<p class="mt-1 text-sm text-muted-foreground">
-						Entrega estos accesos a <span class="font-medium text-foreground">{creada.usuario.email}</span>.
-						La contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
-					</p>
+					{#if !creada.correoEnviado}
+						<p class="mt-1 text-sm text-muted-foreground">
+							Entrega estos accesos a <span class="font-medium text-foreground">{creada.usuario.email}</span>.
+							La contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
+						</p>
+					{/if}
 				</div>
-				<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal-usuario" />
+				{#if creada.correoEnviado}
+					<AvisoVerde
+						testid="correo-enviado-usuario"
+						titulo="Enviamos sus accesos por correo"
+						cuerpo="Los mandamos a {creada.usuario.email}. La contraseña temporal viaja solo por ese correo y se le pedirá cambiarla al entrar."
+					/>
+				{:else}
+					{#if creada.correoMotivo === 'fallo'}
+						<AvisoRojo testid="correo-no-enviado-usuario" titulo="No pudimos enviar el correo">
+							Entrégale tú estos accesos: la contraseña no se vuelve a mostrar.
+						</AvisoRojo>
+					{/if}
+					{#if creada.contrasenaTemporal}
+						<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal-usuario" />
+					{/if}
+				{/if}
 			</div>
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
 				<Button data-testid="listo-usuario" onclick={() => (open = false)}>Listo</Button>

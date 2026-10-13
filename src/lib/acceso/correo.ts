@@ -14,7 +14,7 @@
  * persona se entera hasta el final y con un mensaje genérico.
  *
  * Solo mira la FORMA. No comprueba que el buzón exista ni que alguien lo lea;
- * eso solo lo diría mandar un correo, y en este sprint no hay correo.
+ * eso solo lo diría que el correo llegue.
  *
  * Deliberadamente laxa, como la del servidor: acepta `+`, guiones, subdominios
  * y dominios largos, porque rechazar un correo legítimo es peor que aceptar

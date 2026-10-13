@@ -1,5 +1,5 @@
-/** BFF: crear un usuario en mi organización (HU06). La respuesta trae su
- *  contraseña temporal —no hay correo—, así que va con `no-store`. */
+/** BFF: crear un usuario en mi organización (HU06). El back le manda su bienvenida por correo; la
+ *  respuesta trae su contraseña temporal SOLO si el correo no salió, así que va con `no-store`. */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
