@@ -2,7 +2,9 @@
  * BFF: cambiar la contraseña (HU04 en el primer acceso; HU13 después).
  * Reenvía a nexus_back con el JWT de la cookie como Bearer. Si el back cerró
  * todas las sesiones (primer acceso), aquí se borran las cookies: el flujo del
- * diseño sigue en "Contraseña actualizada → Iniciar sesión".
+ * diseño sigue en "Contraseña actualizada → Iniciar sesión". En el cambio desde
+ * una sesión (HU13) el back cierra solo las de los OTROS dispositivos: las
+ * cookies de este se quedan y la respuesta dice cuántas se cerraron.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -45,7 +47,12 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	}
 	if (resultado?.sesionesCerradas) borrarSesion(cookies, url.protocol === 'https:');
 	return json(
-		{ ok: true, sesionesCerradas: Boolean(resultado?.sesionesCerradas) },
+		{
+			ok: true,
+			sesionesCerradas: Boolean(resultado?.sesionesCerradas),
+			// HU13 CA-4: cuántas sesiones de OTROS dispositivos se cerraron (la de este sigue viva).
+			otrasSesionesCerradas: typeof resultado?.otrasSesionesCerradas === 'number' ? resultado.otrasSesionesCerradas : 0
+		},
 		{ headers: { 'Cache-Control': 'no-store' } }
 	);
 };

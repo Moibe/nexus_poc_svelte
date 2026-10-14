@@ -15,9 +15,10 @@
 	 *   · **Seguridad** — el correo, y al editar, los tres campos del cambio de
 	 *     contraseña con el mismo medidor del primer acceso.
 	 *
-	 * Al cambiar la contraseña desde aquí la sesión NO se cierra (es un cambio
-	 * voluntario, no un restablecimiento): el servidor solo cierra las demás
-	 * cuando la contraseña venía impuesta.
+	 * Al cambiar la contraseña desde aquí la sesión de ESTE dispositivo NO se cierra
+	 * (es un cambio voluntario, no un restablecimiento), pero sí las de los demás
+	 * dispositivos (HU13 CA-4): si la contraseña vieja estaba comprometida, quien la
+	 * tuviera deja de entrar. El panel lo dice al terminar.
 	 */
 	import { tick } from 'svelte';
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
@@ -66,6 +67,8 @@
 	let recEmail = $state('');
 	let recTelefono = $state('');
 	let actual = $state('');
+	/** La contraseña actual que el servidor rechazó: va bajo su campo (HU13 CA-6), no al pie. */
+	let errorActual = $state('');
 	let nueva = $state('');
 	let confirmacion = $state('');
 	let verActual = $state(false);
@@ -92,8 +95,10 @@
 	const nombreCompleto = $derived(
 		[perfil?.nombre, perfil?.apellidoPaterno, perfil?.apellidoMaterno].filter(Boolean).join(' ')
 	);
+	/** HU13 CA-3: la nueva tiene que ser DISTINTA de la actual. El servidor también lo exige; aquí se dice antes de enviar. */
+	const igualQueLaActual = $derived(actual.length > 0 && nueva.length > 0 && nueva === actual);
 	const contrasenaLista = $derived(
-		actual.length > 0 && cumpleTodas(nueva) && nueva === confirmacion
+		actual.length > 0 && cumpleTodas(nueva) && nueva === confirmacion && !igualQueLaActual
 	);
 
 	$effect(() => {
@@ -130,6 +135,7 @@
 		errorRecEmail = '';
 		recTelefono = sinNumero(perfil.recuperacion?.telefono);
 		actual = nueva = confirmacion = '';
+		errorActual = '';
 		editando = bloque;
 	}
 
@@ -174,7 +180,7 @@
 	async function guardarContrasena() {
 		if (!contrasenaLista || guardando) return;
 		guardando = true;
-		error = '';
+		error = errorActual = '';
 		try {
 			const r = await fetch('/api/auth/contrasena', {
 				method: 'POST',
@@ -183,13 +189,18 @@
 			});
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
-				error = datos?.mensaje ?? 'No se pudo cambiar la contraseña.';
+				// La actual equivocada se dice bajo su campo, con el texto del servidor y nada más (CA-6).
+				if (datos?.codigo === 'actual_incorrecta') errorActual = datos?.mensaje ?? 'La contraseña actual es incorrecta.';
+				else error = datos?.mensaje ?? 'No se pudo cambiar la contraseña.';
 				return;
 			}
 			await tick();
 			editando = null;
 			actual = nueva = confirmacion = '';
-			guardado = 'Tu contraseña se actualizó correctamente.';
+			const otras = typeof datos?.otrasSesionesCerradas === 'number' ? datos.otrasSesionesCerradas : 0;
+			guardado =
+				'Tu contraseña se actualizó correctamente.' +
+				(otras > 0 ? ` También cerramos ${otras === 1 ? 'tu otra sesión abierta' : `tus otras ${otras} sesiones abiertas`}.` : '');
 		} finally {
 			guardando = false;
 		}
@@ -384,7 +395,9 @@
 										autocomplete="current-password"
 										placeholder="Ingresa tu contraseña actual"
 										bind:value={actual}
-										class="{CLASE_INPUT} pr-10"
+										oninput={() => (errorActual = '')}
+										aria-invalid={errorActual ? 'true' : undefined}
+										class="{CLASE_INPUT_VALIDABLE} pr-10"
 									/>
 									<button
 										type="button"
@@ -395,6 +408,9 @@
 										{#if verActual}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
 									</button>
 								</div>
+								{#if errorActual}
+									<p class="text-xs text-destructive" role="alert" data-testid="perfil-error-actual">{errorActual}</p>
+								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="s-nueva" class="text-sm font-medium text-foreground">Nueva contraseña</label>
@@ -405,7 +421,8 @@
 										autocomplete="new-password"
 										placeholder="Ingresa nueva contraseña"
 										bind:value={nueva}
-										class="{CLASE_INPUT} pr-10"
+										aria-invalid={igualQueLaActual ? 'true' : undefined}
+										class="{CLASE_INPUT_VALIDABLE} pr-10"
 									/>
 									<button
 										type="button"
@@ -416,6 +433,11 @@
 										{#if verNueva}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
 									</button>
 								</div>
+								{#if igualQueLaActual}
+									<p class="text-xs text-destructive" data-testid="perfil-igual-actual">
+										La nueva contraseña no puede ser igual a la actual.
+									</p>
+								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="s-confirma" class="text-sm font-medium text-foreground">Confirmar contraseña</label>
