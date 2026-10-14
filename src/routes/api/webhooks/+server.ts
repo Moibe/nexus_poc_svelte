@@ -3,7 +3,8 @@
  *
  * Los registra y los guarda nexus_back (`/webhooks/`) desde el 2026-10-01;
  * hasta ese día vivían en el `localStorage` de cada navegador. El tenant lo fija
- * el servidor desde la sesión (`tenantDe`), no el navegador, igual que en las API Keys.
+ * el servidor desde la sesión (`tenantDe`), no el navegador, igual que en las API Keys,
+ * y se reenvía el JWT de la persona para que nexus_back lo compruebe (HU11).
  *
  * El POST devuelve el SECRET de firma, una sola vez. Por eso la respuesta lleva
  * `Cache-Control: no-store`, como la de nexus_back: que ni el navegador ni un
@@ -14,29 +15,26 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-function motivoDe(cuerpo: unknown, status: number): string {
-	const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
-	return typeof detalle === 'string' ? detalle : `nexus_back respondió ${status}.`;
-}
-
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ cookies, locals }) => {
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/webhooks/?tenant=${encodeURIComponent(tenantDe(locals))}`), {
-			headers: cabecerasNexus(),
+		respuesta = await fetch(urlNexus(`/webhooks/?tenant=${encodeURIComponent(tenant)}`), {
+			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
 		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
-	if (!respuesta.ok) return json({ mensaje: motivoDe(cuerpo, respuesta.status) }, { status: respuesta.status });
+	if (!respuesta.ok) return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	return json({ webhooks: Array.isArray(cuerpo?.webhooks) ? cuerpo.webhooks : [] });
 };
 
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	const datos = await request.json().catch(() => null);
 	const url = typeof datos?.url === 'string' ? datos.url : '';
 	const eventos = Array.isArray(datos?.eventos)
@@ -46,19 +44,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ mensaje: 'Faltan la URL o los eventos de suscripción.' }, { status: 400 });
 	}
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/webhooks/'), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: tenantDe(locals), url, eventos }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
+			body: JSON.stringify({ tenant, url, eventos }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
 		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
-	if (!respuesta.ok) return json({ mensaje: motivoDe(cuerpo, respuesta.status) }, { status: respuesta.status });
+	if (!respuesta.ok) return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	if (typeof cuerpo?.secret !== 'string' || typeof cuerpo?.webhook?.id !== 'string') {
 		return json({ mensaje: 'nexus_back respondió sin el webhook.' }, { status: 502 });
 	}

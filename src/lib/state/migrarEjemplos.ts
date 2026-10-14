@@ -31,8 +31,7 @@ import {
 	ejemplosLegados,
 	pasarEjemploAlAlmacen,
 	quitarImagenesDeRecortes,
-	sigueSiendoLegado,
-	TENANT_OPERADOR
+	sigueSiendoLegado
 } from '$lib/state/configuracion.svelte';
 
 /** ¿Empiezan los bytes con esta firma, a partir de `desde`? */
@@ -136,11 +135,7 @@ async function recorrer(): Promise<void> {
 		// Un PDF cuyos bytes son una IMAGEN es el raster de su página 1: eso es
 		// una vista. Si los bytes son el PDF mismo, es el original.
 		const esVista = legado.tipo === 'PDF' && bytes.mime.startsWith('image/');
-		const r = await subirAlAlmacen(
-			bytes.archivo,
-			esVista ? `${legado.nombre}.png` : legado.nombre,
-			TENANT_OPERADOR
-		);
+		const r = await subirAlAlmacen(bytes.archivo, esVista ? `${legado.nombre}.png` : legado.nombre);
 		if (!r.ok) {
 			console.warn(`[migración de ejemplos] "${legado.nombre}": ${r.mensaje}`);
 			if (esRechazoDelArchivo(r.status)) continue;

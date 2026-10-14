@@ -5,18 +5,21 @@
  * La bandeja lo consulta cada pocos segundos (ver `sincronizarEntradasApi` en
  * `bandeja.svelte.ts`). El tenant NO lo manda el navegador: lo fija el
  * servidor, desde la organización de la sesión (`tenantDe`), para que nadie pueda pedir la bandeja de otro
- * cliente cambiando un parámetro.
+ * cliente cambiando un parámetro. Y se reenvía el JWT de la persona: nexus_back comprueba, por su cuenta,
+ * que pueda operar en ese tenant (HU11).
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ cookies, locals }) => {
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(tenantDe(locals))}`), {
-			headers: cabecerasNexus(),
+		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(tenant)}`), {
+			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -25,7 +28,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
 		return json(
-			{ mensaje: typeof cuerpo?.detail === 'string' ? cuerpo.detail : `nexus_back respondió ${respuesta.status}.` },
+			{ mensaje: mensajeDeError(cuerpo, respuesta.status) },
 			{ status: respuesta.status }
 		);
 	}

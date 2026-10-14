@@ -560,21 +560,6 @@ export type DocumentoEjemploInstancia = {
  * no hay ninguno de los dos, para que quien pinte muestre su hueco en vez de
  * pedir una URL inventada.
  */
-/**
- * El prefijo de almacenamiento de CSI como OPERADOR.
- *
- * No es un cliente: es quien configura los tipos documentales. Sus documentos
- * de ejemplo no pertenecen a ningún tenant de cliente —el procesador que
- * configuran vive en el GCP de CSI— así que van a su propio prefijo, separado
- * de los `cli-*`.
- *
- * Es lo que permite que el front empiece a subir ejemplos HOY, sin esperar a
- * que exista un solo tenant en la base. Ver el docstring de
- * `servicios/almacen.py` en nexus_back, donde quedó decidida la granularidad
- * el 2026-09-24: un tenant por cliente, y CSI superadmin.
- */
-export const TENANT_OPERADOR = 'csi';
-
 export function fuenteDeDocumento(doc: DocumentoEjemploInstancia): string {
 	// La vista gana cuando existe: es la que se puede pintar. El original puede
 	// ser un PDF, que un `<img>` no sabe mostrar.

@@ -6,9 +6,10 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async ({ cookies, params, request, locals }) => {
 	const id = params.id ?? '';
 	const datos = await request.json().catch(() => null);
 	const url = typeof datos?.url === 'string' ? datos.url : '';
@@ -19,12 +20,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		return json({ mensaje: 'Faltan el webhook, la URL o los eventos de suscripción.' }, { status: 400 });
 	}
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/editar`), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: tenantDe(locals), url, eventos }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
+			body: JSON.stringify({ tenant, url, eventos }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -32,11 +34,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = cuerpo?.detail;
-		return json(
-			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json({ webhook: cuerpo?.webhook ?? null });
 };

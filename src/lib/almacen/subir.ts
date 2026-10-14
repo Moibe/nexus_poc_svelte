@@ -20,14 +20,14 @@ export type ResultadoSubida =
 	/** `status` es 0 cuando ni siquiera hubo respuesta (red caída). */
 	| { ok: false; status: number; mensaje: string };
 
-export async function subirAlAlmacen(
-	archivo: Blob,
-	nombre: string,
-	tenant: string
-): Promise<ResultadoSubida> {
+/**
+ * No lleva el tenant: lo fija el BFF desde la sesión (HU11). Hasta el 2026-10-14
+ * este formulario lo mandaba y el servidor se lo creía, así que cambiando ese
+ * campo se escribía en el prefijo de otra organización.
+ */
+export async function subirAlAlmacen(archivo: Blob, nombre: string): Promise<ResultadoSubida> {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo, nombre);
-	cuerpo.append('tenant', tenant);
 	let r: Response;
 	try {
 		r = await fetch('/api/archivos', { method: 'POST', body: cuerpo });

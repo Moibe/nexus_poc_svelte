@@ -6,7 +6,7 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Upload from '@lucide/svelte/icons/upload';
-	import { agregarDocumentoEjemplo, TENANT_OPERADOR } from '$lib/state/configuracion.svelte';
+	import { agregarDocumentoEjemplo } from '$lib/state/configuracion.svelte';
 	import { subirAlAlmacen } from '$lib/almacen/subir';
 
 	let {
@@ -182,13 +182,12 @@
 	 * Sube un archivo al almacén y devuelve su puntero, o `null` con el motivo
 	 * ya puesto en `errorCarga`.
 	 *
-	 * El `tenant` es el prefijo de OPERADOR: un documento de ejemplo no es de
-	 * ningún cliente, es de CSI configurando un tipo documental, y su procesador
-	 * vive en el GCP de CSI. Ver el docstring de `servicios/almacen.py` en
-	 * nexus_back, donde quedó decidido el 2026-09-24.
+	 * En qué prefijo del almacén queda lo decide el servidor, no esta pantalla: el de
+	 * la organización de quien sube (o el espacio de plataforma, si es el administrador
+	 * de plataforma). Antes todos iban a un prefijo común, `csi` (HU11).
 	 */
 	async function subir(f: File | Blob, nombre: string, carga: number) {
-		const r = await subirAlAlmacen(f, nombre, TENANT_OPERADOR);
+		const r = await subirAlAlmacen(f, nombre);
 		if (!r.ok) {
 			// El motivo de una carga que ya no es la vigente no se pinta sobre la
 			// de ahora: hablaría de un archivo que el usuario ya descartó.

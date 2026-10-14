@@ -6,6 +6,10 @@
  * pedir. Tiene que pasar por aquí y no ir directo a nexus_back porque la
  * API exige `X-API-Key`, y esa llave no puede llegar al navegador.
  *
+ * Reenvía también el JWT de la persona: nexus_back solo entrega un archivo a
+ * quien pertenece a la organización dueña de la ruta (su primer segmento), y a
+ * cualquier otra le contesta lo mismo que si no existiera (HU11).
+ *
  * `[...ruta]` es un parámetro de resto a propósito: la ruta del almacén trae
  * diagonales (`csi/3f/a9/3fa9…`), así que un `[ruta]` normal solo capturaría
  * el primer segmento.
@@ -13,17 +17,19 @@
 
 import { error, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 /** La única forma de ruta que tiene un objeto del almacén:
  *  `{cliente}/{aa}/{bb}/{sha256}`. Todo lo demás se rechaza AQUÍ, antes de
- *  reenviar con la llave del servidor. Sin esto, este BFF —que no pide
- *  sesión— servía a cualquier navegador los registros internos del almacén
- *  (`.registro/llaves.jsonl`, con los hashes de las llaves de todos los
- *  clientes). nexus_back ya lo valida también; esto es el segundo cinturón. */
+ *  reenviar con la llave del servidor. Sin esto, este BFF —que entonces no
+ *  pedía sesión— servía a cualquier navegador los registros internos del
+ *  almacén (`.registro/llaves.jsonl`, con los hashes de las llaves de todos
+ *  los clientes). nexus_back ya lo valida también; esto es el segundo
+ *  cinturón. */
 const FORMA_OBJETO = /^[A-Za-z0-9_-]{1,64}\/([0-9a-f]{2})\/([0-9a-f]{2})\/([0-9a-f]{64})$/;
 
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ cookies, params, url }) => {
 	const ruta = params.ruta ?? '';
 	if (ruta === '') error(400, 'Falta la ruta del archivo.');
 	const forma = FORMA_OBJETO.exec(ruta);
@@ -39,7 +45,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		respuesta = await fetch(
 			urlNexus(`/archivos/${ruta}?mime=${encodeURIComponent(mime)}`),
-			{ headers: cabecerasNexus(), signal: AbortSignal.timeout(TIMEOUT_MS) }
+			{ headers: cabecerasConSesion(cookies), signal: AbortSignal.timeout(TIMEOUT_MS) }
 		);
 	} catch (err) {
 		const esTimeout = err instanceof Error && err.name === 'TimeoutError';
@@ -56,8 +62,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		// de "el NAS no contesta" cuando alguien diagnostica con curl.
 		let motivo = `No se pudo leer el archivo (${respuesta.status}).`;
 		try {
-			const cuerpo = await respuesta.json();
-			if (typeof cuerpo?.detail === 'string') motivo = cuerpo.detail;
+			const detalle = (await respuesta.json())?.detail;
+			if (typeof detalle === 'string') motivo = detalle;
+			else if (typeof detalle?.mensaje === 'string') motivo = detalle.mensaje;
 		} catch {
 			/* respuesta no-JSON: se queda el genérico */
 		}
@@ -69,9 +76,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		headers: {
 			'Content-Type': respuesta.headers.get('content-type') ?? mime,
 			// Se respeta el cacheo que manda nexus_back: el nombre del objeto ES el
-			// hash de su contenido, así que una ruta nunca cambia de bytes.
+			// hash de su contenido, así que una ruta nunca cambia de bytes. Es
+			// `private`: el archivo es de una organización, y una caché compartida
+			// (un proxy, una CDN) se lo serviría a quien lo pidiera sin pasar por
+			// la comprobación de arriba (HU11).
 			'Cache-Control':
-				respuesta.headers.get('cache-control') ?? 'public, max-age=31536000, immutable'
+				respuesta.headers.get('cache-control') ?? 'private, max-age=31536000, immutable'
 		}
 	});
 };

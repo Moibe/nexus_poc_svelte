@@ -5,18 +5,20 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const POST: RequestHandler = async ({ params, locals }) => {
+export const POST: RequestHandler = async ({ cookies, params, locals }) => {
 	const id = params.id ?? '';
 	if (!id) return json({ mensaje: 'Falta la llave a revocar.' }, { status: 400 });
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(`/llaves/${encodeURIComponent(id)}/revocar`), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: tenantDe(locals) }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
+			body: JSON.stringify({ tenant }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -24,11 +26,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = cuerpo?.detail;
-		return json(
-			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json({ revocada: true });
 };

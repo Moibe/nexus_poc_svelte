@@ -6,11 +6,12 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, tenantDe, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 const MOTIVOS = new Set(['pipeline', 'descartado']);
 
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async ({ cookies, params, request, locals }) => {
 	const id = params.id ?? '';
 	const datos = await request.json().catch(() => null);
 	const motivo = typeof datos?.motivo === 'string' ? datos.motivo : '';
@@ -18,14 +19,15 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		return json({ mensaje: 'Falta la entrada o el motivo (pipeline | descartado).' }, { status: 400 });
 	}
 
+	const tenant = tenantDe(locals);
 	const cuerpo = new FormData();
-	cuerpo.append('tenant', tenantDe(locals));
+	cuerpo.append('tenant', tenant);
 	cuerpo.append('motivo', motivo);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(`/bandeja/${encodeURIComponent(id)}/retirar`), {
 			method: 'POST',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			body: cuerpo,
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
@@ -35,7 +37,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const respuestaJson = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
 		return json(
-			{ mensaje: typeof respuestaJson?.detail === 'string' ? respuestaJson.detail : `nexus_back respondió ${respuesta.status}.` },
+			{ mensaje: mensajeDeError(respuestaJson, respuesta.status) },
 			{ status: respuesta.status }
 		);
 	}

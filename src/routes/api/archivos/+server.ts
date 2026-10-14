@@ -10,11 +10,19 @@
  *
  * Mismo patrón que `/api/pipeline/clasificar`: mismo origen (sin CORS), y la
  * dirección real de la API y su llave solo las conoce este handler.
+ *
+ * El `tenant` —en qué prefijo del almacén queda el archivo— NO lo manda el
+ * navegador: lo fija el servidor desde la sesión (`tenantDe`), y un campo
+ * `tenant` en el formulario se ignora. Hasta el 2026-10-14 se tomaba del
+ * formulario y cualquiera con sesión podía escribir en el prefijo de otra
+ * organización (HU11). Además se reenvía el JWT de la persona, y nexus_back
+ * comprueba por su cuenta que pueda escribir ahí.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 // Los mismos tres números alineados que el resto de las subidas: el dropzone,
 // este guardia, y MAX_SUBIDA_MB en el .env de nexus_back.
@@ -26,7 +34,7 @@ function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ cookies, locals, request }) => {
 	let entrada: FormData;
 	try {
 		entrada = await request.formData();
@@ -57,14 +65,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		return fallo(`El archivo excede el límite de ${MAX_MB} MB.`, 413);
 	}
 
-	const tenant = entrada.get('tenant');
-	if (typeof tenant !== 'string' || tenant.trim() === '') {
-		return fallo('Falta el tenant al que pertenece el archivo.', 400);
-	}
-
 	const salida = new FormData();
 	salida.append('archivo', archivo, archivo.name);
-	salida.append('tenant', tenant.trim());
+	salida.append('tenant', tenantDe(locals));
 	// El hash que ya calcula el navegador para detectar duplicados en la Bandeja.
 	// Viaja para VERIFICAR la transferencia, no para nombrar el objeto: el back
 	// siempre lo recalcula sobre los bytes que de verdad llegaron.
@@ -75,7 +78,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		respuesta = await fetch(urlNexus('/archivos/'), {
 			method: 'POST',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			body: salida,
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
@@ -93,10 +96,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!respuesta.ok) {
 		// El `detail` de FastAPI se desenvuelve para que el front reciba siempre
 		// la misma forma `{mensaje}` que el resto de las rutas de este BFF.
-		let mensaje = `nexus_back respondió ${respuesta.status}.`;
+		let mensaje = mensajeDeError(null, respuesta.status);
 		try {
-			const cuerpo = JSON.parse(texto);
-			if (typeof cuerpo?.detail === 'string') mensaje = cuerpo.detail;
+			mensaje = mensajeDeError(JSON.parse(texto), respuesta.status);
 		} catch {
 			/* respuesta no-JSON: se queda el mensaje genérico */
 		}
