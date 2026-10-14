@@ -17,6 +17,7 @@
 	 * trae el estado vacío): se armó con el mismo lenguaje que la de Usuarios.
 	 */
 	import { invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Network from '@lucide/svelte/icons/network';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -28,6 +29,7 @@
 	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
 	import NuevaOrganizacionSheet from '$lib/components/organizaciones/NuevaOrganizacionSheet.svelte';
+	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -86,8 +88,10 @@
 	 *  recibir otra invitación) sin volver al "Cargando usuarios…". */
 	async function cargarUsuarios(guid: string, silencioso = false) {
 		const mia = ++peticion;
-		if (!silencioso) usuarios = null;
-		errorUsuarios = '';
+		if (!silencioso) {
+			usuarios = null;
+			errorUsuarios = '';
+		}
 		try {
 			const r = await fetch(`/api/organizaciones/${guid}/usuarios`);
 			const cuerpo = await r.json().catch(() => null);
@@ -99,18 +103,34 @@
 				return;
 			}
 			if (!r.ok) {
-				errorUsuarios = cuerpo?.mensaje ?? 'No se pudieron cargar los usuarios.';
+				// Un refresco silencioso que falla no tumba la lista que ya se ve: el siguiente lo corrige.
+				if (!silencioso) errorUsuarios = cuerpo?.mensaje ?? 'No se pudieron cargar los usuarios.';
 				return;
 			}
 			usuarios = cuerpo?.usuarios ?? [];
+			errorUsuarios = '';
 		} catch {
-			if (mia === peticion) errorUsuarios = 'No se pudo contactar al servidor. Intenta de nuevo.';
+			if (mia === peticion && !silencioso) errorUsuarios = 'No se pudo contactar al servidor. Intenta de nuevo.';
 		}
 	}
 
 	$effect(() => {
 		const guid = verGuid;
 		if (guid) cargarUsuarios(guid);
+	});
+
+	/** "Con sesión / Sin sesión" cambia sin que nadie toque la pantalla: se refresca la lista que ya se ve al volver a
+	 *  la pestaña y cada medio minuto con la pestaña a la vista. */
+	onMount(() => {
+		const refrescar = () => {
+			if (document.visibilityState === 'visible' && verGuid) cargarUsuarios(verGuid, true);
+		};
+		const temporizador = setInterval(refrescar, 30_000);
+		document.addEventListener('visibilitychange', refrescar);
+		return () => {
+			clearInterval(temporizador);
+			document.removeEventListener('visibilitychange', refrescar);
+		};
 	});
 
 	function pedirCierre(usuario: UsuarioDeOrganizacion) {
@@ -340,6 +360,7 @@
 											>
 												{estatus.texto}
 											</span>
+											<IndicadorSesion activo={usuario.activo} sesionActiva={usuario.sesionActiva} testid="sesion-usuario-organizacion" />
 										</td>
 										<td class="py-3 pr-2 text-right">
 											{#if puedeReenviarInvitacion(usuario)}
@@ -359,8 +380,10 @@
 											{#if usuario.activo && usuario.guid !== data.usuario?.guid}
 												<button
 													type="button"
-													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted"
+													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
 													data-testid="cerrar-sesion-organizacion"
+													disabled={!usuario.sesionActiva}
+													title={usuario.sesionActiva ? undefined : 'No tiene una sesión abierta'}
 													aria-label={`Cerrar la sesión de ${usuario.nombre}`}
 													onclick={() => pedirCierre(usuario)}
 												>
@@ -380,14 +403,16 @@
 	</div>
 {/if}
 
-<!-- La lista no muestra si alguien tiene sesión, así que cerrar una no cambia nada
-     en pantalla: no hay nada que recargar al terminar. -->
+<!-- Cerrar una sesión cambia el "Con sesión / Sin sesión" de esa fila: al terminar se
+     refresca la lista que ya se ve (sin volver a "Cargando usuarios…"). -->
 <MotivoSheet
 	bind:open={motivoAbierto}
 	accion="cerrar-sesion"
 	usuario={objetivo}
 	organizacion={verGuid}
-	alTerminar={() => {}}
+	alTerminar={() => {
+		if (verGuid) return cargarUsuarios(verGuid, true);
+	}}
 />
 
 <!-- Después de reenviar, el estatus puede pasar de "Caducada" a "Pendiente": se

@@ -24,6 +24,7 @@
 	 * menciona el proceso HITL, tal cual lo escribió el diseño.
 	 */
 	import { invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Users from '@lucide/svelte/icons/users';
 	import ListFilter from '@lucide/svelte/icons/list-filter';
@@ -35,6 +36,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
+	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import UsuarioSheet from '$lib/components/usuarios/UsuarioSheet.svelte';
@@ -45,6 +47,20 @@
 	import type { UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 
 	let { data } = $props();
+
+	/** "Con sesión / Sin sesión" cambia sin que el administrador haga nada (alguien entra, alguien sale), así que la
+	 *  lista se refresca sola: al volver a la pestaña y cada medio minuto con la pestaña a la vista. */
+	onMount(() => {
+		const refrescar = () => {
+			if (document.visibilityState === 'visible') invalidateAll().catch(() => undefined);
+		};
+		const temporizador = setInterval(refrescar, 30_000);
+		document.addEventListener('visibilitychange', refrescar);
+		return () => {
+			clearInterval(temporizador);
+			document.removeEventListener('visibilitychange', refrescar);
+		};
+	});
 
 	let abierto = $state(false);
 	let editando = $state<UsuarioDeOrganizacion | null>(null);
@@ -236,6 +252,7 @@
 								>
 									{estatus.texto}
 								</span>
+								<IndicadorSesion activo={usuario.activo} sesionActiva={usuario.sesionActiva} testid="sesion-usuario" />
 							</td>
 						</tr>
 					{:else}
@@ -277,8 +294,10 @@
 				</button>
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
 					data-testid="cerrar-sesion-usuario"
+					disabled={!elegido.sesionActiva}
+					title={elegido.sesionActiva ? undefined : 'No tiene una sesión abierta'}
 					onclick={() => pedirMotivo(elegido, 'cerrar-sesion')}
 				>
 					<LogOut class="size-3.5" />

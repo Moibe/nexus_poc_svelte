@@ -17,6 +17,8 @@ export type UsuarioDeOrganizacion = {
 	debeCambiarContrasena: boolean;
 	/** Sigue sin hacer su primer acceso y las horas de su contraseña temporal ya pasaron (HU06, CA-5). */
 	accesoVencido: boolean;
+	/** Tiene una sesión abierta (sin cerrar y sin vencer): hay quien puede cerrársela. */
+	sesionActiva: boolean;
 };
 
 export type Rol = { codigo: string; nombre: string; descripcion: string };
