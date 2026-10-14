@@ -11,6 +11,9 @@
 	 *   · Con usuarios: la tabla del diseño (ID, nombre con su correo debajo,
 	 *     rol, fecha de registro y estatus), con buscador y selección.
 	 *
+	 * **Editar** (HU07) abre la fila elegida EN LA TABLA —una tarjeta debajo de ella con nombre, correo y rol— y la barra
+	 * flotante cambia a "Cancelar edición | Guardar cambios", como el diseño. Dar de alta, en cambio, sí es un panel lateral.
+	 *
 	 * La barra flotante del diseño trae cuatro acciones: **Editar** (HU07),
 	 * **Desactivar/Reactivar** (HU08, HU09), **Cerrar sesión** (HU05) y
 	 * **Reenviar invitación** (HU06, CA-6), esta última solo para quien sigue
@@ -39,6 +42,7 @@
 	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
+	import EdicionUsuarioFila from '$lib/components/usuarios/EdicionUsuarioFila.svelte';
 	import UsuarioSheet from '$lib/components/usuarios/UsuarioSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -63,7 +67,10 @@
 	});
 
 	let abierto = $state(false);
+	/** A quién se le está editando la fila (HU07), y la tarjeta que lo edita. */
 	let editando = $state<UsuarioDeOrganizacion | null>(null);
+	let tarjeta = $state<ReturnType<typeof EdicionUsuarioFila> | null>(null);
+	let estadoEdicion = $state({ completo: false, enviando: false });
 	let motivoAbierto = $state(false);
 	let accionMotivo = $state<'desactivar' | 'cerrar-sesion'>('desactivar');
 	let objetivo = $state<UsuarioDeOrganizacion | null>(null);
@@ -81,6 +88,11 @@
 	);
 	const elegido = $derived(usuarios.find((u) => u.guid === seleccionado) ?? null);
 
+	// Si se quita o se cambia la selección, la edición de esa fila termina.
+	$effect(() => {
+		if (editando && seleccionado !== editando.guid) editando = null;
+	});
+
 	function fechaHora(iso: string | null): string {
 		if (!iso) return '—';
 		const d = new Date(iso);
@@ -89,13 +101,18 @@
 	}
 
 	function abrirAlta() {
-		editando = null;
 		abierto = true;
 	}
 
 	function abrirEdicion(usuario: UsuarioDeOrganizacion) {
 		editando = usuario;
-		abierto = true;
+	}
+
+	async function guardarEdicion() {
+		if (!tarjeta || !(await tarjeta.guardar())) return;
+		editando = null;
+		seleccionado = null;
+		await invalidateAll();
 	}
 
 	function pedirMotivo(usuario: UsuarioDeOrganizacion, accion: 'desactivar' | 'cerrar-sesion') {
@@ -255,6 +272,11 @@
 								<IndicadorSesion activo={usuario.activo} sesionActiva={usuario.sesionActiva} testid="sesion-usuario" />
 							</td>
 						</tr>
+						{#if editando?.guid === usuario.guid}
+							<tr class="border-b border-border bg-muted/50"><td colspan="6">
+								<EdicionUsuarioFila bind:this={tarjeta} {usuario} roles={data.roles} bind:estado={estadoEdicion} />
+							</td></tr>
+						{/if}
 					{:else}
 						<tr><td colspan="6" class="py-8 text-center text-xs text-muted-foreground">
 							Ningún usuario coincide con la búsqueda.
@@ -266,8 +288,30 @@
 	</div>
 {/if}
 
-{#if elegido}
-	<!-- La píldora del diseño, con la única acción que ya existe. -->
+{#if editando}
+	<!-- La barra del diseño mientras se edita una fila. -->
+	<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+		<div class="pointer-events-auto flex items-center gap-3 rounded-xl bg-[#111827] px-3 py-2 shadow-lg" data-testid="barra-edicion-usuario">
+			<button
+				type="button"
+				class="rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
+				data-testid="cancelar-edicion-usuario"
+				onclick={() => (editando = null)}
+			>
+				Cancelar edición
+			</button>
+			<Button
+				size="sm"
+				data-testid="guardar-edicion-usuario"
+				disabled={!estadoEdicion.completo || estadoEdicion.enviando}
+				onclick={guardarEdicion}
+			>
+				{estadoEdicion.enviando ? 'Guardando…' : 'Guardar cambios'}
+			</Button>
+		</div>
+	</div>
+{:else if elegido}
+	<!-- La píldora del diseño. -->
 	<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
 		<div
 			class="pointer-events-auto flex items-center gap-1 rounded-xl bg-[#111827] px-3 py-2 shadow-lg"
@@ -360,7 +404,6 @@
 <UsuarioSheet
 	bind:open={abierto}
 	roles={data.roles}
-	{editando}
 	alGuardar={async () => {
 		seleccionado = null;
 		await invalidateAll();

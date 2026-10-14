@@ -1,11 +1,8 @@
 <script lang="ts">
 	/**
 	 * HU06 · "Agrega una nuevo usuario" (el título es del diseño, con su falta
-	 * de concordancia) y HU07 · "Actualiza la información del usuario".
-	 *
-	 * El mismo panel para los dos: cambian el encabezado, el botón y si el
-	 * correo se puede escribir. Al editar NO se toca el correo: es la identidad
-	 * con la que la persona entra.
+	 * de concordancia). Editar a alguien (HU07) ya NO pasa por aquí: el diseño lo
+	 * abre en la propia fila de la tabla (`EdicionUsuarioFila.svelte`).
 	 *
 	 * Los roles son tarjetas con radio y su descripción, como el diseño. Al
 	 * crear, "Crear nuevo usuario" se enciende con nombre, correo válido y un
@@ -17,7 +14,6 @@
 	 */
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import UserPen from '@lucide/svelte/icons/user-pen';
 
 	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
 	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
@@ -27,18 +23,15 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import type { Rol, UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
+	import type { Rol } from '$lib/usuarios/tipos';
 
 	let {
 		open = $bindable(false),
 		roles,
-		editando = null,
 		alGuardar
 	}: {
 		open?: boolean;
 		roles: Rol[];
-		/** El usuario que se está editando, o `null` para dar de alta. */
-		editando?: UsuarioDeOrganizacion | null;
 		alGuardar: () => Promise<void> | void;
 	} = $props();
 
@@ -59,32 +52,25 @@
 		contrasenaTemporal?: string;
 	} | null>(null);
 
-	const esEdicion = $derived(editando !== null);
 	const correo = $derived(validarCorreo(email));
 	/** El rol NO apaga el botón: sin rol, al pulsar se dice por qué no se crea (HU06, CA-4: "el sistema informa el
 	 *  error correspondiente y no permite completar el registro"). Un botón apagado sin explicación no informa nada. */
-	const completo = $derived(nombre.trim().length > 0 && (esEdicion || correo.ok));
+	const completo = $derived(nombre.trim().length > 0 && correo.ok);
 	let sinRol = $state(false);
 	const mensajeRol = $derived(sinRol && rol === '' ? 'Selecciona un rol para el usuario: define a qué puede acceder.' : '');
 
 	/** El aviso de formato NO sale mientras se teclea —pintar de rojo un "a@" a
-	 *  medio escribir es ruido—, sino al salir del campo. En edición el correo
-	 *  va deshabilitado: ahí no hay nada que corregir, así que no se avisa. */
+	 *  medio escribir es ruido—, sino al salir del campo. */
 	let correoTocado = $state(false);
-	const mensajeCorreo = $derived(
-		esEdicion ? '' : errorEmail !== '' ? errorEmail : correoTocado && !correo.ok ? correo.motivo : ''
-	);
+	const mensajeCorreo = $derived(errorEmail !== '' ? errorEmail : correoTocado && !correo.ok ? correo.motivo : '');
 
-	/** Al abrir, el panel se llena con lo que haya (editar) o se vacía (crear). */
+	/** Al abrir, el panel se vacía. */
 	$effect(() => {
 		if (!open) return;
 		creada = null;
 		errorEmail = errorGeneral = '';
 		correoTocado = sinRol = false;
-		nombre = editando?.nombre ?? '';
-		email = editando?.email ?? '';
-		telefono = (editando?.telefono ?? '').replace(/^\+52\s*/, '');
-		rol = editando?.rol ?? '';
+		nombre = email = telefono = rol = '';
 	});
 
 	async function guardar() {
@@ -101,9 +87,9 @@
 				apellidos: '',
 				telefono: telefono.trim() ? `+52 ${telefono.trim()}` : null,
 				rol,
-				...(esEdicion ? {} : { email: email.trim() })
+				email: email.trim()
 			};
-			const r = await fetch(esEdicion ? `/api/usuarios/${editando!.guid}` : '/api/usuarios', {
+			const r = await fetch('/api/usuarios', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(cuerpo)
@@ -118,8 +104,7 @@
 				return;
 			}
 			await alGuardar();
-			if (esEdicion) open = false;
-			else creada = datos;
+			creada = datos;
 		} finally {
 			enviando = false;
 		}
@@ -134,7 +119,7 @@
 	>
 		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
-				{esEdicion ? 'Edición de usuario' : 'Nuevo registro'}
+				Nuevo registro
 			</Sheet.Title>
 			<button
 				type="button"
@@ -184,17 +169,13 @@
 			<div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
 				<div class="flex items-center gap-3">
 					<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-						{#if esEdicion}<UserPen class="size-5" />{:else}<UserPlus class="size-5" />{/if}
+						<UserPlus class="size-5" />
 					</span>
 					<div>
 						<h2 class="text-lg font-medium text-foreground">
-							{esEdicion ? 'Actualiza la información del usuario' : 'Agrega una nuevo usuario'}
+							Agrega una nuevo usuario
 						</h2>
-						<p class="text-sm text-muted-foreground">
-							{esEdicion
-								? 'Realiza cambios en la información y permisos del usuario para mantener una administración segura y centralizada.'
-								: 'Completa la información requerida.'}
-						</p>
+						<p class="text-sm text-muted-foreground">Completa la información requerida.</p>
 					</div>
 				</div>
 
@@ -219,20 +200,17 @@
 							type="email"
 							placeholder="Ingresa correo electrónico"
 							bind:value={email}
-							disabled={esEdicion}
 							maxlength={LARGO_MAXIMO_CORREO}
 							oninput={() => (errorEmail = '')}
 							onblur={() => (correoTocado = true)}
 							aria-invalid={mensajeCorreo ? 'true' : undefined}
-							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-muted disabled:text-muted-foreground aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
+							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 						/>
 						{#if mensajeCorreo}
 							<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-correo-usuario">
 								<TriangleAlert class="mt-0.5 size-3 shrink-0" />
 								{mensajeCorreo}
 							</p>
-						{:else if esEdicion}
-							<p class="text-xs text-muted-foreground">El correo no se puede cambiar: es con el que inicia sesión.</p>
 						{/if}
 					</div>
 				</div>
@@ -297,7 +275,7 @@
 					Cancelar registro
 				</Button>
 				<Button data-testid="guardar-usuario" disabled={!completo || enviando} onclick={guardar}>
-					{enviando ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Crear nuevo usuario'}
+					{enviando ? 'Guardando…' : 'Crear nuevo usuario'}
 				</Button>
 			</div>
 		{/if}
