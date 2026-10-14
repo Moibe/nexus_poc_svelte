@@ -9,9 +9,11 @@
 	 *     seleccionada y su listado de usuarios.
 	 *
 	 * El listado de usuarios es de solo lectura —crearlos y editarlos es del
-	 * administrador de cada organización, en Usuarios— y trae una sola acción:
+	 * administrador de cada organización, en Usuarios— y trae dos acciones:
 	 * "Cerrar sesión" (HU05 CA-4), que el criterio da también al administrador de
-	 * plataforma. Esa tabla NO sale del diseño (el Figma de esta pantalla solo
+	 * plataforma, y "Reenviar invitación" (HU06 CA-6) para quien sigue sin hacer
+	 * su primer acceso: la necesita sobre todo el administrador de una
+	 * organización, que no tiene a nadie por encima en la suya. Esa tabla NO sale del diseño (el Figma de esta pantalla solo
 	 * trae el estado vacío): se armó con el mismo lenguaje que la de Usuarios.
 	 */
 	import { invalidateAll } from '$app/navigation';
@@ -23,11 +25,14 @@
 	import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
 	import Users from '@lucide/svelte/icons/users';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
 	import NuevaOrganizacionSheet from '$lib/components/organizaciones/NuevaOrganizacionSheet.svelte';
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
+	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { estatusDe, puedeReenviarInvitacion } from '$lib/usuarios/estatus';
 	import type { UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 
 	let { data } = $props();
@@ -66,6 +71,8 @@
 	let errorUsuarios = $state('');
 	let motivoAbierto = $state(false);
 	let objetivo = $state<UsuarioDeOrganizacion | null>(null);
+	let reenvioAbierto = $state(false);
+	let objetivoReenvio = $state<UsuarioDeOrganizacion | null>(null);
 
 	/** Solo el guid, para que el efecto de abajo no se repita cuando
 	 *  `invalidateAll()` trae objetos nuevos de la MISMA organización. */
@@ -75,9 +82,11 @@
 	 *  una organización que ya no se está viendo, y se ignora. */
 	let peticion = 0;
 
-	async function cargarUsuarios(guid: string) {
+	/** `silencioso`: refrescar la lista que ya se ve (el estatus de quien acaba de
+	 *  recibir otra invitación) sin volver al "Cargando usuarios…". */
+	async function cargarUsuarios(guid: string, silencioso = false) {
 		const mia = ++peticion;
-		usuarios = null;
+		if (!silencioso) usuarios = null;
 		errorUsuarios = '';
 		try {
 			const r = await fetch(`/api/organizaciones/${guid}/usuarios`);
@@ -107,6 +116,11 @@
 	function pedirCierre(usuario: UsuarioDeOrganizacion) {
 		objetivo = usuario;
 		motivoAbierto = true;
+	}
+
+	function pedirReenvio(usuario: UsuarioDeOrganizacion) {
+		objetivoReenvio = usuario;
+		reenvioAbierto = true;
 	}
 </script>
 
@@ -310,6 +324,7 @@
 							</thead>
 							<tbody data-testid="tabla-usuarios-organizacion">
 								{#each usuarios as usuario (usuario.guid)}
+									{@const estatus = estatusDe(usuario)}
 									<tr class="border-b border-border last:border-0" data-testid="usuario-organizacion">
 										<td class="py-3 pr-4 pl-2 text-xs text-muted-foreground">{usuario.numero}</td>
 										<td class="min-w-0 py-3 pr-4">
@@ -320,14 +335,25 @@
 										<td class="py-3 pr-4 text-xs text-muted-foreground">{fechaHora(usuario.creadoEn)}</td>
 										<td class="py-3 pr-4">
 											<span
-												class="rounded-md px-2 py-0.5 text-xs font-medium {usuario.activo
-													? 'bg-green-50 text-green-700'
-													: 'bg-muted text-muted-foreground'}"
+												class="rounded-md px-2 py-0.5 text-xs font-medium {estatus.clases}"
+												data-testid="estatus-usuario-organizacion"
 											>
-												{usuario.activo ? 'Activo' : 'Inactivo'}
+												{estatus.texto}
 											</span>
 										</td>
 										<td class="py-3 pr-2 text-right">
+											{#if puedeReenviarInvitacion(usuario)}
+												<button
+													type="button"
+													class="mr-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+													data-testid="reenviar-invitacion-organizacion"
+													aria-label={`Reenviar la invitación de ${usuario.nombre}`}
+													onclick={() => pedirReenvio(usuario)}
+												>
+													<MailPlus class="size-3.5" />
+													Reenviar invitación
+												</button>
+											{/if}
 											<!-- Sin sesión que cerrar a quien está desactivado (ya no tiene), ni a uno
 											     mismo (para eso está el menú de la cuenta). -->
 											{#if usuario.activo && usuario.guid !== data.usuario?.guid}
@@ -362,6 +388,17 @@
 	usuario={objetivo}
 	organizacion={verGuid}
 	alTerminar={() => {}}
+/>
+
+<!-- Después de reenviar, el estatus puede pasar de "Caducada" a "Pendiente": se
+     refresca la lista que ya se ve. -->
+<ReenviarInvitacionSheet
+	bind:open={reenvioAbierto}
+	usuario={objetivoReenvio}
+	organizacion={verGuid}
+	alTerminar={() => {
+		if (verGuid) return cargarUsuarios(verGuid, true);
+	}}
 />
 
 <NuevaOrganizacionSheet

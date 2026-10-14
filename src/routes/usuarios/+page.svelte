@@ -11,10 +11,11 @@
 	 *   · Con usuarios: la tabla del diseño (ID, nombre con su correo debajo,
 	 *     rol, fecha de registro y estatus), con buscador y selección.
 	 *
-	 * La barra flotante del diseño trae cuatro acciones; aquí van tres:
-	 * **Editar** (HU07), **Desactivar/Reactivar** (HU08, HU09) y **Cerrar
-	 * sesión** (HU05). Falta "Reenviar invitación", que necesita correo y en
-	 * este sprint no hay.
+	 * La barra flotante del diseño trae cuatro acciones: **Editar** (HU07),
+	 * **Desactivar/Reactivar** (HU08, HU09), **Cerrar sesión** (HU05) y
+	 * **Reenviar invitación** (HU06, CA-6), esta última solo para quien sigue
+	 * sin hacer su primer acceso. El estatus agrega "Pendiente" y "Caducada"
+	 * (ver `$lib/usuarios/estatus`) para que se vea a quién reenviarle.
 	 *
 	 * Una desviación: el diseño, antes de desactivar, muestra "Usuario con
 	 * casos HITL asignados" para reasignar sus casos. La cola HITL todavía no
@@ -32,12 +33,15 @@
 	import UserRoundX from '@lucide/svelte/icons/user-round-x';
 	import UserRoundCheck from '@lucide/svelte/icons/user-round-check';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
+	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import UsuarioSheet from '$lib/components/usuarios/UsuarioSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { estatusDe, puedeReenviarInvitacion } from '$lib/usuarios/estatus';
 	import type { UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 
 	let { data } = $props();
@@ -47,6 +51,7 @@
 	let motivoAbierto = $state(false);
 	let accionMotivo = $state<'desactivar' | 'cerrar-sesion'>('desactivar');
 	let objetivo = $state<UsuarioDeOrganizacion | null>(null);
+	let reenvioAbierto = $state(false);
 	let reactivando = $state(false);
 	let errorAccion = $state('');
 	let busqueda = $state('');
@@ -82,6 +87,12 @@
 		accionMotivo = accion;
 		errorAccion = '';
 		motivoAbierto = true;
+	}
+
+	function pedirReenvio(usuario: UsuarioDeOrganizacion) {
+		objetivo = usuario;
+		errorAccion = '';
+		reenvioAbierto = true;
 	}
 
 	/** Reactivar no pide motivo en el diseño: devuelve el acceso y ya. */
@@ -202,6 +213,7 @@
 				</thead>
 				<tbody data-testid="tabla-usuarios">
 					{#each filtrados as usuario (usuario.guid)}
+						{@const estatus = estatusDe(usuario)}
 						<tr class="border-b border-border last:border-0 {seleccionado === usuario.guid ? 'bg-muted/50' : ''}">
 							<td class="py-3 pl-2">
 								<Checkbox
@@ -219,11 +231,10 @@
 							<td class="py-3 pr-4 text-xs text-muted-foreground">{fechaHora(usuario.creadoEn)}</td>
 							<td class="py-3 pr-2">
 								<span
-									class="rounded-md px-2 py-0.5 text-xs font-medium {usuario.activo
-										? 'bg-green-50 text-green-700'
-										: 'bg-muted text-muted-foreground'}"
+									class="rounded-md px-2 py-0.5 text-xs font-medium {estatus.clases}"
+									data-testid="estatus-usuario"
 								>
-									{usuario.activo ? 'Activo' : 'Inactivo'}
+									{estatus.texto}
 								</span>
 							</td>
 						</tr>
@@ -273,6 +284,17 @@
 					<LogOut class="size-3.5" />
 					Cerrar sesión
 				</button>
+				{#if puedeReenviarInvitacion(elegido)}
+					<button
+						type="button"
+						class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-card/10"
+						data-testid="reenviar-invitacion-usuario"
+						onclick={() => pedirReenvio(elegido)}
+					>
+						<MailPlus class="size-3.5" />
+						Reenviar invitación
+					</button>
+				{/if}
 			{:else}
 				<button
 					type="button"
@@ -302,6 +324,15 @@
 <MotivoSheet
 	bind:open={motivoAbierto}
 	accion={accionMotivo}
+	usuario={objetivo}
+	alTerminar={async () => {
+		seleccionado = null;
+		await invalidateAll();
+	}}
+/>
+
+<ReenviarInvitacionSheet
+	bind:open={reenvioAbierto}
 	usuario={objetivo}
 	alTerminar={async () => {
 		seleccionado = null;

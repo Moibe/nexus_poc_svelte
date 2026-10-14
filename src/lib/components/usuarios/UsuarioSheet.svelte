@@ -61,7 +61,11 @@
 
 	const esEdicion = $derived(editando !== null);
 	const correo = $derived(validarCorreo(email));
-	const completo = $derived(nombre.trim().length > 0 && (esEdicion || correo.ok) && rol !== '');
+	/** El rol NO apaga el botón: sin rol, al pulsar se dice por qué no se crea (HU06, CA-4: "el sistema informa el
+	 *  error correspondiente y no permite completar el registro"). Un botón apagado sin explicación no informa nada. */
+	const completo = $derived(nombre.trim().length > 0 && (esEdicion || correo.ok));
+	let sinRol = $state(false);
+	const mensajeRol = $derived(sinRol && rol === '' ? 'Selecciona un rol para el usuario: define a qué puede acceder.' : '');
 
 	/** El aviso de formato NO sale mientras se teclea —pintar de rojo un "a@" a
 	 *  medio escribir es ruido—, sino al salir del campo. En edición el correo
@@ -76,7 +80,7 @@
 		if (!open) return;
 		creada = null;
 		errorEmail = errorGeneral = '';
-		correoTocado = false;
+		correoTocado = sinRol = false;
 		nombre = editando?.nombre ?? '';
 		email = editando?.email ?? '';
 		telefono = (editando?.telefono ?? '').replace(/^\+52\s*/, '');
@@ -85,6 +89,10 @@
 
 	async function guardar() {
 		if (!completo || enviando) return;
+		if (rol === '') {
+			sinRol = true;
+			return;
+		}
 		enviando = true;
 		errorEmail = errorGeneral = '';
 		try {
@@ -242,7 +250,11 @@
 						Define y gestiona los roles y permisos de los usuarios para controlar su nivel de acceso y las
 						acciones que pueden realizar dentro de la plataforma.
 					</p>
-					<div class="divide-y divide-border rounded-lg border border-border" data-testid="roles">
+					<div
+						class="divide-y divide-border rounded-lg border {mensajeRol ? 'border-destructive' : 'border-border'}"
+						data-testid="roles"
+						aria-invalid={mensajeRol ? 'true' : undefined}
+					>
 						{#each roles as opcion (opcion.codigo)}
 							<label
 								class="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-muted/50"
@@ -262,6 +274,12 @@
 							</label>
 						{/each}
 					</div>
+					{#if mensajeRol}
+						<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-rol-usuario">
+							<TriangleAlert class="mt-0.5 size-3 shrink-0" />
+							{mensajeRol}
+						</p>
+					{/if}
 				</fieldset>
 
 				{#if errorGeneral}

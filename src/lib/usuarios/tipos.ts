@@ -15,6 +15,8 @@ export type UsuarioDeOrganizacion = {
 	activo: boolean;
 	creadoEn: string | null;
 	debeCambiarContrasena: boolean;
+	/** Sigue sin hacer su primer acceso y las horas de su contraseña temporal ya pasaron (HU06, CA-5). */
+	accesoVencido: boolean;
 };
 
 export type Rol = { codigo: string; nombre: string; descripcion: string };
