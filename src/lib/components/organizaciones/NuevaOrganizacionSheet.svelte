@@ -62,6 +62,8 @@
 
 	let nombre = $state('');
 	let adminNombre = $state('');
+	let adminPaterno = $state('');
+	let adminMaterno = $state('');
 	let adminTelefono = $state('');
 	let adminEmail = $state('');
 	let recTelefono = $state('');
@@ -93,6 +95,7 @@
 	const completo = $derived(
 		nombre.trim().length > 0 &&
 			adminNombre.trim().length > 0 &&
+			adminPaterno.trim().length > 0 &&
 			adminTelefono.trim().length > 0 &&
 			correoAdmin.ok
 	);
@@ -107,7 +110,7 @@
 		errorRecEmail !== '' ? errorRecEmail : recTocado && !correoRecuperacion.ok ? correoRecuperacion.motivo : ''
 	);
 	const hayCambios = $derived(
-		[nombre, adminNombre, adminTelefono, adminEmail, recTelefono, recEmail].some((v) => v.trim().length > 0)
+		[nombre, adminNombre, adminPaterno, adminMaterno, adminTelefono, adminEmail, recTelefono, recEmail].some((v) => v.trim().length > 0)
 	);
 
 	/** Pregunta por coincidencias un momento después de dejar de escribir: una
@@ -134,7 +137,7 @@
 	});
 
 	function limpiar() {
-		nombre = adminNombre = adminTelefono = adminEmail = recTelefono = recEmail = '';
+		nombre = adminNombre = adminPaterno = adminMaterno = adminTelefono = adminEmail = recTelefono = recEmail = '';
 		errorEmail = errorRecEmail = errorGeneral = '';
 		adminTocado = recTocado = false;
 		coincidencias = [];
@@ -175,7 +178,8 @@
 				body: JSON.stringify({
 					nombre: nombre.trim(),
 					adminNombre: adminNombre.trim(),
-					adminApellidos: '',
+					adminApellidoPaterno: adminPaterno.trim(),
+					adminApellidoMaterno: adminMaterno.trim(),
 					adminTelefono: adminTelefono.trim() ? `+52 ${adminTelefono.trim()}` : null,
 					adminEmail: adminEmail.trim(),
 					recuperacion: {
@@ -365,16 +369,38 @@
 							Registra los datos de quien administrará este espacio y tendrá acceso a la configuración principal.
 						</p>
 					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="admin-nombre" class="text-sm font-medium text-foreground">
-							Nombre completo <span class="text-destructive">*</span>
-						</label>
-						<input
-							id="admin-nombre"
-							placeholder="Ingresa el nombre completo"
-							bind:value={adminNombre}
-							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-						/>
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+						<div class="flex flex-col gap-1.5">
+							<label for="admin-nombre" class="text-sm font-medium text-foreground">
+								Nombre(s) <span class="text-destructive">*</span>
+							</label>
+							<input
+								id="admin-nombre"
+								placeholder="Ingresa el nombre"
+								bind:value={adminNombre}
+								class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="admin-paterno" class="text-sm font-medium text-foreground">
+								Apellido paterno <span class="text-destructive">*</span>
+							</label>
+							<input
+								id="admin-paterno"
+								placeholder="Ingresa el apellido paterno"
+								bind:value={adminPaterno}
+								class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="admin-materno" class="text-sm font-medium text-foreground">Apellido materno</label>
+							<input
+								id="admin-materno"
+								placeholder="Ingresa el apellido materno"
+								bind:value={adminMaterno}
+								class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+							/>
+						</div>
 					</div>
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div class="flex flex-col gap-1.5">

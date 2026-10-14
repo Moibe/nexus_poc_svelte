@@ -36,6 +36,8 @@
 	} = $props();
 
 	let nombre = $state('');
+	let paterno = $state('');
+	let materno = $state('');
 	let email = $state('');
 	let telefono = $state('');
 	let rol = $state('');
@@ -55,7 +57,7 @@
 	const correo = $derived(validarCorreo(email));
 	/** El rol NO apaga el botón: sin rol, al pulsar se dice por qué no se crea (HU06, CA-4: "el sistema informa el
 	 *  error correspondiente y no permite completar el registro"). Un botón apagado sin explicación no informa nada. */
-	const completo = $derived(nombre.trim().length > 0 && correo.ok);
+	const completo = $derived(nombre.trim().length > 0 && paterno.trim().length > 0 && correo.ok);
 	let sinRol = $state(false);
 	const mensajeRol = $derived(sinRol && rol === '' ? 'Selecciona un rol para el usuario: define a qué puede acceder.' : '');
 
@@ -70,7 +72,7 @@
 		creada = null;
 		errorEmail = errorGeneral = '';
 		correoTocado = sinRol = false;
-		nombre = email = telefono = rol = '';
+		nombre = paterno = materno = email = telefono = rol = '';
 	});
 
 	async function guardar() {
@@ -84,7 +86,8 @@
 		try {
 			const cuerpo = {
 				nombre: nombre.trim(),
-				apellidos: '',
+				apellidoPaterno: paterno.trim(),
+				apellidoMaterno: materno.trim(),
 				telefono: telefono.trim() ? `+52 ${telefono.trim()}` : null,
 				rol,
 				email: email.trim()
@@ -179,18 +182,40 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 					<div class="flex flex-col gap-1.5">
 						<label for="usuario-nombre" class="text-sm font-medium text-foreground">
-							Nombre completo <span class="text-destructive">*</span>
+							Nombre(s) <span class="text-destructive">*</span>
 						</label>
 						<input
 							id="usuario-nombre"
-							placeholder="Ingresa el nombre completo"
+							placeholder="Ingresa el nombre"
 							bind:value={nombre}
 							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 						/>
 					</div>
+					<div class="flex flex-col gap-1.5">
+						<label for="usuario-paterno" class="text-sm font-medium text-foreground">
+							Apellido paterno <span class="text-destructive">*</span>
+						</label>
+						<input
+							id="usuario-paterno"
+							placeholder="Ingresa el apellido paterno"
+							bind:value={paterno}
+							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+						/>
+					</div>
+					<div class="flex flex-col gap-1.5">
+						<label for="usuario-materno" class="text-sm font-medium text-foreground">Apellido materno</label>
+						<input
+							id="usuario-materno"
+							placeholder="Ingresa el apellido materno"
+							bind:value={materno}
+							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+						/>
+					</div>
+				</div>
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5">
 						<label for="usuario-email" class="text-sm font-medium text-foreground">
 							Correo electrónico <span class="text-destructive">*</span>
