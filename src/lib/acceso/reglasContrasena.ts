@@ -18,16 +18,23 @@ export const REGLAS = [
 	{ clave: 'especial', texto: 'Carácter especial', cumple: (c: string) => /[!-\/:-@\[-`{-~]/.test(c) }
 ] as const;
 
-export type Nivel = { texto: string; valor: number; tono: 'debil' | 'media' | 'segura' | 'muy_segura' };
+export type Nivel = { texto: string; valor: number; tono: 'debil' | 'basica' | 'media' | 'segura' | 'muy_segura' };
+
+/** El aviso de QA (HU04 caso 5): una contraseña que no cumple las reglas pinta de rojo su campo y dice esto. Es el mismo
+ *  texto que el servidor responde al rechazarla (`reglas`). */
+export const MENSAJE_FORMATO = 'La contraseña no cumple con el formato requerido; por favor intenta de nuevo.';
 
 /** Cuántas reglas cumple → el nivel que muestra la tarjeta "Seguridad de la
- *  contraseña". Con todo cumplido es "Muy segura"; antes, por tramos. */
+ *  contraseña": una regla (o ninguna) es Débil, dos Básica, tres Media, cuatro
+ *  Segura y las cinco "Muy segura". Hasta el 2026-10-14 el 2 se mezclaba con el
+ *  Débil y "Básica" no existía: QA (NEX-334) esperaba ver "Básica". */
 export function nivelDe(contrasena: string): Nivel {
 	const cumplidas = REGLAS.filter((r) => r.cumple(contrasena)).length;
 	if (!contrasena) return { texto: 'Débil', valor: 0, tono: 'debil' };
-	if (cumplidas <= 2) return { texto: 'Débil', valor: 0.25, tono: 'debil' };
-	if (cumplidas === 3) return { texto: 'Media', valor: 0.5, tono: 'media' };
-	if (cumplidas === 4) return { texto: 'Segura', valor: 0.75, tono: 'segura' };
+	if (cumplidas <= 1) return { texto: 'Débil', valor: 0.2, tono: 'debil' };
+	if (cumplidas === 2) return { texto: 'Básica', valor: 0.4, tono: 'basica' };
+	if (cumplidas === 3) return { texto: 'Media', valor: 0.6, tono: 'media' };
+	if (cumplidas === 4) return { texto: 'Segura', valor: 0.8, tono: 'segura' };
 	return { texto: 'Muy segura', valor: 1, tono: 'muy_segura' };
 }
 

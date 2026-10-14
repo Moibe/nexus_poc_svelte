@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * La tarjeta "Seguridad de la contraseña" del diseño: candado, nivel a la
-	 * derecha (Débil … Muy segura), barra de progreso y las reglas.
+	 * derecha (Débil, Básica, Media, Segura, Muy segura), barra de progreso y las reglas.
 	 *
 	 * Dos variantes, porque el diseño dibuja dos:
 	 *   - `chips` (default, primer acceso / HU04): los cinco chips de las
@@ -18,12 +18,14 @@
 	const nivel = $derived(nivelDe(contrasena));
 	const COLOR = {
 		debil: 'bg-destructive',
+		basica: 'bg-orange-500',
 		media: 'bg-amber-500',
 		segura: 'bg-green-500',
 		muy_segura: 'bg-green-600'
 	} as const;
 	const TEXTO = {
 		debil: 'text-foreground',
+		basica: 'text-orange-700',
 		media: 'text-amber-700',
 		segura: 'text-green-700',
 		muy_segura: 'text-green-700'

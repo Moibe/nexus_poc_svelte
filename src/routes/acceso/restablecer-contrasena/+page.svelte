@@ -14,7 +14,7 @@
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
-	import { cumpleTodas } from '$lib/acceso/reglasContrasena';
+	import { MENSAJE_FORMATO, cumpleTodas } from '$lib/acceso/reglasContrasena';
 	import MedidorContrasena from '$lib/components/acceso/MedidorContrasena.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
@@ -25,18 +25,24 @@
 	let verNueva = $state(false);
 	let verConfirmacion = $state(false);
 	let confirmacionTocada = $state(false);
+	let nuevaTocada = $state(false);
 	let enviando = $state(false);
 	let errorGeneral = $state('');
+	/** Lo que el SERVIDOR dijo de la contraseña misma (HU04 CA-3: lleva tu correo, tu nombre o una palabra común). */
+	let errorContrasena = $state('');
 
 	const coincide = $derived(nueva.length > 0 && nueva === confirmacion);
 	const mostrarNoCoincide = $derived(confirmacionTocada && confirmacion.length > 0 && !coincide);
 	const listo = $derived(cumpleTodas(nueva) && coincide);
+	/** Al salir del campo con algo escrito que no cumple las reglas, el campo se pinta de rojo y lo dice (QA, NEX-333). */
+	const formatoMal = $derived(nuevaTocada && nueva.length > 0 && !cumpleTodas(nueva));
+	const mensajeContrasena = $derived(errorContrasena || (formatoMal ? MENSAJE_FORMATO : ''));
 
 	async function cambiar(evento: SubmitEvent) {
 		evento.preventDefault();
 		if (!listo || enviando) return;
 		enviando = true;
-		errorGeneral = '';
+		errorGeneral = errorContrasena = '';
 		try {
 			const r = await fetch('/api/auth/recuperacion/confirmar', {
 				method: 'POST',
@@ -55,6 +61,11 @@
 			}
 			if (['enlace_invalido', 'enlace_usado', 'enlace_vencido'].includes(cuerpo?.codigo)) {
 				await goto('/acceso/enlace-expirado');
+				return;
+			}
+			// Lleva tu correo, tu nombre o una palabra común (HU04 CA-3): se dice bajo su campo, y el enlace NO se gastó.
+			if (cuerpo?.codigo === 'contrasena_debil') {
+				errorContrasena = cuerpo.mensaje;
 				return;
 			}
 			// `reglas`: casi imposible (el botón solo enciende si cumple todo, y
@@ -87,17 +98,29 @@
 				autocomplete="new-password"
 				placeholder="Ingresa tu nueva contraseña"
 				bind:value={nueva}
-				class="h-10 w-full rounded-lg border border-input bg-card pr-10 pl-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+				onblur={() => (nuevaTocada = true)}
+				oninput={() => (errorContrasena = '')}
+				aria-invalid={mensajeContrasena ? 'true' : undefined}
+				data-testid="campo-contrasena"
+				class="h-10 w-full rounded-lg border border-input bg-card pr-16 pl-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 			/>
-			<button
-				type="button"
-				class="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
-				aria-label={verNueva ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-				onclick={() => (verNueva = !verNueva)}
-			>
-				{#if verNueva}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
-			</button>
+			<span class="absolute inset-y-0 right-2 flex items-center gap-1.5">
+				{#if mensajeContrasena}
+					<TriangleAlert class="size-4 text-destructive" aria-hidden="true" />
+				{/if}
+				<button
+					type="button"
+					class="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+					aria-label={verNueva ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+					onclick={() => (verNueva = !verNueva)}
+				>
+					{#if verNueva}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+				</button>
+			</span>
 		</div>
+		{#if mensajeContrasena}
+			<p class="text-xs text-destructive" role="alert" data-testid="error-formato-contrasena">{mensajeContrasena}</p>
+		{/if}
 	</div>
 
 	<div class="flex flex-col gap-1.5">

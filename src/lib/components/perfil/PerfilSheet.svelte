@@ -69,11 +69,16 @@
 	let actual = $state('');
 	/** La contraseña actual que el servidor rechazó: va bajo su campo (HU13 CA-6), no al pie. */
 	let errorActual = $state('');
+	/** Lo que el servidor dijo de la contraseña nueva misma (HU04 CA-3: lleva tu correo, tu nombre o una palabra común). */
+	let errorNueva = $state('');
 	let nueva = $state('');
 	let confirmacion = $state('');
 	let verActual = $state(false);
 	let verNueva = $state(false);
 	let verConfirmacion = $state(false);
+
+	/** HU12 CA-3: la leyenda literal del correo de acceso. */
+	const LEYENDA_CORREO = 'Este correo es tu identificador de cuenta y no puede modificarse.';
 
 	const sinNumero = (t: string | null | undefined) => (t ?? '').replace(/^\+52\s*/, '');
 	const conNumero = (t: string) => (t.trim() ? `+52 ${t.trim()}` : null);
@@ -135,8 +140,17 @@
 		errorRecEmail = '';
 		recTelefono = sinNumero(perfil.recuperacion?.telefono);
 		actual = nueva = confirmacion = '';
-		errorActual = '';
+		errorActual = errorNueva = '';
 		editando = bloque;
+	}
+
+	/** El acceso directo de la alerta de recuperación incompleta (HU12 CA-5): abre el bloque ya en edición y lleva el foco al correo. */
+	async function completarRecuperacion() {
+		editar('recuperacion');
+		await tick();
+		const campo = document.getElementById('r-email');
+		campo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		campo?.focus();
 	}
 
 	async function guardarDatos() {
@@ -180,7 +194,7 @@
 	async function guardarContrasena() {
 		if (!contrasenaLista || guardando) return;
 		guardando = true;
-		error = errorActual = '';
+		error = errorActual = errorNueva = '';
 		try {
 			const r = await fetch('/api/auth/contrasena', {
 				method: 'POST',
@@ -191,6 +205,7 @@
 			if (!r.ok) {
 				// La actual equivocada se dice bajo su campo, con el texto del servidor y nada más (CA-6).
 				if (datos?.codigo === 'actual_incorrecta') errorActual = datos?.mensaje ?? 'La contraseña actual es incorrecta.';
+				else if (datos?.codigo === 'contrasena_debil') errorNueva = datos.mensaje;
 				else error = datos?.mensaje ?? 'No se pudo cambiar la contraseña.';
 				return;
 			}
@@ -232,15 +247,18 @@
 	</button>
 {/snippet}
 
-{#snippet dato(etiqueta: string, valor: string, ayuda = '')}
+{#snippet dato(etiqueta: string, valor: string, ayuda = '', nota = '', testidNota = '')}
 	<div class="min-w-0">
 		<p class="flex items-center gap-1 text-xs text-muted-foreground">
 			{etiqueta}
 			{#if ayuda}
-				<span title={ayuda} class="inline-flex text-muted-foreground"><CircleHelp class="size-3" /></span>
+				<span title={ayuda} role="img" aria-label={ayuda} class="inline-flex text-muted-foreground"><CircleHelp class="size-3" /></span>
 			{/if}
 		</p>
 		<p class="mt-0.5 truncate text-sm text-foreground" title={valor}>{valor || '—'}</p>
+		{#if nota}
+			<p class="mt-0.5 text-[11px] leading-snug text-muted-foreground" data-testid={testidNota || undefined}>{nota}</p>
+		{/if}
 	</div>
 {/snippet}
 
@@ -290,6 +308,32 @@
 					</p>
 				</div>
 
+				<!-- HU12 CA-5: la alerta con su acceso directo, mientras falte el correo o el teléfono de recuperación. El chip
+				     «Incompleto» del bloque (el del diseño) se queda: la alerta es lo que pide el criterio. -->
+				{#if !recuperacionCompleta && editando !== 'recuperacion'}
+					<div
+						class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+						role="alert"
+						data-testid="alerta-recuperacion"
+					>
+						<TriangleAlert class="mt-0.5 size-4 shrink-0 text-amber-600" />
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-medium text-amber-800">Tu información de recuperación está incompleta</p>
+							<p class="mt-0.5 text-xs text-amber-700">
+								Aún falta tu correo o tu teléfono de recuperación. Complétalos para mantener tu cuenta protegida.
+							</p>
+						</div>
+						<button
+							type="button"
+							class="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+							data-testid="completar-recuperacion"
+							onclick={completarRecuperacion}
+						>
+							Completar
+						</button>
+					</div>
+				{/if}
+
 				<!-- Información personal -->
 				<div class="rounded-xl border border-border p-4">
 					<div class="flex items-center gap-3 border-b border-border pb-3">
@@ -322,7 +366,7 @@
 							{@render dato('Apellido paterno', perfil.apellidoPaterno)}
 							{@render dato('Apellido materno', perfil.apellidoMaterno)}
 							{@render dato('Número de teléfono', sinNumero(perfil.telefono))}
-							{@render dato('Correo electrónico', perfil.email, 'Es con el que inicias sesión: no se puede cambiar desde aquí.')}
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO, LEYENDA_CORREO, 'leyenda-correo')}
 							{@render dato('Rol de sistema', rolVisible, 'Lo asigna quien administra tu organización.')}
 						</div>
 					{/if}
@@ -385,7 +429,7 @@
 					</div>
 					{#if editando === 'seguridad'}
 						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-							{@render dato('Correo electrónico', perfil.email)}
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
 							<div class="flex flex-col gap-1.5">
 								<label for="s-actual" class="text-sm font-medium text-foreground">Confirmar contraseña actual</label>
 								<div class="relative">
@@ -421,7 +465,8 @@
 										autocomplete="new-password"
 										placeholder="Ingresa nueva contraseña"
 										bind:value={nueva}
-										aria-invalid={igualQueLaActual ? 'true' : undefined}
+										oninput={() => (errorNueva = '')}
+										aria-invalid={igualQueLaActual || errorNueva ? 'true' : undefined}
 										class="{CLASE_INPUT_VALIDABLE} pr-10"
 									/>
 									<button
@@ -437,6 +482,8 @@
 									<p class="text-xs text-destructive" data-testid="perfil-igual-actual">
 										La nueva contraseña no puede ser igual a la actual.
 									</p>
+								{:else if errorNueva}
+									<p class="text-xs text-destructive" role="alert" data-testid="perfil-error-nueva">{errorNueva}</p>
 								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
@@ -469,7 +516,7 @@
 						<div class="mt-4"><MedidorContrasena contrasena={nueva} /></div>
 					{:else}
 						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-							{@render dato('Correo electrónico', perfil.email)}
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
 							{@render dato('Contraseña', '••••••••••••••')}
 						</div>
 					{/if}
