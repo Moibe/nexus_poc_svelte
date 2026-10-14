@@ -49,12 +49,12 @@
 	let { data } = $props();
 
 	/** "Con sesión / Sin sesión" cambia sin que el administrador haga nada (alguien entra, alguien sale), así que la
-	 *  lista se refresca sola: al volver a la pestaña y cada medio minuto con la pestaña a la vista. */
+	 *  lista se refresca sola: al volver a la pestaña y cada 10 s con la pestaña a la vista. */
 	onMount(() => {
 		const refrescar = () => {
 			if (document.visibilityState === 'visible') invalidateAll().catch(() => undefined);
 		};
-		const temporizador = setInterval(refrescar, 30_000);
+		const temporizador = setInterval(refrescar, 10_000);
 		document.addEventListener('visibilitychange', refrescar);
 		return () => {
 			clearInterval(temporizador);
@@ -294,10 +294,8 @@
 				</button>
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
 					data-testid="cerrar-sesion-usuario"
-					disabled={!elegido.sesionActiva}
-					title={elegido.sesionActiva ? undefined : 'No tiene una sesión abierta'}
 					onclick={() => pedirMotivo(elegido, 'cerrar-sesion')}
 				>
 					<LogOut class="size-3.5" />

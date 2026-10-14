@@ -68,6 +68,8 @@
 	let enviando = $state(false);
 	let error = $state('');
 	let hecho = $state(false);
+	/** Cuántas sesiones cerró el servidor (solo en `cerrar-sesion`). 0 = la persona no tenía ninguna abierta. */
+	let cerradas = $state<number | null>(null);
 
 	const textos = $derived(TEXTOS[accion]);
 
@@ -76,6 +78,7 @@
 		motivo = '';
 		error = '';
 		hecho = false;
+		cerradas = null;
 	});
 
 	async function confirmar() {
@@ -100,6 +103,7 @@
 				error = datos?.mensaje ?? 'No se pudo completar la acción. Intenta de nuevo.';
 				return;
 			}
+			cerradas = accion === 'cerrar-sesion' && typeof datos?.cerradas === 'number' ? datos.cerradas : null;
 			hecho = true;
 			await alTerminar();
 		} finally {
@@ -134,6 +138,13 @@
 				</span>
 				<p class="text-xl font-semibold text-foreground" data-testid="motivo-hecho">{textos.hechoTitulo}</p>
 				<p class="max-w-sm text-sm text-muted-foreground">{textos.hechoCuerpo}</p>
+				{#if cerradas === 0}
+					<!-- No está en el diseño. El cierre se registra aunque no hubiera nada que cerrar: el administrador
+					     lo pidió, y la lista puede ir unos segundos atrasada respecto de lo que la persona hizo. -->
+					<p class="max-w-sm text-xs text-muted-foreground" data-testid="motivo-sin-sesiones">
+						No tenía ninguna sesión abierta en este momento; el cierre quedó registrado.
+					</p>
+				{/if}
 			</div>
 			<div class="flex items-center justify-end border-t border-border px-6 py-4">
 				<Button data-testid="listo-motivo" onclick={() => (open = false)}>Listo</Button>

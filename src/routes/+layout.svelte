@@ -16,6 +16,25 @@
 	$effect(() => {
 		tema.iniciar();
 	});
+
+	// Una sesión cerrada desde otro lado (HU05: la cierra un administrador, o se restableció la contraseña o se
+	// desactivó la cuenta) no cambia nada en una pestaña que ya está abierta: hasta ahora la pantalla se quedaba
+	// como estaba y la persona se enteraba al pulsar algo. Con la sesión puesta, la pestaña a la vista vuelve a
+	// pedir sus datos cada 20 s y al volver a ella: la puerta del servidor decide y, si la sesión ya no vive, la
+	// manda al inicio de sesión (o a «cuenta desactivada») sola.
+	const REVISION_SESION_MS = 20_000;
+	$effect(() => {
+		if (enAcceso || !data.usuario) return;
+		const revisar = () => {
+			if (document.visibilityState === 'visible') invalidateAll().catch(() => undefined);
+		};
+		const temporizador = setInterval(revisar, REVISION_SESION_MS);
+		document.addEventListener('visibilitychange', revisar);
+		return () => {
+			clearInterval(temporizador);
+			document.removeEventListener('visibilitychange', revisar);
+		};
+	});
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>

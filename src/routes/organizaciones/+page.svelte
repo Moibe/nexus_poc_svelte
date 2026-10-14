@@ -120,12 +120,12 @@
 	});
 
 	/** "Con sesión / Sin sesión" cambia sin que nadie toque la pantalla: se refresca la lista que ya se ve al volver a
-	 *  la pestaña y cada medio minuto con la pestaña a la vista. */
+	 *  la pestaña y cada 10 s con la pestaña a la vista. */
 	onMount(() => {
 		const refrescar = () => {
 			if (document.visibilityState === 'visible' && verGuid) cargarUsuarios(verGuid, true);
 		};
-		const temporizador = setInterval(refrescar, 30_000);
+		const temporizador = setInterval(refrescar, 10_000);
 		document.addEventListener('visibilitychange', refrescar);
 		return () => {
 			clearInterval(temporizador);
@@ -380,10 +380,8 @@
 											{#if usuario.activo && usuario.guid !== data.usuario?.guid}
 												<button
 													type="button"
-													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted"
 													data-testid="cerrar-sesion-organizacion"
-													disabled={!usuario.sesionActiva}
-													title={usuario.sesionActiva ? undefined : 'No tiene una sesión abierta'}
 													aria-label={`Cerrar la sesión de ${usuario.nombre}`}
 													onclick={() => pedirCierre(usuario)}
 												>
