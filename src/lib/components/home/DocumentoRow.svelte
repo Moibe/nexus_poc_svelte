@@ -7,9 +7,9 @@
 		alternarSeleccion,
 		formatearFecha,
 		formatearTamano,
-		quitarDocumento,
 		type DocumentoEnBandeja
 	} from '$lib/state/bandeja.svelte';
+	import { pedirDescarte } from '$lib/state/descarteBandeja.svelte';
 
 	let { documento }: { documento: DocumentoEnBandeja } = $props();
 
@@ -92,15 +92,22 @@
 			</p>
 			{#if problema}
 				<p class="mt-0.5 text-xs text-red-500">{problema}</p>
+			{:else if documento.estado === 'listo'}
+				<!-- «● Listo», como el Figma: el punto verde y la palabra. Los estados con problema ya dicen lo suyo en rojo. -->
+				<p class="mt-0.5 flex items-center gap-1.5 text-xs text-green-600" data-testid="estado-listo">
+					<span class="size-1.5 rounded-full bg-green-500"></span>
+					Listo
+				</p>
 			{/if}
 		</div>
 	{/if}
 
 	<button
 		type="button"
-		aria-label={`Quitar ${documento.nombre}`}
+		aria-label={`Descartar ${documento.nombre}`}
+		data-testid="descartar-documento"
 		class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-		onclick={() => quitarDocumento(documento.id)}
+		onclick={() => pedirDescarte([documento.id])}
 	>
 		<X class="size-3.5" />
 	</button>

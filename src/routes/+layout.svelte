@@ -2,6 +2,7 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import TopBar from '$lib/components/TopBar.svelte';
+	import AvisosFlotantes from '$lib/components/AvisosFlotantes.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { tema } from '$lib/tema.svelte';
@@ -69,3 +70,5 @@
 		</footer>
 	</div>
 {/if}
+
+<AvisosFlotantes />

@@ -14,11 +14,13 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const GET: RequestHandler = async ({ cookies, locals }) => {
+export const GET: RequestHandler = async ({ cookies, locals, url }) => {
 	const tenant = tenantDe(locals);
+	// `?estado=descartados` trae lo descartado (el filtro «Descartado» de la bandeja); lo demás, lo pendiente de siempre.
+	const estado = url.searchParams.get('estado') === 'descartados' ? 'descartados' : 'pendientes';
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(tenant)}`), {
+		respuesta = await fetch(urlNexus(`/bandeja/?tenant=${encodeURIComponent(tenant)}&estado=${estado}`), {
 			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});

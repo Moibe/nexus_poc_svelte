@@ -15,6 +15,7 @@
 		soloAviso = false,
 		children,
 		onConfirmar,
+		onCancelar,
 		onCerrar
 	}: {
 		abierto?: boolean;
@@ -38,6 +39,9 @@
 		/** Contenido extra bajo el mensaje (p. ej. un campo de motivo). Quien lo pinta guarda su propio estado. */
 		children?: Snippet;
 		onConfirmar: () => void;
+		/** Se llama cuando se cierra SIN confirmar (Cancelar o Escape), justo antes de `onCerrar`. Para quien tiene que
+		 *  distinguir «no» de «ya terminó». */
+		onCancelar?: () => void;
 		/** Se llama al cerrar por CUALQUIER vía —Cancelar, Escape o confirmar—
 		 *  para que quien lo usa limpie el estado que lo abrió. Sin esto, `abierto`
 		 *  siendo una expresión derivada (`algo !== null`) nunca se enteraría del
@@ -91,7 +95,10 @@
 	open={abierto}
 	onOpenChange={(v) => {
 		// Si bits-ui llegara a avisar también al confirmar, no se avisa doble.
-		if (!v && !cerrandoPorConfirmar) onCerrar();
+		if (!v && !cerrandoPorConfirmar) {
+			onCancelar?.();
+			onCerrar();
+		}
 	}}
 >
 	<AlertDialogPrimitive.Portal>
