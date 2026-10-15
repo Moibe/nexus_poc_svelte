@@ -265,7 +265,7 @@
 				<AvisoVerde
 					testid="organizacion-creada-aviso"
 					titulo="Organización creada correctamente"
-					cuerpo="{creada.organizacion.nombre} quedó registrada con el ID {creada.organizacion.slug}."
+					cuerpo="La organización fue registrada exitosamente y ya cuenta con un entorno habilitado dentro de NexusDoc."
 				/>
 				{#if creada.correoEnviado}
 					<AvisoVerde
