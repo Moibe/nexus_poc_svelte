@@ -67,7 +67,7 @@ export function estadoFiltrableDe(doc: DocumentoEnBandeja): EstadoFiltro {
 	return 'pendiente';
 }
 
-/** Cuántos de los tres filtros (Estado, Canal, Fecha) están puestos: es el número de la insignia roja del botón «Filtros». */
+/** Cuántos de los tres filtros (Estado, Canal, Fecha) están puestos. */
 export function cuantosFiltros(f: FiltrosAplicados = filtros): number {
 	return (f.estados.length > 0 ? 1 : 0) + (f.canales.length > 0 ? 1 : 0) + (f.desde || f.hasta ? 1 : 0);
 }
@@ -81,6 +81,37 @@ function enElRango(fecha: Date, f: FiltrosAplicados): boolean {
 	if (f.desde && t < principioDelDia(f.desde)) return false;
 	if (f.hasta && t >= principioDelDia(f.hasta) + 24 * 3600 * 1000) return false;
 	return true;
+}
+
+/** Un filtro puesto, tal como se dibuja en la fila de arriba de la lista: «Duplicado, Listo ② ⊗» (Figma). */
+export type ChipFiltro = { clave: 'estado' | 'canal' | 'fecha'; texto: string; cuantos: number | null };
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const diaCorto = (d: Date) => `${String(d.getDate()).padStart(2, '0')} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
+
+/** Un chip por cada filtro puesto, en el orden Estado, Canal, Fecha. El número es cuántas opciones se eligieron. */
+export function chipsDeFiltros(f: FiltrosAplicados = filtros): ChipFiltro[] {
+	const chips: ChipFiltro[] = [];
+	if (f.estados.length > 0) {
+		const texto = ESTADOS.filter((e) => f.estados.includes(e.valor)).map((e) => e.etiqueta).join(', ');
+		chips.push({ clave: 'estado', texto, cuantos: f.estados.length });
+	}
+	if (f.canales.length > 0) {
+		const texto = CANALES.filter((c) => f.canales.includes(c.valor)).map((c) => c.etiqueta).join(', ');
+		chips.push({ clave: 'canal', texto, cuantos: f.canales.length });
+	}
+	if (f.desde && f.hasta) chips.push({ clave: 'fecha', texto: `${diaCorto(f.desde)} – ${diaCorto(f.hasta)}`, cuantos: null });
+	return chips;
+}
+
+/** Quita UN filtro (la ⊗ de su chip) y deja los demás. */
+export function quitarFiltro(clave: ChipFiltro['clave']): void {
+	aplicarFiltros({
+		estados: clave === 'estado' ? [] : filtros.estados,
+		canales: clave === 'canal' ? [] : filtros.canales,
+		desde: clave === 'fecha' ? null : filtros.desde,
+		hasta: clave === 'fecha' ? null : filtros.hasta
+	});
 }
 
 /** Una fila de la lista: un documento de la bandeja activa o uno descartado. */

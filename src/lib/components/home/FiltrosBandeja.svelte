@@ -8,6 +8,7 @@
 	 * filtros» nace apagado hasta que haya algo elegido, como en la captura; «Limpiar filtros» quita el borrador Y lo aplicado.
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -68,7 +69,19 @@
 			data-testid="modal-filtros-bandeja"
 			class="fixed top-1/2 left-1/2 z-60 w-[92vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background shadow-lg"
 		>
-			<p class="px-6 pt-5 text-sm text-muted-foreground">Filtros avanzados</p>
+			<!-- «Filtros avanzados ^»: la flecha del diseño pliega el panel, que aquí es cerrarlo sin aplicar. -->
+			<div class="flex items-center justify-between px-6 pt-5">
+				<p class="text-sm text-muted-foreground">Filtros avanzados</p>
+				<button
+					type="button"
+					class="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+					aria-label="Cerrar sin aplicar"
+					data-testid="filtros-bandeja-plegar"
+					onclick={onCerrar}
+				>
+					<ChevronUp class="size-4" />
+				</button>
+			</div>
 
 			<div class="flex items-center gap-3 px-6 pt-5">
 				<span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
