@@ -71,6 +71,7 @@
 		fuenteDeDocumento,
 		esPdfSinOriginal,
 		estadoBiblioteca,
+		cargarBiblioteca,
 		reconocerFallaDeGuardado,
 		marcarCalibrado,
 		eliminarTipoDocumental,
@@ -99,16 +100,14 @@
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
 	} from '$lib/state/configuracion.svelte';
-	import { migrarEjemplosAlAlmacen } from '$lib/state/migrarEjemplos';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	// Cada vez que se abre, se sacan del localStorage los bytes de los ejemplos
-	// viejos que todavía los traigan — ver `migrarEjemplos.ts`. Con todo
-	// migrado no hace ni una petición, así que repetirlo en cada apertura es
-	// gratis, y es lo que reintenta lo que falló la vez anterior.
+	// Cada vez que se abre, se vuelve a leer la biblioteca del servidor: otra persona de la organización pudo crear, editar o
+	// borrar tipos desde la última vez. Lo que esta pestaña tenga por enviar se manda ANTES de leer, y si algo cambia mientras
+	// se pide, no se pisa (ver `cargarBiblioteca`).
 	$effect(() => {
-		if (open) untrack(() => void migrarEjemplosAlAlmacen());
+		if (open) untrack(() => void cargarBiblioteca({ refrescar: true }));
 	});
 
 	// El módulo tiene cuatro vistas:
@@ -1551,7 +1550,22 @@
 			</aside>
 
 			<div class="flex-1 overflow-y-auto p-8">
-				{#if vista === 'biblioteca'}
+				{#if vista === 'biblioteca' && !estadoBiblioteca.cargada}
+					<!-- La biblioteca vive en el servidor (por organización) y todavía no llega: un panel vacío con «Agregar
+					     nuevo tipo documental» se leería como «no tienes ninguno», y crear uno encima de eso es justo lo que
+					     no hay que invitar. Con un error, la salida es reintentar. -->
+					{#if estadoBiblioteca.errorCarga}
+						<div class="flex flex-col items-start gap-3" data-testid="biblioteca-error" role="alert">
+							<h3 class="text-xl font-semibold text-foreground">No se pudieron cargar tus tipos documentales</h3>
+							<p class="text-sm text-muted-foreground">{estadoBiblioteca.errorCarga}</p>
+							<Button onclick={() => void cargarBiblioteca()}>Reintentar</Button>
+						</div>
+					{:else}
+						<p class="text-sm text-muted-foreground" data-testid="biblioteca-cargando" role="status">
+							Cargando los tipos documentales de tu organización…
+						</p>
+					{/if}
+				{:else if vista === 'biblioteca'}
 					{#if tiposEnBiblioteca.length > 0}
 						<!-- Biblioteca poblada. Estructura tomada del frame 1077:65410:
 						     título "Modelos documentales agregados" y una tarjeta por
@@ -3302,22 +3316,16 @@
 	</Sheet.Content>
 </Sheet.Root>
 
-<!-- No se pudo escribir en el navegador. Es un AVISO y no una pregunta: el
-     guardado ya falló, no hay nada que cancelar. Antes esto no existía — el
-     error se perdía en un `catch` vacío y la pantalla confirmaba guardados que
-     no ocurrían; el usuario se enteraba al refrescar, viendo trabajo
-     desaparecido.
-     El mensaje nombra la causa más probable y la salida concreta, porque la
-     genérica ("algo salió mal") dejaría a alguien con la cuota llena sin saber
-     qué hacer. Mientras no exista el almacén del servidor, borrar un ejemplo
-     documental es la única forma real de liberar espacio: son ellos los que
-     pesan, el resto del catálogo son unos pocos KB. -->
+<!-- Lo último que se hizo no quedó guardado en el servidor, o quedó distinto de lo que se veía. Es un AVISO y no una
+     pregunta: ya pasó, no hay nada que cancelar. El texto lo pone el módulo de la biblioteca (`estadoBiblioteca`) según lo que
+     pasó: el servidor no contestó (se reintenta solo unas veces), otra persona cambió o borró ese tipo antes (se cargó su
+     versión), o el servidor no aceptó los datos. Antes esto hablaba del espacio del navegador; ya no hay tal límite. -->
 <ConfirmarAccion
 	abierto={estadoBiblioteca.falloAlGuardar}
 	variante="destructivo"
 	soloAviso
-	titulo="No se pudo guardar en este navegador"
-	mensaje="Lo último que hiciste NO quedó guardado. Suele ser que se llenó el espacio del navegador, y lo que más ocupa son los documentos de ejemplo. Quita alguno desde su tipo documental y vuelve a intentarlo."
+	titulo={estadoBiblioteca.avisoTitulo || 'No se pudo guardar'}
+	mensaje={estadoBiblioteca.avisoMensaje || 'Lo último que hiciste no quedó guardado en el servidor.'}
 	etiquetaConfirmar="Entendido"
 	onConfirmar={reconocerFallaDeGuardado}
 	onCerrar={reconocerFallaDeGuardado}

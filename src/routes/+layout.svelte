@@ -6,6 +6,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { tema } from '$lib/tema.svelte';
+	import { prepararBiblioteca } from '$lib/state/configuracion.svelte';
 
 	let { children, data } = $props();
 	// Las pantallas de acceso (login, primer acceso) traen su propia cáscara:
@@ -16,6 +17,14 @@
 	// está en claro, que es el default del CSS.
 	$effect(() => {
 		tema.iniciar();
+	});
+
+	// La biblioteca de tipos documentales vive en el servidor, por organización. Se lee en cuanto hay sesión (para que el
+	// pipeline la tenga antes de clasificar) y se suelta cuando no la hay o cambia la persona: sin esto, quien cierra sesión
+	// y deja entrar a otra persona en la MISMA pestaña le dejaría ver y guardar los tipos de la organización anterior.
+	$effect(() => {
+		const guid = enAcceso ? null : (data.usuario?.guid ?? null);
+		prepararBiblioteca(guid);
 	});
 
 	// Una sesión cerrada desde otro lado (HU05: la cierra un administrador, o se restableció la contraseña o se

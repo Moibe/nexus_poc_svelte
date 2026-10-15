@@ -742,7 +742,8 @@ export type TipoDocumentalGuardado = {
 	recortesPorDocumento: Record<string, Record<string, EjemploGuardado>>;
 };
 
-const LLAVE_BIBLIOTECA = 'nexusdoc:tipos-documentales:v1';
+/** Donde vivía la biblioteca, en el `localStorage` de cada navegador, hasta el 2026-10-15. Ya no se lee: se borra al cargar. */
+const LLAVE_BIBLIOTECA_ANTIGUA = 'nexusdoc:tipos-documentales:v1';
 
 /**
  * Hasta qué paso se configuró un tipo guardado — con MIGRACIÓN para los que se
@@ -773,10 +774,22 @@ function leerPasoMaximo(d: Record<string, unknown>): number {
 	return cuantosCampos > 0 ? 3 : 2;
 }
 
-let contadorTipo = 0;
+/** `n` hexadecimales al azar. `crypto.getRandomValues` SÍ existe en contexto inseguro (el HTTP plano por IP del server de
+ *  CSI); `crypto.randomUUID` no, y tronó la app el 2026-08-18: por eso no se usa. Con plan B, por si acaso. */
+function hexAleatorio(n: number): string {
+	const bytes = new Uint8Array(Math.ceil(n / 2));
+	if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') crypto.getRandomValues(bytes);
+	else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, n);
+}
+
+/**
+ * El id de un tipo documental: `tipo-` y 32 hexadecimales al azar. Ya NO es `tipo-{hora}-{contador}`: dos navegadores
+ * podían inventar el mismo, y desde que el catálogo vive en el servidor tiene que ser único en TODAS las organizaciones
+ * (nexus_back lo exige), porque el clasificador es global y nombra cada categoría con el id.
+ */
 function idTipo(): string {
-	contadorTipo += 1;
-	return `tipo-${Date.now().toString(36)}-${contadorTipo}`;
+	return `tipo-${hexAleatorio(32)}`;
 }
 
 let contadorDocumentoEjemplo = 0;
@@ -903,124 +916,422 @@ function leerDocumentosEjemplo(d: unknown): DocumentoEjemploInstancia[] {
 	return d.filter(esDocumentoEjemploValido);
 }
 
-function leerBiblioteca(): TipoDocumentalGuardado[] {
-	const store = almacen();
-	if (!store) return [];
-	try {
-		const crudo = store.getItem(LLAVE_BIBLIOTECA);
-		if (!crudo) return [];
-		const datos = JSON.parse(crudo);
-		if (!Array.isArray(datos)) return [];
-		return datos
-			.filter((d) => typeof d === 'object' && d !== null && typeof d.nombre === 'string')
-			.map((d: Record<string, unknown>) => ({
-				id: typeof d.id === 'string' ? d.id : idTipo(),
-				nombre: d.nombre as string,
-				descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
-				vertical: typeof d.vertical === 'string' ? d.vertical : '',
-				campos: Array.isArray(d.campos)
-					? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[])
-					: [],
-				pasoMaximo: leerPasoMaximo(d),
-				guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
-				// Se acepta 'activo' o 'archivado' solo si están escritos tal cual.
-				// Cualquier otra cosa —incluido lo que guardaron las versiones
-				// anteriores, que ni siquiera tenían el campo— cae en 'borrador', que
-				// es el estado seguro: un modelo mal leído no debe amanecer activo en
-				// producción (ni, por la misma razón, oculto por error como archivado).
-				estado:
-					d.estado === 'activo'
-						? ('activo' as const)
-						: d.estado === 'archivado'
-							? ('archivado' as const)
-							: ('borrador' as const),
-				// Lo guardado antes de que existiera este campo no trae `version`. Si
-				// ese tipo ya estaba activo, se le infiere 1: se publicó una vez,
-				// aunque nadie lo hubiera contado. Un borrador arranca en 0.
-				version:
-					Number.isInteger(d.version) && (d.version as number) >= 0
-						? (d.version as number)
-						: d.estado === 'activo'
-							? 1
-							: 0,
-				procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
-				procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
-				procesadorDisplayName:
-					typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
-				ejemploDocumental: d.ejemploDocumental === true,
-				activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
-				// Lo guardado antes de que existiera este campo cae en null, o sea
-				// "sin calibrar": un tipo viejo vuelve a ofrecer "Calibrar", que es
-				// el lado seguro — darlo por calibrado sin que nadie lo haya hecho
-				// sería afirmar algo que no ocurrió.
-				calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
-				historialVersiones: Array.isArray(d.historialVersiones)
-					? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
-					: [],
-				versionEnEdicion: leerVersionPublicada(d.versionEnEdicion),
-				documentosEjemplo: leerDocumentosEjemplo(d.documentosEjemplo),
-				recortesPorDocumento: leerRecortesPorDocumento(d.recortesPorDocumento)
-			}));
-	} catch {
-		return [];
-	}
+/**
+ * Un tipo tal como lo guardó el servidor, normalizado. `null` si lo que llegó no es ni un objeto con nombre.
+ *
+ * Sigue siendo tan defensivo como cuando leía del `localStorage`: los datos los escribió código de otra época (o de otra
+ * pestaña), y un campo mal formado no debe tumbar la biblioteca entera.
+ */
+function leerTipoGuardado(crudo: unknown): TipoDocumentalGuardado | null {
+	if (typeof crudo !== 'object' || crudo === null) return null;
+	const d = crudo as Record<string, unknown>;
+	if (typeof d.nombre !== 'string') return null;
+	return {
+		id: typeof d.id === 'string' ? d.id : idTipo(),
+		nombre: d.nombre,
+		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+		vertical: typeof d.vertical === 'string' ? d.vertical : '',
+		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : [],
+		pasoMaximo: leerPasoMaximo(d),
+		guardadoEn: typeof d.guardadoEn === 'string' ? d.guardadoEn : new Date().toISOString(),
+		// Se acepta 'activo' o 'archivado' solo si están escritos tal cual. Cualquier otra cosa cae en 'borrador', que es el
+		// estado seguro: un modelo mal leído no debe amanecer activo en producción (ni oculto por error como archivado).
+		estado: d.estado === 'activo' ? ('activo' as const) : d.estado === 'archivado' ? ('archivado' as const) : ('borrador' as const),
+		version: Number.isInteger(d.version) && (d.version as number) >= 0 ? (d.version as number) : d.estado === 'activo' ? 1 : 0,
+		procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
+		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
+		procesadorDisplayName: typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
+		ejemploDocumental: d.ejemploDocumental === true,
+		activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
+		// Sin el dato, "sin calibrar": darlo por calibrado sin que nadie lo hiciera sería afirmar algo que no ocurrió.
+		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
+		historialVersiones: Array.isArray(d.historialVersiones)
+			? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
+			: [],
+		versionEnEdicion: leerVersionPublicada(d.versionEnEdicion),
+		documentosEjemplo: leerDocumentosEjemplo(d.documentosEjemplo),
+		recortesPorDocumento: leerRecortesPorDocumento(d.recortesPorDocumento)
+	};
 }
 
-export const tiposDocumentales = $state<TipoDocumentalGuardado[]>(leerBiblioteca());
+/** La biblioteca de la organización. Nace VACÍA: se llena al leerla del servidor (`cargarBiblioteca`). */
+export const tiposDocumentales = $state<TipoDocumentalGuardado[]>([]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Persistencia: el catálogo vive en el SERVIDOR, por organización (2026-10-15)
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * ¿Pudo escribirse la biblioteca la última vez que se intentó?
+ * Hasta el 2026-10-15 la biblioteca vivía en el `localStorage` de CADA navegador: dos personas de la misma organización no se
+ * veían, cada máquina inventaba sus ids (el mismo «INE» creaba un extractor en Google por computadora) y el clasificador,
+ * que es uno solo, se sincronizaba con la lista del navegador que lo tocara último. Ahora el catálogo vive en nexus_back
+ * (`/tipos-documentales`, por organización) y esta pantalla lo lee y lo escribe a través del BFF. Lo que había en cada
+ * navegador NO se migró: se empezó de cero (decisión del 2026-10-15) y esa llave vieja se borra al cargar.
  *
- * Existe porque `guardarBiblioteca()` tiene QUINCE puntos de llamada —activar,
- * calibrar, recortar, archivar, publicar versión…— y cambiarles la firma a
- * todos para propagar un booleano sería mucho ruido para un caso que además
- * es global: cuando la cuota se llena, fallan todos a la vez. Una bandera que
- * todos alimentan y que la pantalla observa cuesta mucho menos y no se puede
- * olvidar en un callsite nuevo.
+ * ## Cómo se guarda sin cambiar a los quince que llaman a `guardarBiblioteca()`
  *
- * Es `$state` de módulo: `ConfigSheet` lo lee en un `$effect` y levanta el
- * aviso. Nadie fuera de este módulo debe escribirlo; `reconocerFallaDeGuardado`
- * es la única forma de bajarlo.
+ * Quien cambia un tipo lo cambia EN MEMORIA, como siempre, y llama a `guardarBiblioteca()`. Esa función ya no escribe: anota
+ * que hay algo por enviar, y unos instantes después (`ESPERA_GUARDADO_MS`, para no mandar una petición por cada tecla) una
+ * pasada compara cada tipo con la última copia que el servidor confirmó y manda SOLO lo que cambió, con la revisión sobre la
+ * que se editó:
+ *
+ *   · nuevo → `PUT` con revisión 0;  cambiado → `PUT` con la revisión vigente;  quitado → `DELETE`;  reordenado → `PUT /orden`.
+ *
+ * Es OPTIMISTA: `guardarBiblioteca()` devuelve `true` sin esperar. Si el servidor no pudo, se avisa (`estadoBiblioteca`) y se
+ * reintenta solo unas veces. Lo que sí hay que esperar —porque el servidor arma el clasificador con LO QUE TIENE GUARDADO—
+ * es antes de sincronizarlo: `vaciarGuardado()`.
+ *
+ * ## Dos personas editando lo mismo
+ *
+ * Cada tipo trae una revisión. Si otra persona lo guardó antes, el servidor responde 409: aquí se carga SU versión (no se
+ * pisa nada) y se avisa. Si la otra persona lo borró, se quita de esta pantalla y se avisa.
  */
-export const estadoBiblioteca = $state<{ falloAlGuardar: boolean }>({ falloAlGuardar: false });
+export const estadoBiblioteca = $state<{
+	/** Ya se leyó el catálogo del servidor. Antes de eso la biblioteca está vacía sin que eso signifique nada. */
+	cargada: boolean;
+	cargando: boolean;
+	/** Por qué no se pudo cargar; vacío si no hubo problema. */
+	errorCarga: string;
+	/** Lo último que se intentó guardar no quedó (o quedó distinto de lo que se veía): hay un aviso que leer. */
+	falloAlGuardar: boolean;
+	avisoTitulo: string;
+	avisoMensaje: string;
+}>({ cargada: false, cargando: false, errorCarga: '', falloAlGuardar: false, avisoTitulo: '', avisoMensaje: '' });
 
-/** La baja la pantalla cuando ya avisó, para que el mismo fallo no reabra el
- *  diálogo en bucle. El siguiente intento fallido lo vuelve a levantar. */
+/** La baja la pantalla cuando ya avisó, para que el mismo fallo no reabra el diálogo en bucle. El siguiente lo vuelve a levantar. */
 export function reconocerFallaDeGuardado() {
 	estadoBiblioteca.falloAlGuardar = false;
 }
 
+function avisar(titulo: string, mensaje: string) {
+	estadoBiblioteca.avisoTitulo = titulo;
+	estadoBiblioteca.avisoMensaje = mensaje;
+	estadoBiblioteca.falloAlGuardar = true;
+}
+
+/** Lo que el servidor confirmó de cada tipo: cómo quedó (serializado) y su revisión. */
+const sincronizados = new Map<string, { json: string; revision: number }>();
+/** El orden de la biblioteca como lo tiene el servidor. */
+let ordenSincronizado: string[] = [];
+/** Lo que el servidor rechazó por inválido (400): no se vuelve a mandar igual, solo cuando cambie. */
+const rechazados = new Map<string, string>();
+/** Se sube al cambiar de persona: lo que estaba en vuelo de la anterior se descarta al volver. */
+let generacion = 0;
+let temporizador: ReturnType<typeof setTimeout> | null = null;
+let cola: Promise<void> = Promise.resolve();
+let reintentos = 0;
+
+const ESPERA_GUARDADO_MS = 300;
+const REINTENTO_MS = 8000;
+const MAX_REINTENTOS = 5;
+
+function serializar(tipo: TipoDocumentalGuardado): string {
+	return JSON.stringify($state.snapshot(tipo));
+}
+
+type RespuestaServidor = { ok: boolean; status: number; cuerpo: Record<string, unknown> | null };
+
+async function llamar(metodo: string, ruta: string, cuerpo?: unknown): Promise<RespuestaServidor> {
+	try {
+		const r = await fetch(ruta, {
+			method: metodo,
+			headers: cuerpo !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+			body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined
+		});
+		const datos: unknown = await r.json().catch(() => null);
+		return { ok: r.ok, status: r.status, cuerpo: typeof datos === 'object' && datos !== null ? (datos as Record<string, unknown>) : null };
+	} catch {
+		return { ok: false, status: 0, cuerpo: null };
+	}
+}
+
+function textoDe(r: RespuestaServidor, defecto: string): string {
+	return typeof r.cuerpo?.mensaje === 'string' ? r.cuerpo.mensaje : defecto;
+}
+
+/** ¿Hay algo en pantalla que el servidor todavía no tenga? */
+function hayPendientes(): boolean {
+	for (const t of tiposDocumentales) {
+		const json = serializar(t);
+		if (sincronizados.get(t.id)?.json !== json && rechazados.get(t.id) !== json) return true;
+	}
+	for (const id of sincronizados.keys()) if (!tiposDocumentales.some((t) => t.id === id)) return true;
+	return false;
+}
+
 /**
- * Escribe la biblioteca completa en localStorage. Devuelve si lo logró.
+ * El asistente edita un BORRADOR aparte (`borradorTipoDocumental`) que viaja a la biblioteca con cada tecla. Si lo que se adopta
+ * del servidor es el tipo que ese borrador tiene abierto, el borrador se pone igual: de lo contrario seguiría mostrando lo que
+ * la persona tecleó, en el campo, junto a una biblioteca que ya dice otra cosa, y la siguiente tecla pisaría lo de la otra
+ * persona sin que se hubiera enterado. Si el tipo ya no existe, el borrador se desliga (no se «resucita» con otro id).
+ */
+function alinearBorradorCon(id: string) {
+	if (borradorTipoDocumental.idGuardado !== id) return;
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo) {
+		borradorTipoDocumental.idGuardado = null;
+		return;
+	}
+	Object.assign(borradorTipoDocumental, {
+		nombre: tipo.nombre,
+		descripcion: tipo.descripcion,
+		vertical: tipo.vertical,
+		campos: $state.snapshot(tipo.campos) as CampoBorrador[],
+		// Sin esto el efecto del asistente, que sincroniza el borrador hacia la biblioteca en cuanto cambia, escribiría el
+		// `pasoMaximo` viejo del borrador encima del del tipo (el mismo tropiezo que ya describe `leer` más arriba).
+		pasoMaximo: tipo.pasoMaximo
+	});
+}
+
+/** Vuelve a leer UN tipo del servidor y lo pone en pantalla en lugar del local (o lo quita si ya no existe). */
+async function adoptarDelServidor(id: string): Promise<boolean> {
+	const r = await llamar('GET', '/api/tipos-documentales');
+	if (!r.ok || !Array.isArray(r.cuerpo?.tipos)) return false;
+	const entrada = (r.cuerpo.tipos as { id: string; revision: number; datos: unknown }[]).find((e) => e.id === id);
+	const i = tiposDocumentales.findIndex((t) => t.id === id);
+	if (!entrada) {
+		if (i !== -1) tiposDocumentales.splice(i, 1);
+		sincronizados.delete(id);
+		ordenSincronizado = ordenSincronizado.filter((x) => x !== id);
+		alinearBorradorCon(id);
+		return true;
+	}
+	const nuevo = leerTipoGuardado(entrada.datos);
+	if (!nuevo) return false;
+	if (i === -1) tiposDocumentales.push(nuevo);
+	else tiposDocumentales.splice(i, 1, nuevo);
+	const puesto = tiposDocumentales.find((t) => t.id === id);
+	if (puesto) sincronizados.set(id, { json: serializar(puesto), revision: entrada.revision });
+	alinearBorradorCon(id);
+	return true;
+}
+
+/** Una pasada: manda al servidor lo que cambió desde la última confirmada. Nunca levanta; los fallos van a `estadoBiblioteca`. */
+async function ejecutarPasada(): Promise<void> {
+	if (!browser || !estadoBiblioteca.cargada) return;
+	const esta = generacion;
+	let hayFallo = false;
+	let reintentable = false;
+	const falla = (r: RespuestaServidor) => {
+		hayFallo = true;
+		if (r.status === 0 || r.status >= 500) reintentable = true;
+	};
+
+	// 1. Lo que se quitó de la biblioteca.
+	for (const id of [...sincronizados.keys()]) {
+		if (tiposDocumentales.some((t) => t.id === id)) continue;
+		const r = await llamar('DELETE', `/api/tipos-documentales/${encodeURIComponent(id)}`);
+		if (esta !== generacion) return;
+		if (r.ok || r.status === 404) {
+			sincronizados.delete(id);
+			ordenSincronizado = ordenSincronizado.filter((x) => x !== id);
+			continue;
+		}
+		falla(r);
+		avisar('No se pudo borrar', textoDe(r, 'No se pudo borrar el tipo documental en el servidor. Se reintentará solo.'));
+	}
+
+	// 2. Lo nuevo y lo que cambió.
+	for (const tipo of [...tiposDocumentales]) {
+		const id = tipo.id;
+		const previo = sincronizados.get(id);
+		const json = serializar(tipo);
+		if (previo?.json === json || rechazados.get(id) === json) continue;
+		const nombre = tipo.nombre;
+
+		const r = await llamar('PUT', `/api/tipos-documentales/${encodeURIComponent(id)}`, {
+			revision: previo?.revision ?? 0,
+			datos: JSON.parse(json)
+		});
+		if (esta !== generacion) return;
+
+		if (r.ok && typeof r.cuerpo?.revision === 'number') {
+			sincronizados.set(id, { json, revision: r.cuerpo.revision });
+			rechazados.delete(id);
+			if (!previo) ordenSincronizado.push(id);
+			continue;
+		}
+		falla(r);
+		if (r.status === 409 && previo) {
+			// Otra persona lo guardó antes: se carga SU versión y lo que se había cambiado aquí se pierde (se avisa).
+			if (await adoptarDelServidor(id)) {
+				if (esta !== generacion) return;
+				avisar(
+					`Otra persona cambió «${nombre}»`,
+					'Alguien de tu organización guardó este tipo documental antes que tú. Se cargó su versión: revisa lo que hay y, si hace falta, repite tu cambio.'
+				);
+				hayFallo = false;
+			}
+		} else if (r.status === 404 && previo) {
+			if (await adoptarDelServidor(id)) {
+				if (esta !== generacion) return;
+				avisar(`Otra persona borró «${nombre}»`, 'Alguien de tu organización quitó este tipo documental mientras lo editabas, así que ya no está.');
+				hayFallo = false;
+			}
+		} else if (r.status === 400) {
+			rechazados.set(id, json);
+			avisar('No se pudo guardar', textoDe(r, 'El servidor no aceptó este tipo documental.'));
+		} else if (r.status === 401 || r.status === 403) {
+			avisar('No se pudo guardar', textoDe(r, 'Tu sesión no permite guardar tipos documentales. Vuelve a iniciar sesión.'));
+		} else {
+			avisar('No se pudo guardar', textoDe(r, 'No se pudo contactar al servidor. Lo último que hiciste se reintentará solo; si no, avisa al equipo técnico.'));
+		}
+	}
+
+	// 3. El orden (solo cuenta lo que el servidor ya conoce).
+	const locales = tiposDocumentales.map((t) => t.id).filter((id) => sincronizados.has(id));
+	const remotos = ordenSincronizado.filter((id) => sincronizados.has(id));
+	if (locales.length > 1 && locales.join('|') !== remotos.join('|')) {
+		const r = await llamar('PUT', '/api/tipos-documentales/orden', { ids: locales });
+		if (esta !== generacion) return;
+		if (r.ok) ordenSincronizado = locales;
+		else {
+			falla(r);
+			avisar('No se pudo guardar el orden', textoDe(r, 'No se pudo guardar el orden de la biblioteca.'));
+		}
+	}
+
+	if (!hayFallo) reintentos = 0;
+	if (reintentable && reintentos < MAX_REINTENTOS) {
+		reintentos += 1;
+		if (temporizador) clearTimeout(temporizador);
+		temporizador = setTimeout(() => {
+			temporizador = null;
+			void vaciarGuardado();
+		}, REINTENTO_MS);
+	} else if (!hayFallo && hayPendientes()) {
+		// Algo cambió mientras la pasada estaba en vuelo.
+		programarGuardado();
+	}
+}
+
+function programarGuardado() {
+	if (temporizador) clearTimeout(temporizador);
+	temporizador = setTimeout(() => {
+		temporizador = null;
+		void vaciarGuardado();
+	}, ESPERA_GUARDADO_MS);
+}
+
+/**
+ * Manda ya lo que esté por enviar y espera a que el servidor conteste. Las pasadas van una tras otra, nunca encimadas.
  *
- * ANTES ESTO MENTÍA. El `catch` estaba vacío y nadie miraba el resultado, así
- * que un `QuotaExceededError` se perdía en silencio: la pantalla confirmaba
- * guardados que no ocurrían y el usuario se enteraba al refrescar, viendo
- * trabajo desaparecido. Y llenar la cuota es fácil de verdad — el producto
- * recomienda 3 ejemplos por tipo, base64 infla 4/3 y localStorage cuenta
- * UTF-16 a 2 bytes por carácter, o sea ~2.67 bytes de cuota por byte de
- * archivo.
+ * Es lo que hay que esperar antes de pedirle al servidor algo que dependa de lo que acaba de cambiar aquí: el clasificador lo
+ * arma con los tipos que TIENE guardados, no con los de esta pantalla. Después de esperar, `hayPendientes()` dice si quedó algo.
+ */
+export function vaciarGuardado(): Promise<void> {
+	if (temporizador) {
+		clearTimeout(temporizador);
+		temporizador = null;
+	}
+	cola = cola.then(ejecutarPasada, ejecutarPasada);
+	return cola;
+}
+
+/**
+ * Anota que la biblioteca cambió y la manda al servidor en un momento (ver `ESPERA_GUARDADO_MS`).
+ *
+ * Devuelve `true` SIEMPRE: el guardado es optimista y no espera. Antes devolvía si el `localStorage` aceptó la escritura, y
+ * sus quince llamadores revertían el cambio si no; ahora un fallo del servidor se avisa con `estadoBiblioteca`.
  */
 function guardarBiblioteca(): boolean {
-	const store = almacen();
-	// Sin `localStorage` (renderizado en servidor) no hay nada que escribir y
-	// tampoco nada que reportar: no es un fallo, es que no hay navegador.
-	if (!store) return true;
-	try {
-		if (tiposDocumentales.length === 0) {
-			store.removeItem(LLAVE_BIBLIOTECA);
-		} else {
-			store.setItem(LLAVE_BIBLIOTECA, JSON.stringify($state.snapshot(tiposDocumentales)));
-		}
-		estadoBiblioteca.falloAlGuardar = false;
-		return true;
-	} catch {
-		// Cuota llena, almacenamiento bloqueado o modo privado. No se distingue
-		// el motivo a propósito: para quien mira la pantalla las tres cosas
-		// significan lo mismo —no se guardó— y el remedio es el mismo.
-		estadoBiblioteca.falloAlGuardar = true;
-		return false;
+	if (!browser) return true;
+	reintentos = 0;
+	programarGuardado();
+	return true;
+}
+
+let cargaEnCurso: Promise<void> | null = null;
+let duenoDeBiblioteca = '';
+
+/** Pone lo que el servidor dijo en pantalla, reemplazando lo que hubiera. */
+function aplicarDelServidor(lista: { id: string; revision: number; datos: unknown }[]) {
+	const nuevos = lista.map((e) => leerTipoGuardado(e.datos)).filter((t): t is TipoDocumentalGuardado => t !== null);
+	tiposDocumentales.splice(0, tiposDocumentales.length, ...nuevos);
+	sincronizados.clear();
+	rechazados.clear();
+	for (const e of lista) {
+		const puesto = tiposDocumentales.find((t) => t.id === e.id);
+		if (puesto) sincronizados.set(e.id, { json: serializar(puesto), revision: e.revision });
 	}
+	ordenSincronizado = tiposDocumentales.map((t) => t.id);
+}
+
+/**
+ * Lee la biblioteca de la organización del servidor. Una sola petición a la vez: quien llame mientras otra va en camino
+ * recibe la misma promesa. Con `refrescar` vuelve a leer aunque ya esté cargada (al abrir Configuración, para ver lo que
+ * otra persona haya hecho); sin él, una biblioteca ya cargada no se vuelve a pedir.
+ *
+ * Primero manda lo que esté por enviar: leer encima de cambios sin guardar los perdería. Y si MIENTRAS se pedía cambió algo
+ * en pantalla, no se pisa.
+ */
+export function cargarBiblioteca(opciones: { refrescar?: boolean } = {}): Promise<void> {
+	if (!browser) return Promise.resolve();
+	if (estadoBiblioteca.cargada && !opciones.refrescar) return Promise.resolve();
+	if (cargaEnCurso) return cargaEnCurso;
+
+	const esta = generacion;
+	const leer = async () => {
+		if (!estadoBiblioteca.cargada) estadoBiblioteca.cargando = true;
+		estadoBiblioteca.errorCarga = '';
+		try {
+			await vaciarGuardado();
+			const r = await llamar('GET', '/api/tipos-documentales');
+			if (esta !== generacion) return;
+			if (!r.ok || !Array.isArray(r.cuerpo?.tipos)) {
+				if (!estadoBiblioteca.cargada) {
+					estadoBiblioteca.errorCarga = textoDe(r, 'No se pudieron cargar los tipos documentales de tu organización.');
+				}
+				return;
+			}
+			// En la PRIMERA lectura no hay nada legítimo por enviar (guardar se rechaza mientras no esté cargada), así que no se
+			// espera a nada. En las siguientes, si algo cambió mientras se pedía, no se pisa.
+			if (estadoBiblioteca.cargada && hayPendientes()) return;
+			aplicarDelServidor(r.cuerpo.tipos as { id: string; revision: number; datos: unknown }[]);
+			estadoBiblioteca.cargada = true;
+			// El borrador que dejó el navegador puede estar viejo respecto de la biblioteca (otra persona cambió ese tipo) o apuntar
+			// a uno que esta organización no tiene (de otra época, o de otra persona en este mismo navegador): en el primer caso se
+			// pone igual que el tipo, en el segundo se desliga, para que seguir tecleando no pise lo de la otra persona ni resucite
+			// un tipo bajo otro id sin que nadie lo pida.
+			if (borradorTipoDocumental.idGuardado) alinearBorradorCon(borradorTipoDocumental.idGuardado);
+			// Lo que había en este navegador (la biblioteca de antes) ya no se lee: se borra para que no confunda.
+			try {
+				almacen()?.removeItem(LLAVE_BIBLIOTECA_ANTIGUA);
+			} catch {
+				/* bloqueado: no importa, nadie lo lee */
+			}
+		} finally {
+			if (esta === generacion) estadoBiblioteca.cargando = false;
+		}
+	};
+	const promesa: Promise<void> = leer().finally(() => {
+		if (cargaEnCurso === promesa) cargaEnCurso = null;
+	});
+	cargaEnCurso = promesa;
+	return promesa;
+}
+
+/**
+ * Deja la biblioteca lista para quien tiene la sesión puesta: si cambió la persona (cerró sesión y entró otra en la misma
+ * pestaña), suelta lo de la anterior ANTES de leer; con `null` (no hay sesión) solo suelta. Lo llama el layout.
+ */
+export function prepararBiblioteca(usuarioGuid: string | null) {
+	if (!browser) return;
+	if (duenoDeBiblioteca !== (usuarioGuid ?? '')) {
+		generacion += 1;
+		cargaEnCurso = null;
+		if (temporizador) clearTimeout(temporizador);
+		temporizador = null;
+		tiposDocumentales.splice(0, tiposDocumentales.length);
+		sincronizados.clear();
+		rechazados.clear();
+		ordenSincronizado = [];
+		reintentos = 0;
+		cola = Promise.resolve();
+		Object.assign(estadoBiblioteca, { cargada: false, cargando: false, errorCarga: '', falloAlGuardar: false, avisoTitulo: '', avisoMensaje: '' });
+		duenoDeBiblioteca = usuarioGuid ?? '';
+	}
+	if (usuarioGuid) void cargarBiblioteca();
 }
 
 /**
@@ -1045,6 +1356,9 @@ export function etiquetaVersion(version: number): string {
 export function guardarTipoDocumental(): string | null {
 	const b = borradorTipoDocumental;
 	if (b.nombre.trim() === '') return null;
+	// Antes de haber leído la biblioteca del servidor no se puede saber si este borrador ya corresponde a un tipo: guardarlo
+	// ahora crearía un duplicado. (El efecto del asistente lo llama al montarse, con el borrador que haya en el navegador.)
+	if (!estadoBiblioteca.cargada) return b.idGuardado;
 
 	const datos = {
 		nombre: b.nombre.trim(),
@@ -1178,151 +1492,62 @@ export async function completarNombreProcesador(idTipo: string): Promise<void> {
 }
 
 /**
- * Sincroniza el Classifier ÚNICO de Document AI con la lista de tipos
- * ACTIVOS de la Biblioteca (`POST /procesadores/clasificador/sincronizar`).
+ * Sincroniza el Classifier ÚNICO de Document AI (`POST /procesadores/clasificador/sincronizar`).
  *
- * El propio back documenta esto como responsabilidad del front: sin base de
- * datos todavía, no tiene otra forma de saber cuáles tipos están activos que
- * la que el front le mande — así que se llama automáticamente después de
- * cada mutación que puede cambiar ese conjunto (`activarTipoDocumental`,
- * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la
- * UI. Manda la lista COMPLETA de activos, no solo el que cambió: el back
- * reemplaza el esquema del clasificador ENTERO en cada llamada —Document AI
- * no ofrece un PATCH incremental de categorías—, así que una lista parcial
- * borraría del clasificador cualquier tipo activo que no viajara en esa
- * llamada puntual.
+ * Desde el 2026-10-15 NO manda la lista de tipos: nexus_back arma las categorías con los tipos ACTIVOS de TODAS las
+ * organizaciones, leídos de su propio registro. Antes los mandaba cada navegador, y el último que sincronizaba pisaba a los
+ * demás. Por eso, ANTES de llamar se espera a que lo que cambió aquí (activar, archivar, borrar) esté guardado en el
+ * servidor: si el guardado no llegó, sincronizar usaría el estado viejo, y se avisa en vez de hacerlo.
  *
- * Con cero tipos activos no se llama al back: esa lista la rechaza con 422
- * ("un clasificador sin categorías" no es un estado útil), y no hay nada que
- * sincronizar en ese caso — el clasificador simplemente se queda como estaba
- * hasta que vuelva a haber al menos un tipo activo.
+ * Se llama automáticamente después de cada mutación que puede cambiar el conjunto de activos (`activarTipoDocumental`,
+ * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la UI. Si no hay NINGÚN tipo activo en todo el
+ * sistema, el servidor responde 422 y aquí eso es un "no hay nada que sincronizar", no un error.
  */
 export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje: string }> {
-	const activos = tiposDocumentales.filter((t) => t.estado === 'activo');
-	if (activos.length === 0) return { ok: true, mensaje: '' };
-
-	let respuesta: Response;
-	try {
-		respuesta = await fetch('/api/procesadores/clasificador/sincronizar', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				tipos: activos.map((t) => ({ id: t.id, nombre: t.nombre, descripcion: t.descripcion }))
-			})
-		});
-	} catch {
+	await vaciarGuardado();
+	if (hayPendientes()) {
 		return {
 			ok: false,
-			mensaje: 'No se pudo contactar al servidor para actualizar el clasificador.'
+			mensaje: 'El cambio todavía no quedó guardado en el servidor, así que el clasificador no se actualizó. Se reintentará al guardar.'
 		};
 	}
 
-	let datos: Record<string, unknown> = {};
-	try {
-		datos = await respuesta.json();
-	} catch {
-		/* un cuerpo ilegible cae al mensaje genérico de abajo */
+	const r = await llamar('POST', '/api/procesadores/clasificador/sincronizar');
+	if (r.status === 0) {
+		return { ok: false, mensaje: 'No se pudo contactar al servidor para actualizar el clasificador.' };
 	}
-
-	if (!respuesta.ok) {
-		const mensaje =
-			typeof datos.mensaje === 'string'
-				? datos.mensaje
-				: `No se pudo actualizar el clasificador (HTTP ${respuesta.status}).`;
-		return { ok: false, mensaje };
+	// Sin tipos activos en todo el sistema no hay nada que distinguir: no es un fallo.
+	if (r.status === 422) return { ok: true, mensaje: '' };
+	if (!r.ok) {
+		return { ok: false, mensaje: textoDe(r, `No se pudo actualizar el clasificador (HTTP ${r.status}).`) };
 	}
-
 	return { ok: true, mensaje: '' };
 }
 
-/** Ya se comparó el clasificador contra la Biblioteca en esta sesión. Una vez
- *  basta: dentro de una sesión, todo lo que cambia el conjunto de tipos
- *  activos ya sincroniza solo. */
+/** Ya se comparó el clasificador en esta sesión. Una vez basta: dentro de una sesión, todo lo que cambia el conjunto de
+ *  tipos activos ya sincroniza solo. */
 let clasificadorRevisado = false;
 
 /**
- * Compara las categorías que el clasificador tiene EN GOOGLE contra los tipos
- * activos de la Biblioteca y, si no coinciden, lo vuelve a sincronizar.
+ * Le pide al servidor que compare el clasificador que Google tiene con los tipos activos de su registro y, si no coinciden,
+ * lo sincronice (`POST /procesadores/clasificador/asegurar`).
  *
- * Nació de un fallo real (2026-09-08): el clasificador se quedó con la
- * categoría `tipo-mtsvawu5-1` —un INE que el usuario había borrado— mientras
- * su INE vigente era `tipo-mtn9nop8-1`. Con esa diferencia, un INE de verdad
- * se clasificaba en una categoría que la Biblioteca ya no conocía, y el
- * pipeline lo mandaba a "Tipo documental no configurado". Desde afuera se ve
- * idéntico a "el clasificador no reconoce una INE".
+ * Nació de un fallo real (2026-09-08): el clasificador se quedó con la categoría de un INE que el usuario había borrado
+ * mientras su INE vigente tenía otro id, y un INE de verdad se clasificaba en una categoría que la Biblioteca ya no
+ * conocía: el pipeline lo mandaba a "Tipo documental no configurado". Desde afuera se ve idéntico a "el clasificador no
+ * reconoce una INE". Cubre el desfase que dejan una sincronización fallida o un tipo tocado a mano en Google.
  *
- * Por qué existe aunque activar/archivar/borrar ya sincronicen: esas tres
- * cubren los cambios que pasan POR AQUÍ, pero el estado real puede desfasarse
- * igual — una sincronización que falló, un tipo borrado mientras estaba en
- * borrador (que a propósito no sincroniza), o el mismo clasificador tocado
- * desde otro navegador con otra Biblioteca. Todos esos casos son invisibles
- * hasta que alguien sube un documento y no lo reconoce.
- *
- * Se compara contra la VERDAD de Google (`GET /api/procesadores/clasificador`)
- * y no contra un registro local de "qué mandé la última vez", que es
- * justamente lo que ya no sirve cuando algo se desfasó. La lectura es gratis;
- * la sincronización solo ocurre si de verdad hay diferencia.
+ * Ya no compara este lado (antes lo hacía contra la biblioteca del navegador, y entonces el clasificador "al día" era el de
+ * la última computadora que lo tocó): el servidor lo hace contra su registro, que es de todos. Compara nombre Y
+ * descripción, que es prompt real para el modelo. La lectura no cobra; la sincronización solo ocurre si hay diferencia.
  */
 export async function asegurarClasificadorAlDia(): Promise<void> {
 	if (clasificadorRevisado) return;
 	clasificadorRevisado = true; // también ante un fallo: no reintentar en cada lote
-
-	// Se compara el par (categoría, descripción) y no solo la categoría: la
-	// `description` de cada EntityType es PROMPT REAL para el modelo — la guía
-	// del Custom Classifier lo dice con esas palabras ("Use the description
-	// field to enter a prompt which describes the label") — así que una
-	// descripción vieja degrada la clasificación exactamente igual que una
-	// categoría equivocada, y sin ella el desfase es invisible. Caso real: un
-	// tipo activado cuando su descripción decía "Identificaion cliente" siguió
-	// con ese prompt en Google después de corregirse a "Credencial de elector
-	// con fotografía", porque editar un tipo YA ACTIVO no resincroniza nada.
-	const esperadas = tiposDocumentales
-		.filter((t) => t.estado === 'activo')
-		.map((t) => [normalizarCategoria(t.id), t.descripcion.trim()] as const);
-	// Sin tipos activos no hay nada que exigirle al clasificador, y el back
-	// rechaza esa lista vacía de todos modos.
-	if (esperadas.length === 0) return;
-
-	let respuesta: Response;
-	try {
-		respuesta = await fetch('/api/procesadores/clasificador');
-	} catch {
-		return; // sin red no se puede comparar; el pipeline sigue con lo que haya
-	}
-	if (!respuesta.ok) return;
-
-	let datos: { categorias?: { name?: unknown; description?: unknown }[] } = {};
-	try {
-		datos = await respuesta.json();
-	} catch {
-		return;
-	}
-
-	const vigentes = (datos.categorias ?? [])
-		.filter((c) => typeof c.name === 'string' && c.name && c.name !== CATEGORIA_OTRO)
-		.map(
-			(c) =>
-				[c.name as string, typeof c.description === 'string' ? c.description.trim() : ''] as const
-		);
-
-	// Se comparan como ESTRUCTURA serializada y ordenada, no concatenando los
-	// dos campos en una cadena: una descripción puede contener cualquier cosa,
-	// incluido lo que se hubiera elegido como separador, y entonces dos pares
-	// distintos podrían verse iguales. (La primera versión sí concatenaba, y
-	// de paso un carácter NUL invisible se coló en el separador y hacía que
-	// NADA coincidiera nunca — se resincronizaba en cada sesión sin motivo.)
-	const canonico = (pares: readonly (readonly [string, string])[]) =>
-		JSON.stringify([...pares].sort((a, b) => a[0].localeCompare(b[0])));
-	if (canonico(vigentes) === canonico(esperadas)) return;
-
-	// El detalle va SERIALIZADO y no como objeto: un `console.warn(msg, obj)`
-	// se ve bien en las devtools abiertas, pero se pierde en cualquier captura
-	// de logs (sale "Array(1)"), que es justo cuando hace falta leerlo.
-	console.warn(
-		'El clasificador estaba desfasado y se va a resincronizar. ' +
-			`En Google: ${JSON.stringify(vigentes)} · En la Biblioteca: ${JSON.stringify(esperadas)}`
-	);
-	await sincronizarClasificador();
+	await vaciarGuardado();
+	// Sin tipos activos en esta organización el pipeline no va a mandar nada a un extractor: nada que exigirle.
+	if (!tiposDocumentales.some((t) => t.estado === 'activo')) return;
+	await llamar('POST', '/api/procesadores/clasificador/asegurar');
 }
 
 /**
@@ -1450,20 +1675,11 @@ export function crearNuevaVersion(id: string): boolean {
 		calibradoEn: tipo.calibradoEn,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
-	const calibradoPrevio = tipo.calibradoEn;
 	tipo.estado = 'borrador';
 	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
 	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
 	tipo.calibradoEn = null;
-	if (!guardarBiblioteca()) {
-		// Sin persistir, la pantalla mostraría el tipo "en edición" —tarjeta con
-		// "Activar", y sin calibrar deja de extraer— mientras el disco lo sigue
-		// teniendo activo. Se revierte para que memoria y disco digan lo mismo.
-		tipo.versionEnEdicion = null;
-		tipo.estado = 'activo';
-		tipo.calibradoEn = calibradoPrevio;
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 
@@ -1511,15 +1727,8 @@ export function cancelarNuevaVersion(id: string): boolean {
 export function marcarCalibrado(id: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo || tipo.estado !== 'activo') return false;
-	const previo = tipo.calibradoEn;
 	tipo.calibradoEn = new Date().toISOString();
-	if (!guardarBiblioteca()) {
-		// Peor que cosmético: sin revertir, la tarjeta diría "Activado" y el
-		// pipeline empezaría a extraer con un tipo que al refrescar vuelve a
-		// estar sin calibrar.
-		tipo.calibradoEn = previo;
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 
@@ -1535,12 +1744,8 @@ export function marcarCalibrado(id: string): boolean {
 export function alternarEjemploDocumental(id: string, valor: boolean) {
 	const tipo = tiposDocumentales.find((t) => t.id === id);
 	if (!tipo) return;
-	const previo = tipo.ejemploDocumental;
 	tipo.ejemploDocumental = valor;
-	// No devuelve nada —nadie mira su resultado— pero sí se revierte: un switch
-	// que se queda prendido en pantalla y aparece apagado al refrescar es
-	// exactamente la clase de mentira que se está cerrando en este módulo.
-	if (!guardarBiblioteca()) tipo.ejemploDocumental = previo;
+	guardarBiblioteca();
 }
 
 /**
@@ -1549,7 +1754,7 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
  * el registro local ni el Custom Extractor, que sigue viviendo en Google
  * exactamente como estaba. Es la alternativa NO destructiva a "Borrar" para
  * un modelo activo, a pedido explícito: el registro se queda en
- * `localStorage`, solo deja de listarse en el árbol y en las tarjetas.
+ * el servidor, solo deja de listarse en el árbol y en las tarjetas.
  *
  * No hay todavía una pantalla de "Archivados" para verlos ni un
  * `desarchivarTipoDocumental()` para volver — se agregan cuando se pidan.
@@ -1602,183 +1807,8 @@ export function agregarDocumentoEjemplo(
 	if (!tipo) return null;
 	const id = idDocumentoEjemplo();
 	tipo.documentosEjemplo.push({ ...documento, id, guardadoEn: new Date().toISOString() });
-	if (!guardarBiblioteca()) {
-		// No persistió. Se deshace el push y se devuelve null: antes se devolvía
-		// el id igual, y con eso la pantalla cerraba el modal y confirmaba un
-		// guardado que no ocurrió. Deshacerlo además evita lo peor — que la
-		// memoria muestre un ejemplo que el disco no tiene y que desaparezca
-		// al refrescar sin que nadie lo haya borrado.
-		const i = tipo.documentosEjemplo.findIndex((d) => d.id === id);
-		if (i !== -1) tipo.documentosEjemplo.splice(i, 1);
-		return null;
-	}
+	guardarBiblioteca();
 	return id;
-}
-
-/** Un ejemplo que todavía guarda sus bytes en base64 (`dataUrl`), con lo que
- *  `migrarEjemplos.ts` necesita para subirlo y volver a encontrarlo después. */
-export type EjemploLegado = {
-	idTipo: string;
-	idDocumento: string;
-	nombre: string;
-	tipo: string;
-	dataUrl: string;
-};
-
-function esLegado(d: DocumentoEjemploInstancia): d is DocumentoEjemploInstancia & { dataUrl: string } {
-	return Boolean(d.dataUrl) && !d.rutaRelativa && !d.rutaVista;
-}
-
-/** Los ejemplos que faltan por migrar, en el orden en que aparecen. */
-export function ejemplosLegados(): EjemploLegado[] {
-	const lista: EjemploLegado[] = [];
-	for (const t of tiposDocumentales) {
-		for (const d of t.documentosEjemplo) {
-			if (esLegado(d)) {
-				lista.push({ idTipo: t.id, idDocumento: d.id, nombre: d.nombre, tipo: d.tipo, dataUrl: d.dataUrl });
-			}
-		}
-	}
-	return lista;
-}
-
-/**
- * El documento de ese legado EN MEMORIA, solo si sigue ahí y sigue siendo el
- * mismo. Comparar el `dataUrl` y no solo el id es lo que garantiza que el
- * puntero que llega se pegue a los bytes que de verdad se subieron.
- */
-function documentoDeLegado(e: EjemploLegado): DocumentoEjemploInstancia | null {
-	const doc = tiposDocumentales
-		.find((t) => t.id === e.idTipo)
-		?.documentosEjemplo.find((d) => d.id === e.idDocumento);
-	return doc && esLegado(doc) && doc.dataUrl === e.dataUrl ? doc : null;
-}
-
-/** El catálogo como está AHORA en disco, sin normalizar, o `null` si no se
- *  puede leer. Ver `pasarEjemploAlAlmacen` para por qué no basta la memoria. */
-function leerCatalogoCrudo(): Record<string, unknown>[] | null {
-	const store = almacen();
-	if (!store) return null;
-	try {
-		const datos = JSON.parse(store.getItem(LLAVE_BIBLIOTECA) ?? '[]');
-		return Array.isArray(datos) ? datos : null;
-	} catch {
-		return null;
-	}
-}
-
-/** El mismo legado dentro del catálogo crudo: mismo tipo, mismo documento y
- *  mismos bytes, todavía sin puntero. */
-function legadoEnCrudo(crudo: Record<string, unknown>[], e: EjemploLegado): Record<string, unknown> | null {
-	const tipo = crudo.find((t) => t?.id === e.idTipo);
-	const docs = Array.isArray(tipo?.documentosEjemplo) ? (tipo.documentosEjemplo as Record<string, unknown>[]) : [];
-	const doc = docs.find((d) => d?.id === e.idDocumento);
-	return doc && doc.dataUrl === e.dataUrl && !doc.rutaRelativa && !doc.rutaVista ? doc : null;
-}
-
-/**
- * Si vale la pena subir ese legado: sigue igual en esta pestaña Y en disco.
- * Mientras se subía el anterior pudo quitarse aquí, o quitarse o migrarse en
- * otra pestaña; en cualquiera de esos casos subirlo solo dejaría un archivo
- * huérfano en el almacén — uno que el usuario ya había decidido quitar.
- */
-export function sigueSiendoLegado(e: EjemploLegado): boolean {
-	const crudo = leerCatalogoCrudo();
-	return documentoDeLegado(e) !== null && crudo !== null && legadoEnCrudo(crudo, e) !== null;
-}
-
-/**
- * Cambia los bytes base64 de un ejemplo viejo por su puntero al almacén, una
- * vez que el archivo ya se subió. Devuelve si quedó guardado.
- *
- * El puntero es de ORIGINAL (`rutaRelativa`) cuando los bytes viejos SON el
- * archivo —una imagen, o un PDF que se guardó entero—, o de VISTA
- * (`rutaVista`) para un PDF del que solo sobrevivió la página 1 — ver
- * `esPdfSinOriginal`. El `id` del documento no cambia, y con eso sus recortes
- * siguen siendo suyos.
- *
- * ESCRIBE SOBRE EL DISCO, NO DESDE LA MEMORIA, y es a propósito. Cada pestaña
- * lee el catálogo UNA vez, al cargar, y nada la refresca después; si esto
- * usara `guardarBiblioteca()`, que escribe el catálogo completo de la
- * pestaña, abrir Configuración en una pestaña vieja bastaría para pisar lo
- * que se hizo en otra —un tipo nuevo, una activación, un ejemplo quitado que
- * resucitaría—, sin que el usuario tocara nada. Así que se lee lo que hay en
- * disco, se cambia SOLO este documento y se escribe eso. Si en disco ya no
- * está, o ya no trae esos bytes, no se escribe nada.
- *
- * Y por no pasar por `guardarBiblioteca()`, el aviso de "no se pudo guardar"
- * no se toca, pase lo que pase: esto corre solo, en segundo plano, y no debe
- * ni levantar un aviso por algo que el usuario no hizo, ni bajar uno que
- * todavía no ha leído — con la cuota llena, migrar libera espacio y SÍ logra
- * guardar, y eso habría cerrado el aviso del guardado que acaba de perder.
- */
-export function pasarEjemploAlAlmacen(
-	e: EjemploLegado,
-	puntero: { rutaRelativa: string; sha256: string; mime: string } | { rutaVista: string; mimeVista: string }
-): boolean {
-	const store = almacen();
-	const crudo = leerCatalogoCrudo();
-	const enDisco = crudo ? legadoEnCrudo(crudo, e) : null;
-	if (!store || !crudo || !enDisco) return false;
-
-	Object.assign(enDisco, puntero);
-	delete enDisco.dataUrl;
-	try {
-		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify(crudo));
-	} catch {
-		// El disco sigue con los bytes y la memoria no se tocó: la próxima vez se
-		// intenta de nuevo. El objeto que ya se subió no estorba — el almacén
-		// dedupica, así que el reintento lo reusa.
-		return false;
-	}
-
-	// La memoria se alinea DESPUÉS, y solo si esta pestaña todavía tiene ese
-	// mismo legado: es lo que cambia el `src` de la pantalla a la del almacén.
-	const enMemoria = documentoDeLegado(e);
-	if (enMemoria) {
-		Object.assign(enMemoria, puntero);
-		delete enMemoria.dataUrl;
-	}
-	return true;
-}
-
-/**
- * Quita del DISCO la copia en PNG que traían los recortes de antes del
- * 2026-09-25 (`imagenDataUrl`). Devuelve cuántas quitó.
- *
- * La memoria ya no la tiene —`leerRecortesDeUnDocumento` la deja afuera—, así
- * que cualquier guardado la borraría también; esto no espera a ese guardado,
- * porque ese espacio es justo el que falta cuando la cuota se llena. Mismo
- * cuidado que `pasarEjemploAlAlmacen`: lee lo que hay en disco, quita SOLO
- * ese campo y escribe eso — sin pasar la memoria de esta pestaña encima de lo
- * que haya hecho otra, y sin tocar el aviso de "no se pudo guardar". Si
- * falla no pasa nada: la próxima vez se intenta de nuevo.
- */
-export function quitarImagenesDeRecortes(): number {
-	const store = almacen();
-	const crudo = leerCatalogoCrudo();
-	if (!store || !crudo) return 0;
-	let quitadas = 0;
-	for (const tipo of crudo) {
-		const porDocumento = tipo?.recortesPorDocumento;
-		if (typeof porDocumento !== 'object' || porDocumento === null) continue;
-		for (const porCampo of Object.values(porDocumento as Record<string, unknown>)) {
-			if (typeof porCampo !== 'object' || porCampo === null) continue;
-			for (const ejemplo of Object.values(porCampo as Record<string, unknown>)) {
-				if (typeof ejemplo === 'object' && ejemplo !== null && 'imagenDataUrl' in ejemplo) {
-					delete (ejemplo as Record<string, unknown>).imagenDataUrl;
-					quitadas += 1;
-				}
-			}
-		}
-	}
-	if (quitadas === 0) return 0;
-	try {
-		store.setItem(LLAVE_BIBLIOTECA, JSON.stringify(crudo));
-		return quitadas;
-	} catch {
-		return 0;
-	}
 }
 
 /**
@@ -1793,19 +1823,9 @@ export function borrarDocumentoEjemplo(idTipo: string, idDocumento: string): boo
 	if (!tipo) return false;
 	const i = tipo.documentosEjemplo.findIndex((d) => d.id === idDocumento);
 	if (i === -1) return false;
-	const docPrevio = tipo.documentosEjemplo[i];
-	const recortesPrevios = tipo.recortesPorDocumento[idDocumento];
 	tipo.documentosEjemplo.splice(i, 1);
 	delete tipo.recortesPorDocumento[idDocumento];
-	if (!guardarBiblioteca()) {
-		// Un borrado ENCOGE el catálogo, así que la cuota no puede tumbarlo: si
-		// falla es que el almacenamiento está bloqueado del todo (modo privado,
-		// política del navegador). Aun así se revierte, porque el síntoma sería
-		// el mismo de siempre — decir "borrado" y verlo reaparecer al refrescar.
-		tipo.documentosEjemplo.splice(i, 0, docPrevio);
-		if (recortesPrevios) tipo.recortesPorDocumento[idDocumento] = recortesPrevios;
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 
@@ -1835,27 +1855,12 @@ export function guardarRecorteEjemplo(
 ): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	const habiaMapa = Boolean(tipo.recortesPorDocumento[idDocumento]);
-	if (!habiaMapa) tipo.recortesPorDocumento[idDocumento] = {};
-	// Se guarda el anterior para poder devolverlo: "recortar de nuevo"
-	// sobreescribe, así que un fallo no debe dejar al campo sin el recorte que
-	// ya tenía.
-	const previo = tipo.recortesPorDocumento[idDocumento][nombreCampo];
+	if (!tipo.recortesPorDocumento[idDocumento]) tipo.recortesPorDocumento[idDocumento] = {};
 	tipo.recortesPorDocumento[idDocumento][nombreCampo] = {
 		...ejemplo,
 		guardadoEn: new Date().toISOString()
 	};
-	if (!guardarBiblioteca()) {
-		// Mismo motivo que en `agregarDocumentoEjemplo`: devolver `true` aquí
-		// cerraba el modal y marcaba el campo como etiquetado sin que el recorte
-		// existiera en disco. Hasta el 2026-09-25 era además la puerta que MÁS
-		// pesaba (cada recorte traía un PNG en base64); ahora son 4 números, pero
-		// con la cuota llena por otra cosa igual puede fallar.
-		if (previo) tipo.recortesPorDocumento[idDocumento][nombreCampo] = previo;
-		else delete tipo.recortesPorDocumento[idDocumento][nombreCampo];
-		if (!habiaMapa) delete tipo.recortesPorDocumento[idDocumento];
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 
@@ -1872,17 +1877,8 @@ export function guardarRecorteEjemplo(
 export function borrarRecorteEjemplo(idTipo: string, idDocumento: string, nombreCampo: string): boolean {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
 	if (!tipo) return false;
-	const previo = tipo.recortesPorDocumento[idDocumento]?.[nombreCampo];
 	delete tipo.recortesPorDocumento[idDocumento]?.[nombreCampo];
-	if (!guardarBiblioteca()) {
-		// Misma razón que en `borrarDocumentoEjemplo`: encoge, así que solo falla
-		// con el almacenamiento bloqueado — y aun así, decir "borrado" y verlo
-		// volver al refrescar es la mentira que se está cerrando en todo el módulo.
-		if (previo && tipo.recortesPorDocumento[idDocumento]) {
-			tipo.recortesPorDocumento[idDocumento][nombreCampo] = previo;
-		}
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 
@@ -1972,16 +1968,7 @@ export function reordenarTipoDocumental(idArrastrado: string, idDestino: string)
 	const [movido] = tiposDocumentales.splice(desde, 1);
 	const hacia = tiposDocumentales.findIndex((t) => t.id === idDestino);
 	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia, 0, movido);
-	if (!guardarBiblioteca()) {
-		// Se devuelve a su sitio: un orden que solo existe en pantalla se
-		// desordena solo al refrescar, y el usuario no sabe por qué.
-		const ahora = tiposDocumentales.findIndex((t) => t.id === idArrastrado);
-		if (ahora !== -1) {
-			const [vuelve] = tiposDocumentales.splice(ahora, 1);
-			tiposDocumentales.splice(desde, 0, vuelve);
-		}
-		return false;
-	}
+	guardarBiblioteca();
 	return true;
 }
 

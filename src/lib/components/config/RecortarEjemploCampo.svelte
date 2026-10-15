@@ -114,9 +114,9 @@
 	});
 
 	// La fuente de la imagen se FIJA al abrir; no sigue al documento en vivo.
-	// La migración de ejemplos viejos (`migrarEjemplos.ts`) puede cambiar este
-	// mismo documento de sus bytes en base64 a su puntero en el almacén con el
-	// modal abierto, y si el `src` siguiera ese cambio el `<img>` recargaría
+	// Recargar la biblioteca del servidor (al abrir Configuración, o al adoptar la
+	// versión de otra persona) puede reemplazar el objeto de este documento con
+	// el modal abierto, y si el `src` siguiera ese cambio el `<img>` recargaría
 	// debajo del usuario mientras dibuja — y si esa lectura falla, el documento
 	// desaparecería y no quedaría sobre qué recortar. Son los mismos bytes, así
 	// que no hay nada que ganar cambiándola a media edición. `.pre` para que la
