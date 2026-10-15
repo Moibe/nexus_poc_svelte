@@ -355,6 +355,47 @@ export function quitarDocumento(id: string, motivo: 'pipeline' | 'descartado' = 
 	if (doc.idEntrada) retirarEntrada(doc.idEntrada, motivo);
 }
 
+/** Lo que pasó al descartar. `error` solo si se detuvo a la mitad: lo ya descartado se queda descartado. */
+export type ResultadoDescarte = { descartados: number; error?: string };
+
+/**
+ * DESCARTAR documentos de la bandeja de preparación (HU «Descartar archivos»). Distinto de `quitarDocumento`, que no espera
+ * respuesta: aquí SÍ se espera, porque el servidor puede negarlo (el rol de la persona no descarta) y entonces el documento
+ * tiene que quedarse en la lista, no desaparecer y volver a los 10 segundos.
+ *
+ * Lo que llegó por la API se descarta en el servidor (queda su rastro de auditoría y el porqué, `detalle`). Lo que se subió a
+ * mano solo vive en esta pestaña: se quita de la lista y ya. En ningún caso se borra el archivo del almacén.
+ */
+export async function descartarDocumentos(ids: string[], detalle: string): Promise<ResultadoDescarte> {
+	let descartados = 0;
+	for (const id of ids) {
+		const doc = documentosEnBandeja.find((d) => d.id === id);
+		if (!doc) continue;
+		if (doc.idEntrada) {
+			let r: Response;
+			try {
+				r = await fetch(`/api/bandeja/${encodeURIComponent(doc.idEntrada)}/retirar`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ motivo: 'descartado', detalle })
+				});
+			} catch {
+				return { descartados, error: 'No se pudo contactar al servidor. Intenta de nuevo.' };
+			}
+			// Un 404 es que ya había salido (otro navegador la descartó o la mandó al pipeline): para esta lista da igual.
+			if (!r.ok && r.status !== 404) {
+				const cuerpo = await r.json().catch(() => null);
+				return { descartados, error: cuerpo?.mensaje ?? `No se pudo descartar «${doc.nombre}» (${r.status}).` };
+			}
+			entradasRetiradas.add(doc.idEntrada);
+		}
+		const i = documentosEnBandeja.findIndex((d) => d.id === id);
+		if (i !== -1) documentosEnBandeja.splice(i, 1);
+		descartados++;
+	}
+	return { descartados };
+}
+
 // ── Lo que llega por la API de clientes ────────────────────────────────────
 
 type EntradaApi = {

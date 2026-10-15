@@ -23,6 +23,9 @@ export const POST: RequestHandler = async ({ cookies, params, request, locals })
 	const cuerpo = new FormData();
 	cuerpo.append('tenant', tenant);
 	cuerpo.append('motivo', motivo);
+	// Solo al descartar: lo que escribió la persona como porqué (opcional). El back lo recorta y le pone tope.
+	const detalle = typeof datos?.detalle === 'string' ? datos.detalle.trim() : '';
+	if (detalle) cuerpo.append('detalle', detalle.slice(0, 500));
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(`/bandeja/${encodeURIComponent(id)}/retirar`), {

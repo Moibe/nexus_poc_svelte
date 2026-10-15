@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
+	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Info from '@lucide/svelte/icons/info';
@@ -12,6 +13,7 @@
 		etiquetaCancelar = 'Cancelar',
 		variante = 'destructivo',
 		soloAviso = false,
+		children,
 		onConfirmar,
 		onCerrar
 	}: {
@@ -33,6 +35,8 @@
 		 *  existe. Se extiende este componente en vez de escribir otro para
 		 *  que los avisos y las confirmaciones se vean como la misma familia. */
 		soloAviso?: boolean;
+		/** Contenido extra bajo el mensaje (p. ej. un campo de motivo). Quien lo pinta guarda su propio estado. */
+		children?: Snippet;
 		onConfirmar: () => void;
 		/** Se llama al cerrar por CUALQUIER vía —Cancelar, Escape o confirmar—
 		 *  para que quien lo usa limpie el estado que lo abrió. Sin esto, `abierto`
@@ -120,6 +124,10 @@
 					</AlertDialogPrimitive.Description>
 				</div>
 			</div>
+
+			{#if children}
+				<div class="mt-4">{@render children()}</div>
+			{/if}
 
 			<!-- Cancelar a la izquierda del destructivo y con el foco inicial: si
 			     alguien llega aquí por inercia y pica Enter, no destruye nada. -->

@@ -49,8 +49,10 @@
 		archivosPendientesDeCarga,
 		cancelarCargaPendiente,
 		confirmarCargaPendiente,
+		descartarDocumentos,
 		documentosEnBandeja
 	} from '$lib/state/bandeja.svelte';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import { documentosEnPipeline, iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
 
 	let {
@@ -98,6 +100,31 @@
 	// ofrecerlo.
 	const procesables = $derived(enBandeja.filter(sePuedeProcesar));
 
+	// ── Descartar (bandeja de preparación) ──────────────────────────────────
+	// Pide confirmación en un panel propio y, opcionalmente, el porqué. Descartar saca el documento de la bandeja y deja el
+	// rastro; NO borra el archivo del almacén. Lo que se descarta es lo seleccionado en el momento de picar.
+	let idsADescartar = $state<string[] | null>(null);
+	let motivoDescarte = $state('');
+	let enviandoDescarte = $state(false);
+	let errorDescarte = $state('');
+
+	function pedirDescarte() {
+		idsADescartar = enBandeja.map((d) => d.id);
+		motivoDescarte = '';
+	}
+
+	async function confirmarDescarte() {
+		const ids = idsADescartar ?? [];
+		if (ids.length === 0 || enviandoDescarte) return;
+		enviandoDescarte = true;
+		try {
+			const r = await descartarDocumentos(ids, motivoDescarte);
+			if (r.error) errorDescarte = r.descartados > 0 ? `${r.error} Se descartaron ${r.descartados} de ${ids.length}.` : r.error;
+		} finally {
+			enviandoDescarte = false;
+		}
+	}
+
 	const unicoBandeja = $derived(enBandeja.length === 1 ? enBandeja[0].id : null);
 
 	// "Detalle" NO va en este grupo: un documento que sigue en la Bandeja
@@ -132,9 +159,8 @@
 			alHacerClic: alAbrirExpedientes,
 			testid: 'accion-ver-expediente-bandeja'
 		},
-		// Sin comportamiento todavía: es destructivo y merece su propio modal de
-		// confirmación, no un confirm() del navegador.
-		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-bandeja' }
+		// Destructivo: pide confirmación en su propio panel (no un confirm() del navegador) y deja rastro en el servidor.
+		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, alHacerClic: pedirDescarte, testid: 'accion-descartar-bandeja' }
 	]);
 
 	// ── Pipeline documental ─────────────────────────────────────────────────
@@ -219,3 +245,33 @@
 		<BarraAccionesPanel {grupos} />
 	</div>
 {/if}
+
+<ConfirmarAccion
+	abierto={idsADescartar !== null}
+	titulo={idsADescartar && idsADescartar.length > 1 ? `¿Descartar ${idsADescartar.length} documentos?` : '¿Descartar este documento?'}
+	mensaje="Saldrá de la bandeja de preparación y no se procesará. El archivo no se borra del almacén y queda el registro de quién lo descartó."
+	etiquetaConfirmar={enviandoDescarte ? 'Descartando…' : 'Descartar'}
+	onConfirmar={confirmarDescarte}
+	onCerrar={() => (idsADescartar = null)}
+>
+	<label for="motivo-descarte" class="text-xs font-medium text-foreground">Motivo (opcional)</label>
+	<textarea
+		id="motivo-descarte"
+		data-testid="motivo-descarte"
+		bind:value={motivoDescarte}
+		maxlength={500}
+		rows={3}
+		placeholder="Por qué se descarta, para quien revise después"
+		class="mt-1.5 w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+	></textarea>
+</ConfirmarAccion>
+
+<ConfirmarAccion
+	abierto={errorDescarte !== ''}
+	titulo="No se pudo descartar"
+	mensaje={errorDescarte}
+	etiquetaConfirmar="Entendido"
+	soloAviso
+	onConfirmar={() => {}}
+	onCerrar={() => (errorDescarte = '')}
+/>
