@@ -74,6 +74,8 @@
 	let errorEmail = $state('');
 	let errorRecEmail = $state('');
 	let errorGeneral = $state('');
+	/** Por qué NO se creó la organización, para el aviso rojo de arriba de los botones. Vacío si no hubo fallo. */
+	let falloAlCrear = $state('');
 	let coincidencias = $state<{ nombre: string; slug: string }[]>([]);
 	let slugPropuesto = $state('');
 	let creada = $state<Creada | null>(null);
@@ -138,7 +140,7 @@
 
 	function limpiar() {
 		nombre = adminNombre = adminPaterno = adminMaterno = adminTelefono = adminEmail = recTelefono = recEmail = '';
-		errorEmail = errorRecEmail = errorGeneral = '';
+		errorEmail = errorRecEmail = errorGeneral = falloAlCrear = '';
 		adminTocado = recTocado = false;
 		coincidencias = [];
 		slugPropuesto = '';
@@ -162,13 +164,14 @@
 	async function crear() {
 		if (!completo || enviando) return;
 		enviando = true;
-		errorEmail = errorRecEmail = errorGeneral = '';
+		errorEmail = errorRecEmail = errorGeneral = falloAlCrear = '';
 		// Al intentar crear ya no hay nada "a medio escribir": si el correo de
 		// recuperación está mal, se dice ahora y no después del viaje al servidor.
 		recTocado = true;
 		if (!correoRecuperacion.ok) {
 			enviando = false;
 			recuperacionAbierta = true; // si el desplegable está cerrado, el aviso no se vería
+			falloAlCrear = correoRecuperacion.motivo; // y el aviso rojo: la organización NO se creó
 			return;
 		}
 		try {
@@ -197,11 +200,17 @@
 					errorRecEmail = cuerpo.mensaje;
 					recuperacionAbierta = true;
 				} else errorGeneral = cuerpo?.mensaje ?? 'No se pudo crear la organización. Intenta de nuevo.';
+				// Además del aviso bajo el campo, el aviso rojo de «no se creó»: sin él, quien mira los botones no sabe que
+				// el alta NO ocurrió.
+				falloAlCrear = errorEmail || errorRecEmail || errorGeneral;
 				return;
 			}
 			creada = cuerpo as Creada;
 			await tick();
 			await alCrear();
+		} catch {
+			// Sin respuesta del servidor (red caída, API detenida): antes no pasaba nada a la vista.
+			falloAlCrear = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
 		} finally {
 			enviando = false;
 		}
@@ -253,6 +262,11 @@
 						</p>
 					</div>
 				</div>
+				<AvisoVerde
+					testid="organizacion-creada-aviso"
+					titulo="Organización creada correctamente"
+					cuerpo="{creada.organizacion.nombre} quedó registrada con el ID {creada.organizacion.slug}."
+				/>
 				{#if creada.correoEnviado}
 					<AvisoVerde
 						testid="correo-enviado-organizacion"
@@ -483,8 +497,10 @@
 					{/if}
 				</div>
 
-				{#if errorGeneral}
-					<p class="text-xs text-destructive" data-testid="error-general-organizacion">{errorGeneral}</p>
+				{#if falloAlCrear}
+					<AvisoRojo testid="organizacion-no-creada" titulo="La organización no se creó correctamente">
+						<span data-testid="error-general-organizacion">{falloAlCrear}</span>
+					</AvisoRojo>
 				{/if}
 			</div>
 
