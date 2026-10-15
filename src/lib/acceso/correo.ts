@@ -30,7 +30,18 @@ export const LARGO_MAXIMO_CORREO = 254;
  *  mismo. */
 export const MENSAJE_CORREO_INVALIDO = 'Formato incorrecto; por favor ingresa un correo electrónico válido.';
 
-const RE_CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+/**
+ * La forma de un correo: parte local de caracteres normales separados por UN punto (sin punto al principio, al final ni
+ * dos seguidos, de hasta 64), una arroba, y un dominio de etiquetas con letras, números y guiones (que no empiezan ni
+ * terminan en guion) separadas por puntos, que termina en una extensión de al menos DOS caracteres y que empieza con letra.
+ *
+ * Antes era `^[^@\s]+@[^@\s]+\.[^@\s]+$` (2026-10-09), que solo pedía una arroba y un punto: dejaba pasar `a@b.c`, `a@b..com`,
+ * `a@-b.com` o `a@b.com.` (corregido el 2026-10-15, a pedido de QA). Sigue aceptando `+`, subdominios y extensiones largas
+ * (`.com.mx`, `.consulting`). NO acepta acentos ni letras fuera del ASCII, ni en la parte local ni en el dominio: un correo así
+ * es rarísimo y, si alguna vez hace falta, se agrega aquí Y en `servicios/usuarios.py`.
+ */
+const RE_CORREO =
+	/^(?=[^@]{1,64}@)[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]$/;
 
 export type ResultadoCorreo = { ok: true; correo: string } | { ok: false; motivo: string };
 
