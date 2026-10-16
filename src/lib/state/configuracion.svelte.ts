@@ -13,8 +13,9 @@
 import { browser } from '$app/environment';
 
 /**
- * Los seis tipos que ofrece el desplegable en Figma (frame 972:53474). Su
- * destino es `field_definition.data_type` del diccionario.
+ * Los seis tipos que ofrece el desplegable en Figma (frame 972:53474) y, desde el 2026-10-16, un séptimo que NO está en el
+ * diseño: «Grupo de campos» (`grupo`), pedido para las actas constitutivas, donde un dato no es un valor suelto sino una fila
+ * de varios (un accionista = nombre + acciones + monto). Su destino es `field_definition.data_type` del diccionario.
  *
  * OJO con `lista`: implica que el campo tiene un conjunto cerrado de valores
  * permitidos, o sea filas en `catalog_value` (2.3). Hoy nada las captura — eso
@@ -26,8 +27,16 @@ export const TIPOS_DE_DATO = [
 	{ value: 'fecha', label: 'Fecha' },
 	{ value: 'moneda', label: 'Moneda' },
 	{ value: 'booleano', label: 'Booleano' },
-	{ value: 'lista', label: 'Lista' }
+	{ value: 'lista', label: 'Lista' },
+	{ value: 'grupo', label: 'Grupo de campos' }
 ] as const;
+
+/**
+ * Los tipos que puede tener un campo DENTRO de un grupo: los mismos, menos `grupo` (un solo nivel) y menos `lista` (el asistente
+ * no captura valores permitidos por subcampo; el back sí los entendería el día que haga falta).
+ */
+export const TIPOS_DE_SUBCAMPO = TIPOS_DE_DATO.filter((t) => t.value !== 'grupo' && t.value !== 'lista');
+const VALORES_SUBTIPO = TIPOS_DE_SUBCAMPO.map((t) => t.value) as readonly string[];
 
 const VALORES_TIPO = TIPOS_DE_DATO.map((t) => t.value) as readonly string[];
 
@@ -102,6 +111,19 @@ export const CARDINALIDADES = [
 const VALORES_UMBRAL = UMBRALES_CONFIANZA.map((u) => u.value) as readonly string[];
 const VALORES_REGLA = REGLAS_TRANSFORMACION.map((r) => r.value) as readonly string[];
 
+/**
+ * Un campo dentro de un grupo. Mismo molde que un campo suelto pero más corto: sin cardinalidad (dentro de una fila cada
+ * subcampo aparece una vez), sin umbral ni regla del paso 3, sin valor de estructura y sin lista de valores.
+ */
+export type SubcampoBorrador = {
+	/** Solo para la llave del #each; no viaja a la base. */
+	id: string;
+	nombre: string;
+	tipoDato: string;
+	descripcion: string;
+	obligatorio: boolean;
+};
+
 export type CampoBorrador = {
 	/** Solo para la llave del #each; no viaja a la base. */
 	id: string;
@@ -138,6 +160,12 @@ export type CampoBorrador = {
 	valoresLista: string[];
 	/** Lo que se está tecleando en "Agregar listado", antes de volverse chip. */
 	valorListaEnCaptura: string;
+	/**
+	 * Los campos de cada fila cuando `tipoDato === 'grupo'`. Con `cardinalidad: 'multiple'` el grupo se repite (una fila por
+	 * accionista); con `'unico'` aparece una vez (un domicilio). NO se borran al cambiar el tipo a otro, por lo mismo que
+	 * `valoresLista`: tirar lo que alguien escribió por tocar un desplegable es peor que dejar un dato inerte.
+	 */
+	subcampos: SubcampoBorrador[];
 };
 
 export type BorradorTipoDocumental = {
@@ -199,7 +227,8 @@ export function campoVacio(): CampoBorrador {
 		reglaTransformacion: '',
 		cardinalidad: 'unico',
 		valoresLista: [],
-		valorListaEnCaptura: ''
+		valorListaEnCaptura: '',
+		subcampos: []
 	};
 }
 
@@ -251,6 +280,19 @@ function almacen(): Storage | null {
 	}
 }
 
+/** Normaliza un subcampo de un grupo. `null` si no es ni un objeto. */
+function leerSubcampo(c: unknown): SubcampoBorrador | null {
+	if (typeof c !== 'object' || c === null) return null;
+	const d = c as Record<string, unknown>;
+	return {
+		id: idCampo(),
+		nombre: typeof d.nombre === 'string' ? d.nombre : '',
+		tipoDato: typeof d.tipoDato === 'string' && VALORES_SUBTIPO.includes(d.tipoDato) ? d.tipoDato : '',
+		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+		obligatorio: d.obligatorio === true
+	};
+}
+
 /** Normaliza un campo venido de localStorage. `null` si no es ni un objeto. */
 function leerCampo(c: unknown): CampoBorrador | null {
 	if (typeof c !== 'object' || c === null) return null;
@@ -278,7 +320,10 @@ function leerCampo(c: unknown): CampoBorrador | null {
 			? d.valoresLista.filter((v: unknown): v is string => typeof v === 'string')
 			: [],
 		valorListaEnCaptura:
-			typeof d.valorListaEnCaptura === 'string' ? d.valorListaEnCaptura : ''
+			typeof d.valorListaEnCaptura === 'string' ? d.valorListaEnCaptura : '',
+		subcampos: Array.isArray(d.subcampos)
+			? (d.subcampos.map(leerSubcampo).filter(Boolean) as SubcampoBorrador[])
+			: []
 	};
 }
 
@@ -390,9 +435,59 @@ export function quitarCampo(id: string) {
 	if (i !== -1) borradorTipoDocumental.campos.splice(i, 1);
 }
 
-/** Un campo está completo cuando tiene sus tres obligatorios. */
+/** Un subcampo está completo cuando tiene nombre y tipo (la descripción es opcional: ayuda al modelo, pero no se exige). */
+export function subcampoCompleto(s: SubcampoBorrador): boolean {
+	return s.nombre.trim() !== '' && s.tipoDato !== '';
+}
+
+/** ¿Ya hay OTRO subcampo con ese nombre en el grupo? (Mismo criterio que `nombreCampoDuplicado`.) */
+export function subcampoDuplicado(nombre: string, subcampos: SubcampoBorrador[], exceptoId?: string): boolean {
+	const n = nombre.trim().toLowerCase();
+	if (n === '') return false;
+	return subcampos.some((s) => s.id !== exceptoId && s.nombre.trim().toLowerCase() === n);
+}
+
+/** Por qué un grupo todavía no se puede guardar, o `null` si está bien. Es lo que le dice a la persona qué falta. */
+export function problemaDelGrupo(c: CampoBorrador): string | null {
+	if (c.tipoDato !== 'grupo') return null;
+	if (c.subcampos.length === 0) return 'Agrega al menos un campo al grupo.';
+	if (!c.subcampos.every(subcampoCompleto)) return 'Completa el nombre y el tipo de cada campo del grupo.';
+	if (c.subcampos.some((s) => subcampoDuplicado(s.nombre, c.subcampos, s.id))) {
+		return 'Hay campos del grupo con el mismo nombre. Cada uno debe llamarse distinto.';
+	}
+	return null;
+}
+
+/** Un campo está completo cuando tiene sus tres obligatorios y, si es un grupo, sus campos en orden. */
 export function campoCompleto(c: CampoBorrador): boolean {
-	return c.nombre.trim() !== '' && c.tipoDato !== '' && c.descripcion.trim() !== '';
+	return c.nombre.trim() !== '' && c.tipoDato !== '' && c.descripcion.trim() !== '' && problemaDelGrupo(c) === null;
+}
+
+/** Agrega un subcampo en blanco al grupo (texto y obligatorio por default, como un campo nuevo). */
+export function agregarSubcampo(campo: CampoBorrador) {
+	campo.subcampos.push({ id: idCampo(), nombre: '', tipoDato: 'texto', descripcion: '', obligatorio: true });
+}
+
+export function quitarSubcampo(campo: CampoBorrador, id: string) {
+	const i = campo.subcampos.findIndex((s) => s.id === id);
+	if (i !== -1) campo.subcampos.splice(i, 1);
+}
+
+/**
+ * Cambia el tipo de dato de un campo y ajusta lo que depende de él. Un grupo casi siempre se repite (una fila por accionista),
+ * así que al elegir «Grupo de campos» la cardinalidad pasa a múltiple y arranca con un subcampo en blanco; al dejarlo, vuelve
+ * a único: la cardinalidad de un campo suelto se decide en el paso 3, y un texto «múltiple» heredado de haber probado un grupo
+ * sería un dato fantasma. Los subcampos NO se borran (ver `CampoBorrador.subcampos`).
+ */
+export function alCambiarTipoDato(campo: CampoBorrador, nuevo: string) {
+	const antes = campo.tipoDato;
+	campo.tipoDato = nuevo;
+	if (nuevo === 'grupo' && antes !== 'grupo') {
+		campo.cardinalidad = 'multiple';
+		if (campo.subcampos.length === 0) agregarSubcampo(campo);
+	} else if (antes === 'grupo' && nuevo !== 'grupo') {
+		campo.cardinalidad = 'unico';
+	}
 }
 
 /** Un campo al que no se le ha tocado nada. Se ignoran al guardar.
@@ -405,7 +500,8 @@ export function campoIntacto(c: CampoBorrador): boolean {
 		c.nombre.trim() === '' &&
 		c.tipoDato === '' &&
 		c.valorEstructura.trim() === '' &&
-		c.descripcion.trim() === ''
+		c.descripcion.trim() === '' &&
+		c.subcampos.length === 0
 	);
 }
 

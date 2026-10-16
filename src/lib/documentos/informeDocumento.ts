@@ -17,7 +17,7 @@
  */
 import { formatearTamano } from '$lib/state/bandeja.svelte';
 import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
+import { calidadDe, camposDe, textoDeAusentes, type CampoExtraido } from '$lib/types/ine';
 import type { AvisoInforme, Informe, SeccionInforme } from './descargar';
 
 /** Placeholder, igual que en los paneles: no hay autenticación todavía, así
@@ -83,6 +83,10 @@ function avisosDe(documento: DocumentoEnPipeline): AvisoInforme[] {
 				documento.resultado._metadata.motivo ??
 				'Document AI respondió sin campos para este documento.'
 		});
+	}
+	const ausentes = textoDeAusentes(documento.resultado?._metadata?.campos_ausentes);
+	if (ausentes) {
+		lista.push({ titulo: 'Faltan campos obligatorios', texto: `El extractor no encontró: ${ausentes}.` });
 	}
 	if (documento.estado === 'no_configurado') {
 		lista.push({

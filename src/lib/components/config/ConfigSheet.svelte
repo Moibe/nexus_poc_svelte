@@ -51,6 +51,7 @@
 	import GenerarPrompts from './GenerarPrompts.svelte';
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
 	import RevisionPrompt from './RevisionPrompt.svelte';
+	import SubcamposGrupo from './SubcamposGrupo.svelte';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
@@ -59,6 +60,7 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarValorLista,
+		alCambiarTipoDato,
 		alternarEjemploDocumental,
 		borrarDocumentoEjemplo,
 		borrarRecorteEjemplo,
@@ -2101,6 +2103,11 @@
 																>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
 															>
 														</div>
+														{#if campo.tipoDato === 'grupo' && campo.subcampos?.length}
+															<p class="col-span-4 -mt-1 mb-1 px-3 text-xs text-muted-foreground" data-testid="subcampos-ficha">
+																Campos del grupo: {campo.subcampos.map((sub) => `${sub.nombre} (${etiquetaTipo(sub.tipoDato) ?? sub.tipoDato}${sub.obligatorio ? '' : ', opcional'})`).join(' · ')}
+															</p>
+														{/if}
 													{/each}
 												</div>
 											{/if}
@@ -2746,7 +2753,11 @@
 
 								<div class="space-y-2">
 									<Label for="campo-tipo">Tipo de dato *</Label>
-									<Select.Root type="single" bind:value={borrador.campoEnCaptura.tipoDato}>
+									<Select.Root
+										type="single"
+										value={borrador.campoEnCaptura.tipoDato}
+										onValueChange={(v) => alCambiarTipoDato(borrador.campoEnCaptura, v)}
+									>
 										<Select.Trigger id="campo-tipo" class="w-full">
 											{etiquetaTipo(borrador.campoEnCaptura.tipoDato) ?? 'Selecciona un tipo de campo'}
 										</Select.Trigger>
@@ -2763,16 +2774,21 @@
 							     como en el frame. SIN asterisco — es opcional. Es un valor de
 							     EJEMPLO que muestra la forma esperada del dato, no una validación:
 							     su destino en el diccionario es `field_definition.prompt_hint`. -->
-							<div class="mt-6 grid gap-6 md:grid-cols-2">
-								<div class="space-y-2">
-									<Label for="campo-estructura">Valor de estructura</Label>
-									<Input
-										id="campo-estructura"
-										bind:value={borrador.campoEnCaptura.valorEstructura}
-										placeholder="Ingresa un valor de ejemplo"
-									/>
+							{#if borrador.campoEnCaptura.tipoDato === 'grupo'}
+								<!-- Un grupo no tiene «valor de estructura» (un ejemplo de UN valor); lo suyo son los campos de cada fila. -->
+								<SubcamposGrupo campo={borrador.campoEnCaptura} />
+							{:else}
+								<div class="mt-6 grid gap-6 md:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="campo-estructura">Valor de estructura</Label>
+										<Input
+											id="campo-estructura"
+											bind:value={borrador.campoEnCaptura.valorEstructura}
+											placeholder="Ingresa un valor de ejemplo"
+										/>
+									</div>
 								</div>
-							</div>
+							{/if}
 
 							<div class="mt-6 space-y-2">
 								<Label for="campo-desc">Descripción funcional *</Label>
@@ -2912,7 +2928,11 @@
 													class="bg-muted text-muted-foreground"
 												/>
 											{:else}
-												<Select.Root type="single" bind:value={campo.tipoDato}>
+												<Select.Root
+													type="single"
+													value={campo.tipoDato}
+													onValueChange={(v) => alCambiarTipoDato(campo, v)}
+												>
 													<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
 														{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
 													</Select.Trigger>
@@ -2935,6 +2955,10 @@
 										<Minus class="size-4" />
 									</button>
 								</div>
+								{#if campo.tipoDato === 'grupo'}
+									<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
+									<div class="-mt-2"><SubcamposGrupo {campo} soloLectura={altaEnCurso} /></div>
+								{/if}
 							{/each}
 						</div>
 					{:else if !puedeAgregar}
@@ -3109,6 +3133,10 @@
 													</div>
 												{/if}
 											</div>
+										{/if}
+
+										{#if campo.tipoDato === 'grupo'}
+											<SubcamposGrupo {campo} soloLectura />
 										{/if}
 
 										<div class="mt-6 rounded-xl border border-border p-4">

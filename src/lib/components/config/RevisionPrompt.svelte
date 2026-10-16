@@ -33,7 +33,7 @@
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
-	import { camposDe, type CampoExtraido, type ResultadoIne } from '$lib/types/ine';
+	import { camposDe, textoDeAusentes, type CampoExtraido, type ResultadoIne } from '$lib/types/ine';
 
 	let {
 		archivo,
@@ -77,6 +77,8 @@
 	let estado = $state<'extrayendo' | 'error' | 'listo'>('extrayendo');
 	let error = $state('');
 	let filas = $state<Fila[]>([]);
+	/** Lo obligatorio que el extractor no trajo, ya resumido para el aviso; `null` si no faltó nada o no se sabe. */
+	let ausentes = $state<string | null>(null);
 
 	/** Invalida extracciones viejas: si se reintenta mientras una corrida
 	 *  anterior sigue en vuelo, la que llegue tarde no debe pisar el resultado
@@ -95,6 +97,7 @@
 		estado = 'extrayendo';
 		error = '';
 		filas = [];
+		ausentes = null;
 
 		if (!procesador) {
 			// Un tipo activo siempre tiene procesador (activar lo escribe antes
@@ -152,6 +155,7 @@
 			valorCorrecto: '',
 			veredicto: null
 		}));
+		ausentes = textoDeAusentes((datos as ResultadoIne)._metadata?.campos_ausentes);
 		estado = 'listo';
 	}
 
@@ -227,6 +231,14 @@
 			tipo documental.
 		</p>
 	{:else}
+		{#if ausentes}
+			<!-- Un campo obligatorio que no salió NO tiene ficha (no hay nada que confirmar): sin este aviso la revisión parecería completa. -->
+			<div class="mt-8 max-w-4xl rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="aviso-campos-ausentes">
+				<p class="text-sm font-medium text-amber-800">Faltan campos obligatorios</p>
+				<p class="mt-1 text-xs text-amber-700">El extractor no encontró: {ausentes}.</p>
+			</div>
+		{/if}
+
 		<p class="mt-8 text-sm text-muted-foreground" data-testid="avance-revision">
 			{revisados} de {filas.length} campos revisados
 		</p>

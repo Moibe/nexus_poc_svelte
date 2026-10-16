@@ -74,6 +74,13 @@ export type MetadataExtraccion = {
 	engine_version: string | null;
 	/** Solo presente cuando `quality_alert` es `true`. */
 	motivo?: string;
+	/**
+	 * Lo OBLIGATORIO que el esquema del tipo documental pide y la extracción no trajo, como rutas: `capital_social` (un campo
+	 * que faltó), `accionistas` (un grupo obligatorio sin ninguna fila) o `accionistas[2].nombre` (la fila 2 salió sin ese
+	 * subcampo). Lista vacía = se revisó y no faltó nada. AUSENTE (`undefined`) = no se pudo leer el esquema, y no se sabe: no
+	 * es lo mismo que «no faltó nada».
+	 */
+	campos_ausentes?: string[];
 };
 
 /**
@@ -81,11 +88,18 @@ export type MetadataExtraccion = {
  * la raíz (`nombre`, `curp`, `clave_elector`…), por eso el index signature: el
  * procesador puede agregar campos sin que haya que tocar este archivo.
  *
- * `domicilio` es el único anidado hoy — Document AI lo devuelve como entidad
+ * `domicilio` es un grupo ÚNICO — Document AI lo devuelve como entidad
  * compuesta, y el back conserva esa jerarquía a propósito porque `estado` y
  * `localidad` existen a la vez en la raíz y dentro de domicilio con
  * significados distintos.
+ *
+ * Lo que se REPITE (2026-10-16): un campo que el esquema declara múltiple llega SIEMPRE como lista, aunque haya salido una
+ * sola vez (`CampoExtraido[]`), y un grupo múltiple —accionistas, cargos— como lista de FILAS (`FilaDeGrupo[]`), cada una con
+ * sus subcampos juntos. Antes de eso, de varias apariciones solo sobrevivía la última.
  */
+/** Una fila de un grupo repetible: sus subcampos, ya extraídos, por nombre. */
+export type FilaDeGrupo = Record<string, CampoExtraido>;
+
 export type ResultadoIne = {
 	/** Promedio de la confianza de todos los campos. Es lo que la interfaz
 	 *  muestra como "Nivel de confianza obtenida" desde el 2026-09-10. */
@@ -96,7 +110,16 @@ export type ResultadoIne = {
 	_metadata: MetadataExtraccion;
 	ocr?: CapaOcr;
 	domicilio?: Record<string, CampoExtraido>;
-	[campo: string]: CampoExtraido | Record<string, CampoExtraido> | CapaOcr | MetadataExtraccion | number | null | undefined;
+	[campo: string]:
+		| CampoExtraido
+		| CampoExtraido[]
+		| FilaDeGrupo
+		| FilaDeGrupo[]
+		| CapaOcr
+		| MetadataExtraccion
+		| number
+		| null
+		| undefined;
 };
 
 /** Discrimina un campo hoja de los objetos especiales (`ocr`, `_metadata`…). */
@@ -113,6 +136,11 @@ export function esCampoExtraido(valor: unknown): valor is CampoExtraido {
  * Los campos del documento, en orden, ya separados del ruido de la respuesta.
  * Aplana `domicilio` a `domicilio.estado`, etc., que es la misma notación
  * punteada que usa `extractor_field_map.source_path` en el diccionario.
+ *
+ * Lo repetido lleva su posición (desde 1) entre corchetes, en el orden del documento: `socios_nombre[2]` para el segundo
+ * valor de un campo múltiple y `accionistas[1].nombre` para un subcampo de la primera fila de un grupo. Es la misma ruta que
+ * usa `_metadata.campos_ausentes`, así que se pueden cruzar. Cada ruta es única, que es lo que piden las pantallas que usan
+ * este helper como llave de sus listas.
  */
 export function camposDe(resultado: ResultadoIne): Array<[string, CampoExtraido]> {
 	const salida: Array<[string, CampoExtraido]> = [];
@@ -126,6 +154,17 @@ export function camposDe(resultado: ResultadoIne): Array<[string, CampoExtraido]
 			continue;
 		if (esCampoExtraido(valor)) {
 			salida.push([llave, valor]);
+		} else if (Array.isArray(valor)) {
+			valor.forEach((elemento, i) => {
+				const ruta = `${llave}[${i + 1}]`;
+				if (esCampoExtraido(elemento)) {
+					salida.push([ruta, elemento]);
+				} else if (typeof elemento === 'object' && elemento !== null) {
+					for (const [sub, campo] of Object.entries(elemento)) {
+						if (esCampoExtraido(campo)) salida.push([`${ruta}.${sub}`, campo]);
+					}
+				}
+			});
 		} else if (typeof valor === 'object' && valor !== null) {
 			for (const [sub, campo] of Object.entries(valor)) {
 				if (esCampoExtraido(campo)) salida.push([`${llave}.${sub}`, campo]);
@@ -133,6 +172,18 @@ export function camposDe(resultado: ResultadoIne): Array<[string, CampoExtraido]
 		}
 	}
 	return salida;
+}
+
+/**
+ * El texto del aviso «faltaron campos obligatorios»: las primeras rutas y cuántas más hay, o `null` si no faltó nada (o si no se
+ * sabe, que es `undefined`). Un grupo ruidoso puede traer decenas de filas incompletas; el aviso las resume en vez de volverse
+ * una pared.
+ */
+export function textoDeAusentes(ausentes: string[] | undefined, maximo = 6): string | null {
+	if (!ausentes || ausentes.length === 0) return null;
+	const primeras = ausentes.slice(0, maximo).join(', ');
+	const resto = ausentes.length - maximo;
+	return resto > 0 ? `${primeras} y ${resto} más` : primeras;
 }
 
 /**
