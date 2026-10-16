@@ -29,6 +29,7 @@
 	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
 	import NuevaOrganizacionSheet from '$lib/components/organizaciones/NuevaOrganizacionSheet.svelte';
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
 	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
@@ -40,6 +41,16 @@
 	let { data } = $props();
 
 	let nuevaAbierta = $state(false);
+
+	/** "Registro cancelado correctamente", tras confirmar la salida del alta.
+	 *  Vive AQUÍ y no en el panel porque el panel es lo que se cierra. Se apaga
+	 *  al abrir un registro nuevo: a partir de ahí el aviso habla del pasado. */
+	let avisoCancelado = $state(false);
+
+	function abrirNueva() {
+		avisoCancelado = false;
+		nuevaAbierta = true;
+	}
 	let busqueda = $state('');
 	let seleccionadaGuid = $state<string | null>(null);
 
@@ -154,6 +165,23 @@
 	</p>
 </div>
 
+<!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el
+     aviso de adentro: una región que se monta junto con su texto no se anuncia,
+     el lector tiene que estar observándola de antes. Vacío no mide nada. -->
+<div role="status" aria-live="polite">
+	{#if avisoCancelado}
+		<!-- El margen va ADENTRO del if: en el contenedor dejaba 24px de aire
+		     arriba del listado aunque no hubiera aviso. -->
+		<div class="mt-6">
+			<AvisoVerde
+				testid="organizacion-registro-cancelado"
+				titulo="Registro cancelado correctamente"
+				cuerpo="No se registró ninguna organización. Puedes volver a empezar el registro cuando quieras."
+			/>
+		</div>
+	{/if}
+</div>
+
 {#if organizaciones.length === 0}
 	<div class="mt-8 flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center">
 		<Sparkles class="size-10 text-primary" />
@@ -168,7 +196,7 @@
 			type="button"
 			class="flex w-full max-w-md items-start gap-3 rounded-xl border border-border bg-background p-4 text-left transition-colors hover:bg-muted"
 			data-testid="crear-primera-organizacion"
-			onclick={() => (nuevaAbierta = true)}
+			onclick={abrirNueva}
 		>
 			<span class="mt-0.5 shrink-0 text-primary"><Network class="size-5" /></span>
 			<span class="min-w-0 flex-1">
@@ -241,7 +269,7 @@
 				{/each}
 			</ul>
 
-			<Button class="mt-4 w-full" data-testid="nueva-organizacion" onclick={() => (nuevaAbierta = true)}>
+			<Button class="mt-4 w-full" data-testid="nueva-organizacion" onclick={abrirNueva}>
 				Nueva organización
 			</Button>
 		</aside>
@@ -428,4 +456,5 @@
 	bind:open={nuevaAbierta}
 	recientes={organizaciones.map((o) => ({ nombre: o.nombre, slug: o.slug }))}
 	alCrear={() => invalidateAll()}
+	alCancelar={() => (avisoCancelado = true)}
 />

@@ -141,12 +141,17 @@
 					<AlertDialogPrimitive.Title class="mt-8 text-2xl font-semibold text-foreground">
 						{titulo}
 					</AlertDialogPrimitive.Title>
-					<AlertDialogPrimitive.Description class="mt-6 text-base text-foreground">
+					<!-- Cuerpo en gris y pregunta en oscuro: así los separa el Figma, y es lo
+					     que hace que la pregunta se lea como la decisión y no como una línea
+					     más del párrafo. -->
+					<AlertDialogPrimitive.Description class="mt-6 text-base text-muted-foreground">
 						{#each mensaje.split(String.fromCharCode(10)) as linea, i (i)}
 							<span class="block">{linea}</span>
 						{/each}
 						{#if pregunta}
-							<span class="mt-8 block font-semibold" data-testid="confirmar-pregunta">{pregunta}</span>
+							<span class="mt-8 block font-semibold text-foreground" data-testid="confirmar-pregunta">
+								{pregunta}
+							</span>
 						{/if}
 					</AlertDialogPrimitive.Description>
 				</div>

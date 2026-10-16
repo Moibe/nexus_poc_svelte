@@ -40,13 +40,18 @@
 	let {
 		open = $bindable(false),
 		recientes = [],
-		alCrear
+		alCrear,
+		alCancelar
 	}: {
 		open?: boolean;
 		/** Las últimas organizaciones, para el desplegable "Ultimos registros". */
 		recientes?: { nombre: string; slug: string }[];
 		/** Se llama cuando el alta terminó bien, para recargar el listado. */
 		alCrear: () => Promise<void> | void;
+		/** Se llama al confirmar "Cancelar registro" en el diálogo de salida —
+		 *  solo ahí: cerrar con la X sin haber escrito nada no cancela ningún
+		 *  registro, y anunciarlo sería ruido. */
+		alCancelar?: () => void;
 	} = $props();
 
 	/** Lo que contestó el alta. Si el correo SALIÓ (`correoEnviado`), la contraseña temporal no viene: el administrador
@@ -534,6 +539,10 @@
 	onConfirmar={() => {
 		open = false;
 		limpiar();
+		// El aviso de "Registro cancelado correctamente" lo pinta la PÁGINA, no
+		// este panel: el panel es justo lo que se está cerrando, así que un aviso
+		// aquí dentro se iría con él sin que nadie alcance a leerlo.
+		alCancelar?.();
 	}}
 	onCerrar={() => (confirmarSalida = false)}
 />
