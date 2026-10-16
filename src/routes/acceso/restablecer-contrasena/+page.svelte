@@ -25,7 +25,6 @@
 	let verNueva = $state(false);
 	let verConfirmacion = $state(false);
 	let confirmacionTocada = $state(false);
-	let nuevaTocada = $state(false);
 	let enviando = $state(false);
 	let errorGeneral = $state('');
 	/** Lo que el SERVIDOR dijo de la contraseña misma (HU04 CA-3: lleva tu correo, tu nombre o una palabra común). */
@@ -34,8 +33,14 @@
 	const coincide = $derived(nueva.length > 0 && nueva === confirmacion);
 	const mostrarNoCoincide = $derived(confirmacionTocada && confirmacion.length > 0 && !coincide);
 	const listo = $derived(cumpleTodas(nueva) && coincide);
-	/** Al salir del campo con algo escrito que no cumple las reglas, el campo se pinta de rojo y lo dice (QA, NEX-333). */
-	const formatoMal = $derived(nuevaTocada && nueva.length > 0 && !cumpleTodas(nueva));
+	/** El campo se pinta de rojo y lo dice EN CUANTO hay algo escrito que no
+	 *  cumple las reglas — no al salir del campo (QA, NEX-333, segunda vuelta:
+	 *  la primera versión esperaba al `blur` y el probador escribía sin salir,
+	 *  así que nunca lo veía). El costo es que teclear una contraseña válida
+	 *  pasa por el rojo hasta cumplir el último requisito; se aceptó a cambio
+	 *  de que el aviso aparezca cuando el diseño dice. El medidor de abajo ya
+	 *  daba retroalimentación en vivo, así que el rojo no llega solo. */
+	const formatoMal = $derived(nueva.length > 0 && !cumpleTodas(nueva));
 	const mensajeContrasena = $derived(errorContrasena || (formatoMal ? MENSAJE_FORMATO : ''));
 
 	async function cambiar(evento: SubmitEvent) {
@@ -98,7 +103,6 @@
 				autocomplete="new-password"
 				placeholder="Ingresa tu nueva contraseña"
 				bind:value={nueva}
-				onblur={() => (nuevaTocada = true)}
 				oninput={() => (errorContrasena = '')}
 				aria-invalid={mensajeContrasena ? 'true' : undefined}
 				data-testid="campo-contrasena"
