@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
@@ -8,6 +7,8 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import { agregarDocumentoEjemplo } from '$lib/state/configuracion.svelte';
 	import { subirAlAlmacen } from '$lib/almacen/subir';
+	import { abrirPdf, type PdfAbierto } from '$lib/documentos/paginasPdf';
+	import NavegadorDePaginas from './NavegadorDePaginas.svelte';
 
 	let {
 		abierto = false,
@@ -44,6 +45,23 @@
 	let cargandoPdf = $state(false);
 	let errorCarga = $state('');
 	let guardando = $state(false);
+	// El PDF abierto y la página que se está viendo (2026-10-16). Antes solo se pintaba la 1 en un canvas; ahora cada página es una
+	// imagen que se pide a pdf.js, y se puede recorrer el documento entero antes de subirlo.
+	let pdfAbierto = $state.raw<PdfAbierto | null>(null);
+	let numPaginas = $state(1);
+	let paginaVista = $state(1);
+	/** La imagen (object URL) de la página que se ve. Se revoca al cambiar de página o al limpiar. */
+	let urlPagina = $state<string | null>(null);
+
+	function liberarPdf() {
+		if (urlPagina) URL.revokeObjectURL(urlPagina);
+		urlPagina = null;
+		const abierto = pdfAbierto;
+		pdfAbierto = null;
+		numPaginas = 1;
+		paginaVista = 1;
+		if (abierto) void abierto.cerrar().catch(() => undefined);
+	}
 
 	$effect(() => {
 		if (files && files.length > 0) {
@@ -71,6 +89,7 @@
 	function limpiarArchivo() {
 		cargaVigente += 1;
 		if (urlImagen) URL.revokeObjectURL(urlImagen);
+		liberarPdf();
 		archivo = null;
 		urlImagen = null;
 		esPdf = false;
@@ -123,48 +142,56 @@
 		if (soltado) cargarArchivo(soltado);
 	}
 
-	// ── Render de PDF (página 1) ────────────────────────────────────────────
-	// Mismas notas de versión que en el resto del módulo: pdfjs-dist se importa
-	// DINÁMICO, y se fija en @4 por Node del server (>=20, no >=22) y por la
-	// CVE de ejecución de JS arbitraria en @5.6.83–6.2.107 (GHSA-hq66-cqwq-w95j).
-	// Ver el comentario largo en RecortarEjemploCampo.svelte antes de tocar la
-	// versión.
-	let canvasEl = $state<HTMLCanvasElement>();
-
+	// ── Render del PDF, página por página ────────────────────────────────────────
+	// Mismas notas de versión que en el resto del módulo: pdfjs-dist se importa DINÁMICO (en `paginasPdf.ts`), y se fija en @4 por Node
+	// del server (>=20, no >=22) y por la CVE de ejecución de JS arbitraria en @5.6.83–6.2.107 (GHSA-hq66-cqwq-w95j).
 	async function renderizarPdf(f: File) {
 		const carga = cargaVigente;
 		cargandoPdf = true;
 		try {
-			const pdfjsLib = await import('pdfjs-dist');
-			pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-				'pdfjs-dist/build/pdf.worker.min.mjs',
-				import.meta.url
-			).href;
-			const buffer = await f.arrayBuffer();
-			const documento = await pdfjsLib.getDocument({ data: buffer }).promise;
-			const pagina = await documento.getPage(1);
-			const viewport = pagina.getViewport({ scale: 1.75 });
-			await tick(); // el <canvas> nace con el {#if esPdf}; hay que esperar a que exista
-			// Si mientras tanto se eligió otro archivo, este canvas ya es suyo.
-			if (carga !== cargaVigente) return;
-			const canvas = canvasEl;
-			const ctx = canvas?.getContext('2d');
-			if (!canvas || !ctx) return;
-			canvas.width = viewport.width;
-			canvas.height = viewport.height;
-			await pagina.render({ canvasContext: ctx, viewport }).promise;
+			const abierto = await abrirPdf(await f.arrayBuffer());
+			// Si mientras tanto se eligió otro archivo, este PDF ya es de nadie.
+			if (carga !== cargaVigente) {
+				void abierto.cerrar().catch(() => undefined);
+				return;
+			}
+			pdfAbierto = abierto;
+			numPaginas = abierto.numPaginas;
+			await mostrarPagina(1, carga);
 		} catch {
 			// Un PDF ya descartado que falla tarde no toca el archivo de ahora.
 			if (carga !== cargaVigente) return;
-			// De vuelta al dropzone, donde el error SÍ se ve. Antes solo se apagaba
-			// `esPdf` y el archivo quedaba puesto: la vista salía en blanco, el
-			// mensaje no aparecía, y "Subir" seguía habilitado y guardaba un PDF
-			// sin vista que ningún `<img>` podía pintar.
+			// De vuelta al dropzone, donde el error SÍ se ve. Antes solo se apagaba `esPdf` y el archivo quedaba puesto: la vista
+			// salía en blanco, el mensaje no aparecía, y "Subir" seguía habilitado y guardaba un PDF sin vista que ningún `<img>`
+			// podía pintar.
 			limpiarArchivo();
 			errorCarga = 'No se pudo mostrar este PDF. Intenta con otro archivo.';
 		} finally {
-			// Si la carga cambió, `limpiarArchivo` ya bajó el indicador y el de la
-			// carga nueva le pertenece a ella.
+			// Si la carga cambió, `limpiarArchivo` ya bajó el indicador y el de la carga nueva le pertenece a ella.
+			if (carga === cargaVigente) cargandoPdf = false;
+		}
+	}
+
+	/** Pone la página `n` a la vista. Lo que ya se pintó no se vuelve a pintar (`PdfAbierto` lo recuerda). */
+	async function mostrarPagina(n: number, carga: number) {
+		const abierto = pdfAbierto;
+		if (!abierto) return;
+		const blob = await abierto.renderizar(n);
+		if (carga !== cargaVigente) return;
+		const nueva = URL.createObjectURL(blob);
+		if (urlPagina) URL.revokeObjectURL(urlPagina);
+		urlPagina = nueva;
+		paginaVista = n;
+	}
+
+	async function cambiarPagina(n: number) {
+		const carga = cargaVigente;
+		cargandoPdf = true;
+		try {
+			await mostrarPagina(n, carga);
+		} catch {
+			if (carga === cargaVigente) errorCarga = `No se pudo mostrar la página ${n} de este PDF.`;
+		} finally {
 			if (carga === cargaVigente) cargandoPdf = false;
 		}
 	}
@@ -205,6 +232,8 @@
 		const idTipo = tipoId;
 		const f = archivo;
 		const pdf = esPdf;
+		const paginasDelPdf = pdf ? pdfAbierto?.numPaginas : undefined;
+		const abiertoAlGuardar = pdfAbierto;
 		guardando = true;
 		errorCarga = '';
 		try {
@@ -221,9 +250,9 @@
 			// `<img>`. Para una imagen, el original ya es la vista.
 			let vista: { rutaRelativa: string; mime: string } | null = null;
 			if (pdf) {
-				const png = await new Promise<Blob | null>((resolver) =>
-					canvasEl ? canvasEl.toBlob(resolver, 'image/png') : resolver(null)
-				);
+				// La VISTA es siempre la página 1, aunque en pantalla se esté mirando otra: es la imagen que usan las demás pantallas por la
+				// ruta rápida. Las demás páginas se pintan del original cuando se piden (`usarPaginaDeEjemplo`).
+				const png = await (abiertoAlGuardar ? abiertoAlGuardar.renderizar(1).catch(() => null) : Promise.resolve(null));
 				if (carga !== cargaVigente) return;
 				if (!png) {
 					errorCarga = 'No se pudo preparar la vista del PDF.';
@@ -241,7 +270,8 @@
 				rutaRelativa: original.rutaRelativa,
 				sha256: original.sha256,
 				mime: original.mime,
-				...(vista ? { rutaVista: vista.rutaRelativa, mimeVista: vista.mime } : {})
+				...(vista ? { rutaVista: vista.rutaRelativa, mimeVista: vista.mime } : {}),
+				...(paginasDelPdf ? { paginas: paginasDelPdf } : {})
 			});
 			if (!idNuevo) return;
 			onGuardado?.(idNuevo);
@@ -277,6 +307,12 @@
 						Sube un documento de referencia para este tipo documental. Después podrás recortar,
 						campo por campo, la información que se necesita extraer de él.
 					</DialogPrimitive.Description>
+						{#if numPaginas > 1}
+							<p data-testid="paginas-del-pdf" class="mt-1 text-xs text-muted-foreground">
+								Este PDF tiene {numPaginas} páginas. Usa las flechas de abajo para revisarlas; al recortar cada campo podrás
+								elegir en cuál está.
+							</p>
+						{/if}
 				</div>
 				<DialogPrimitive.Close aria-label="Cerrar" onclick={cerrar}>
 					<CancelSquareIcon />
@@ -332,7 +368,17 @@
 							style="transform: scale({zoom}); transform-origin: top center;"
 						>
 							{#if esPdf}
-								<canvas bind:this={canvasEl} class="block max-w-full"></canvas>
+								{#if urlPagina}
+									<img
+										src={urlPagina}
+										alt={numPaginas > 1 ? `Página ${paginaVista} de ${numPaginas}` : 'Documento de ejemplo'}
+										class="block max-w-full select-none"
+										draggable="false"
+									/>
+								{:else}
+									<!-- Sin imagen todavía el contenedor mediría 0 y el aviso «Cargando documento…» no tendría dónde pintarse. -->
+									<div class="h-40 w-64"></div>
+								{/if}
 							{:else if urlImagen}
 								<img src={urlImagen} alt="Documento de ejemplo" class="block max-w-full select-none" draggable="false" />
 							{/if}
@@ -384,6 +430,10 @@
 						>
 							<ZoomIn class="size-4" />
 						</button>
+						{#if numPaginas > 1}
+							<span class="mx-1 h-5 w-px bg-card/20"></span>
+							<NavegadorDePaginas pagina={paginaVista} total={numPaginas} onCambio={cambiarPagina} />
+						{/if}
 						<span class="mx-1 h-5 w-px bg-card/20"></span>
 						<button
 							type="button"

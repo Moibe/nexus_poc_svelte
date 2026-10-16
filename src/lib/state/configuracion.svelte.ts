@@ -573,8 +573,18 @@ export function limpiarBorrador() {
  */
 /** Un rectángulo de recorte sobre un documento de ejemplo, en PORCENTAJE del
  *  contenedor (no píxeles) — así sobrevive al zoom y al tamaño real del
- *  archivo subido. Ver `guardarRecorteEjemplo` y `CargarEjemploDocumental.svelte`. */
-export type Recorte = { x: number; y: number; w: number; h: number };
+ *  archivo subido. Ver `guardarRecorteEjemplo` y `CargarEjemploDocumental.svelte`.
+ *
+ *  `pagina` (1 en adelante) dice sobre QUÉ página del documento está el rectángulo. Existe desde el 2026-10-16, cuando el
+ *  etiquetado aprendió PDF de varias páginas (un acta constitutiva ronda las 20); un recorte guardado antes no la trae y vale
+ *  la 1, que era la única que se podía marcar — `paginaDeRecorte` es quien lo resuelve. Es también lo que Document AI pide
+ *  de una etiqueta: una caja Y la página donde está. */
+export type Recorte = { x: number; y: number; w: number; h: number; pagina?: number };
+
+/** La página de un recorte: la que trae, o la 1 si es de antes de que se guardara (o si trae algo que no es una página). */
+export function paginaDeRecorte(r: Pick<Recorte, 'pagina'>): number {
+	return Number.isInteger(r.pagina) && (r.pagina as number) >= 1 ? (r.pagina as number) : 1;
+}
 
 /**
  * UNA instancia de documento de ejemplo — un tipo documental puede tener
@@ -635,6 +645,11 @@ export type DocumentoEjemploInstancia = {
 	 */
 	rutaVista?: string;
 	mimeVista?: string;
+	/**
+	 * Cuántas páginas tiene, si es un PDF y se supo al subirlo (desde el 2026-10-16). Los que se subieron antes no lo traen: el
+	 * visor lo descubre al abrir el original (`usarPaginaDeEjemplo`), y mientras tanto la tarjeta simplemente no lo dice.
+	 */
+	paginas?: number;
 	/**
 	 * LEGADO. Los bytes en base64, como se guardaban antes del 2026-09-24.
 	 *
@@ -924,6 +939,12 @@ function esRecorteValido(r: unknown): r is Recorte {
 	);
 }
 
+/** La página de un recorte leído de disco: solo se conserva si es un entero de 1 en adelante (lo demás se lee como «sin página»,
+ *  o sea la 1). Un recorte de otra época o de otra pestaña con una página rara no debe perderse por eso. */
+function paginaLegible(p: unknown): number | undefined {
+	return Number.isInteger(p) && (p as number) >= 1 ? (p as number) : undefined;
+}
+
 function esEjemploValido(e: unknown): e is EjemploGuardado {
 	if (typeof e !== 'object' || e === null) return false;
 	const d = e as Record<string, unknown>;
@@ -953,7 +974,9 @@ function leerRecortesDeUnDocumento(d: unknown): Record<string, EjemploGuardado> 
 	const resultado: Record<string, EjemploGuardado> = {};
 	for (const [nombreCampo, e] of Object.entries(d as Record<string, unknown>)) {
 		if (esEjemploValido(e)) {
-			resultado[nombreCampo] = { recorte: { ...e.recorte }, guardadoEn: e.guardadoEn };
+			const { x, y, w, h } = e.recorte;
+			const pagina = paginaLegible((e.recorte as Record<string, unknown>).pagina);
+			resultado[nombreCampo] = { recorte: { x, y, w, h, ...(pagina ? { pagina } : {}) }, guardadoEn: e.guardadoEn };
 		}
 	}
 	return resultado;
@@ -1009,7 +1032,13 @@ function esDocumentoEjemploValido(d: unknown): d is DocumentoEjemploInstancia {
  */
 function leerDocumentosEjemplo(d: unknown): DocumentoEjemploInstancia[] {
 	if (!Array.isArray(d)) return [];
-	return d.filter(esDocumentoEjemploValido);
+	return d.filter(esDocumentoEjemploValido).map((doc) => {
+		// Un número de páginas ilegible se descarta (se vuelve a descubrir al abrir el PDF) en vez de pintar un «NaN páginas».
+		const paginas = paginaLegible(doc.paginas);
+		const limpio = { ...doc };
+		delete limpio.paginas;
+		return paginas ? { ...limpio, paginas } : limpio;
+	});
 }
 
 /**
@@ -1897,6 +1926,8 @@ export function agregarDocumentoEjemplo(
 		mime: string;
 		rutaVista?: string;
 		mimeVista?: string;
+		/** Cuántas páginas tiene, si es un PDF (ver `DocumentoEjemploInstancia.paginas`). */
+		paginas?: number;
 	}
 ): string | null {
 	const tipo = tiposDocumentales.find((t) => t.id === idTipo);

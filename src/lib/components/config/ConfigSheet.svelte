@@ -46,7 +46,8 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
-	import RecorteDeDocumento from './RecorteDeDocumento.svelte';
+	import DocumentoConRecortes from './DocumentoConRecortes.svelte';
+	import RecorteGuardado from './RecorteGuardado.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import GenerarPrompts from './GenerarPrompts.svelte';
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
@@ -70,7 +71,7 @@
 		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
-		fuenteDeDocumento,
+		paginaDeRecorte,
 		esPdfSinOriginal,
 		estadoBiblioteca,
 		cargarBiblioteca,
@@ -1057,6 +1058,18 @@
 	// de un campo no sobrevive un refresh).
 	let modalRecorteAbierto = $state(false);
 	let campoRecorteNombre = $state<string | null>(null);
+	// La última página en la que se trabajó cada documento (2026-10-16). En un acta de 20 páginas el siguiente campo casi siempre se
+	// busca cerca del anterior, y volver a la página 1 cada vez sería recorrer el documento otra vez. Va por id de documento; es de
+	// pantalla, no del dato, así que no se guarda.
+	let paginaDeTrabajo = $state<Record<string, number>>({});
+	/** Con qué página abre el recortador: la de su recorte si el campo ya tiene uno, y si no, la última que se visitó en ese documento. */
+	const paginaInicialDelRecorte = $derived.by(() => {
+		if (!documentoSeleccionado) return 1;
+		const guardado = campoRecorteNombre
+			? tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte
+			: null;
+		return guardado ? paginaDeRecorte(guardado) : (paginaDeTrabajo[documentoSeleccionado.id] ?? 1);
+	});
 
 	// Los recortes YA GUARDADOS de los DEMÁS campos (todos menos
 	// `campoRecorteNombre`) para la instancia de documento seleccionada — se le
@@ -2289,7 +2302,8 @@
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm font-medium text-foreground">{doc.nombre}</p>
 										<p class="text-xs text-muted-foreground">
-											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}
+											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}{#if (doc.paginas ?? 1) > 1}
+												· <span data-testid="paginas-del-documento">{doc.paginas} páginas</span>{/if}
 											{#if esPdfSinOriginal(doc)}
 												<!-- Un PDF subido antes del 2026-09-24: de él solo quedó la
 												     página 1 como imagen (ver `esPdfSinOriginal`). Se marca
@@ -2346,38 +2360,14 @@
 								</div>
 
 								{#if documentoCompletoExpandido}
-									<!-- Cada campo con recorte GUARDADO para ESTE documento se
-										     dibuja encima, en las mismas coordenadas porcentuales con
-										     las que se guardó (idéntico a como `RecortarEjemploCampo`
-										     dibuja el rectángulo mientras se edita) — aquí es de solo
-										     lectura, sin manijas de arrastrar/redimensionar, más una
-										     etiqueta con el nombre del campo para saber cuál es cuál. -->
-									<div class="mt-3 max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-4">
-										<div class="relative inline-block border border-border bg-card shadow-sm">
-											<img
-												src={fuenteDeDocumento(doc)}
-												alt={`Documento completo de ${doc.nombre}, con los recortes marcados`}
-												class="block max-w-full"
-											/>
-											{#each tipoEnCalibracion.campos as campo (campo.id)}
-												{@const r = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]
-													?.recorte}
-												{#if r}
-													{@const color = colorParaCampo(campo.nombre)}
-													<div
-														class="absolute border-2 {color.borde} {color.relleno}"
-														style="left:{r.x}%; top:{r.y}%; width:{r.w}%; height:{r.h}%;"
-													>
-														<span
-															class="absolute -top-5 left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
-														>
-															{campo.nombre}
-														</span>
-													</div>
-												{/if}
-											{/each}
-										</div>
-									</div>
+									<!-- Una página a la vez, con sus recortes encima (`DocumentoConRecortes`). Con una sola página se ve como siempre. -->
+									{#key doc.id}
+										<DocumentoConRecortes
+											{doc}
+											campos={tipoEnCalibracion.campos}
+											recortes={tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}}
+										/>
+									{/key}
 								{/if}
 
 								{#each tipoEnCalibracion.campos as campo (campo.id)}
@@ -2399,6 +2389,14 @@
 													{/if}
 												</span>
 												{campo.nombre}
+												{#if ejemplo && ((doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1)}
+													<span
+														data-testid="pagina-del-recorte"
+														class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
+													>
+														p. {paginaDeRecorte(ejemplo.recorte)}
+													</span>
+												{/if}
 											</span>
 											<div class="flex items-center gap-1">
 												{#if ejemplo}
@@ -2583,10 +2581,10 @@
 											     así que aquí no se repite su tarjeta. -->
 											<div class="mt-4 max-w-lg">
 												<p class="mb-2 text-xs font-medium text-muted-foreground">
-													Texto seleccionado
+													Texto seleccionado{#if (doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1} · página {paginaDeRecorte(ejemplo.recorte)}{/if}
 												</p>
-												<RecorteDeDocumento
-													fuente={fuenteDeDocumento(doc)}
+												<RecorteGuardado
+													{doc}
 													recorte={ejemplo.recorte}
 													alt={`Recorte guardado para ${campo.nombre}`}
 												/>
@@ -3446,6 +3444,10 @@
 		tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte) ||
 		null}
 	otrosRecortes={otrosRecortesDelDocumento}
+	paginaInicial={paginaInicialDelRecorte}
+	onCambioPagina={(n) => {
+		if (documentoSeleccionado) paginaDeTrabajo[documentoSeleccionado.id] = n;
+	}}
 	onCerrar={() => (modalRecorteAbierto = false)}
 />
 

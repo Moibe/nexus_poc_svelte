@@ -6,10 +6,12 @@
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Crop from '@lucide/svelte/icons/crop';
 	import Save from '@lucide/svelte/icons/save';
+	import NavegadorDePaginas from './NavegadorDePaginas.svelte';
+	import { usarPaginaDeEjemplo } from '$lib/hooks/usarPaginaDeEjemplo.svelte';
 	import {
 		guardarRecorteEjemplo,
-		fuenteDeDocumento,
 		colorParaCampo,
+		paginaDeRecorte,
 		type Recorte,
 		type DocumentoEjemploInstancia
 	} from '$lib/state/configuracion.svelte';
@@ -21,6 +23,8 @@
 		documento = null,
 		recorteExistente = null,
 		otrosRecortes = [],
+		paginaInicial = 1,
+		onCambioPagina,
 		onCerrar
 	}: {
 		abierto?: boolean;
@@ -47,6 +51,11 @@
 		 *  LECTURA: se dibujan sin manijas ni arrastre, y no deben interferir
 		 *  con el rectángulo activo (ver `pointer-events-none` en el markup). */
 		otrosRecortes?: { nombreCampo: string; recorte: Recorte }[];
+		/** La página con la que se abre (de 1 en adelante). Para un recorte ya guardado es la suya; para uno nuevo, la última
+		 *  página en la que se estuvo trabajando ese documento, para no volver a la 1 cada vez en un acta de 20 páginas. */
+		paginaInicial?: number;
+		/** Se llama cada vez que se cambia de página, para que quien abre recuerde dónde se quedó. */
+		onCambioPagina?: (pagina: number) => void;
 		onCerrar: () => void;
 	} = $props();
 
@@ -76,6 +85,8 @@
 	// que activar "Recortar" a mano cada vez.
 	let modoRecorte = $state(true);
 	let recorte = $state<Recorte | null>(null);
+	/** En qué página del documento se está mirando, y por tanto en cuál se dibuja: un recorte es de UNA página. */
+	let pagina = $state(1);
 
 	/**
 	 * ¿La etiqueta de "otro" recorte (que vive pegada arriba de su rectángulo,
@@ -108,7 +119,10 @@
 	$effect(() => {
 		if (abierto) {
 			untrack(() => {
-				recorte = recorteExistente ? { ...recorteExistente } : null;
+				pagina = Math.max(1, Math.round(paginaInicial) || 1);
+				// El guardado solo se muestra en SU página: abrir en otra y verlo dibujado donde no está sería mentir.
+				recorte =
+					recorteExistente && paginaDeRecorte(recorteExistente) === pagina ? { ...recorteExistente } : null;
 			});
 		}
 	});
@@ -131,17 +145,60 @@
 	 * si no, con el almacén caído se dibujaba sobre el ícono de imagen rota y
 	 * se guardaban porcentajes de ESE cuadrito como si fueran del documento.
 	 */
-	let estadoDocumento = $state<'cargando' | 'listo' | 'fallo'>('cargando');
+	// Lo que dice el `<img>` (cargó o no). Lo que ve el resto del componente (`estadoDocumento`) lo combina con el de PINTAR la
+	// página: un PDF cuya página no se pudo pintar tampoco se puede marcar.
+	let estadoImagen = $state<'cargando' | 'listo' | 'fallo'>('cargando');
 
-	let fuente = $state('');
+	// La imagen sale de la página pedida (`usarPaginaDeEjemplo`): la 1 es la imagen de siempre y las demás se pintan del PDF
+	// original. Depende de valores simples del documento (ruta, id), no de su objeto, así que recargar la biblioteca con el modal
+	// abierto —que reemplaza el objeto— no vuelve a pintar la imagen debajo de quien dibuja (ver el comentario de arriba).
+	const vista = usarPaginaDeEjemplo(() => ({ doc: abierto ? documento : null, pagina, contar: true }));
+	const totalPaginas = $derived(vista.numPaginas ?? 1);
+	const fuente = $derived(vista.url);
+	const estadoDocumento = $derived(vista.estado === 'listo' ? estadoImagen : vista.estado);
+
+	// Otra imagen es otra carga.
 	$effect.pre(() => {
-		if (!abierto || !documento) return;
-		const doc = documento;
+		void fuente;
 		untrack(() => {
-			fuente = fuenteDeDocumento(doc);
-			estadoDocumento = 'cargando';
+			estadoImagen = 'cargando';
 		});
 	});
+
+	/** De los recortes de los demás campos, los que están en la página que se ve (los de otras páginas no estorban aquí). */
+	const otrosEnPagina = $derived(otrosRecortes.filter((o) => paginaDeRecorte(o.recorte) === pagina));
+
+	function irAPagina(n: number) {
+		const destino = clamp(Math.round(n), 1, totalPaginas);
+		if (destino === pagina) return;
+		pagina = destino;
+		// Lo que se estaba arrastrando era de la otra página.
+		arrastre = null;
+		recorteAlIniciar = null;
+		recorte = recorteExistente && paginaDeRecorte(recorteExistente) === destino ? { ...recorteExistente } : null;
+		modoRecorte = true;
+		onCambioPagina?.(destino);
+	}
+
+	// Una página recordada de más (o un recorte de una página que el documento ya no tiene) se acota en cuanto se sabe cuántas hay.
+	$effect(() => {
+		const n = vista.numPaginas;
+		if (abierto && n && pagina > n) untrack(() => irAPagina(n));
+	});
+
+	/** RePág / AvPág pasan de página, salvo mientras se teclea en el cuadro del número. */
+	function teclasDePagina(e: KeyboardEvent) {
+		if (totalPaginas <= 1) return;
+		const destino = e.target as HTMLElement | null;
+		if (destino && (destino.tagName === 'INPUT' || destino.tagName === 'TEXTAREA')) return;
+		if (e.key === 'PageDown') {
+			e.preventDefault();
+			irAPagina(pagina + 1);
+		} else if (e.key === 'PageUp') {
+			e.preventDefault();
+			irAPagina(pagina - 1);
+		}
+	}
 
 	// El documento compartido ya es un raster (PNG del PDF renderizado, o la
 	// imagen original tal cual) — a diferencia del modal de carga, aquí ya no
@@ -154,7 +211,7 @@
 		const img = imgEl;
 		if (!abierto || !img) return;
 		untrack(() => {
-			if (img.complete) estadoDocumento = img.naturalWidth > 0 ? 'listo' : 'fallo';
+			if (img.complete) estadoImagen = img.naturalWidth > 0 ? 'listo' : 'fallo';
 		});
 	});
 
@@ -199,7 +256,7 @@
 	function guardarCopia() {
 		if (!tipoId || !documento || !campoNombre || !recorte || recorte.w === 0 || recorte.h === 0) return;
 		if (estadoDocumento !== 'listo') return;
-		const guardado = guardarRecorteEjemplo(tipoId, documento.id, campoNombre, { recorte: { ...recorte } });
+		const guardado = guardarRecorteEjemplo(tipoId, documento.id, campoNombre, { recorte: { ...recorte, pagina } });
 		if (!guardado) return;
 		cerrar();
 	}
@@ -294,6 +351,7 @@
 		/>
 		<DialogPrimitive.Content
 			data-testid="modal-recortar-ejemplo"
+			onkeydown={teclasDePagina}
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[88vh] w-[92vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-lg"
 		>
 			<div class="flex items-center gap-3 border-b border-border px-6 py-4">
@@ -305,6 +363,22 @@
 						Utiliza la herramienta de recorte para seleccionar en el documento la información que
 						se necesita extraer para "<span class="font-semibold text-foreground">{campoNombre}</span>".
 					</DialogPrimitive.Description>
+					{#if recorteExistente && paginaDeRecorte(recorteExistente) !== pagina}
+						<!-- El campo ya tiene recorte, pero en OTRA página que la que se está viendo: sin este aviso parecería que no tiene
+						     ninguno, y guardar aquí lo reemplazaría sin que se supiera. -->
+						<p data-testid="recorte-en-otra-pagina" class="mt-1 text-xs text-muted-foreground">
+							Este campo ya tiene un recorte en la página {paginaDeRecorte(recorteExistente)}.
+							<button
+								type="button"
+								data-testid="ir-a-recorte-guardado"
+								class="font-medium text-primary underline underline-offset-2"
+								onclick={() => irAPagina(paginaDeRecorte(recorteExistente))}
+							>
+								Ir a esa página
+							</button>
+							· Si recortas aquí, lo reemplaza.
+						</p>
+					{/if}
 				</div>
 				<DialogPrimitive.Close aria-label="Cerrar" onclick={cerrar}>
 					<CancelSquareIcon />
@@ -320,8 +394,19 @@
 						data-testid="recortador-sin-documento"
 						class="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-card px-4 py-3 text-center text-sm text-muted-foreground"
 					>
-						No se pudo cargar el documento, así que por ahora no se puede marcar ni cambiar este
-						recorte. Lo ya guardado sigue igual; cierra e intenta de nuevo en unos minutos.
+						{#if totalPaginas > 1}
+							No se pudo cargar la página {pagina} del documento, así que por ahora no se puede marcar ni cambiar
+							este recorte en ella. Puedes ir a otra página, o cerrar e intentar de nuevo en unos minutos.
+						{:else}
+							No se pudo cargar el documento, así que por ahora no se puede marcar ni cambiar este
+							recorte. Lo ya guardado sigue igual; cierra e intenta de nuevo en unos minutos.
+						{/if}
+					</p>
+				{:else if documento && !fuente}
+					<!-- Pintando la página (la 2 en adelante sale del PDF original). La barra de abajo sigue a la vista: se puede cambiar
+					     de página sin esperar. -->
+					<p data-testid="recortador-cargando-pagina" class="mx-auto mt-10 text-center text-sm text-muted-foreground">
+						Cargando la página {pagina}…
 					</p>
 				{:else if documento}
 					<div class="flex justify-center pb-16">
@@ -339,10 +424,10 @@
 								bind:this={imgEl}
 								src={fuente}
 								onload={(e) =>
-									(estadoDocumento =
+									(estadoImagen =
 										(e.currentTarget as HTMLImageElement).naturalWidth > 0 ? 'listo' : 'fallo')}
-								onerror={() => (estadoDocumento = 'fallo')}
-								alt="Documento de ejemplo"
+								onerror={() => (estadoImagen = 'fallo')}
+								alt={totalPaginas > 1 ? `Página ${pagina} del documento de ejemplo` : 'Documento de ejemplo'}
 								class="block max-w-full select-none"
 								draggable="false"
 							/>
@@ -354,7 +439,7 @@
 							     rectángulo activo, rompiendo el dibujo/movimiento/
 							     redimensionado de arriba. Va ANTES del bloque `{#if recorte}`
 							     para que el rectángulo activo quede visualmente por encima. -->
-							{#each otrosRecortes as otro (otro.nombreCampo)}
+							{#each otrosEnPagina as otro (otro.nombreCampo)}
 								{@const color = colorParaCampo(otro.nombreCampo)}
 								{@const tapada = etiquetaTapadaPorActivo(otro.recorte)}
 								<div
@@ -403,8 +488,13 @@
 						</div>
 					</div>
 
-					<!-- Barra flotante: mismo lugar y forma que el resto del módulo. -->
+				{/if}
+
+				{#if documento && (estadoDocumento !== 'fallo' || totalPaginas > 1)}
+					<!-- Barra flotante: mismo lugar y forma que el resto del módulo. Con una sola página que no se pudo pintar no hay nada
+					     que hacer con ella y se queda fuera, como siempre; con varias, SÍ: hay que poder irse a otra página. -->
 					<div
+						data-testid="barra-recortador"
 						class="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#0f172a] px-2 py-2 text-white shadow-lg"
 					>
 						<button
@@ -425,6 +515,10 @@
 						>
 							<ZoomIn class="size-4" />
 						</button>
+						{#if totalPaginas > 1}
+							<span class="mx-1 h-5 w-px bg-card/20"></span>
+							<NavegadorDePaginas {pagina} total={totalPaginas} onCambio={irAPagina} />
+						{/if}
 						<span class="mx-1 h-5 w-px bg-card/20"></span>
 						<button
 							type="button"
