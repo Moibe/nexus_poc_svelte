@@ -81,11 +81,13 @@
 	let creada = $state<Creada | null>(null);
 	let confirmarSalida = $state(false);
 
-	/** El texto del diálogo de salida, literal del diseño (frame `243:2647`). */
+	/** El texto del diálogo de salida, literal del diseño (frame `243:2647`, HU001 | 16): dos líneas y, aparte y en
+	 *  negritas, la pregunta. El diálogo va en formato `centrado`, como el Figma. */
 	const MENSAJE_SALIR = [
-		'Los cambios realizados no se guardarán. Si continúas, deberás iniciar nuevamente el proceso de registro.',
-		'¿Estas seguro de cancelar el registro?'
-	].join('\n\n');
+		'Los cambios realizados no se guardarán.',
+		'Si continúas, deberás iniciar nuevamente el proceso de registro.'
+	].join(String.fromCharCode(10));
+	const PREGUNTA_SALIR = '¿Estas seguro de cancelar el registro?';
 
 	const correoAdmin = $derived(validarCorreo(adminEmail));
 	/** El de recuperación es opcional: vacío está bien, pero si trae algo tiene
@@ -525,6 +527,8 @@
 	abierto={confirmarSalida}
 	titulo="Estás por salir del registro"
 	mensaje={MENSAJE_SALIR}
+	pregunta={PREGUNTA_SALIR}
+	formato="centrado"
 	etiquetaConfirmar="Cancelar registro"
 	etiquetaCancelar="Continuar registro"
 	onConfirmar={() => {

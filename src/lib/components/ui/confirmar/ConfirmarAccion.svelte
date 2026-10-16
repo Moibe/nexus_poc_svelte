@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Info from '@lucide/svelte/icons/info';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 
 	let {
 		abierto = false,
@@ -13,6 +14,8 @@
 		etiquetaCancelar = 'Cancelar',
 		variante = 'destructivo',
 		soloAviso = false,
+		formato = 'compacto',
+		pregunta,
 		children,
 		onConfirmar,
 		onCancelar,
@@ -36,6 +39,14 @@
 		 *  existe. Se extiende este componente en vez de escribir otro para
 		 *  que los avisos y las confirmaciones se vean como la misma familia. */
 		soloAviso?: boolean;
+		/** `compacto` (default) es el diálogo de siempre: ícono a la izquierda del texto y los botones a la derecha.
+		 *  `centrado` es el del diseño de «Estás por salir del registro» (Figma HU001 | 16): ícono de bote de basura
+		 *  arriba y al centro, título grande, el mensaje en líneas centradas, la `pregunta` en negritas, y los botones
+		 *  a la derecha —la salida destructiva como enlace rojo a la izquierda y la de «seguir» como botón azul
+		 *  grande a la derecha—. Los saltos de línea del `mensaje` se respetan. */
+		formato?: 'compacto' | 'centrado';
+		/** Solo con `formato="centrado"`: la pregunta final, en negritas y separada del mensaje. */
+		pregunta?: string;
 		/** Contenido extra bajo el mensaje (p. ej. un campo de motivo). Quien lo pinta guarda su propio estado. */
 		children?: Snippet;
 		onConfirmar: () => void;
@@ -107,57 +118,113 @@
 		/>
 		<AlertDialogPrimitive.Content
 			data-testid="confirmar-accion"
-			class="fixed top-1/2 left-1/2 z-70 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background px-6 pt-8 pb-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-70 w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background shadow-lg {formato ===
+			'centrado'
+				? 'max-w-2xl px-10 pt-10 pb-8'
+				: 'max-w-md px-6 pt-8 pb-6'}"
 		>
-			<div class="flex items-start gap-3">
-				<span
-					class="flex size-9 shrink-0 items-center justify-center rounded-full {variante ===
-					'destructivo'
-						? 'bg-destructive/10 text-destructive'
-						: 'bg-primary/10 text-primary'}"
-				>
-					{#if variante === 'destructivo'}
-						<TriangleAlert class="size-4.5" />
-					{:else}
-						<Info class="size-4.5" />
-					{/if}
-				</span>
-				<div class="min-w-0 flex-1">
-					<AlertDialogPrimitive.Title class="text-sm font-semibold text-foreground">
+			{#if formato === 'centrado'}
+				<!-- El molde del Figma («Estás por salir del registro», HU001 | 16): todo centrado salvo los botones. -->
+				<div class="flex flex-col items-center text-center">
+					<span
+						data-testid="confirmar-icono"
+						class="flex size-15 shrink-0 items-center justify-center rounded-xl {variante === 'destructivo'
+							? 'bg-destructive/10 text-destructive'
+							: 'bg-primary/10 text-primary'}"
+					>
+						{#if variante === 'destructivo'}
+							<Trash2 class="size-6" />
+						{:else}
+							<Info class="size-6" />
+						{/if}
+					</span>
+					<AlertDialogPrimitive.Title class="mt-8 text-2xl font-semibold text-foreground">
 						{titulo}
 					</AlertDialogPrimitive.Title>
-					<AlertDialogPrimitive.Description class="mt-1 text-xs text-muted-foreground">
-						{mensaje}
+					<AlertDialogPrimitive.Description class="mt-6 text-base text-foreground">
+						{#each mensaje.split(String.fromCharCode(10)) as linea, i (i)}
+							<span class="block">{linea}</span>
+						{/each}
+						{#if pregunta}
+							<span class="mt-8 block font-semibold" data-testid="confirmar-pregunta">{pregunta}</span>
+						{/if}
 					</AlertDialogPrimitive.Description>
 				</div>
-			</div>
+			{:else}
+				<div class="flex items-start gap-3">
+					<span
+						class="flex size-9 shrink-0 items-center justify-center rounded-full {variante ===
+						'destructivo'
+							? 'bg-destructive/10 text-destructive'
+							: 'bg-primary/10 text-primary'}"
+					>
+						{#if variante === 'destructivo'}
+							<TriangleAlert class="size-4.5" />
+						{:else}
+							<Info class="size-4.5" />
+						{/if}
+					</span>
+					<div class="min-w-0 flex-1">
+						<AlertDialogPrimitive.Title class="text-sm font-semibold text-foreground">
+							{titulo}
+						</AlertDialogPrimitive.Title>
+						<AlertDialogPrimitive.Description class="mt-1 text-xs text-muted-foreground">
+							{mensaje}
+						</AlertDialogPrimitive.Description>
+					</div>
+				</div>
+			{/if}
 
 			{#if children}
 				<div class="mt-4">{@render children()}</div>
 			{/if}
 
 			<!-- Cancelar a la izquierda del destructivo y con el foco inicial: si
-			     alguien llega aquí por inercia y pica Enter, no destruye nada. -->
-			<div class="mt-6 flex justify-end gap-3">
+			     alguien llega aquí por inercia y pica Enter, no destruye nada.
+			     En el formato centrado el ORDEN VISUAL es el del Figma (la salida destructiva a la izquierda como enlace rojo,
+			     «seguir» a la derecha como botón azul grande), pero en el DOM «seguir» sigue primero: conserva el foco inicial. -->
+			<div class="flex items-center justify-end {formato === 'centrado' ? 'mt-10 gap-8' : 'mt-6 gap-3'}">
 				{#if !soloAviso}
 					<AlertDialogPrimitive.Cancel>
 						{#snippet child({ props })}
-							<Button {...props} variant="outline" size="sm" data-testid="confirmar-cancelar">
-								{etiquetaCancelar}
-							</Button>
+							{#if formato === 'centrado'}
+								<Button
+									{...props}
+									variant="default"
+									class="order-2 h-12 rounded-xl px-8 text-base"
+									data-testid="confirmar-cancelar"
+								>
+									{etiquetaCancelar}
+								</Button>
+							{:else}
+								<Button {...props} variant="outline" size="sm" data-testid="confirmar-cancelar">
+									{etiquetaCancelar}
+								</Button>
+							{/if}
 						{/snippet}
 					</AlertDialogPrimitive.Cancel>
 				{/if}
 				<AlertDialogPrimitive.Action onclick={confirmar}>
 					{#snippet child({ props })}
-						<Button
-							{...props}
-							variant={variante === 'destructivo' ? 'destructive' : 'default'}
-							size="sm"
-							data-testid="confirmar-aceptar"
-						>
-							{etiquetaConfirmar}
-						</Button>
+						{#if formato === 'centrado'}
+							<Button
+								{...props}
+								variant="link"
+								class="order-1 h-auto p-0 text-base {variante === 'destructivo' ? 'text-destructive' : ''}"
+								data-testid="confirmar-aceptar"
+							>
+								{etiquetaConfirmar}
+							</Button>
+						{:else}
+							<Button
+								{...props}
+								variant={variante === 'destructivo' ? 'destructive' : 'default'}
+								size="sm"
+								data-testid="confirmar-aceptar"
+							>
+								{etiquetaConfirmar}
+							</Button>
+						{/if}
 					{/snippet}
 				</AlertDialogPrimitive.Action>
 			</div>
