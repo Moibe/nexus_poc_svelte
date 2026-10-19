@@ -17,7 +17,6 @@
 
 	import { LARGO_MAXIMO_CORREO, validarCorreo } from '$lib/acceso/correo';
 	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
-	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import SecretUnaVez from '$lib/components/config/SecretUnaVez.svelte';
 	import CampoTelefono from '$lib/components/organizaciones/CampoTelefono.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
@@ -28,11 +27,17 @@
 	let {
 		open = $bindable(false),
 		roles,
-		alGuardar
+		alGuardar,
+		alEnviarAccesos
 	}: {
 		open?: boolean;
 		roles: Rol[];
 		alGuardar: () => Promise<void> | void;
+		/** Se llama cuando el alta salió bien Y el correo con los accesos también. En ese caso el panel se cierra solo:
+		 *  el aviso de "Enviamos sus accesos por correo" lo pinta la PÁGINA, suelto, como los demás avisos verdes, y no
+		 *  dentro de este panel. Si el correo NO salió, el panel se queda abierto: ahí la contraseña temporal se muestra
+		 *  una sola vez y cerrarlo la perdería. */
+		alEnviarAccesos: (usuario: { nombre: string; email: string }) => void;
 	} = $props();
 
 	let nombre = $state('');
@@ -107,6 +112,11 @@
 				return;
 			}
 			await alGuardar();
+			if (datos.correoEnviado) {
+				open = false;
+				alEnviarAccesos(datos.usuario);
+				return;
+			}
 			creada = datos;
 		} finally {
 			enviando = false;
@@ -141,28 +151,20 @@
 					<h2 class="text-lg font-medium text-foreground" data-testid="usuario-creado">
 						{creada.usuario.nombre} ya tiene acceso
 					</h2>
-					{#if !creada.correoEnviado}
-						<p class="mt-1 text-sm text-muted-foreground">
-							Entrega estos accesos a <span class="font-medium text-foreground">{creada.usuario.email}</span>.
-							La contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
-						</p>
-					{/if}
+					<p class="mt-1 text-sm text-muted-foreground">
+						Entrega estos accesos a <span class="font-medium text-foreground">{creada.usuario.email}</span>.
+						La contraseña temporal se muestra una sola vez y se le pedirá cambiarla al entrar.
+					</p>
 				</div>
-				{#if creada.correoEnviado}
-					<AvisoVerde
-						testid="correo-enviado-usuario"
-						titulo="Enviamos sus accesos por correo"
-						cuerpo="Los mandamos a {creada.usuario.email}. La contraseña temporal viaja solo por ese correo y se le pedirá cambiarla al entrar."
-					/>
-				{:else}
-					{#if creada.correoMotivo === 'fallo'}
-						<AvisoRojo testid="correo-no-enviado-usuario" titulo="No pudimos enviar el correo">
-							Entrégale tú estos accesos: la contraseña no se vuelve a mostrar.
-						</AvisoRojo>
-					{/if}
-					{#if creada.contrasenaTemporal}
-						<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal-usuario" />
-					{/if}
+				<!-- Aquí solo se llega si el correo NO salió (si salió, el panel se cierra y la página avisa; ver
+				     `alEnviarAccesos`), así que lo que hay que hacer es entregar la contraseña a mano. -->
+				{#if creada.correoMotivo === 'fallo'}
+					<AvisoRojo testid="correo-no-enviado-usuario" titulo="No pudimos enviar el correo">
+						Entrégale tú estos accesos: la contraseña no se vuelve a mostrar.
+					</AvisoRojo>
+				{/if}
+				{#if creada.contrasenaTemporal}
+					<SecretUnaVez secret={creada.contrasenaTemporal} testid="contrasena-temporal-usuario" />
 				{/if}
 			</div>
 			<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">

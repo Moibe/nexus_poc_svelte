@@ -39,6 +39,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
 	import MotivoModal from '$lib/components/usuarios/MotivoModal.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
@@ -100,7 +101,13 @@
 		return `${dia} | ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
 
+	/** A quién se le mandaron los accesos al dar de alta a alguien. El aviso vive AQUÍ y no en el panel del alta: el panel
+	 *  se cierra al salir el correo, y un aviso dentro se iría con él. Se apaga al abrir otra alta: a partir de ahí
+	 *  hablaría de la anterior. */
+	let accesosEnviadosA = $state<string | null>(null);
+
 	function abrirAlta() {
+		accesosEnviadosA = null;
 		abierto = true;
 	}
 
@@ -160,6 +167,20 @@
 	<p class="mt-1.5 text-sm text-muted-foreground">
 		Administra, consulta información, actualiza datos y gestiona permisos según sea necesario.
 	</p>
+</div>
+
+<!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se
+     monta junto con su texto no se anuncia. Vacío no mide nada. El margen va dentro del `if` por lo mismo. -->
+<div role="status" aria-live="polite">
+	{#if accesosEnviadosA}
+		<div class="mt-6">
+			<AvisoVerde
+				testid="correo-enviado-usuario"
+				titulo="Enviamos sus accesos por correo"
+				cuerpo="Los mandamos a {accesosEnviadosA}. La contraseña temporal viaja solo por ese correo y se le pedirá cambiarla al entrar."
+			/>
+		</div>
+	{/if}
 </div>
 
 {#if data.sinOrganizacion}
@@ -408,4 +429,5 @@
 		seleccionado = null;
 		await invalidateAll();
 	}}
+	alEnviarAccesos={(usuario) => (accesosEnviadosA = usuario.email)}
 />
