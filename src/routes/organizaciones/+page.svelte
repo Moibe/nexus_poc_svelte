@@ -408,9 +408,11 @@
 											{#if usuario.activo && usuario.guid !== data.usuario?.guid}
 												<button
 													type="button"
-													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted"
+													class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-60 disabled:hover:bg-transparent"
 													data-testid="cerrar-sesion-organizacion"
 													aria-label={`Cerrar la sesión de ${usuario.nombre}`}
+													disabled={!usuario.sesionActiva}
+													title={usuario.sesionActiva ? undefined : 'Esta persona no tiene una sesión abierta.'}
 													onclick={() => pedirCierre(usuario)}
 												>
 													<LogOut class="size-3.5" />

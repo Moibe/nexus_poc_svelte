@@ -357,10 +357,15 @@
 					<UserRoundX class="size-3.5" />
 					Desactivar
 				</button>
+				<!-- Sin sesión abierta no hay nada que cerrar: el botón se apaga, en gris y no en un rojo opaco, que se
+				     leería como "peligroso pero atenuado". Es el mismo dato que pinta «Sin sesión» en la lista. Se
+				     enciende solo cuando la lista se refresca y la persona ya tiene una. -->
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-transparent"
 					data-testid="cerrar-sesion-usuario"
+					disabled={!elegido.sesionActiva}
+					title={elegido.sesionActiva ? undefined : 'Esta persona no tiene una sesión abierta.'}
 					onclick={() => pedirMotivo(elegido, 'cerrar-sesion')}
 				>
 					<LogOut class="size-3.5" />
