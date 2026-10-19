@@ -27,8 +27,6 @@
 	let confirmacionTocada = $state(false);
 	let enviando = $state(false);
 	let errorGeneral = $state('');
-	/** Lo que el SERVIDOR dijo de la contraseña misma (HU04 CA-3: lleva tu correo, tu nombre o una palabra común). */
-	let errorContrasena = $state('');
 
 	const coincide = $derived(nueva.length > 0 && nueva === confirmacion);
 	const mostrarNoCoincide = $derived(confirmacionTocada && confirmacion.length > 0 && !coincide);
@@ -41,13 +39,13 @@
 	 *  de que el aviso aparezca cuando el diseño dice. El medidor de abajo ya
 	 *  daba retroalimentación en vivo, así que el rojo no llega solo. */
 	const formatoMal = $derived(nueva.length > 0 && !cumpleTodas(nueva));
-	const mensajeContrasena = $derived(errorContrasena || (formatoMal ? MENSAJE_FORMATO : ''));
+	const mensajeContrasena = $derived(formatoMal ? MENSAJE_FORMATO : '');
 
 	async function cambiar(evento: SubmitEvent) {
 		evento.preventDefault();
 		if (!listo || enviando) return;
 		enviando = true;
-		errorGeneral = errorContrasena = '';
+		errorGeneral = '';
 		try {
 			const r = await fetch('/api/auth/recuperacion/confirmar', {
 				method: 'POST',
@@ -66,11 +64,6 @@
 			}
 			if (['enlace_invalido', 'enlace_usado', 'enlace_vencido'].includes(cuerpo?.codigo)) {
 				await goto('/acceso/enlace-expirado');
-				return;
-			}
-			// Lleva tu correo, tu nombre o una palabra común (HU04 CA-3): se dice bajo su campo, y el enlace NO se gastó.
-			if (cuerpo?.codigo === 'contrasena_debil') {
-				errorContrasena = cuerpo.mensaje;
 				return;
 			}
 			// `reglas`: casi imposible (el botón solo enciende si cumple todo, y
@@ -103,7 +96,6 @@
 				autocomplete="new-password"
 				placeholder="Ingresa tu nueva contraseña"
 				bind:value={nueva}
-				oninput={() => (errorContrasena = '')}
 				aria-invalid={mensajeContrasena ? 'true' : undefined}
 				data-testid="campo-contrasena"
 				class="h-10 w-full rounded-lg border border-input bg-card pr-16 pl-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"

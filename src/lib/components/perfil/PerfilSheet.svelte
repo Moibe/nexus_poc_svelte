@@ -69,8 +69,6 @@
 	let actual = $state('');
 	/** La contraseña actual que el servidor rechazó: va bajo su campo (HU13 CA-6), no al pie. */
 	let errorActual = $state('');
-	/** Lo que el servidor dijo de la contraseña nueva misma (HU04 CA-3: lleva tu correo, tu nombre o una palabra común). */
-	let errorNueva = $state('');
 	let nueva = $state('');
 	let confirmacion = $state('');
 	let verActual = $state(false);
@@ -140,7 +138,7 @@
 		errorRecEmail = '';
 		recTelefono = sinNumero(perfil.recuperacion?.telefono);
 		actual = nueva = confirmacion = '';
-		errorActual = errorNueva = '';
+		errorActual = '';
 		editando = bloque;
 	}
 
@@ -194,7 +192,7 @@
 	async function guardarContrasena() {
 		if (!contrasenaLista || guardando) return;
 		guardando = true;
-		error = errorActual = errorNueva = '';
+		error = errorActual = '';
 		try {
 			const r = await fetch('/api/auth/contrasena', {
 				method: 'POST',
@@ -205,7 +203,6 @@
 			if (!r.ok) {
 				// La actual equivocada se dice bajo su campo, con el texto del servidor y nada más (CA-6).
 				if (datos?.codigo === 'actual_incorrecta') errorActual = datos?.mensaje ?? 'La contraseña actual es incorrecta.';
-				else if (datos?.codigo === 'contrasena_debil') errorNueva = datos.mensaje;
 				else error = datos?.mensaje ?? 'No se pudo cambiar la contraseña.';
 				return;
 			}
@@ -465,8 +462,7 @@
 										autocomplete="new-password"
 										placeholder="Ingresa nueva contraseña"
 										bind:value={nueva}
-										oninput={() => (errorNueva = '')}
-										aria-invalid={igualQueLaActual || errorNueva ? 'true' : undefined}
+										aria-invalid={igualQueLaActual ? 'true' : undefined}
 										class="{CLASE_INPUT_VALIDABLE} pr-10"
 									/>
 									<button
@@ -482,8 +478,6 @@
 									<p class="text-xs text-destructive" data-testid="perfil-igual-actual">
 										La nueva contraseña no puede ser igual a la actual.
 									</p>
-								{:else if errorNueva}
-									<p class="text-xs text-destructive" role="alert" data-testid="perfil-error-nueva">{errorNueva}</p>
 								{/if}
 							</div>
 							<div class="flex flex-col gap-1.5">
