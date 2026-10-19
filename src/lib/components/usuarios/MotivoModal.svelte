@@ -25,8 +25,14 @@
 	 * El ícono es el mismo en los dos flujos (`bubble-chat-add`) y está REDIBUJADO a
 	 * mano porque se agotó la cuota de Figma: ver `BubbleChatAddIcon`.
 	 *
-	 * El estado "hecho" (La cuenta fue desactivada / Sesión finalizada) conserva su
-	 * contenido de antes: sus frames no se revisaron, solo se mudó al modal.
+	 * El estado "hecho" (Sesión finalizada / La cuenta fue desactivada) es OTRA
+	 * tarjeta, no el formulario con otro contenido: en Figma son los frames `login
+	 * form` (555:28102 y 561:26174), de 684×620, con tres círculos concéntricos de
+	 * fondo, un cuadro de ícono de 120, el título en 36 px y el cuerpo en 18, y
+	 * SOLO la X arriba a la derecha: no lleva el encabezado «Registro de motivo»
+	 * ni el botón «Listo» que había antes. Se cierra con la X, con Escape o con un
+	 * clic fuera. El ícono de «desactivada» (`alert-02`) NO se pudo ver y es una
+	 * aproximación: ver `AlertTriangleDuotoneIcon`.
 	 *
 	 * El motivo es obligatorio: es lo que deja auditable por qué se le quitó el
 	 * acceso a una persona. El servidor lo vuelve a exigir.
@@ -39,11 +45,11 @@
 	 * "Cerrar sesión" va por la ruta que cuelga de la organización.
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
-	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import LogOut from '@lucide/svelte/icons/log-out';
 
+	import AlertTriangleDuotoneIcon from '$lib/components/icons/AlertTriangleDuotoneIcon.svelte';
 	import BubbleChatAddIcon from '$lib/components/icons/BubbleChatAddIcon.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
+	import PowerCircleIcon from '$lib/components/icons/PowerCircleIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { UsuarioDeOrganizacion } from '$lib/usuarios/tipos';
 
@@ -143,46 +149,86 @@
 		/>
 		<DialogPrimitive.Content
 			data-testid="modal-motivo"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col border border-border bg-white shadow-lg {hecho
+				? 'h-155 overflow-hidden rounded-3xl p-8'
+				: 'gap-2 overflow-y-auto rounded-xl p-6'}"
 		>
-			<!-- header . navigation: la línea de abajo llega de lado a lado de la tarjeta
-			     (menos su padding), no de borde a borde, como en el frame. -->
-			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="flex-1 text-sm text-muted-foreground">Registro de motivo</p>
-				<button
-					type="button"
-					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
-					data-testid="cerrar-motivo"
-					onclick={() => (open = false)}
-				>
-					<CancelSquareIcon />
-					<span class="sr-only">Cerrar</span>
-				</button>
-			</div>
+			<!-- Las dos pantallas son frames distintos de Figma: el formulario es de 684×376 con 24 de padding y
+			     esquinas de 12, la pantalla final de 684×620 con 32, esquinas de 24 (medido en la captura: ~22 px)
+			     y `overflow-hidden` (el círculo grande del fondo se sale de la tarjeta y el diseño lo recorta).
+			     OJO: `overflow-hidden` y no `overflow-y-auto` a propósito, porque ese círculo, absoluto, haría
+			     aparecer una barra de desplazamiento.
 
+			     `bg-white` y no `bg-background`: el diseño es blanco puro (los rincones de la tarjeta miden
+			     #ffffff) y el token es un gris casi blanco que, bajo los círculos de fondo —que son de apenas 2 a 5
+			     niveles de diferencia—, los haría perder su contraste. -->
 			{#if hecho}
-				<div class="flex flex-col items-center gap-4 px-8 py-8 text-center">
-					<span class="flex size-16 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground">
-						{#if accion === 'desactivar'}<TriangleAlert class="size-7" />{:else}<LogOut class="size-7" />{/if}
-					</span>
-					<DialogPrimitive.Title class="text-xl font-semibold text-foreground" data-testid="motivo-hecho">
-						{textos.hechoTitulo}
-					</DialogPrimitive.Title>
-					<DialogPrimitive.Description class="max-w-sm text-sm text-muted-foreground">
-						{textos.hechoCuerpo}
-					</DialogPrimitive.Description>
-					{#if cerradas === 0}
-						<!-- No está en el diseño. El cierre se registra aunque no hubiera nada que cerrar: el administrador
-						     lo pidió, y la lista puede ir unos segundos atrasada respecto de lo que la persona hizo. -->
-						<p class="max-w-sm text-xs text-muted-foreground" data-testid="motivo-sin-sesiones">
-							No tenía ninguna sesión abierta en este momento; el cierre quedó registrado.
-						</p>
+				<!-- Tres círculos concéntricos de fondo (Group 1 del frame: 670, 470 y 284 de diámetro, centrados en
+				     x=342, y=367). Son casi invisibles a propósito —medidos, van de #fafaf9 a #fdfdfc sobre blanco—, y
+				     equivalen a stone-50 al 50 %, 75 % y 100 %, apilados. -->
+				<div aria-hidden="true" class="pointer-events-none absolute inset-0">
+					<span class="absolute top-[32px] left-[7px] size-[670px] rounded-full bg-stone-50/50"></span>
+					<span class="absolute top-[132.22px] left-[107.22px] size-[469.56px] rounded-full bg-stone-50/75"></span>
+					<span class="absolute top-[225.02px] left-[200.02px] size-[283.96px] rounded-full bg-stone-50"></span>
+				</div>
+
+				<!-- «cerrar»: fila de 44 con la X a 10 del borde de arriba y de la derecha. Es lo ÚNICO que hay arriba. -->
+				<div class="relative flex h-11 shrink-0 items-start justify-end pt-2.5 pr-2.5">
+					<button
+						type="button"
+						class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+						data-testid="cerrar-motivo"
+						onclick={() => (open = false)}
+					>
+						<CancelSquareIcon />
+						<span class="sr-only">Cerrar</span>
+					</button>
+				</div>
+
+				<!-- Las posiciones salen del frame: la fila de la X termina en y=76, el ícono empieza en 271 y el título en
+				     436 (45 debajo del ícono), y el cuerpo en 502 (12 debajo del título). Se pusieron como márgenes en
+				     vez de posiciones absolutas para que el texto pueda crecer si la traducción es más larga. -->
+				<span
+					class="relative mx-auto mt-[195px] flex size-30 shrink-0 items-center justify-center rounded-[28px] border border-border bg-white"
+				>
+					{#if accion === 'desactivar'}
+						<AlertTriangleDuotoneIcon class="size-20" />
+					{:else}
+						<PowerCircleIcon class="size-20" />
 					{/if}
-				</div>
-				<div class="flex items-center justify-end border-t border-border p-2.5">
-					<Button class="h-9.5 px-4" data-testid="listo-motivo" onclick={() => (open = false)}>Listo</Button>
-				</div>
+				</span>
+				<DialogPrimitive.Title
+					class="relative mt-[45px] text-center text-4xl leading-[1.5] font-semibold text-foreground"
+					data-testid="motivo-hecho"
+				>
+					{textos.hechoTitulo}
+				</DialogPrimitive.Title>
+				<DialogPrimitive.Description class="relative mt-3 text-center text-lg leading-relaxed text-muted-foreground">
+					{textos.hechoCuerpo}
+				</DialogPrimitive.Description>
+				{#if cerradas === 0}
+					<!-- No está en el diseño. El cierre se registra aunque no hubiera nada que cerrar: el administrador
+					     lo pidió, y la lista puede ir unos segundos atrasada respecto de lo que la persona hizo. -->
+					<p class="relative mt-3 text-center text-xs text-muted-foreground" data-testid="motivo-sin-sesiones">
+						No tenía ninguna sesión abierta en este momento; el cierre quedó registrado.
+					</p>
+				{/if}
 			{:else}
+				<!-- header . navigation: la línea de abajo llega de lado a lado de la tarjeta
+				     (menos su padding), no de borde a borde, como en el frame. -->
+				<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
+					<p class="flex-1 text-sm text-muted-foreground">Registro de motivo</p>
+					<button
+						type="button"
+						class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+						data-testid="cerrar-motivo"
+						onclick={() => (open = false)}
+					>
+						<CancelSquareIcon />
+						<span class="sr-only">Cerrar</span>
+					</button>
+				</div>
+
 				<!-- header.modal -->
 				<div class="flex h-16 shrink-0 items-center gap-3">
 					<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
