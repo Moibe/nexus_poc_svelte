@@ -505,8 +505,12 @@
 				</div>
 
 				{#if falloAlCrear}
-					<AvisoRojo testid="organizacion-no-creada" titulo="La organización no se creó correctamente">
-						<span data-testid="error-general-organizacion">{falloAlCrear}</span>
+					<!-- Título y texto del Figma («Alert error»: «No fue posible crear la organización»). Antes decía «La
+					     organización no se creó correctamente» y solo el motivo. El motivo concreto se conserva debajo: es lo
+					     único que dice QUÉ corregir. -->
+					<AvisoRojo testid="organizacion-no-creada" titulo="No fue posible crear la organización">
+						Ocurrió un problema al registrar la organización. Verifica la información ingresada e inténtalo nuevamente.
+						<span class="mt-1 block" data-testid="error-general-organizacion">{falloAlCrear}</span>
 					</AvisoRojo>
 				{/if}
 			</div>

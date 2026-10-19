@@ -48,7 +48,12 @@
 	let rol = $state('');
 	let enviando = $state(false);
 	let errorEmail = $state('');
+	/** El detalle que dio el servidor cuando el alta falló por algo que no es del campo del correo. */
 	let errorGeneral = $state('');
+	/** El alta no se pudo hacer: sale el banner rojo «No fue posible crear el usuario» (Figma, «Alert error»). Se prende por CUALQUIER
+	 *  fallo de la creación misma —un correo repetido o mal escrito incluido, que además se dice bajo su campo—, y solo por eso:
+	 *  si lo que falla es algo POSTERIOR (recargar la lista), el usuario ya existe y decir que no se creó sería mentira. */
+	let falloAlCrear = $state(false);
 	/** Lo que contestó el alta. Si el correo SALIÓ (`correoEnviado`), la contraseña temporal no viene: la persona la
 	 *  tiene en su bandeja. Si no (`correoMotivo`: `sin_canal` en un ambiente que no manda correo, `fallo` si el
 	 *  servicio no pudo), viene aquí y se muestra una sola vez, como siempre. */
@@ -76,6 +81,7 @@
 		if (!open) return;
 		creada = null;
 		errorEmail = errorGeneral = '';
+		falloAlCrear = false;
 		correoTocado = sinRol = false;
 		nombre = paterno = materno = email = telefono = rol = '';
 	});
@@ -88,6 +94,7 @@
 		}
 		enviando = true;
 		errorEmail = errorGeneral = '';
+		falloAlCrear = false;
 		try {
 			const cuerpo = {
 				nombre: nombre.trim(),
@@ -97,18 +104,26 @@
 				rol,
 				email: email.trim()
 			};
-			const r = await fetch('/api/usuarios', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(cuerpo)
-			});
+			// Sin red, `fetch` LANZA: antes eso se perdía sin decir nada y el botón se quedaba como si no hubiera pasado nada.
+			let r: Response;
+			try {
+				r = await fetch('/api/usuarios', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(cuerpo)
+				});
+			} catch {
+				falloAlCrear = true;
+				errorGeneral = 'No se pudo conectar con el servidor.';
+				return;
+			}
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
-				// `correo_invalido` es el formato visto por el servidor: va bajo el
-				// campo, no en la línea de abajo, que queda lejos y no lo señala.
+				falloAlCrear = true;
+				// `correo_invalido` es el formato visto por el servidor: va bajo el campo, que es donde se corrige, ADEMÁS del banner.
 				if (datos?.codigo === 'correo_registrado' || datos?.codigo === 'correo_invalido')
 					errorEmail = datos.mensaje;
-				else errorGeneral = datos?.mensaje ?? 'No se pudo guardar. Intenta de nuevo.';
+				else errorGeneral = datos?.mensaje ?? '';
 				return;
 			}
 			await alGuardar();
@@ -287,8 +302,15 @@
 					{/if}
 				</fieldset>
 
-				{#if errorGeneral}
-					<p class="text-xs text-destructive" data-testid="error-general-usuario">{errorGeneral}</p>
+				<!-- El texto del banner es el del Figma. Si el servidor dio un motivo concreto (un 403, un 503), va debajo: sin él,
+				     «Verifica la información ingresada» mandaría a revisar el formulario cuando el problema no es el formulario. -->
+				{#if falloAlCrear}
+					<AvisoRojo testid="usuario-no-creado" titulo="No fue posible crear el usuario">
+						Ocurrió un problema al registrar la cuenta. Verifica la información ingresada e intenta nuevamente.
+						{#if errorGeneral}
+							<span class="mt-1 block" data-testid="error-general-usuario">{errorGeneral}</span>
+						{/if}
+					</AvisoRojo>
 				{/if}
 			</div>
 
