@@ -40,7 +40,7 @@
 	import MailPlus from '@lucide/svelte/icons/mail-plus';
 
 	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
-	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
+	import MotivoModal from '$lib/components/usuarios/MotivoModal.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import EdicionUsuarioFila from '$lib/components/usuarios/EdicionUsuarioFila.svelte';
 	import UsuarioSheet from '$lib/components/usuarios/UsuarioSheet.svelte';
@@ -382,7 +382,7 @@
 	</p>
 {/if}
 
-<MotivoSheet
+<MotivoModal
 	bind:open={motivoAbierto}
 	accion={accionMotivo}
 	usuario={objetivo}

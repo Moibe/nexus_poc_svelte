@@ -31,7 +31,7 @@
 	import NuevaOrganizacionSheet from '$lib/components/organizaciones/NuevaOrganizacionSheet.svelte';
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import IndicadorSesion from '$lib/components/usuarios/IndicadorSesion.svelte';
-	import MotivoSheet from '$lib/components/usuarios/MotivoSheet.svelte';
+	import MotivoModal from '$lib/components/usuarios/MotivoModal.svelte';
 	import ReenviarInvitacionSheet from '$lib/components/usuarios/ReenviarInvitacionSheet.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -431,7 +431,7 @@
 
 <!-- Cerrar una sesión cambia el "Con sesión / Sin sesión" de esa fila: al terminar se
      refresca la lista que ya se ve (sin volver a "Cargando usuarios…"). -->
-<MotivoSheet
+<MotivoModal
 	bind:open={motivoAbierto}
 	accion="cerrar-sesion"
 	usuario={objetivo}
