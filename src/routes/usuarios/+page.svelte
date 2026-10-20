@@ -101,13 +101,17 @@
 		return `${dia} | ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
 
-	/** A quién se le mandaron los accesos al dar de alta a alguien. El aviso vive AQUÍ y no en el panel del alta: el panel
-	 *  se cierra al salir el correo, y un aviso dentro se iría con él. Se apaga al abrir otra alta: a partir de ahí
-	 *  hablaría de la anterior. */
-	let accesosEnviadosA = $state<string | null>(null);
+	/** El alta salió bien Y el correo con los accesos también: se dice con el aviso verde del diseño («Usuario creado
+	 *  correctamente»). Vive AQUÍ y no en el panel del alta: el panel se cierra al salir el correo, y un aviso dentro se
+	 *  iría con él. Se apaga al abrir otra alta: a partir de ahí hablaría de la anterior.
+	 *
+	 *  Solo cuando el correo SALIÓ, porque el texto del diseño lo afirma («las credenciales de acceso han sido enviadas al
+	 *  correo»). Si no salió, el usuario sí se creó, pero decir eso sería falso: ese caso se queda en el panel, que muestra
+	 *  la contraseña temporal. */
+	let usuarioCreado = $state(false);
 
 	function abrirAlta() {
-		accesosEnviadosA = null;
+		usuarioCreado = false;
 		abierto = true;
 	}
 
@@ -172,12 +176,15 @@
 <!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se
      monta junto con su texto no se anuncia. Vacío no mide nada. El margen va dentro del `if` por lo mismo. -->
 <div role="status" aria-live="polite">
-	{#if accesosEnviadosA}
+	{#if usuarioCreado}
+		<!-- El texto es el literal del «Alert Success» del Figma (HU006). Hasta el 2026-10-19 decía «Enviamos sus accesos
+		     por correo / Los mandamos a <correo>…»: se cambió a pedido de QA, que echaba de menos el aviso de que el
+		     usuario SE CREÓ. A cambio ya no sale la dirección a la que se mandó; si se quiere, se agrega. -->
 		<div class="mt-6">
 			<AvisoVerde
-				testid="correo-enviado-usuario"
-				titulo="Enviamos sus accesos por correo"
-				cuerpo="Los mandamos a {accesosEnviadosA}. La contraseña temporal viaja solo por ese correo y se le pedirá cambiarla al entrar."
+				testid="usuario-creado-aviso"
+				titulo="Usuario creado correctamente"
+				cuerpo="La cuenta fue creada exitosamente y las credenciales de acceso han sido enviadas al correo electrónico registrado."
 			/>
 		</div>
 	{/if}
@@ -434,5 +441,5 @@
 		seleccionado = null;
 		await invalidateAll();
 	}}
-	alEnviarAccesos={(usuario) => (accesosEnviadosA = usuario.email)}
+	alEnviarAccesos={() => (usuarioCreado = true)}
 />
