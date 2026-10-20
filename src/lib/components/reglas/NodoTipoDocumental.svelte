@@ -10,8 +10,10 @@
 	 * Los puntos de salida se identifican con el nombre del campo, y con `grupo.subcampo` los de dentro de un grupo. Un grupo tiene
 	 * además el suyo propio: contar cuántas filas trae («cuántos socios») es una regla tan válida como sumar una de sus columnas.
 	 *
-	 * Los puntos de salida se conectan a las entradas de un operador. Los que traen VARIOS valores (un campo «1 a N», un grupo y los
-	 * subcampos de un grupo que se repite) se ven apagados y dicen por qué: comparar una lista pide otros operadores.
+	 * Los puntos de salida se conectan a las entradas de un operador. Un campo suelto entrega un VALOR (punto redondo); los que traen
+	 * VARIOS (un campo «1 a N», una columna de un grupo que se repite) entregan una LISTA, y un grupo que se repite entrega sus FILAS
+	 * (puntos cuadrados): esos solo sirven a los operadores de listas. Un grupo que no se repite no entrega nada por sí mismo: su
+	 * punto se ve apagado y dice por qué (sus columnas, en cambio, sí se conectan).
 	 */
 	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -36,10 +38,13 @@
 	const etiquetaDeDato = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label ?? valor;
 	const seRepite = (c: Pick<CampoBorrador, 'cardinalidad'>) => c.cardinalidad === 'multiple';
 
-	/** Lo que dice el punto de salida: si se puede conectar, y si no, por qué. */
+	/** Lo que dice el punto de salida: si se puede conectar, qué entrega (para que se vea y se lea) y, si no, por qué. */
 	const salidaDelPunto = (s: Salida) => {
 		const motivo = porQueNoSeConecta(s);
-		return { conectable: motivo === null, titulo: motivo ?? `Conectar «${s.campo}» a un operador` };
+		if (motivo !== null) return { conectable: false, clase: 'sin-conexion', titulo: motivo };
+		if (s.forma === 'lista') return { conectable: true, clase: 'forma-lista', titulo: `«${s.campo}» es una lista de valores: conéctala a un operador de listas` };
+		if (s.forma === 'filas') return { conectable: true, clase: 'forma-lista', titulo: `«${s.campo}» son las filas de un grupo: cuéntalas con «Cantidad»` };
+		return { conectable: true, clase: '', titulo: `Conectar «${s.campo}» a un operador` };
 	};
 </script>
 
@@ -99,7 +104,7 @@
 						id={campo.nombre}
 						isConnectable={punto.conectable}
 						title={punto.titulo}
-						class={punto.conectable ? '' : 'sin-conexion'}
+						class={punto.clase}
 					/>
 				</li>
 				{#if campo.tipoDato === 'grupo'}
@@ -120,7 +125,7 @@
 								id={`${campo.nombre}.${sub.nombre}`}
 								isConnectable={puntoSub.conectable}
 								title={puntoSub.titulo}
-								class={puntoSub.conectable ? '' : 'sin-conexion'}
+								class={puntoSub.clase}
 							/>
 						</li>
 					{/each}
@@ -141,6 +146,10 @@
 		border: 2px solid var(--card);
 	}
 	/* Un punto que no se puede conectar (trae varios valores) se ve apagado y el cursor no invita a arrastrarlo. */
+	/* Una lista (o las filas de un grupo) sale por un punto CUADRADO: se ve que no es un valor suelto y no cabe en una comparación. */
+	:global(.svelte-flow__handle.forma-lista) {
+		border-radius: 2px;
+	}
 	:global(.svelte-flow__handle.sin-conexion) {
 		background: var(--muted-foreground);
 		opacity: 0.45;

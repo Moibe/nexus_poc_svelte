@@ -38,14 +38,17 @@
 	import { onMount, setContext, tick } from 'svelte';
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
+	import NodoConstante from '$lib/components/reglas/NodoConstante.svelte';
 	import NodoOperador from '$lib/components/reglas/NodoOperador.svelte';
 	import NodoTipoDocumental from '$lib/components/reglas/NodoTipoDocumental.svelte';
 	import PaletaDeTipos from '$lib/components/reglas/PaletaDeTipos.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
 		CLAVE_VEREDICTOS,
+		MIME_CONSTANTE,
 		MIME_OPERADOR,
 		MIME_TIPO_DOCUMENTAL,
+		NODO_CONSTANTE,
 		NODO_OPERADOR,
 		NODO_TIPO,
 		evaluar,
@@ -53,10 +56,12 @@
 		huellaDelDibujo,
 		idNodoDeTipo,
 		motivoDeRechazo,
+		numeroDeOperador,
 		operadorDe,
 		serializarDibujo,
 		type ClaveOperador,
 		type Conexion,
+		type DatosNodoConstante,
 		type DatosNodoOperador,
 		type DatosNodoTipo
 	} from '$lib/reglas/reglas';
@@ -80,14 +85,17 @@
 	let edges = $state.raw<Edge[]>([]);
 	let zona = $state<HTMLDivElement>();
 
-	const nodeTypes = { [NODO_TIPO]: NodoTipoDocumental, [NODO_OPERADOR]: NodoOperador };
+	const nodeTypes = { [NODO_TIPO]: NodoTipoDocumental, [NODO_OPERADOR]: NodoOperador, [NODO_CONSTANTE]: NodoConstante };
 
-	// El veredicto de CADA regla, calculado una vez para todo el grafo: una regla que depende de otra tiene que ver el veredicto
-	// actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
-	const veredictos = $derived(evaluar(nodes, edges, tiposDocumentales));
+	// El estado de CADA regla y el valor de las que entregan uno, calculados una vez para todo el grafo: una regla que depende de otra
+	// tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
+	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales));
 	setContext(CLAVE_VEREDICTOS, {
 		get todos() {
-			return veredictos;
+			return evaluacion.estados;
+		},
+		get valores() {
+			return evaluacion.valores;
 		}
 	});
 
@@ -124,6 +132,19 @@
 		nodes = [...nodes, nuevo];
 	}
 
+	/** Un valor fijo también se puede poner las veces que haga falta, y su número tampoco se reutiliza. */
+	let constantesPuestas = 0;
+	function agregarConstante(posicion: Posicion) {
+		constantesPuestas += 1;
+		const nuevo: Node<DatosNodoConstante> = {
+			id: `constante-${constantesPuestas}`,
+			type: NODO_CONSTANTE,
+			position: posicion,
+			data: { familia: 'texto', valor: '' }
+		};
+		nodes = [...nodes, nuevo];
+	}
+
 	/** Un clic en la paleta: el nodo aparece en el centro de lo que se ve, escalonado para que varios no queden encimados. */
 	function alCentro(): Posicion | null {
 		const caja = zona?.getBoundingClientRect();
@@ -139,10 +160,14 @@
 		const posicion = alCentro();
 		if (posicion) agregarOperador(clave, posicion);
 	}
+	function agregarConstanteAlCentro() {
+		const posicion = alCentro();
+		if (posicion) agregarConstante(posicion);
+	}
 
 	function alPasarPorEncima(e: DragEvent) {
 		const tipos = e.dataTransfer?.types;
-		if (!tipos?.includes(MIME_TIPO_DOCUMENTAL) && !tipos?.includes(MIME_OPERADOR)) return;
+		if (!tipos?.includes(MIME_TIPO_DOCUMENTAL) && !tipos?.includes(MIME_OPERADOR) && !tipos?.includes(MIME_CONSTANTE)) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 	}
@@ -159,6 +184,11 @@
 		if (operador) {
 			e.preventDefault();
 			agregarOperador(operador, posicion);
+			return;
+		}
+		if (e.dataTransfer?.getData(MIME_CONSTANTE)) {
+			e.preventDefault();
+			agregarConstante(posicion);
 		}
 	}
 
@@ -191,6 +221,39 @@
 		avisar(rechazo(conexion) ?? 'Esa conexión no se puede hacer.');
 	};
 
+	// Cambiar la CLASE de un valor fijo que ya está conectado (de número a texto, por ejemplo) puede dejar su cable donde ya no cabe:
+	// se desconecta y se dice por qué, igual que cuando se rechaza un cable nuevo. Solo se tocan los cables del valor fijo QUE CAMBIÓ:
+	// si dos lados dejan de ser compatibles entre sí, los dos cables parecen inválidos, y el que está bien no se debe caer. Por eso se
+	// recuerda la clase que tenía cada uno. Los cables de un campo no se revisan: dependen de la biblioteca de tipos, que puede estar
+	// todavía cargándose, y no se deben quitar por eso.
+	const clasesVistas = new Map<string, string>();
+	$effect(() => {
+		const cambiados = new Set<string>();
+		for (const n of nodes) {
+			if (n.type !== NODO_CONSTANTE) continue;
+			const clase = String((n.data as DatosNodoConstante).familia);
+			const antes = clasesVistas.get(n.id);
+			if (antes !== undefined && antes !== clase) cambiados.add(n.id);
+			clasesVistas.set(n.id, clase);
+		}
+		if (cambiados.size === 0) return;
+		const sobran = edges.filter(
+			(e) => cambiados.has(e.source) && motivoDeRechazo(e, nodes, edges.filter((o) => o !== e), tiposDocumentales) !== null
+		);
+		if (sobran.length === 0) return;
+		avisar(
+			sobran
+				.map((e) => {
+					const destino = nodes.find((n) => n.id === e.target);
+					const def = destino ? operadorDe(String((destino.data as DatosNodoOperador).operador)) : undefined;
+					const motivo = motivoDeRechazo(e, nodes, edges.filter((o) => o !== e), tiposDocumentales);
+					return `Se desconectó «Valor fijo #${numeroDeOperador(e.source)}» de «${def?.etiqueta ?? 'la regla'} #${numeroDeOperador(e.target)}»: ${motivo}`;
+				})
+				.join(' ')
+		);
+		edges = edges.filter((e) => !sobran.includes(e));
+	});
+
 	// ── El proceso que está en el lienzo ─────────────────────────────────────
 
 	const HUELLA_VACIA = huellaDelDibujo({ nodos: [], aristas: [] });
@@ -217,6 +280,8 @@
 		nodes = [];
 		edges = [];
 		operadoresPuestos = 0;
+		constantesPuestas = 0;
+		clasesVistas.clear();
 		procesoId = idDeProceso();
 		revision = 0;
 		existe = false;
@@ -229,9 +294,11 @@
 	/** Pone un proceso del servidor en el lienzo. */
 	async function abrir(p: ProcesoGuardado) {
 		const dibujo = hidratarDibujo(p.datos);
+		clasesVistas.clear();
 		nodes = dibujo.nodes;
 		edges = dibujo.edges;
 		operadoresPuestos = dibujo.operadoresPuestos;
+		constantesPuestas = dibujo.constantesPuestas;
 		procesoId = p.id;
 		revision = p.revision;
 		existe = true;
@@ -373,7 +440,7 @@
 	data-testid="lienzo-reglas"
 	class="lienzo relative mt-4 flex h-[calc(100vh-22rem)] min-h-120 overflow-hidden rounded-xl border border-border bg-card"
 >
-	<PaletaDeTipos {enLienzo} alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} />
+	<PaletaDeTipos {enLienzo} alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} alAgregarConstante={agregarConstanteAlCentro} />
 
 	<div bind:this={zona} role="presentation" class="relative min-w-0 flex-1" ondragover={alPasarPorEncima} ondrop={alSoltar}>
 		<SvelteFlow

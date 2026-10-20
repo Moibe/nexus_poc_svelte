@@ -5,8 +5,16 @@
  *
  * El modelo: un PROCESO es un conjunto de reglas y corre sobre un EXPEDIENTE (un conjunto de documentos). Los tipos documentales
  * son sus entradas; por cada conexión viaja un CAMPO (no el documento entero) y su tipo de dato decide qué se puede comparar.
- * Las reglas de COMPARACIÓN (igual, distinto, contiene, mayor, menor) reciben campos y dan pasa / no pasa. Las LÓGICAS (Y, O, No)
- * reciben ese pasa / no pasa de otras reglas, y así se encadenan.
+ *
+ * Por un cable puede viajar:
+ *   · un VALOR: un campo suelto, un valor fijo escrito en el lienzo, o el número que entrega una regla (`Cantidad`, `Suma`);
+ *   · una LISTA de valores: un campo «1 a N» o una columna de un grupo que se repite;
+ *   · las FILAS de un grupo que se repite (solo para contarlas);
+ *   · un VEREDICTO (pasa / no pasa): lo que entrega una comparación o un operador lógico.
+ *
+ * Los operadores de COMPARACIÓN (igual, distinto, contiene, mayor, menor) reciben dos valores y dan un veredicto. Los de LISTAS
+ * (cantidad, suma, alguno, todos, unicos) reciben una lista: `cantidad` y `suma` entregan un valor (que se puede comparar) y los demás,
+ * un veredicto. Los LÓGICOS (Y, O, No) reciben veredictos de otras reglas, y así se encadenan.
  */
 import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 
@@ -16,23 +24,31 @@ import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 export type DatosNodoTipo = { tipoId: string };
 
 /**
- * Lo que lleva un nodo operador: cuál es y, para los de comparación, los valores de EJEMPLO con los que se prueba la regla (uno
- * por entrada: el lienzo aún no corre sobre un expediente de verdad). Los operadores lógicos no usan `a` ni `b`.
+ * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
+ * prueba la regla (uno por entrada: el lienzo aún no corre sobre un expediente de verdad). Si lo que entra es una LISTA, el ejemplo
+ * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`.
  */
 export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string };
+
+/** Lo que lleva un nodo de valor fijo: de qué clase es y el valor. A diferencia de un ejemplo, éste es parte de la regla. */
+export type DatosNodoConstante = { familia: Familia; valor: string };
 
 /** Los tipos de nodo que registra el lienzo (`nodeTypes`). */
 export const NODO_TIPO = 'tipo-documental';
 export const NODO_OPERADOR = 'operador';
+export const NODO_CONSTANTE = 'constante';
 
 /** Con qué se arrastra algo desde la paleta hasta el lienzo (`DataTransfer`). */
 export const MIME_TIPO_DOCUMENTAL = 'application/x-nexusdoc-tipo-documental';
 export const MIME_OPERADOR = 'application/x-nexusdoc-operador';
+export const MIME_CONSTANTE = 'application/x-nexusdoc-constante';
 
-/** El punto por el que un operador entrega su pasa / no pasa. */
+/** El punto por el que un operador entrega su resultado (un veredicto o un valor, según el operador). */
 export const SALIDA_RESULTADO = 'resultado';
+/** El punto por el que un valor fijo entrega su valor. */
+export const SALIDA_VALOR = 'valor';
 
-/** Con qué llave el lienzo le ofrece a sus nodos el veredicto de cada regla (`getContext`). */
+/** Con qué llave el lienzo le ofrece a sus nodos lo que evaluó (`getContext`). */
 export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
 
 /**
@@ -41,13 +57,21 @@ export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
  */
 export const idNodoDeTipo = (tipoId: string) => `tipo-${tipoId}`;
 
-/** El número con el que se distingue un operador de otro del mismo tipo («Igual a #2»). */
-export const numeroDeOperador = (nodoId: string) => nodoId.replace(/^operador-/, '');
+/** El número con el que se distingue un operador o un valor fijo de otro del mismo tipo («Igual a #2», «Valor fijo #1»). */
+export const numeroDeOperador = (nodoId: string) => nodoId.replace(/^(operador|constante)-/, '');
 
 // ── Qué es comparable con qué ────────────────────────────────────────────────
 
 /** Dos campos se pueden comparar si son de la misma familia: un número con una moneda sí, un texto con una fecha no. */
 export type Familia = 'texto' | 'numero' | 'fecha' | 'booleano';
+
+/** Las clases que se le pueden dar a un valor fijo, para el desplegable. */
+export const FAMILIAS_DE_VALOR_FIJO: readonly { valor: Familia; etiqueta: string }[] = [
+	{ valor: 'texto', etiqueta: 'Texto' },
+	{ valor: 'numero', etiqueta: 'Número' },
+	{ valor: 'fecha', etiqueta: 'Fecha' },
+	{ valor: 'booleano', etiqueta: 'Sí / no' }
+];
 
 /** `null` para lo que no es UN valor (el grupo de campos). */
 export function familiaDe(tipoDato: string): Familia | null {
@@ -67,13 +91,18 @@ export function familiaDe(tipoDato: string): Familia | null {
 	}
 }
 
+const esFamilia = (v: unknown): v is Familia => v === 'texto' || v === 'numero' || v === 'fecha' || v === 'booleano';
+
 const NOMBRE_DE_FAMILIA: Record<Familia, string> = { texto: 'un texto', numero: 'un número', fecha: 'una fecha', booleano: 'un sí/no' };
 const PLURAL_DE_FAMILIA: Record<Familia, string> = { texto: 'textos', numero: 'números', fecha: 'fechas', booleano: 'valores sí/no' };
 
 // ── Los operadores ───────────────────────────────────────────────────────────
 
-export type ClaveOperador = 'igual' | 'distinto' | 'contiene' | 'mayor' | 'menor' | 'y' | 'o' | 'no';
+export type ClaveOperador = 'igual' | 'distinto' | 'contiene' | 'mayor' | 'menor' | 'cantidad' | 'suma' | 'alguno' | 'todos' | 'unicos' | 'y' | 'o' | 'no';
 export type Entrada = 'a' | 'b';
+
+/** Lo que una entrada acepta que le llegue: un valor suelto, una lista de valores o el veredicto de otra regla. */
+export type Acepta = 'valor' | 'lista' | 'veredicto';
 
 export type DefOperador = {
 	clave: ClaveOperador;
@@ -81,39 +110,44 @@ export type DefOperador = {
 	descripcion: string;
 	/** Lo que se dibuja en el nodo y en la paleta. */
 	simbolo: string;
-	/** Comparación: recibe CAMPOS. Lógico: recibe el pasa / no pasa de otras reglas. */
-	grupo: 'comparacion' | 'logico';
-	entradas: readonly { id: Entrada; etiqueta: string }[];
-	/** Solo comparación: con qué familias de dato trabaja. */
+	grupo: 'comparacion' | 'lista' | 'logico';
+	/** Lo que entrega: un pasa / no pasa, o un VALOR (un número) que otra regla puede comparar. */
+	salida: 'veredicto' | 'valor';
+	entradas: readonly { id: Entrada; etiqueta: string; acepta: Acepta }[];
+	/** Con qué familias de dato trabaja (en las entradas de valores y de listas). */
 	familias: readonly Familia[];
-	/** Lo que dice el nodo según le salga. */
+	/** Solo «Cantidad»: además de una lista, cuenta las FILAS de un grupo que se repite. */
+	aceptaFilas?: boolean;
+	/** Lo que dice el nodo según le salga (solo los que entregan un veredicto). */
 	textoPasa: string;
 	textoNoPasa: string;
 };
 
 const TODAS: readonly Familia[] = ['texto', 'numero', 'fecha', 'booleano'];
 const LADOS_AB = [
-	{ id: 'a', etiqueta: 'Lado A' },
-	{ id: 'b', etiqueta: 'Lado B' }
+	{ id: 'a', etiqueta: 'Lado A', acepta: 'valor' },
+	{ id: 'b', etiqueta: 'Lado B', acepta: 'valor' }
 ] as const;
 const REGLAS_AB = [
-	{ id: 'a', etiqueta: 'Regla A' },
-	{ id: 'b', etiqueta: 'Regla B' }
+	{ id: 'a', etiqueta: 'Regla A', acepta: 'veredicto' },
+	{ id: 'b', etiqueta: 'Regla B', acepta: 'veredicto' }
 ] as const;
+const UNA_LISTA = [{ id: 'a', etiqueta: 'Lista', acepta: 'lista' }] as const;
 
 /** Los operadores que ofrece la paleta, en el orden en que se muestran. */
 export const OPERADORES: readonly DefOperador[] = [
-	{ clave: 'igual', etiqueta: 'Igual a', simbolo: '=', grupo: 'comparacion', descripcion: 'Pasa si los dos valores son iguales.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los dos valores son iguales', textoNoPasa: 'No pasa: los valores son distintos' },
-	{ clave: 'distinto', etiqueta: 'Distinto de', simbolo: '≠', grupo: 'comparacion', descripcion: 'Pasa si los dos valores son distintos.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los valores son distintos', textoNoPasa: 'No pasa: los dos valores son iguales' },
+	{ clave: 'igual', etiqueta: 'Igual a', simbolo: '=', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son iguales.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los dos valores son iguales', textoNoPasa: 'No pasa: los valores son distintos' },
+	{ clave: 'distinto', etiqueta: 'Distinto de', simbolo: '≠', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son distintos.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los valores son distintos', textoNoPasa: 'No pasa: los dos valores son iguales' },
 	{
 		clave: 'contiene',
 		etiqueta: 'Contiene',
 		simbolo: '∋',
 		grupo: 'comparacion',
+		salida: 'veredicto',
 		descripcion: 'Pasa si el texto contiene al fragmento.',
 		entradas: [
-			{ id: 'a', etiqueta: 'Texto' },
-			{ id: 'b', etiqueta: 'Debe contener' }
+			{ id: 'a', etiqueta: 'Texto', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Debe contener', acepta: 'valor' }
 		],
 		familias: ['texto'],
 		textoPasa: 'Pasa: el texto contiene el fragmento',
@@ -124,10 +158,11 @@ export const OPERADORES: readonly DefOperador[] = [
 		etiqueta: 'Mayor que',
 		simbolo: '>',
 		grupo: 'comparacion',
+		salida: 'veredicto',
 		descripcion: 'Pasa si el primer valor es mayor que el segundo.',
 		entradas: [
-			{ id: 'a', etiqueta: 'Valor' },
-			{ id: 'b', etiqueta: 'Mayor que' }
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Mayor que', acepta: 'valor' }
 		],
 		familias: ['numero', 'fecha'],
 		textoPasa: 'Pasa: el primer valor es mayor',
@@ -138,33 +173,118 @@ export const OPERADORES: readonly DefOperador[] = [
 		etiqueta: 'Menor que',
 		simbolo: '<',
 		grupo: 'comparacion',
+		salida: 'veredicto',
 		descripcion: 'Pasa si el primer valor es menor que el segundo.',
 		entradas: [
-			{ id: 'a', etiqueta: 'Valor' },
-			{ id: 'b', etiqueta: 'Menor que' }
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Menor que', acepta: 'valor' }
 		],
 		familias: ['numero', 'fecha'],
 		textoPasa: 'Pasa: el primer valor es menor',
 		textoNoPasa: 'No pasa: el primer valor no es menor'
 	},
-	{ clave: 'y', etiqueta: 'Y', simbolo: 'Y', grupo: 'logico', descripcion: 'Pasa si las dos reglas conectadas pasan.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: las dos reglas pasan', textoNoPasa: 'No pasa: alguna regla no pasa' },
-	{ clave: 'o', etiqueta: 'O', simbolo: 'O', grupo: 'logico', descripcion: 'Pasa si al menos una de las reglas pasa.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: alguna regla pasa', textoNoPasa: 'No pasa: ninguna regla pasa' },
+	{
+		clave: 'cantidad',
+		etiqueta: 'Cantidad',
+		simbolo: '#',
+		grupo: 'lista',
+		salida: 'valor',
+		descripcion: 'Cuántos elementos o filas trae la lista.',
+		entradas: UNA_LISTA,
+		familias: TODAS,
+		aceptaFilas: true,
+		textoPasa: '',
+		textoNoPasa: ''
+	},
+	{
+		clave: 'suma',
+		etiqueta: 'Suma',
+		simbolo: 'Σ',
+		grupo: 'lista',
+		salida: 'valor',
+		descripcion: 'Suma los números de la lista.',
+		entradas: [{ id: 'a', etiqueta: 'Lista de números', acepta: 'lista' }],
+		familias: ['numero'],
+		textoPasa: '',
+		textoNoPasa: ''
+	},
+	{
+		clave: 'alguno',
+		etiqueta: 'Alguno es igual a',
+		simbolo: '∃',
+		grupo: 'lista',
+		salida: 'veredicto',
+		descripcion: 'Pasa si algún elemento de la lista es igual al valor.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Lista', acepta: 'lista' },
+			{ id: 'b', etiqueta: 'Valor', acepta: 'valor' }
+		],
+		familias: TODAS,
+		textoPasa: 'Pasa: algún elemento es igual',
+		textoNoPasa: 'No pasa: ningún elemento es igual'
+	},
+	{
+		clave: 'todos',
+		etiqueta: 'Todos son iguales a',
+		simbolo: '∀',
+		grupo: 'lista',
+		salida: 'veredicto',
+		descripcion: 'Pasa si todos los elementos de la lista son iguales al valor.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Lista', acepta: 'lista' },
+			{ id: 'b', etiqueta: 'Valor', acepta: 'valor' }
+		],
+		familias: TODAS,
+		textoPasa: 'Pasa: todos son iguales',
+		textoNoPasa: 'No pasa: alguno es distinto'
+	},
+	{
+		clave: 'unicos',
+		etiqueta: 'Sin repetidos',
+		simbolo: '⊘',
+		grupo: 'lista',
+		salida: 'veredicto',
+		descripcion: 'Pasa si la lista no repite ningún valor.',
+		entradas: UNA_LISTA,
+		familias: TODAS,
+		textoPasa: 'Pasa: no hay repetidos',
+		textoNoPasa: 'No pasa: hay valores repetidos'
+	},
+	{ clave: 'y', etiqueta: 'Y', simbolo: 'Y', grupo: 'logico', salida: 'veredicto', descripcion: 'Pasa si las dos reglas conectadas pasan.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: las dos reglas pasan', textoNoPasa: 'No pasa: alguna regla no pasa' },
+	{ clave: 'o', etiqueta: 'O', simbolo: 'O', grupo: 'logico', salida: 'veredicto', descripcion: 'Pasa si al menos una de las reglas pasa.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: alguna regla pasa', textoNoPasa: 'No pasa: ninguna regla pasa' },
 	{
 		clave: 'no',
 		etiqueta: 'No',
 		simbolo: '¬',
 		grupo: 'logico',
+		salida: 'veredicto',
 		descripcion: 'Pasa si la regla conectada NO pasa.',
-		entradas: [{ id: 'a', etiqueta: 'Regla' }],
+		entradas: [{ id: 'a', etiqueta: 'Regla', acepta: 'veredicto' }],
 		familias: [],
 		textoPasa: 'Pasa: la regla no pasa',
 		textoNoPasa: 'No pasa: la regla pasa'
 	}
 ];
 
+/** Los grupos de la paleta, en orden. */
+export const GRUPOS_DE_OPERADORES = [
+	{ clave: 'comparacion', titulo: 'Comparan valores' },
+	{ clave: 'lista', titulo: 'Operan listas' },
+	{ clave: 'logico', titulo: 'Combinan reglas' }
+] as const;
+
 export const operadorDe = (clave: string): DefOperador | undefined => OPERADORES.find((o) => o.clave === clave);
 
-// ── De dónde sale un valor: la salida de un campo ────────────────────────────
+// ── De dónde sale un dato: la salida de un campo ─────────────────────────────
+
+/**
+ * Qué clase de cosa sale por el punto de un campo:
+ *   · `valor`: un dato suelto (un campo, o una columna de un grupo que NO se repite);
+ *   · `lista`: varios datos (un campo «1 a N», o una columna de un grupo que se repite);
+ *   · `filas`: las filas de un grupo que se repite, que solo se pueden contar;
+ *   · `nada`: un grupo que no se repite no entrega ningún dato por sí mismo (sus columnas, sí).
+ */
+export type FormaDeSalida = 'valor' | 'lista' | 'filas' | 'nada';
 
 /** Lo que sale por el punto de un campo: de qué documento, cuál campo y de qué tipo. */
 export type Salida = {
@@ -175,17 +295,26 @@ export type Salida = {
 	tipoDato: string;
 	/** Trae VARIOS valores (cardinalidad 1 a N, o un subcampo de un grupo que se repite). */
 	seRepite: boolean;
+	forma: FormaDeSalida;
+	/** `null` para las filas de un grupo y para lo que el lienzo todavía no sabe comparar. */
+	familia: Familia | null;
 };
 
 type CampoDeTipo = TipoDocumentalGuardado['campos'][number];
 
 /** La salida del campo `campo`, o del subcampo `sub` de un grupo. */
 export function salidaDe(nombreTipo: string, campo: CampoDeTipo, sub?: CampoDeTipo['subcampos'][number]): Salida {
+	const seRepite = campo.cardinalidad === 'multiple';
+	const tipoDato = sub ? sub.tipoDato : campo.tipoDato;
+	const esGrupoEntero = !sub && campo.tipoDato === 'grupo';
+	const forma: FormaDeSalida = esGrupoEntero ? (seRepite ? 'filas' : 'nada') : seRepite ? 'lista' : 'valor';
 	return {
 		tipo: nombreTipo,
 		campo: sub ? `${campo.nombre}.${sub.nombre}` : campo.nombre,
-		tipoDato: sub ? sub.tipoDato : campo.tipoDato,
-		seRepite: campo.cardinalidad === 'multiple'
+		tipoDato,
+		seRepite,
+		forma,
+		familia: esGrupoEntero ? null : familiaDe(tipoDato)
 	};
 }
 
@@ -202,11 +331,10 @@ export function salidaDeCampo(tipos: readonly TipoDocumentalGuardado[], tipoId: 
 	return null;
 }
 
-/** Por qué esta salida NO se puede conectar todavía; `null` si se puede. */
+/** Por qué esta salida NO se puede conectar a NINGÚN operador; `null` si se puede (aunque solo sirva a algunos). */
 export function porQueNoSeConecta(s: Salida): string | null {
-	if (s.tipoDato === 'grupo') return 'Un grupo de campos trae filas, no un valor: conecta alguno de sus subcampos.';
-	if (s.seRepite) return 'Trae varios valores (1 a N): se podrá usar con los operadores de listas.';
-	if (familiaDe(s.tipoDato) === null) return 'Este tipo de dato todavía no se puede comparar.';
+	if (s.forma === 'nada') return 'Un grupo de campos que no se repite no trae ningún dato por sí mismo: conecta alguno de sus subcampos.';
+	if (s.forma !== 'filas' && s.familia === null) return 'Este tipo de dato todavía no se puede usar en una regla.';
 	return null;
 }
 
@@ -232,6 +360,65 @@ function alcanza(desde: string, hasta: string, aristas: readonly Conexion[]): bo
 	return false;
 }
 
+/** Lo que entrega el origen de un cable, para saber si le sirve a la entrada a la que llega. */
+export type Fuente = { forma: 'valor' | 'lista' | 'filas' | 'veredicto'; familia: Familia | null };
+
+/** Lo que entrega el origen de un cable; o, si no es algo que se pueda conectar, por qué. */
+function fuenteDeConexion(c: Conexion, nodos: readonly NodoMinimo[], tipos: readonly TipoDocumentalGuardado[]): Fuente | string {
+	const origen = nodos.find((n) => n.id === c.source);
+	if (!origen) return 'No se puede conectar eso.';
+	if (origen.type === NODO_TIPO) {
+		const salida = salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, c.sourceHandle ?? '');
+		if (!salida) return 'Ese campo ya no existe en el tipo documental.';
+		const noSePuede = porQueNoSeConecta(salida);
+		if (noSePuede) return noSePuede;
+		return { forma: salida.forma as 'valor' | 'lista' | 'filas', familia: salida.familia };
+	}
+	if (origen.type === NODO_CONSTANTE) {
+		if (c.sourceHandle !== SALIDA_VALOR) return 'De un valor fijo solo sale su valor.';
+		const familia = (origen.data as DatosNodoConstante).familia;
+		return { forma: 'valor', familia: esFamilia(familia) ? familia : 'texto' };
+	}
+	const def = operadorDelNodo(origen);
+	if (def) {
+		if (c.sourceHandle !== SALIDA_RESULTADO) return 'De un operador solo sale su resultado.';
+		return def.salida === 'veredicto' ? { forma: 'veredicto', familia: null } : { forma: 'valor', familia: 'numero' };
+	}
+	return 'No se puede conectar eso.';
+}
+
+/** Por qué lo que entrega `fuente` no le sirve a la `entrada` de `def`; `null` si le sirve. */
+function noLeSirve(fuente: Fuente, acepta: Acepta, def: DefOperador): string | null {
+	if (acepta === 'veredicto') {
+		return fuente.forma === 'veredicto'
+			? null
+			: `«${def.etiqueta}» combina resultados de otras reglas, no campos ni valores: conecta antes ese dato a una regla.`;
+	}
+	if (acepta === 'valor') {
+		switch (fuente.forma) {
+			case 'valor':
+				return null;
+			case 'veredicto':
+				return `«${def.etiqueta}» compara campos y valores: un resultado se conecta a un operador Y, O o No.`;
+			case 'lista':
+				return `Es una lista de valores y «${def.etiqueta}» necesita uno solo: pásala por un operador de listas (Cantidad, Suma, Alguno es igual a…).`;
+			default:
+				return `Es un grupo de filas y «${def.etiqueta}» necesita un solo valor: cuéntalas con «Cantidad» o conecta una de sus columnas a un operador de listas.`;
+		}
+	}
+	// acepta === 'lista'
+	switch (fuente.forma) {
+		case 'lista':
+			return null;
+		case 'filas':
+			return def.aceptaFilas ? null : `«${def.etiqueta}» trabaja con los valores de una lista y un grupo trae filas: conecta una de sus columnas (o cuéntalas con «Cantidad»).`;
+		case 'veredicto':
+			return `«${def.etiqueta}» trabaja con listas de valores, no con el resultado de una regla.`;
+		default:
+			return `«${def.etiqueta}» trabaja con listas y esto trae un solo valor.`;
+	}
+}
+
 /**
  * Por qué NO se acepta esta conexión; `null` si se acepta. La razón se le dice a la persona: soltar un cable y que no pase nada,
  * sin decir por qué, es lo peor de un lienzo.
@@ -247,42 +434,38 @@ export function motivoDeRechazo(
 	if (!origen || !destino) return 'No se puede conectar eso.';
 	const def = operadorDelNodo(destino);
 	const entrada = def?.entradas.find((e) => e.id === c.targetHandle);
-	if (!def || !entrada) return 'Un campo o un resultado se conecta a una de las entradas de un operador.';
+	if (!def || !entrada) return 'Un campo, un valor o un resultado se conecta a una de las entradas de un operador.';
 
-	// El otro lado del operador, si ya tiene algo: manda sobre lo que se puede poner en éste.
-	const otroLado = def.entradas.find((e) => e.id !== c.targetHandle);
-	const aristaOtra = otroLado && aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
-	const mismaOrigen = aristaOtra && aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '');
-
-	// ── Un resultado hacia un operador lógico ──
-	if (origen.type === NODO_OPERADOR) {
-		if (c.sourceHandle !== SALIDA_RESULTADO) return 'De un operador solo sale su resultado.';
-		if (def.grupo !== 'logico') return `«${def.etiqueta}» compara campos: un resultado se conecta a un operador Y, O o No.`;
-		if (origen.id === destino.id) return 'Una regla no puede depender de sí misma.';
-		if (alcanza(destino.id, origen.id, aristas)) return 'Eso cerraría un ciclo: una regla acabaría dependiendo de sí misma.';
-		if (mismaOrigen) return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
-		return null;
-	}
-
-	// ── Un campo hacia un operador de comparación ──
-	if (origen.type !== NODO_TIPO) return 'No se puede conectar eso.';
-	if (def.grupo !== 'comparacion') return `«${def.etiqueta}» combina resultados de otras reglas, no campos: conecta antes el campo a una comparación.`;
-
-	const salida = salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, c.sourceHandle ?? '');
-	if (!salida) return 'Ese campo ya no existe en el tipo documental.';
-	const noSePuede = porQueNoSeConecta(salida);
-	if (noSePuede) return noSePuede;
-	const mia = familiaDe(salida.tipoDato) as Familia;
-	if (!def.familias.includes(mia)) {
+	// 1 · qué es lo que sale, y si le sirve a ESTA entrada.
+	const fuente = fuenteDeConexion(c, nodos, tipos);
+	if (typeof fuente === 'string') return fuente;
+	const noServe = noLeSirve(fuente, entrada.acepta, def);
+	if (noServe) return noServe;
+	if (fuente.forma !== 'veredicto' && fuente.forma !== 'filas' && fuente.familia && !def.familias.includes(fuente.familia)) {
 		return `«${def.etiqueta}» solo trabaja con ${def.familias.map((f) => PLURAL_DE_FAMILIA[f]).join(' y ')}.`;
 	}
 
-	const nodoOtro = aristaOtra && nodos.find((n) => n.id === aristaOtra.source);
-	const salidaOtra = aristaOtra && nodoOtro && salidaDeCampo(tipos, (nodoOtro.data as DatosNodoTipo).tipoId, aristaOtra.sourceHandle ?? '');
-	if (aristaOtra && salidaOtra) {
-		if (mismaOrigen) return 'Los dos lados serían el mismo campo: no habría nada que comparar.';
-		const suya = familiaDe(salidaOtra.tipoDato);
-		if (suya && mia !== suya) return `No se puede comparar ${NOMBRE_DE_FAMILIA[mia]} con ${NOMBRE_DE_FAMILIA[suya]}.`;
+	// 2 · el otro lado del operador, si ya tiene algo: manda sobre lo que se puede poner en éste.
+	const otroLado = def.entradas.find((e) => e.id !== c.targetHandle);
+	const aristaOtra = otroLado && aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
+	if (aristaOtra) {
+		const suya = fuenteDeConexion(aristaOtra, nodos, tipos);
+		if (typeof suya !== 'string') {
+			if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
+				if (origen.type === NODO_TIPO) return 'Los dos lados serían el mismo campo: no habría nada que comparar.';
+				if (origen.type === NODO_CONSTANTE) return 'Los dos lados serían el mismo valor fijo: no habría nada que comparar.';
+				return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
+			}
+			if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
+				return `No se puede comparar ${NOMBRE_DE_FAMILIA[fuente.familia]} con ${NOMBRE_DE_FAMILIA[suya.familia]}.`;
+			}
+		}
+	}
+
+	// 3 · un resultado no puede acabar dependiendo de sí mismo.
+	if (origen.type === NODO_OPERADOR) {
+		if (origen.id === destino.id) return 'Una regla no puede depender de sí misma.';
+		if (alcanza(destino.id, origen.id, aristas)) return 'Eso cerraría un ciclo: una regla acabaría dependiendo de sí misma.';
 	}
 	return null;
 }
@@ -304,6 +487,9 @@ function aNumero(s: string): number | null {
 	const n = Number(t);
 	return Number.isFinite(n) ? n : null;
 }
+
+/** ¿Hay un número en este texto? Para avisar de la línea de una lista que no lo es. */
+export const esNumero = (s: string): boolean => aNumero(s) !== null;
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const dosCifras = (n: number | string) => String(n).padStart(2, '0');
@@ -373,6 +559,24 @@ export function ordenar(familia: Familia, a: string, b: string): number | null {
 	return null;
 }
 
+/** Lo que identifica a un valor para saber si dos son «el mismo»: lo mismo que `sonIguales`, pero como una llave para agrupar. */
+function llaveDeComparacion(familia: Familia, s: string): string {
+	switch (familia) {
+		case 'numero': {
+			const n = aNumero(s);
+			return n === null ? `?${textoLimpio(s)}` : String(n);
+		}
+		case 'fecha':
+			return aFecha(s) ?? `?${textoLimpio(s)}`;
+		case 'booleano': {
+			const b = aBooleano(s);
+			return b === null ? `?${textoLimpio(s)}` : String(b);
+		}
+		default:
+			return textoLimpio(s);
+	}
+}
+
 // ── El veredicto de cada regla ───────────────────────────────────────────────
 
 /**
@@ -380,6 +584,9 @@ export function ordenar(familia: Familia, a: string, b: string): number | null {
  * una regla de la que depende todavía no tiene veredicto), `pasa` o `no_pasa`.
  */
 export type Veredicto = 'pasa' | 'no_pasa' | 'sin_valores' | 'sin_conexion';
+
+/** Lo mismo, más `listo`: una regla que entrega un VALOR (Cantidad, Suma) no «pasa», ya calculó su número. */
+export type Estado = Veredicto | 'listo';
 
 /** El veredicto de una COMPARACIÓN con los valores de ejemplo. Un valor que no se entiende no cumple ninguna comparación. */
 export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: string, b: string): Veredicto {
@@ -427,45 +634,105 @@ export function evaluarLogico(clave: ClaveOperador, entradas: readonly Veredicto
 	}
 }
 
-/** El veredicto de CADA operador del lienzo, siguiendo los cables: las comparaciones leen sus campos y sus valores de ejemplo, las lógicas leen a las que les llegan. */
-export function evaluar(
-	nodos: readonly NodoMinimo[],
-	aristas: readonly Conexion[],
-	tipos: readonly TipoDocumentalGuardado[]
-): Record<string, Veredicto> {
-	const hechos: Record<string, Veredicto> = {};
+/** Los elementos de una lista de ejemplo: uno por renglón, sin renglones vacíos. */
+export const lineasDeEjemplo = (texto: string): string[] =>
+	texto
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.filter(Boolean);
 
-	const de = (id: string, enCurso: ReadonlySet<string>): Veredicto => {
-		if (id in hechos) return hechos[id];
+/**
+ * Lo que da un operador de LISTAS con los elementos de ejemplo. `b` es el valor con el que se compara (Alguno, Todos). Sin
+ * elementos no hay de qué sacar nada: `sin_valores` (el lienzo no distingue «lista vacía» de «todavía no escribí nada»).
+ */
+export function evaluarLista(clave: ClaveOperador, familia: Familia, elementos: readonly string[], b = ''): { estado: Estado; valor?: string } {
+	if (elementos.length === 0) return { estado: 'sin_valores' };
+	const si = (ok: boolean): { estado: Estado } => ({ estado: ok ? 'pasa' : 'no_pasa' });
+	switch (clave) {
+		case 'cantidad':
+			return { estado: 'listo', valor: String(elementos.length) };
+		case 'suma': {
+			const numeros = elementos.map(aNumero);
+			if (numeros.some((n) => n === null)) return { estado: 'sin_valores' };
+			const total = (numeros as number[]).reduce((s, n) => s + n, 0);
+			return { estado: 'listo', valor: String(Math.round(total * 100) / 100) };
+		}
+		case 'alguno':
+			return b.trim() ? si(elementos.some((e) => sonIguales(familia, e, b))) : { estado: 'sin_valores' };
+		case 'todos':
+			return b.trim() ? si(elementos.every((e) => sonIguales(familia, e, b))) : { estado: 'sin_valores' };
+		case 'unicos':
+			return si(new Set(elementos.map((e) => llaveDeComparacion(familia, e))).size === elementos.length);
+		default:
+			return { estado: 'sin_conexion' };
+	}
+}
+
+/** Lo que evaluó el lienzo: el estado de CADA regla y el valor de las que entregan uno. */
+export type Evaluacion = { estados: Record<string, Estado>; valores: Record<string, string> };
+
+/**
+ * El estado de CADA operador del lienzo, siguiendo los cables: las comparaciones y las listas leen sus campos con sus valores de
+ * ejemplo, los valores fijos y lo que entregan `Cantidad` y `Suma`; las lógicas leen a las reglas que les llegan.
+ */
+export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion[], tipos: readonly TipoDocumentalGuardado[]): Evaluacion {
+	const estados: Record<string, Estado> = {};
+	const valores: Record<string, string> = {};
+
+	/** Lo que llega por una entrada: qué es, el texto de ejemplo y —si viene de otra regla— el estado de ésa. */
+	type Llega = { fuente: Fuente | null; muestra: string; estadoOrigen?: Estado };
+
+	const de = (id: string, enCurso: ReadonlySet<string>): Estado => {
+		if (id in estados) return estados[id];
 		const nodo = nodos.find((n) => n.id === id);
 		const def = operadorDelNodo(nodo);
 		if (!nodo || !def) return 'sin_conexion';
 		// Un ciclo no debería existir (la conexión se rechaza), pero un lienzo guardado a mano no debe colgar la pantalla.
 		if (enCurso.has(id)) return 'sin_valores';
 		const dentro = new Set(enCurso).add(id);
+		const datos = nodo.data as DatosNodoOperador;
 
-		let resultado: Veredicto;
 		const cables = def.entradas.map((e) => aristas.find((a) => a.target === id && a.targetHandle === e.id));
+		let estado: Estado;
 		if (cables.some((c) => !c)) {
-			resultado = 'sin_conexion';
-		} else if (def.grupo === 'comparacion') {
-			const salidas = (cables as Conexion[]).map((c) => {
-				const origen = nodos.find((n) => n.id === c.source);
-				return origen?.type === NODO_TIPO ? salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, c.sourceHandle ?? '') : null;
-			});
-			const familia = salidas[0] ? familiaDe(salidas[0].tipoDato) : null;
-			const datos = nodo.data as DatosNodoOperador;
-			resultado = salidas.some((s) => !s) || !familia ? 'sin_conexion' : evaluarComparacion(def.clave, familia, datos.a ?? '', datos.b ?? '');
+			estado = 'sin_conexion';
 		} else {
-			const llegan = (cables as Conexion[]).map((c) => (operadorDelNodo(nodos.find((n) => n.id === c.source)) ? de(c.source, dentro) : 'sin_conexion'));
-			resultado = llegan.includes('sin_conexion') ? 'sin_conexion' : evaluarLogico(def.clave, llegan);
+			const llegan = def.entradas.map((e, i): Llega => {
+				const cable = cables[i] as Conexion;
+				const origen = nodos.find((n) => n.id === cable.source);
+				const fuente = fuenteDeConexion(cable, nodos, tipos);
+				if (typeof fuente === 'string') return { fuente: null, muestra: '' };
+				if (origen?.type === NODO_CONSTANTE) return { fuente, muestra: String((origen.data as DatosNodoConstante).valor ?? '') };
+				if (origen?.type === NODO_OPERADOR) {
+					const estadoOrigen = de(origen.id, dentro);
+					return { fuente, muestra: valores[origen.id] ?? '', estadoOrigen };
+				}
+				return { fuente, muestra: String(datos[e.id] ?? '') };
+			});
+
+			if (llegan.some((l) => !l.fuente)) estado = 'sin_conexion';
+			else if (llegan.some((l) => l.estadoOrigen === 'sin_conexion')) estado = 'sin_conexion';
+			else if (def.grupo === 'logico') {
+				estado = evaluarLogico(def.clave, llegan.map((l) => l.estadoOrigen as Veredicto));
+			} else if (llegan.some((l) => l.estadoOrigen !== undefined && l.estadoOrigen !== 'listo')) {
+				// Un valor que viene de otra regla que todavía no lo tiene.
+				estado = 'sin_valores';
+			} else if (def.grupo === 'comparacion') {
+				const familia = (llegan[0].fuente as Fuente).familia;
+				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
+			} else {
+				const familia = (llegan[0].fuente as Fuente).familia ?? 'texto';
+				const r = evaluarLista(def.clave, familia, lineasDeEjemplo(llegan[0].muestra), llegan[1]?.muestra ?? '');
+				estado = r.estado;
+				if (r.valor !== undefined) valores[id] = r.valor;
+			}
 		}
-		hechos[id] = resultado;
-		return resultado;
+		estados[id] = estado;
+		return estado;
 	};
 
 	for (const n of nodos) if (operadorDelNodo(n)) de(n.id, new Set());
-	return hechos;
+	return { estados, valores };
 }
 
 // ── Guardar el dibujo y volver a abrirlo ─────────────────────────────────────
@@ -473,9 +740,9 @@ export function evaluar(
 /** Un nodo tal como se guarda: solo lo que el lienzo necesita (la librería le suma medidas y banderas de selección que no van). */
 export type NodoGuardado = {
 	id: string;
-	type: typeof NODO_TIPO | typeof NODO_OPERADOR;
+	type: typeof NODO_TIPO | typeof NODO_OPERADOR | typeof NODO_CONSTANTE;
 	position: { x: number; y: number };
-	data: DatosNodoTipo | DatosNodoOperador;
+	data: DatosNodoTipo | DatosNodoOperador | DatosNodoConstante;
 };
 /** Un cable tal como se guarda. */
 export type AristaGuardada = { id: string; source: string; sourceHandle: string | null; target: string; targetHandle: string | null };
@@ -500,6 +767,9 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 		} else if (n.type === NODO_OPERADOR) {
 			const d = n.data as DatosNodoOperador;
 			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '' } });
+		} else if (n.type === NODO_CONSTANTE) {
+			const d = n.data as DatosNodoConstante;
+			nodos.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: esFamilia(d.familia) ? d.familia : 'texto', valor: d.valor ?? '' } });
 		}
 	}
 	const existentes = new Set(nodos.map((n) => n.id));
@@ -519,23 +789,24 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 export const huellaDelDibujo = (d: DibujoGuardado): string => JSON.stringify(d);
 
 const esObjeto = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const esNumero = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const esNumeroFinito = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /**
  * Lo guardado, de vuelta a nodos y cables del lienzo. Lo que no se entiende se deja fuera en vez de reventar la pantalla (un nodo
  * de un tipo que ya no existe, un cable a un nodo que no está, un operador que el catálogo ya no tiene): el servidor valida lo que
- * recibe, pero el catálogo de operadores puede cambiar entre versiones. `operadoresPuestos` es por dónde sigue la numeración, para
- * que un operador nuevo no se llame igual que uno ya guardado.
+ * recibe, pero el catálogo de operadores puede cambiar entre versiones. `operadoresPuestos` y `constantesPuestas` son por dónde sigue
+ * la numeración, para que un nodo nuevo no se llame igual que uno ya guardado.
  */
 export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown }): {
 	nodes: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }[];
 	edges: { id: string; source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[];
 	operadoresPuestos: number;
+	constantesPuestas: number;
 } {
 	const nodes: ReturnType<typeof hidratarDibujo>['nodes'] = [];
 	for (const n of Array.isArray(guardado.nodos) ? guardado.nodos : []) {
 		if (!esObjeto(n) || typeof n.id !== 'string' || !esObjeto(n.position) || !esObjeto(n.data)) continue;
-		if (!esNumero(n.position.x) || !esNumero(n.position.y)) continue;
+		if (!esNumeroFinito(n.position.x) || !esNumeroFinito(n.position.y)) continue;
 		const position = { x: n.position.x, y: n.position.y };
 		if (n.type === NODO_TIPO && typeof n.data.tipoId === 'string') {
 			nodes.push({ id: n.id, type: NODO_TIPO, position, data: { tipoId: n.data.tipoId } });
@@ -546,6 +817,8 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 				position,
 				data: { operador: n.data.operador, a: typeof n.data.a === 'string' ? n.data.a : '', b: typeof n.data.b === 'string' ? n.data.b : '' }
 			});
+		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {
+			nodes.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: n.data.familia, valor: typeof n.data.valor === 'string' ? n.data.valor : '' } });
 		}
 	}
 	const existentes = new Set(nodes.map((n) => n.id));
@@ -562,9 +835,12 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 		});
 	}
 	let operadoresPuestos = 0;
+	let constantesPuestas = 0;
 	for (const n of nodes) {
-		const m = n.type === NODO_OPERADOR ? /^operador-(\d+)$/.exec(n.id) : null;
-		if (m) operadoresPuestos = Math.max(operadoresPuestos, Number(m[1]));
+		const op = n.type === NODO_OPERADOR ? /^operador-(\d+)$/.exec(n.id) : null;
+		if (op) operadoresPuestos = Math.max(operadoresPuestos, Number(op[1]));
+		const k = n.type === NODO_CONSTANTE ? /^constante-(\d+)$/.exec(n.id) : null;
+		if (k) constantesPuestas = Math.max(constantesPuestas, Number(k[1]));
 	}
-	return { nodes, edges, operadoresPuestos };
+	return { nodes, edges, operadoresPuestos, constantesPuestas };
 }

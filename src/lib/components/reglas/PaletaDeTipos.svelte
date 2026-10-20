@@ -11,13 +11,14 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 
-	import { MIME_OPERADOR, MIME_TIPO_DOCUMENTAL, OPERADORES } from '$lib/reglas/reglas';
+	import { GRUPOS_DE_OPERADORES, MIME_CONSTANTE, MIME_OPERADOR, MIME_TIPO_DOCUMENTAL, OPERADORES } from '$lib/reglas/reglas';
 	import { estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
 
 	let {
 		enLienzo,
 		alAgregar,
-		alAgregarOperador
+		alAgregarOperador,
+		alAgregarConstante
 	}: {
 		/** Ids de los tipos que ya tienen su nodo. */
 		enLienzo: ReadonlySet<string>;
@@ -25,12 +26,9 @@
 		alAgregar: (tipoId: string) => void;
 		/** Un clic en un operador: agrega uno nuevo. */
 		alAgregarOperador: (clave: string) => void;
+		/** Un clic en «Valor fijo»: agrega uno nuevo. */
+		alAgregarConstante: () => void;
 	} = $props();
-
-	const GRUPOS_DE_OPERADORES = [
-		{ clave: 'comparacion', titulo: 'Comparan campos' },
-		{ clave: 'logico', titulo: 'Combinan reglas' }
-	] as const;
 
 	const activos = $derived(tiposDocumentales.filter((t) => t.estado === 'activo'));
 
@@ -95,7 +93,7 @@
 
 		<div class="border-y border-border px-4 py-3">
 			<h2 class="text-sm font-semibold text-foreground">Operadores</h2>
-			<p class="mt-0.5 text-xs text-muted-foreground">Las reglas. Conecta campos a sus entradas.</p>
+			<p class="mt-0.5 text-xs text-muted-foreground">Las reglas. Conecta campos, valores o resultados a sus entradas.</p>
 		</div>
 		{#each GRUPOS_DE_OPERADORES as grupo (grupo.clave)}
 			<p class="px-4 pt-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{grupo.titulo}</p>
@@ -123,5 +121,30 @@
 				{/each}
 			</ul>
 		{/each}
+
+		<div class="border-y border-border px-4 py-3">
+			<h2 class="text-sm font-semibold text-foreground">Valores</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">Un dato que escribes en la regla, como el «2» de «más de 2 socios».</p>
+		</div>
+		<ul class="flex flex-col gap-1.5 p-2">
+			<li>
+				<button
+					type="button"
+					draggable="true"
+					data-testid="constante-de-paleta"
+					title="Arrástralo al lienzo o pulsa para agregarlo"
+					class="flex w-full cursor-grab items-center gap-2 rounded-lg border border-border bg-card px-2 py-2 text-left transition-colors hover:bg-muted active:cursor-grabbing"
+					ondragstart={(e) => alArrastrar(e, MIME_CONSTANTE, 'constante')}
+					onclick={alAgregarConstante}
+				>
+					<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
+					<span class="flex size-5 shrink-0 items-center justify-center rounded bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">K</span>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-sm font-medium text-foreground">Valor fijo</span>
+						<span class="block text-xs text-muted-foreground">Un texto, un número, una fecha o un sí/no.</span>
+					</span>
+				</button>
+			</li>
+		</ul>
 	</div>
 </aside>
