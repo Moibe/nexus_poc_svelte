@@ -109,9 +109,13 @@
 	 *  correo»). Si no salió, el usuario sí se creó, pero decir eso sería falso: ese caso se queda en el panel, que muestra
 	 *  la contraseña temporal. */
 	let usuarioCreado = $state(false);
+	/** Lo mismo para «Reenviar invitación» («Nuevo enlace enviado»): sale solo si el reenvío se hizo Y el correo salió; el
+	 *  panel se cierra y el aviso queda aquí. Se apaga al empezar cualquier otra acción. */
+	let invitacionReenviada = $state(false);
 
 	function abrirAlta() {
 		usuarioCreado = false;
+		invitacionReenviada = false;
 		abierto = true;
 	}
 
@@ -136,6 +140,8 @@
 	function pedirReenvio(usuario: UsuarioDeOrganizacion) {
 		objetivo = usuario;
 		errorAccion = '';
+		usuarioCreado = false;
+		invitacionReenviada = false;
 		reenvioAbierto = true;
 	}
 
@@ -185,6 +191,15 @@
 				testid="usuario-creado-aviso"
 				titulo="Usuario creado correctamente"
 				cuerpo="La cuenta fue creada exitosamente y las credenciales de acceso han sido enviadas al correo electrónico registrado."
+			/>
+		</div>
+	{:else if invitacionReenviada}
+		<!-- Literal del «Alert Success» del Figma. Sale cuando el reenvío se hizo Y el correo salió: el panel se cerró solo. -->
+		<div class="mt-6">
+			<AvisoVerde
+				testid="invitacion-reenviada-aviso"
+				titulo="Nuevo enlace enviado"
+				cuerpo="La invitación fue reenviada exitosamente. El usuario recibirá un correo con un nuevo enlace de activación válido para completar su registro."
 			/>
 		</div>
 	{/if}
@@ -432,6 +447,7 @@
 		seleccionado = null;
 		await invalidateAll();
 	}}
+	alReenviar={() => (invitacionReenviada = true)}
 />
 
 <UsuarioSheet

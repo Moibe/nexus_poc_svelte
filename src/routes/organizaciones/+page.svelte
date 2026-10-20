@@ -46,9 +46,13 @@
 	 *  Vive AQUÍ y no en el panel porque el panel es lo que se cierra. Se apaga
 	 *  al abrir un registro nuevo: a partir de ahí el aviso habla del pasado. */
 	let avisoCancelado = $state(false);
+	/** «Nuevo enlace enviado», tras reenviar la invitación de alguien Y salir el correo (el panel se cerró solo). Se apaga
+	 *  al empezar cualquier otra acción. */
+	let invitacionReenviada = $state(false);
 
 	function abrirNueva() {
 		avisoCancelado = false;
+		invitacionReenviada = false;
 		nuevaAbierta = true;
 	}
 	let busqueda = $state('');
@@ -151,6 +155,8 @@
 
 	function pedirReenvio(usuario: UsuarioDeOrganizacion) {
 		objetivoReenvio = usuario;
+		avisoCancelado = false;
+		invitacionReenviada = false;
 		reenvioAbierto = true;
 	}
 </script>
@@ -177,6 +183,15 @@
 				testid="organizacion-registro-cancelado"
 				titulo="Registro cancelado correctamente"
 				cuerpo="No se registró ninguna organización. Puedes volver a empezar el registro cuando quieras."
+			/>
+		</div>
+	{:else if invitacionReenviada}
+		<!-- Literal del «Alert Success» del Figma. Sale cuando el reenvío se hizo Y el correo salió: el panel se cerró solo. -->
+		<div class="mt-6">
+			<AvisoVerde
+				testid="invitacion-reenviada-aviso"
+				titulo="Nuevo enlace enviado"
+				cuerpo="La invitación fue reenviada exitosamente. El usuario recibirá un correo con un nuevo enlace de activación válido para completar su registro."
 			/>
 		</div>
 	{/if}
@@ -452,6 +467,7 @@
 	alTerminar={() => {
 		if (verGuid) return cargarUsuarios(verGuid, true);
 	}}
+	alReenviar={() => (invitacionReenviada = true)}
 />
 
 <NuevaOrganizacionSheet
