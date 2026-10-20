@@ -10,8 +10,8 @@
 	 * Los puntos de salida se identifican con el nombre del campo, y con `grupo.subcampo` los de dentro de un grupo. Un grupo tiene
 	 * además el suyo propio: contar cuántas filas trae («cuántos socios») es una regla tan válida como sumar una de sus columnas.
 	 *
-	 * Todavía NO se pueden conectar: no hay operadores a los que llegar. Los puntos de salida ya están para que, cuando los haya,
-	 * el nodo no cambie.
+	 * Los puntos de salida se conectan a las entradas de un operador. Los que traen VARIOS valores (un campo «1 a N», un grupo y los
+	 * subcampos de un grupo que se repite) se ven apagados y dicen por qué: comparar una lista pide otros operadores.
 	 */
 	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -24,7 +24,7 @@
 		type CampoBorrador
 	} from '$lib/state/configuracion.svelte';
 
-	import type { DatosNodoTipo } from '$lib/reglas/lienzo';
+	import { porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
 
 	let { id, data, selected }: NodeProps<Node<DatosNodoTipo>> = $props();
 
@@ -35,6 +35,12 @@
 
 	const etiquetaDeDato = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label ?? valor;
 	const seRepite = (c: Pick<CampoBorrador, 'cardinalidad'>) => c.cardinalidad === 'multiple';
+
+	/** Lo que dice el punto de salida: si se puede conectar, y si no, por qué. */
+	const salidaDelPunto = (s: Salida) => {
+		const motivo = porQueNoSeConecta(s);
+		return { conectable: motivo === null, titulo: motivo ?? `Conectar «${s.campo}» a un operador` };
+	};
 </script>
 
 <div
@@ -74,6 +80,7 @@
 	{#if tipo}
 		<ul class="py-1" data-testid="nodo-tipo-campos">
 			{#each tipo.campos as campo (campo.id)}
+				{@const punto = salidaDelPunto(salidaDe(tipo.nombre, campo))}
 				<li class="relative flex h-8 items-center gap-2 px-3 text-xs" data-testid="campo-nodo" data-campo={campo.nombre}>
 					<span class="min-w-0 flex-1 truncate font-medium" title={campo.nombre}>
 						{campo.nombre}{#if campo.obligatorio}<span class="text-destructive" title="Obligatorio"> *</span>{/if}
@@ -86,10 +93,18 @@
 						>
 					{/if}
 					<span class="shrink-0 text-[11px] text-muted-foreground">{etiquetaDeDato(campo.tipoDato)}</span>
-					<Handle type="source" position={Position.Right} id={campo.nombre} isConnectable={false} />
+					<Handle
+						type="source"
+						position={Position.Right}
+						id={campo.nombre}
+						isConnectable={punto.conectable}
+						title={punto.titulo}
+						class={punto.conectable ? '' : 'sin-conexion'}
+					/>
 				</li>
 				{#if campo.tipoDato === 'grupo'}
 					{#each campo.subcampos as sub (sub.id)}
+						{@const puntoSub = salidaDelPunto(salidaDe(tipo.nombre, campo, sub))}
 						<li
 							class="relative flex h-7 items-center gap-2 pr-3 pl-7 text-xs"
 							data-testid="subcampo-nodo"
@@ -103,7 +118,9 @@
 								type="source"
 								position={Position.Right}
 								id={`${campo.nombre}.${sub.nombre}`}
-								isConnectable={false}
+								isConnectable={puntoSub.conectable}
+								title={puntoSub.titulo}
+								class={puntoSub.conectable ? '' : 'sin-conexion'}
 							/>
 						</li>
 					{/each}
@@ -122,5 +139,11 @@
 		height: 10px;
 		background: var(--primary);
 		border: 2px solid var(--card);
+	}
+	/* Un punto que no se puede conectar (trae varios valores) se ve apagado y el cursor no invita a arrastrarlo. */
+	:global(.svelte-flow__handle.sin-conexion) {
+		background: var(--muted-foreground);
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 </style>
