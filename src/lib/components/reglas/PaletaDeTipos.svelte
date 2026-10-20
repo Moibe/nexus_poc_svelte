@@ -8,7 +8,6 @@
 	 * también el camino de quien no puede arrastrar). Un tipo que ya está en el lienzo no se duplica: su fila lo dice y al pulsarla
 	 * lleva a él. Un operador sí se puede poner las veces que haga falta.
 	 */
-	import Equal from '@lucide/svelte/icons/equal';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 
@@ -27,6 +26,11 @@
 		/** Un clic en un operador: agrega uno nuevo. */
 		alAgregarOperador: (clave: string) => void;
 	} = $props();
+
+	const GRUPOS_DE_OPERADORES = [
+		{ clave: 'comparacion', titulo: 'Comparan campos' },
+		{ clave: 'logico', titulo: 'Combinan reglas' }
+	] as const;
 
 	const activos = $derived(tiposDocumentales.filter((t) => t.estado === 'activo'));
 
@@ -93,28 +97,31 @@
 			<h2 class="text-sm font-semibold text-foreground">Operadores</h2>
 			<p class="mt-0.5 text-xs text-muted-foreground">Las reglas. Conecta campos a sus entradas.</p>
 		</div>
-		<ul class="flex flex-col gap-1.5 p-2">
-			{#each OPERADORES as operador (operador.clave)}
-				<li>
-					<button
-						type="button"
-						draggable="true"
-						data-testid="operador-de-paleta"
-						data-operador={operador.clave}
-						title="Arrástralo al lienzo o pulsa para agregarlo"
-						class="flex w-full cursor-grab items-center gap-2 rounded-lg border border-border bg-card px-2 py-2 text-left transition-colors hover:bg-muted active:cursor-grabbing"
-						ondragstart={(e) => alArrastrar(e, MIME_OPERADOR, operador.clave)}
-						onclick={() => alAgregarOperador(operador.clave)}
-					>
-						<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
-						<Equal class="size-4 shrink-0 text-primary" />
-						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm font-medium text-foreground">{operador.etiqueta}</span>
-							<span class="block text-xs text-muted-foreground">{operador.descripcion}</span>
-						</span>
-					</button>
-				</li>
-			{/each}
-		</ul>
+		{#each GRUPOS_DE_OPERADORES as grupo (grupo.clave)}
+			<p class="px-4 pt-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{grupo.titulo}</p>
+			<ul class="flex flex-col gap-1.5 p-2">
+				{#each OPERADORES.filter((o) => o.grupo === grupo.clave) as operador (operador.clave)}
+					<li>
+						<button
+							type="button"
+							draggable="true"
+							data-testid="operador-de-paleta"
+							data-operador={operador.clave}
+							title="Arrástralo al lienzo o pulsa para agregarlo"
+							class="flex w-full cursor-grab items-center gap-2 rounded-lg border border-border bg-card px-2 py-2 text-left transition-colors hover:bg-muted active:cursor-grabbing"
+							ondragstart={(e) => alArrastrar(e, MIME_OPERADOR, operador.clave)}
+							onclick={() => alAgregarOperador(operador.clave)}
+						>
+							<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
+							<span class="flex size-5 shrink-0 items-center justify-center rounded bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{operador.simbolo}</span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-sm font-medium text-foreground">{operador.etiqueta}</span>
+								<span class="block text-xs text-muted-foreground">{operador.descripcion}</span>
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/each}
 	</div>
 </aside>

@@ -887,7 +887,7 @@ function leerPasoMaximo(d: Record<string, unknown>): number {
 
 /** `n` hexadecimales al azar. `crypto.getRandomValues` SÍ existe en contexto inseguro (el HTTP plano por IP del server de
  *  CSI); `crypto.randomUUID` no, y tronó la app el 2026-08-18: por eso no se usa. Con plan B, por si acaso. */
-function hexAleatorio(n: number): string {
+export function hexAleatorio(n: number): string {
 	const bytes = new Uint8Array(Math.ceil(n / 2));
 	if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') crypto.getRandomValues(bytes);
 	else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
