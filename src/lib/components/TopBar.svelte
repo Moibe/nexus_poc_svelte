@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import nexusLogo from '$lib/assets/nexus-logo.png';
 	import DashboardCircleIcon from '$lib/components/icons/DashboardCircleIcon.svelte';
@@ -114,7 +115,8 @@
 	// hizo con los del header. Si aparece el link de Figma de este menú, vale la
 	// pena reemplazarlos por los exportados.
 	const opcionesConfiguracion = [
-		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: undefined },
+		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
+		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
 		{
 			etiqueta: 'Modulo de configuración',
 			icono: SlidersHorizontal,
