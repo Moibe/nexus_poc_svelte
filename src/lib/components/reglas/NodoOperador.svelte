@@ -7,7 +7,11 @@
 	 *     fijo, o el número que entrega `Cantidad` o `Suma`. Dan pasa / no pasa.
 	 *   · de LISTAS (cantidad, suma, alguno, todos, unicos): reciben una LISTA (un campo «1 a N» o una columna de un grupo que se repite;
 	 *     «Cantidad» también las filas de un grupo). `Cantidad` y `Suma` entregan un número; los demás, pasa / no pasa.
-	 *   · LÓGICOS (Y, O, No): sus entradas reciben el pasa / no pasa de OTRAS reglas. Así se encadenan.
+	 *   · LÓGICOS (Y, O, No, Implica): sus entradas reciben el pasa / no pasa de OTRAS reglas. Así se encadenan. «Implica» tiene una
+	 *     entrada «Si (condición)» y otra «Entonces (debe pasar)»; pasa también cuando la condición no se cumple, y el nodo lo dice
+	 *     (si no, una regla que «pasa» cuando la regla de entrada no pasa parece un error).
+	 *   · «Existe documento»: su entrada recibe el DOCUMENTO entero (el rombo de un tipo documental) y dice si el expediente lo trae.
+	 *     Su ejemplo no es un texto sino una elección: el expediente de ejemplo SÍ o NO trae el documento.
 	 *
 	 * Como el lienzo todavía no corre sobre un expediente de verdad, cada entrada que viene de un CAMPO trae una cajita de VALOR DE
 	 * EJEMPLO (si es una lista, un área con un elemento por renglón): se escribe lo que traería el campo y el nodo dice qué daría la
@@ -58,6 +62,7 @@
 	const estado = $derived<Estado>(evaluado.todos[id] ?? 'sin_conexion');
 	const valorDeSalida = $derived(evaluado.valores[id]);
 	const esLogico = $derived(def?.grupo === 'logico');
+	const esDocumento = $derived(def?.grupo === 'documento');
 	const entregaValor = $derived(def?.salida === 'valor');
 
 	type Origen =
@@ -105,19 +110,25 @@
 	const textoDelEstado = $derived.by(() => {
 		if (!def) return '';
 		switch (estado) {
-			case 'pasa':
-				return def.textoPasa;
+			case 'pasa': {
+				// «Implica» pasa de dos maneras: porque se cumple lo que exige, o porque la condición no se cumple y no hay nada que
+				// exigir. Se dice cuál, porque lo segundo —pasar cuando la regla de entrada no pasa— parece un error.
+				const condicion = def.textoPasaSinCondicion ? origenDe('a') : null;
+				return condicion?.clase === 'regla' && condicion.estado === 'no_pasa' ? (def.textoPasaSinCondicion ?? def.textoPasa) : def.textoPasa;
+			}
 			case 'no_pasa':
 				return def.textoNoPasa;
 			case 'listo':
 				return `Resultado: ${valorDeSalida ?? ''}`;
 			case 'sin_valores': {
 				if (esLogico) return 'Falta el veredicto de alguna regla';
+				if (esDocumento) return 'Elige si el expediente de ejemplo trae el documento';
 				const mala = lineaQueNoEsNumero();
 				if (mala !== null) return `«${mala}» no es un número`;
 				return def.grupo === 'lista' ? 'Escribe los valores de ejemplo (uno por renglón)' : 'Escribe un valor de ejemplo en cada lado';
 			}
 			default:
+				if (esDocumento) return 'Conecta el documento de un tipo documental';
 				if (esLogico) return def.entradas.length === 1 ? 'Conecta una regla' : 'Conecta una regla a cada entrada';
 				if (def.grupo === 'lista') return def.entradas.length === 1 ? 'Conecta una lista' : 'Conecta una lista y un valor';
 				return 'Conecta un campo o un valor fijo a cada entrada';
@@ -164,29 +175,45 @@
 					<p class="mt-0.5 truncate text-xs font-medium" data-testid="origen-entrada" title="{origen.salida.campo} · {origen.salida.tipo}">
 						{origen.salida.campo} <span class="font-normal text-muted-foreground">· {origen.salida.tipo}</span>
 					</p>
-					{#if origen.salida.forma === 'valor'}
-						<input
-							type="text"
-							data-testid="valor-de-ejemplo"
-							aria-label="Valor de ejemplo de «{entrada.etiqueta}»"
-							placeholder="Valor de ejemplo"
-							autocomplete="off"
+					{#if origen.salida.forma === 'documento'}
+						<!-- Lo que se prueba aquí no es un texto sino una elección: si el expediente de ejemplo trae el documento o no. -->
+						<select
+							data-testid="ejemplo-documento"
+							aria-label="Ejemplo: ¿el expediente trae este documento?"
 							value={data[entrada.id] ?? ''}
 							class="nodrag nowheel mt-1.5 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
-							oninput={(e) => updateNodeData(id, { [entrada.id]: e.currentTarget.value })}
+							onchange={(e) => updateNodeData(id, { [entrada.id]: e.currentTarget.value })}
 							onkeydown={(e) => e.stopPropagation()}
-						/>
+						>
+							<option value="">Elige un ejemplo…</option>
+							<option value="si">Sí: el expediente lo trae</option>
+							<option value="no">No: el expediente no lo trae</option>
+						</select>
 					{:else}
-						<textarea
-							data-testid="valor-de-ejemplo"
-							aria-label="Valores de ejemplo de «{entrada.etiqueta}»"
-							placeholder={origen.salida.forma === 'filas' ? 'Una fila por renglón' : 'Un elemento por renglón'}
-							rows="3"
-							value={data[entrada.id] ?? ''}
-							class="nodrag nowheel mt-1.5 min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
-							oninput={(e) => updateNodeData(id, { [entrada.id]: e.currentTarget.value })}
-							onkeydown={(e) => e.stopPropagation()}
-						></textarea>
+						{#if origen.salida.forma === 'valor'}
+							<input
+								type="text"
+								data-testid="valor-de-ejemplo"
+								aria-label="Valor de ejemplo de «{entrada.etiqueta}»"
+								placeholder="Valor de ejemplo"
+								autocomplete="off"
+								value={data[entrada.id] ?? ''}
+								class="nodrag nowheel mt-1.5 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+								oninput={(e) => updateNodeData(id, { [entrada.id]: e.currentTarget.value })}
+								onkeydown={(e) => e.stopPropagation()}
+							/>
+						{:else}
+							<textarea
+								data-testid="valor-de-ejemplo"
+								aria-label="Valores de ejemplo de «{entrada.etiqueta}»"
+								placeholder={origen.salida.forma === 'filas' ? 'Una fila por renglón' : 'Un elemento por renglón'}
+								rows="3"
+								value={data[entrada.id] ?? ''}
+								class="nodrag nowheel mt-1.5 min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+								oninput={(e) => updateNodeData(id, { [entrada.id]: e.currentTarget.value })}
+								onkeydown={(e) => e.stopPropagation()}
+							></textarea>
+						{/if}
 					{/if}
 				{:else if origen?.clase === 'fijo'}
 					<p class="mt-0.5 flex items-center justify-between gap-2 text-xs font-medium" data-testid="origen-entrada">
@@ -217,7 +244,13 @@
 					</p>
 				{:else}
 					<p class="mt-0.5 text-xs text-muted-foreground italic" data-testid="entrada-sin-conexion">
-						{esLogico ? 'Conecta el resultado de una regla' : entrada.acepta === 'lista' ? 'Conecta una lista' : 'Conecta un campo o un valor fijo'}
+						{entrada.acepta === 'veredicto'
+							? 'Conecta el resultado de una regla'
+							: entrada.acepta === 'documento'
+								? 'Conecta el documento de un tipo documental'
+								: entrada.acepta === 'lista'
+									? 'Conecta una lista'
+									: 'Conecta un campo o un valor fijo'}
 					</p>
 				{/if}
 			</div>
@@ -238,7 +271,7 @@
 				type="source"
 				position={Position.Right}
 				id={SALIDA_RESULTADO}
-				title={entregaValor ? 'El número que calculó: conéctalo a una comparación' : 'Resultado de la regla: conéctalo a un operador Y, O o No'}
+				title={entregaValor ? 'El número que calculó: conéctalo a una comparación' : 'Resultado de la regla: conéctalo a un operador lógico (Y, O, No o Implica)'}
 			/>
 		</div>
 	</div>

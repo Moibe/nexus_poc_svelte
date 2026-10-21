@@ -14,6 +14,9 @@
 	 * VARIOS (un campo «1 a N», una columna de un grupo que se repite) entregan una LISTA, y un grupo que se repite entrega sus FILAS
 	 * (puntos cuadrados): esos solo sirven a los operadores de listas. Un grupo que no se repite no entrega nada por sí mismo: su
 	 * punto se ve apagado y dice por qué (sus columnas, en cambio, sí se conectan).
+	 *
+	 * Arriba de los campos va el punto del DOCUMENTO entero (un rombo): no es ningún dato, solo sirve para preguntarle al expediente si
+	 * lo trae («Existe documento»). Su id es `HANDLE_DOCUMENTO`, con arroba para no chocar con el nombre de un campo.
 	 */
 	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -26,7 +29,7 @@
 		type CampoBorrador
 	} from '$lib/state/configuracion.svelte';
 
-	import { porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
+	import { HANDLE_DOCUMENTO, porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
 
 	let { id, data, selected }: NodeProps<Node<DatosNodoTipo>> = $props();
 
@@ -83,6 +86,18 @@
 	</div>
 
 	{#if tipo}
+		<!-- El documento entero: la fila va aparte de los campos, con su propia línea debajo. -->
+		<div class="relative flex h-8 items-center gap-2 border-b border-border px-3 text-xs" data-testid="documento-nodo">
+			<span class="min-w-0 flex-1 truncate font-medium">Documento</span>
+			<span class="shrink-0 text-[11px] text-muted-foreground">¿está en el expediente?</span>
+			<Handle
+				type="source"
+				position={Position.Right}
+				id={HANDLE_DOCUMENTO}
+				title="El documento entero: conéctalo a «Existe documento» para preguntar si el expediente lo trae"
+				class="forma-documento"
+			/>
+		</div>
 		<ul class="py-1" data-testid="nodo-tipo-campos">
 			{#each tipo.campos as campo (campo.id)}
 				{@const punto = salidaDelPunto(salidaDe(tipo.nombre, campo))}
@@ -149,6 +164,12 @@
 	/* Una lista (o las filas de un grupo) sale por un punto CUADRADO: se ve que no es un valor suelto y no cabe en una comparación. */
 	:global(.svelte-flow__handle.forma-lista) {
 		border-radius: 2px;
+	}
+	/* El documento entero sale por un ROMBO (el cuadrado girado): no es un valor ni una lista. `rotate` y no `transform`, porque
+	   la librería coloca el punto con `transform` y lo pisaríamos. */
+	:global(.svelte-flow__handle.forma-documento) {
+		border-radius: 2px;
+		rotate: 45deg;
 	}
 	:global(.svelte-flow__handle.sin-conexion) {
 		background: var(--muted-foreground);

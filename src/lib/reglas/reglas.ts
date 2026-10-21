@@ -10,11 +10,15 @@
  *   · un VALOR: un campo suelto, un valor fijo escrito en el lienzo, o el número que entrega una regla (`Cantidad`, `Suma`);
  *   · una LISTA de valores: un campo «1 a N» o una columna de un grupo que se repite;
  *   · las FILAS de un grupo que se repite (solo para contarlas);
- *   · un VEREDICTO (pasa / no pasa): lo que entrega una comparación o un operador lógico.
+ *   · un VEREDICTO (pasa / no pasa): lo que entrega una comparación, una pregunta por un documento o un operador lógico;
+ *   · el DOCUMENTO entero (el punto «Documento» de un tipo documental): no es ningún dato, solo sirve para preguntar si el
+ *     expediente lo trae (`Existe documento`).
  *
  * Los operadores de COMPARACIÓN (igual, distinto, contiene, mayor, menor) reciben dos valores y dan un veredicto. Los de LISTAS
  * (cantidad, suma, alguno, todos, unicos) reciben una lista: `cantidad` y `suma` entregan un valor (que se puede comparar) y los demás,
- * un veredicto. Los LÓGICOS (Y, O, No) reciben veredictos de otras reglas, y así se encadenan.
+ * un veredicto. `Existe documento` recibe un documento entero y dice si el expediente lo trae. Los LÓGICOS (Y, O, No, Implica) reciben
+ * veredictos de otras reglas, y así se encadenan: `Implica` es el «si… entonces…» (si la primera regla pasa, la segunda también debe
+ * pasar; si la primera no pasa no hay nada que exigir).
  */
 import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 
@@ -47,6 +51,12 @@ export const MIME_CONSTANTE = 'application/x-nexusdoc-constante';
 export const SALIDA_RESULTADO = 'resultado';
 /** El punto por el que un valor fijo entrega su valor. */
 export const SALIDA_VALOR = 'valor';
+/**
+ * El punto por el que un tipo documental entrega el DOCUMENTO entero (no un campo). Comparte nodo con los puntos de los campos, que
+ * se llaman como el campo, así que su id tiene que ser uno que ningún campo se ponga: lleva una arroba. (Como con «grupo.subcampo»,
+ * un campo que se llamara exactamente así chocaría; el nombre de un campo no se restringe, pero nadie escribe eso.)
+ */
+export const HANDLE_DOCUMENTO = '@documento';
 
 /** Con qué llave el lienzo le ofrece a sus nodos lo que evaluó (`getContext`). */
 export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
@@ -98,11 +108,26 @@ const PLURAL_DE_FAMILIA: Record<Familia, string> = { texto: 'textos', numero: 'n
 
 // ── Los operadores ───────────────────────────────────────────────────────────
 
-export type ClaveOperador = 'igual' | 'distinto' | 'contiene' | 'mayor' | 'menor' | 'cantidad' | 'suma' | 'alguno' | 'todos' | 'unicos' | 'y' | 'o' | 'no';
+export type ClaveOperador =
+	| 'igual'
+	| 'distinto'
+	| 'contiene'
+	| 'mayor'
+	| 'menor'
+	| 'cantidad'
+	| 'suma'
+	| 'alguno'
+	| 'todos'
+	| 'unicos'
+	| 'existe'
+	| 'y'
+	| 'o'
+	| 'no'
+	| 'implica';
 export type Entrada = 'a' | 'b';
 
-/** Lo que una entrada acepta que le llegue: un valor suelto, una lista de valores o el veredicto de otra regla. */
-export type Acepta = 'valor' | 'lista' | 'veredicto';
+/** Lo que una entrada acepta que le llegue: un valor suelto, una lista de valores, el veredicto de otra regla o un documento entero. */
+export type Acepta = 'valor' | 'lista' | 'veredicto' | 'documento';
 
 export type DefOperador = {
 	clave: ClaveOperador;
@@ -110,7 +135,7 @@ export type DefOperador = {
 	descripcion: string;
 	/** Lo que se dibuja en el nodo y en la paleta. */
 	simbolo: string;
-	grupo: 'comparacion' | 'lista' | 'logico';
+	grupo: 'comparacion' | 'lista' | 'documento' | 'logico';
 	/** Lo que entrega: un pasa / no pasa, o un VALOR (un número) que otra regla puede comparar. */
 	salida: 'veredicto' | 'valor';
 	entradas: readonly { id: Entrada; etiqueta: string; acepta: Acepta }[];
@@ -121,6 +146,11 @@ export type DefOperador = {
 	/** Lo que dice el nodo según le salga (solo los que entregan un veredicto). */
 	textoPasa: string;
 	textoNoPasa: string;
+	/**
+	 * Solo «Implica»: lo que dice cuando pasa PORQUE la condición no se cumple (la primera regla no pasa y entonces no hay nada que
+	 * exigir). Sin esto, una regla que «pasa» cuando la regla de entrada no pasa parece un error.
+	 */
+	textoPasaSinCondicion?: string;
 };
 
 const TODAS: readonly Familia[] = ['texto', 'numero', 'fecha', 'booleano'];
@@ -133,6 +163,11 @@ const REGLAS_AB = [
 	{ id: 'b', etiqueta: 'Regla B', acepta: 'veredicto' }
 ] as const;
 const UNA_LISTA = [{ id: 'a', etiqueta: 'Lista', acepta: 'lista' }] as const;
+const UN_DOCUMENTO = [{ id: 'a', etiqueta: 'Documento', acepta: 'documento' }] as const;
+const SI_ENTONCES = [
+	{ id: 'a', etiqueta: 'Si (condición)', acepta: 'veredicto' },
+	{ id: 'b', etiqueta: 'Entonces (debe pasar)', acepta: 'veredicto' }
+] as const;
 
 /** Los operadores que ofrece la paleta, en el orden en que se muestran. */
 export const OPERADORES: readonly DefOperador[] = [
@@ -250,6 +285,18 @@ export const OPERADORES: readonly DefOperador[] = [
 		textoPasa: 'Pasa: no hay repetidos',
 		textoNoPasa: 'No pasa: hay valores repetidos'
 	},
+	{
+		clave: 'existe',
+		etiqueta: 'Existe documento',
+		simbolo: '◇',
+		grupo: 'documento',
+		salida: 'veredicto',
+		descripcion: 'Pasa si el expediente trae un documento de este tipo.',
+		entradas: UN_DOCUMENTO,
+		familias: [],
+		textoPasa: 'Pasa: el expediente trae el documento',
+		textoNoPasa: 'No pasa: el expediente no trae el documento'
+	},
 	{ clave: 'y', etiqueta: 'Y', simbolo: 'Y', grupo: 'logico', salida: 'veredicto', descripcion: 'Pasa si las dos reglas conectadas pasan.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: las dos reglas pasan', textoNoPasa: 'No pasa: alguna regla no pasa' },
 	{ clave: 'o', etiqueta: 'O', simbolo: 'O', grupo: 'logico', salida: 'veredicto', descripcion: 'Pasa si al menos una de las reglas pasa.', entradas: REGLAS_AB, familias: [], textoPasa: 'Pasa: alguna regla pasa', textoNoPasa: 'No pasa: ninguna regla pasa' },
 	{
@@ -263,6 +310,19 @@ export const OPERADORES: readonly DefOperador[] = [
 		familias: [],
 		textoPasa: 'Pasa: la regla no pasa',
 		textoNoPasa: 'No pasa: la regla pasa'
+	},
+	{
+		clave: 'implica',
+		etiqueta: 'Implica',
+		simbolo: '→',
+		grupo: 'logico',
+		salida: 'veredicto',
+		descripcion: 'Si la primera regla pasa, la segunda también debe pasar.',
+		entradas: SI_ENTONCES,
+		familias: [],
+		textoPasa: 'Pasa: se cumple lo que se exigía',
+		textoNoPasa: 'No pasa: se cumple la condición y lo que se exigía no',
+		textoPasaSinCondicion: 'Pasa: la condición no se cumple, no hay nada que exigir'
 	}
 ];
 
@@ -270,6 +330,7 @@ export const OPERADORES: readonly DefOperador[] = [
 export const GRUPOS_DE_OPERADORES = [
 	{ clave: 'comparacion', titulo: 'Comparan valores' },
 	{ clave: 'lista', titulo: 'Operan listas' },
+	{ clave: 'documento', titulo: 'Revisan el expediente' },
 	{ clave: 'logico', titulo: 'Combinan reglas' }
 ] as const;
 
@@ -282,9 +343,10 @@ export const operadorDe = (clave: string): DefOperador | undefined => OPERADORES
  *   · `valor`: un dato suelto (un campo, o una columna de un grupo que NO se repite);
  *   · `lista`: varios datos (un campo «1 a N», o una columna de un grupo que se repite);
  *   · `filas`: las filas de un grupo que se repite, que solo se pueden contar;
- *   · `nada`: un grupo que no se repite no entrega ningún dato por sí mismo (sus columnas, sí).
+ *   · `nada`: un grupo que no se repite no entrega ningún dato por sí mismo (sus columnas, sí);
+ *   · `documento`: el documento entero (el punto `HANDLE_DOCUMENTO`), que no es un dato: solo se le puede preguntar si existe.
  */
-export type FormaDeSalida = 'valor' | 'lista' | 'filas' | 'nada';
+export type FormaDeSalida = 'valor' | 'lista' | 'filas' | 'nada' | 'documento';
 
 /** Lo que sale por el punto de un campo: de qué documento, cuál campo y de qué tipo. */
 export type Salida = {
@@ -322,6 +384,9 @@ export function salidaDe(nombreTipo: string, campo: CampoDeTipo, sub?: CampoDeTi
 export function salidaDeCampo(tipos: readonly TipoDocumentalGuardado[], tipoId: string, handleId: string): Salida | null {
 	const tipo = tipos.find((t) => t.id === tipoId);
 	if (!tipo) return null;
+	if (handleId === HANDLE_DOCUMENTO) {
+		return { tipo: tipo.nombre, campo: 'Documento', tipoDato: 'documento', seRepite: false, forma: 'documento', familia: null };
+	}
 	for (const c of tipo.campos) {
 		if (c.nombre === handleId) return salidaDe(tipo.nombre, c);
 		if (c.tipoDato === 'grupo') {
@@ -334,7 +399,7 @@ export function salidaDeCampo(tipos: readonly TipoDocumentalGuardado[], tipoId: 
 /** Por qué esta salida NO se puede conectar a NINGÚN operador; `null` si se puede (aunque solo sirva a algunos). */
 export function porQueNoSeConecta(s: Salida): string | null {
 	if (s.forma === 'nada') return 'Un grupo de campos que no se repite no trae ningún dato por sí mismo: conecta alguno de sus subcampos.';
-	if (s.forma !== 'filas' && s.familia === null) return 'Este tipo de dato todavía no se puede usar en una regla.';
+	if (s.forma !== 'filas' && s.forma !== 'documento' && s.familia === null) return 'Este tipo de dato todavía no se puede usar en una regla.';
 	return null;
 }
 
@@ -361,7 +426,7 @@ function alcanza(desde: string, hasta: string, aristas: readonly Conexion[]): bo
 }
 
 /** Lo que entrega el origen de un cable, para saber si le sirve a la entrada a la que llega. */
-export type Fuente = { forma: 'valor' | 'lista' | 'filas' | 'veredicto'; familia: Familia | null };
+export type Fuente = { forma: 'valor' | 'lista' | 'filas' | 'veredicto' | 'documento'; familia: Familia | null };
 
 /** Lo que entrega el origen de un cable; o, si no es algo que se pueda conectar, por qué. */
 function fuenteDeConexion(c: Conexion, nodos: readonly NodoMinimo[], tipos: readonly TipoDocumentalGuardado[]): Fuente | string {
@@ -372,7 +437,7 @@ function fuenteDeConexion(c: Conexion, nodos: readonly NodoMinimo[], tipos: read
 		if (!salida) return 'Ese campo ya no existe en el tipo documental.';
 		const noSePuede = porQueNoSeConecta(salida);
 		if (noSePuede) return noSePuede;
-		return { forma: salida.forma as 'valor' | 'lista' | 'filas', familia: salida.familia };
+		return { forma: salida.forma as Exclude<FormaDeSalida, 'nada'>, familia: salida.familia };
 	}
 	if (origen.type === NODO_CONSTANTE) {
 		if (c.sourceHandle !== SALIDA_VALOR) return 'De un valor fijo solo sale su valor.';
@@ -389,6 +454,19 @@ function fuenteDeConexion(c: Conexion, nodos: readonly NodoMinimo[], tipos: read
 
 /** Por qué lo que entrega `fuente` no le sirve a la `entrada` de `def`; `null` si le sirve. */
 function noLeSirve(fuente: Fuente, acepta: Acepta, def: DefOperador): string | null {
+	// El documento entero no es un dato: solo le sirve a quien pregunta por un documento, y a éste solo le sirve un documento.
+	if (acepta === 'documento') {
+		return fuente.forma === 'documento'
+			? null
+			: `«${def.etiqueta}» revisa un documento entero, no un campo ni una regla: conecta el punto «Documento» de un tipo documental.`;
+	}
+	if (fuente.forma === 'documento') {
+		return acepta === 'veredicto'
+			? `«${def.etiqueta}» combina resultados de otras reglas, no documentos: conecta antes el documento a «Existe documento».`
+			: acepta === 'lista'
+				? `«${def.etiqueta}» trabaja con listas de valores, no con un documento entero: conecta uno de sus campos que se repite.`
+				: `«${def.etiqueta}» compara campos y valores, no un documento entero: conecta uno de sus campos.`;
+	}
 	if (acepta === 'veredicto') {
 		return fuente.forma === 'veredicto'
 			? null
@@ -399,7 +477,7 @@ function noLeSirve(fuente: Fuente, acepta: Acepta, def: DefOperador): string | n
 			case 'valor':
 				return null;
 			case 'veredicto':
-				return `«${def.etiqueta}» compara campos y valores: un resultado se conecta a un operador Y, O o No.`;
+				return `«${def.etiqueta}» compara campos y valores: un resultado se conecta a un operador lógico (Y, O, No o Implica).`;
 			case 'lista':
 				return `Es una lista de valores y «${def.etiqueta}» necesita uno solo: pásala por un operador de listas (Cantidad, Suma, Alguno es igual a…).`;
 			default:
@@ -615,10 +693,19 @@ export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: st
 /**
  * El veredicto de un operador LÓGICO a partir del de las reglas que le llegan (ya todas conectadas). Si alguna no tiene veredicto,
  * Y y O solo se atreven a decidir cuando lo que ya se sabe basta: un «no pasa» hunde a Y, un «pasa» salva a O.
+ *
+ * «Implica» (`entradas` = [condición, consecuencia]) es «no condición, o consecuencia», con la misma prudencia que O: si la
+ * condición NO se cumple pasa, sea cual sea la consecuencia (no hay nada que exigir), y si la consecuencia pasa también; solo
+ * falla cuando la condición pasa y la consecuencia no. Si la condición no se sabe, no se atreve a decir que falla.
  */
 export function evaluarLogico(clave: ClaveOperador, entradas: readonly Veredicto[]): Veredicto {
 	const sabe = (v: Veredicto) => v === 'pasa' || v === 'no_pasa';
 	switch (clave) {
+		case 'implica': {
+			const [condicion, consecuencia] = entradas;
+			if (condicion === 'no_pasa' || consecuencia === 'pasa') return 'pasa';
+			return condicion === 'pasa' && consecuencia === 'no_pasa' ? 'no_pasa' : 'sin_valores';
+		}
 		case 'y':
 			if (entradas.includes('no_pasa')) return 'no_pasa';
 			return entradas.every((v) => v === 'pasa') ? 'pasa' : 'sin_valores';
@@ -632,6 +719,15 @@ export function evaluarLogico(clave: ClaveOperador, entradas: readonly Veredicto
 		default:
 			return 'sin_conexion';
 	}
+}
+
+/**
+ * El veredicto de «Existe documento» con el ejemplo que se eligió en el nodo: «sí» (el expediente de ejemplo trae el documento)
+ * pasa y «no» no pasa. Sin elegir nada —o con algo que no se entiende— no se sabe: `sin_valores`.
+ */
+export function evaluarExistencia(ejemplo: string): Veredicto {
+	const hay = aBooleano(ejemplo);
+	return hay === null ? 'sin_valores' : hay ? 'pasa' : 'no_pasa';
 }
 
 /** Los elementos de una lista de ejemplo: uno por renglón, sin renglones vacíos. */
@@ -720,6 +816,8 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
 				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
+			} else if (def.grupo === 'documento') {
+				estado = evaluarExistencia(llegan[0].muestra);
 			} else {
 				const familia = (llegan[0].fuente as Fuente).familia ?? 'texto';
 				const r = evaluarLista(def.clave, familia, lineasDeEjemplo(llegan[0].muestra), llegan[1]?.muestra ?? '');
