@@ -108,23 +108,28 @@
 	 *  Solo cuando el correo SALIÓ, porque el texto del diseño lo afirma («las credenciales de acceso han sido enviadas al
 	 *  correo»). Si no salió, el usuario sí se creó, pero decir eso sería falso: ese caso se queda en el panel, que muestra
 	 *  la contraseña temporal. */
-	let usuarioCreado = $state(false);
-	/** Lo mismo para «Reenviar invitación» («Nuevo enlace enviado»): sale solo si el reenvío se hizo Y el correo salió; el
-	 *  panel se cierra y el aviso queda aquí. Se apaga al empezar cualquier otra acción. */
-	let invitacionReenviada = $state(false);
+	let aviso = $state<'creado' | 'reenviado' | 'guardado' | null>(null);
+	/*  Un solo estado para los tres avisos verdes de la página, porque nunca hay más de uno: se apaga al empezar cualquier
+	 *  otra acción (`aviso = null`), y por eso no son tres banderas.
+	 *   - 'creado'    el alta de arriba.
+	 *   - 'reenviado' «Reenviar invitación» («Nuevo enlace enviado»): solo si el reenvío se hizo Y el correo salió; el panel
+	 *                 se cierra y el aviso queda aquí.
+	 *   - 'guardado'  la edición de un usuario en su fila (HU07: nombre y rol): «Cambios guardados correctamente». */
 
 	function abrirAlta() {
-		usuarioCreado = false;
-		invitacionReenviada = false;
+		aviso = null;
 		abierto = true;
 	}
 
 	function abrirEdicion(usuario: UsuarioDeOrganizacion) {
+		aviso = null;
 		editando = usuario;
 	}
 
 	async function guardarEdicion() {
 		if (!tarjeta || !(await tarjeta.guardar())) return;
+		// Antes de recargar: el cambio YA está guardado, y si recargar fallara el aviso sigue siendo verdad.
+		aviso = 'guardado';
 		editando = null;
 		seleccionado = null;
 		await invalidateAll();
@@ -140,8 +145,7 @@
 	function pedirReenvio(usuario: UsuarioDeOrganizacion) {
 		objetivo = usuario;
 		errorAccion = '';
-		usuarioCreado = false;
-		invitacionReenviada = false;
+		aviso = null;
 		reenvioAbierto = true;
 	}
 
@@ -182,7 +186,7 @@
 <!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se
      monta junto con su texto no se anuncia. Vacío no mide nada. El margen va dentro del `if` por lo mismo. -->
 <div role="status" aria-live="polite">
-	{#if usuarioCreado}
+	{#if aviso === 'creado'}
 		<!-- El texto es el literal del «Alert Success» del Figma (HU006). Hasta el 2026-10-19 decía «Enviamos sus accesos
 		     por correo / Los mandamos a <correo>…»: se cambió a pedido de QA, que echaba de menos el aviso de que el
 		     usuario SE CREÓ. A cambio ya no sale la dirección a la que se mandó; si se quiere, se agrega. -->
@@ -193,7 +197,16 @@
 				cuerpo="La cuenta fue creada exitosamente y las credenciales de acceso han sido enviadas al correo electrónico registrado."
 			/>
 		</div>
-	{:else if invitacionReenviada}
+	{:else if aviso === 'guardado'}
+		<!-- Literal del «Alert Success» del Figma (Gestionar rol de usuario). Sale al guardar la edición de un usuario. -->
+		<div class="mt-6">
+			<AvisoVerde
+				testid="cambios-guardados-aviso"
+				titulo="Cambios guardados correctamente."
+				cuerpo="La configuración fue actualizada exitosamente."
+			/>
+		</div>
+	{:else if aviso === 'reenviado'}
 		<!-- Literal del «Alert Success» del Figma. Sale cuando el reenvío se hizo Y el correo salió: el panel se cerró solo. -->
 		<div class="mt-6">
 			<AvisoVerde
@@ -447,7 +460,7 @@
 		seleccionado = null;
 		await invalidateAll();
 	}}
-	alReenviar={() => (invitacionReenviada = true)}
+	alReenviar={() => (aviso = 'reenviado')}
 />
 
 <UsuarioSheet
@@ -457,5 +470,5 @@
 		seleccionado = null;
 		await invalidateAll();
 	}}
-	alEnviarAccesos={() => (usuarioCreado = true)}
+	alEnviarAccesos={() => (aviso = 'creado')}
 />
