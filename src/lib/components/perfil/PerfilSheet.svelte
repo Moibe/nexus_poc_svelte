@@ -36,6 +36,7 @@
 	import { cumpleTodas } from '$lib/acceso/reglasContrasena';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	type PerfilUsuario = {
 		guid: string;
@@ -244,18 +245,42 @@
 	</button>
 {/snippet}
 
-{#snippet dato(etiqueta: string, valor: string, ayuda = '', nota = '', testidNota = '')}
+{#snippet dato(etiqueta: string, valor: string, ayuda = '')}
 	<div class="min-w-0">
 		<p class="flex items-center gap-1 text-xs text-muted-foreground">
 			{etiqueta}
 			{#if ayuda}
-				<span title={ayuda} role="img" aria-label={ayuda} class="inline-flex text-muted-foreground"><CircleHelp class="size-3" /></span>
+				<!-- El «?» del diseño abre un globo oscuro con la explicación (Figma: fondo
+				     azul marino, letras blancas, flecha arriba). Antes era un `title` nativo
+				     del navegador y, para el correo, la misma frase impresa debajo del dato. -->
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<button
+									{...props}
+									type="button"
+									aria-label={ayuda}
+									class="inline-flex rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									data-testid="ayuda-{etiqueta.toLowerCase().replaceAll(' ', '-')}"
+								>
+									<CircleHelp class="size-3" />
+								</button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content
+							side="bottom"
+							sideOffset={6}
+							class="max-w-62 justify-start rounded-lg bg-slate-900 px-3 py-2 text-sm leading-snug text-white"
+							arrowClasses="bg-slate-900 fill-slate-900"
+						>
+							{ayuda}
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
 			{/if}
 		</p>
 		<p class="mt-0.5 truncate text-sm text-foreground" title={valor}>{valor || '—'}</p>
-		{#if nota}
-			<p class="mt-0.5 text-[11px] leading-snug text-muted-foreground" data-testid={testidNota || undefined}>{nota}</p>
-		{/if}
 	</div>
 {/snippet}
 
@@ -363,7 +388,7 @@
 							{@render dato('Apellido paterno', perfil.apellidoPaterno)}
 							{@render dato('Apellido materno', perfil.apellidoMaterno)}
 							{@render dato('Número de teléfono', sinNumero(perfil.telefono))}
-							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO, LEYENDA_CORREO, 'leyenda-correo')}
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
 							{@render dato('Rol de sistema', rolVisible, 'Lo asigna quien administra tu organización.')}
 						</div>
 					{/if}
