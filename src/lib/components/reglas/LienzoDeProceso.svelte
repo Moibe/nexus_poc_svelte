@@ -476,7 +476,7 @@
 				data-testid="lienzo-vacio"
 				class="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground"
 			>
-				El lienzo está vacío. Arrastra aquí los tipos documentales del expediente y los operadores.
+				El lienzo está vacío. Abre un menú de la izquierda y arrastra aquí los tipos documentales del expediente y los operadores.
 			</p>
 		{/if}
 	</div>
