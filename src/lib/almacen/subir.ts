@@ -1,16 +1,13 @@
 /**
  * Subir bytes al almacén desde el navegador, vía el BFF `POST /api/archivos`.
  *
- * Vive aparte porque lo usan dos caminos que no se conocen entre sí: el modal
- * de "Cargar ejemplo documental" (un archivo que el usuario acaba de elegir) y
- * la migración de los ejemplos viejos que todavía guardan sus bytes en
- * base64 dentro de `localStorage` (ver `migrarEjemplos.ts`). Si cada uno
- * armara su propio `fetch`, el día que cambie el contrato del BFF uno de los
- * dos se quedaría atrás sin que nadie lo note.
+ * Vive aparte para que el contrato del BFF esté en un solo lugar: el modal de
+ * "Cargar ejemplo documental" (un archivo que el usuario acaba de elegir) es hoy
+ * su único llamador, pero antes lo compartía con la migración de los ejemplos
+ * viejos de `localStorage`, que se quitó el 2026-10-15 al pasar el catálogo al
+ * servidor.
  *
- * No lanza: devuelve el puntero o el motivo, porque los dos llamadores deciden
- * cosas distintas con un fallo — el modal lo muestra, la migración lo registra
- * y lo reintenta otro día.
+ * No lanza: devuelve el puntero o el motivo, y quien llama decide qué hacer.
  */
 
 export type PunteroAlmacen = { rutaRelativa: string; sha256: string; mime: string };
@@ -20,14 +17,14 @@ export type ResultadoSubida =
 	/** `status` es 0 cuando ni siquiera hubo respuesta (red caída). */
 	| { ok: false; status: number; mensaje: string };
 
-export async function subirAlAlmacen(
-	archivo: Blob,
-	nombre: string,
-	tenant: string
-): Promise<ResultadoSubida> {
+/**
+ * No lleva el tenant: lo fija el BFF desde la sesión (HU11). Hasta el 2026-10-14
+ * este formulario lo mandaba y el servidor se lo creía, así que cambiando ese
+ * campo se escribía en el prefijo de otra organización.
+ */
+export async function subirAlAlmacen(archivo: Blob, nombre: string): Promise<ResultadoSubida> {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo, nombre);
-	cuerpo.append('tenant', tenant);
 	let r: Response;
 	try {
 		r = await fetch('/api/archivos', { method: 'POST', body: cuerpo });

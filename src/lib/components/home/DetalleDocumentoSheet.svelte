@@ -32,7 +32,7 @@
 	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { etiquetaDe, type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-	import { calidadDe } from '$lib/types/ine';
+	import { calidadDe, textoDeAusentes } from '$lib/types/ine';
 	import { construirInforme, fechaHora, fechaHoraIso } from '$lib/documentos/informeDocumento';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 	import {
@@ -54,6 +54,9 @@
 	// `confianza_minima` por si algún día se quiere señalar el peor campo.
 	const confianza = $derived(documento?.resultado?.confianza_promedio ?? null);
 	const calidad = $derived(calidadDe(confianza));
+	// Lo obligatorio que el extractor no trajo (`_metadata.campos_ausentes`): sin este aviso un campo que no salió
+	// simplemente no aparece, y nada lo distingue de uno que nadie pidió.
+	const textoAusentes = $derived(textoDeAusentes(documento?.resultado?._metadata?.campos_ausentes));
 
 	// La vista previa vivía aquí como un `$effect` de doce líneas hasta el
 	// 2026-09-10. Se movió a `$lib/hooks/usarVistaPrevia.svelte` cuando
@@ -374,6 +377,13 @@
 								{documento.resultado._metadata.motivo ??
 									'Document AI respondió sin campos para este documento.'}
 							</p>
+						</div>
+					{/if}
+
+					{#if textoAusentes}
+						<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="aviso-campos-ausentes">
+							<p class="text-sm font-medium text-amber-800">Faltan campos obligatorios</p>
+							<p class="mt-1 text-xs text-amber-700">El extractor no encontró: {textoAusentes}.</p>
 						</div>
 					{/if}
 

@@ -9,18 +9,20 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ cookies, params, locals }) => {
 	const id = params.id ?? '';
 	if (!id) return json({ mensaje: 'Falta el webhook.' }, { status: 400 });
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/validar`), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant: TENANT_CLIENTE }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
+			body: JSON.stringify({ tenant }),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -28,11 +30,7 @@ export const POST: RequestHandler = async ({ params }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = cuerpo?.detail;
-		return json(
-			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	if (cuerpo?.validado === true) return json({ validado: true, webhook: cuerpo.webhook ?? null });
 	return json({

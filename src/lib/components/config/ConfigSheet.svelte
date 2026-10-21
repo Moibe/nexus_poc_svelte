@@ -46,11 +46,13 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
-	import RecorteDeDocumento from './RecorteDeDocumento.svelte';
+	import DocumentoConRecortes from './DocumentoConRecortes.svelte';
+	import RecorteGuardado from './RecorteGuardado.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import GenerarPrompts from './GenerarPrompts.svelte';
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
 	import RevisionPrompt from './RevisionPrompt.svelte';
+	import SubcamposGrupo from './SubcamposGrupo.svelte';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
@@ -59,6 +61,7 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarValorLista,
+		alCambiarTipoDato,
 		alternarEjemploDocumental,
 		borrarDocumentoEjemplo,
 		borrarRecorteEjemplo,
@@ -68,9 +71,10 @@
 		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
-		fuenteDeDocumento,
+		paginaDeRecorte,
 		esPdfSinOriginal,
 		estadoBiblioteca,
+		cargarBiblioteca,
 		reconocerFallaDeGuardado,
 		marcarCalibrado,
 		eliminarTipoDocumental,
@@ -99,16 +103,14 @@
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
 	} from '$lib/state/configuracion.svelte';
-	import { migrarEjemplosAlAlmacen } from '$lib/state/migrarEjemplos';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
-	// Cada vez que se abre, se sacan del localStorage los bytes de los ejemplos
-	// viejos que todavía los traigan — ver `migrarEjemplos.ts`. Con todo
-	// migrado no hace ni una petición, así que repetirlo en cada apertura es
-	// gratis, y es lo que reintenta lo que falló la vez anterior.
+	// Cada vez que se abre, se vuelve a leer la biblioteca del servidor: otra persona de la organización pudo crear, editar o
+	// borrar tipos desde la última vez. Lo que esta pestaña tenga por enviar se manda ANTES de leer, y si algo cambia mientras
+	// se pide, no se pisa (ver `cargarBiblioteca`).
 	$effect(() => {
-		if (open) untrack(() => void migrarEjemplosAlAlmacen());
+		if (open) untrack(() => void cargarBiblioteca({ refrescar: true }));
 	});
 
 	// El módulo tiene cuatro vistas:
@@ -1056,6 +1058,18 @@
 	// de un campo no sobrevive un refresh).
 	let modalRecorteAbierto = $state(false);
 	let campoRecorteNombre = $state<string | null>(null);
+	// La última página en la que se trabajó cada documento (2026-10-16). En un acta de 20 páginas el siguiente campo casi siempre se
+	// busca cerca del anterior, y volver a la página 1 cada vez sería recorrer el documento otra vez. Va por id de documento; es de
+	// pantalla, no del dato, así que no se guarda.
+	let paginaDeTrabajo = $state<Record<string, number>>({});
+	/** Con qué página abre el recortador: la de su recorte si el campo ya tiene uno, y si no, la última que se visitó en ese documento. */
+	const paginaInicialDelRecorte = $derived.by(() => {
+		if (!documentoSeleccionado) return 1;
+		const guardado = campoRecorteNombre
+			? tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte
+			: null;
+		return guardado ? paginaDeRecorte(guardado) : (paginaDeTrabajo[documentoSeleccionado.id] ?? 1);
+	});
 
 	// Los recortes YA GUARDADOS de los DEMÁS campos (todos menos
 	// `campoRecorteNombre`) para la instancia de documento seleccionada — se le
@@ -1551,7 +1565,22 @@
 			</aside>
 
 			<div class="flex-1 overflow-y-auto p-8">
-				{#if vista === 'biblioteca'}
+				{#if vista === 'biblioteca' && !estadoBiblioteca.cargada}
+					<!-- La biblioteca vive en el servidor (por organización) y todavía no llega: un panel vacío con «Agregar
+					     nuevo tipo documental» se leería como «no tienes ninguno», y crear uno encima de eso es justo lo que
+					     no hay que invitar. Con un error, la salida es reintentar. -->
+					{#if estadoBiblioteca.errorCarga}
+						<div class="flex flex-col items-start gap-3" data-testid="biblioteca-error" role="alert">
+							<h3 class="text-xl font-semibold text-foreground">No se pudieron cargar tus tipos documentales</h3>
+							<p class="text-sm text-muted-foreground">{estadoBiblioteca.errorCarga}</p>
+							<Button onclick={() => void cargarBiblioteca()}>Reintentar</Button>
+						</div>
+					{:else}
+						<p class="text-sm text-muted-foreground" data-testid="biblioteca-cargando" role="status">
+							Cargando los tipos documentales de tu organización…
+						</p>
+					{/if}
+				{:else if vista === 'biblioteca'}
 					{#if tiposEnBiblioteca.length > 0}
 						<!-- Biblioteca poblada. Estructura tomada del frame 1077:65410:
 						     título "Modelos documentales agregados" y una tarjeta por
@@ -2087,6 +2116,11 @@
 																>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
 															>
 														</div>
+														{#if campo.tipoDato === 'grupo' && campo.subcampos?.length}
+															<p class="col-span-4 -mt-1 mb-1 px-3 text-xs text-muted-foreground" data-testid="subcampos-ficha">
+																Campos del grupo: {campo.subcampos.map((sub) => `${sub.nombre} (${etiquetaTipo(sub.tipoDato) ?? sub.tipoDato}${sub.obligatorio ? '' : ', opcional'})`).join(' · ')}
+															</p>
+														{/if}
 													{/each}
 												</div>
 											{/if}
@@ -2268,7 +2302,8 @@
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm font-medium text-foreground">{doc.nombre}</p>
 										<p class="text-xs text-muted-foreground">
-											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}
+											{doc.tipo} · {formatearTamano(doc.tamanoBytes)}{#if (doc.paginas ?? 1) > 1}
+												· <span data-testid="paginas-del-documento">{doc.paginas} páginas</span>{/if}
 											{#if esPdfSinOriginal(doc)}
 												<!-- Un PDF subido antes del 2026-09-24: de él solo quedó la
 												     página 1 como imagen (ver `esPdfSinOriginal`). Se marca
@@ -2325,38 +2360,14 @@
 								</div>
 
 								{#if documentoCompletoExpandido}
-									<!-- Cada campo con recorte GUARDADO para ESTE documento se
-										     dibuja encima, en las mismas coordenadas porcentuales con
-										     las que se guardó (idéntico a como `RecortarEjemploCampo`
-										     dibuja el rectángulo mientras se edita) — aquí es de solo
-										     lectura, sin manijas de arrastrar/redimensionar, más una
-										     etiqueta con el nombre del campo para saber cuál es cuál. -->
-									<div class="mt-3 max-h-96 overflow-auto rounded-lg border border-border bg-muted/40 p-4">
-										<div class="relative inline-block border border-border bg-white shadow-sm">
-											<img
-												src={fuenteDeDocumento(doc)}
-												alt={`Documento completo de ${doc.nombre}, con los recortes marcados`}
-												class="block max-w-full"
-											/>
-											{#each tipoEnCalibracion.campos as campo (campo.id)}
-												{@const r = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]
-													?.recorte}
-												{#if r}
-													{@const color = colorParaCampo(campo.nombre)}
-													<div
-														class="absolute border-2 {color.borde} {color.relleno}"
-														style="left:{r.x}%; top:{r.y}%; width:{r.w}%; height:{r.h}%;"
-													>
-														<span
-															class="absolute -top-5 left-0 truncate rounded {color.etiqueta} px-1 py-0.5 text-[10px] leading-none whitespace-nowrap text-white"
-														>
-															{campo.nombre}
-														</span>
-													</div>
-												{/if}
-											{/each}
-										</div>
-									</div>
+									<!-- Una página a la vez, con sus recortes encima (`DocumentoConRecortes`). Con una sola página se ve como siempre. -->
+									{#key doc.id}
+										<DocumentoConRecortes
+											{doc}
+											campos={tipoEnCalibracion.campos}
+											recortes={tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}}
+										/>
+									{/key}
 								{/if}
 
 								{#each tipoEnCalibracion.campos as campo (campo.id)}
@@ -2378,6 +2389,14 @@
 													{/if}
 												</span>
 												{campo.nombre}
+												{#if ejemplo && ((doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1)}
+													<span
+														data-testid="pagina-del-recorte"
+														class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
+													>
+														p. {paginaDeRecorte(ejemplo.recorte)}
+													</span>
+												{/if}
 											</span>
 											<div class="flex items-center gap-1">
 												{#if ejemplo}
@@ -2562,10 +2581,10 @@
 											     así que aquí no se repite su tarjeta. -->
 											<div class="mt-4 max-w-lg">
 												<p class="mb-2 text-xs font-medium text-muted-foreground">
-													Texto seleccionado
+													Texto seleccionado{#if (doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1} · página {paginaDeRecorte(ejemplo.recorte)}{/if}
 												</p>
-												<RecorteDeDocumento
-													fuente={fuenteDeDocumento(doc)}
+												<RecorteGuardado
+													{doc}
 													recorte={ejemplo.recorte}
 													alt={`Recorte guardado para ${campo.nombre}`}
 												/>
@@ -2732,7 +2751,11 @@
 
 								<div class="space-y-2">
 									<Label for="campo-tipo">Tipo de dato *</Label>
-									<Select.Root type="single" bind:value={borrador.campoEnCaptura.tipoDato}>
+									<Select.Root
+										type="single"
+										value={borrador.campoEnCaptura.tipoDato}
+										onValueChange={(v) => alCambiarTipoDato(borrador.campoEnCaptura, v)}
+									>
 										<Select.Trigger id="campo-tipo" class="w-full">
 											{etiquetaTipo(borrador.campoEnCaptura.tipoDato) ?? 'Selecciona un tipo de campo'}
 										</Select.Trigger>
@@ -2749,16 +2772,21 @@
 							     como en el frame. SIN asterisco — es opcional. Es un valor de
 							     EJEMPLO que muestra la forma esperada del dato, no una validación:
 							     su destino en el diccionario es `field_definition.prompt_hint`. -->
-							<div class="mt-6 grid gap-6 md:grid-cols-2">
-								<div class="space-y-2">
-									<Label for="campo-estructura">Valor de estructura</Label>
-									<Input
-										id="campo-estructura"
-										bind:value={borrador.campoEnCaptura.valorEstructura}
-										placeholder="Ingresa un valor de ejemplo"
-									/>
+							{#if borrador.campoEnCaptura.tipoDato === 'grupo'}
+								<!-- Un grupo no tiene «valor de estructura» (un ejemplo de UN valor); lo suyo son los campos de cada fila. -->
+								<SubcamposGrupo campo={borrador.campoEnCaptura} />
+							{:else}
+								<div class="mt-6 grid gap-6 md:grid-cols-2">
+									<div class="space-y-2">
+										<Label for="campo-estructura">Valor de estructura</Label>
+										<Input
+											id="campo-estructura"
+											bind:value={borrador.campoEnCaptura.valorEstructura}
+											placeholder="Ingresa un valor de ejemplo"
+										/>
+									</div>
 								</div>
-							</div>
+							{/if}
 
 							<div class="mt-6 space-y-2">
 								<Label for="campo-desc">Descripción funcional *</Label>
@@ -2898,7 +2926,11 @@
 													class="bg-muted text-muted-foreground"
 												/>
 											{:else}
-												<Select.Root type="single" bind:value={campo.tipoDato}>
+												<Select.Root
+													type="single"
+													value={campo.tipoDato}
+													onValueChange={(v) => alCambiarTipoDato(campo, v)}
+												>
 													<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
 														{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
 													</Select.Trigger>
@@ -2921,6 +2953,10 @@
 										<Minus class="size-4" />
 									</button>
 								</div>
+								{#if campo.tipoDato === 'grupo'}
+									<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
+									<div class="-mt-2"><SubcamposGrupo {campo} soloLectura={altaEnCurso} /></div>
+								{/if}
 							{/each}
 						</div>
 					{:else if !puedeAgregar}
@@ -3095,6 +3131,10 @@
 													</div>
 												{/if}
 											</div>
+										{/if}
+
+										{#if campo.tipoDato === 'grupo'}
+											<SubcamposGrupo {campo} soloLectura />
 										{/if}
 
 										<div class="mt-6 rounded-xl border border-border p-4">
@@ -3302,22 +3342,16 @@
 	</Sheet.Content>
 </Sheet.Root>
 
-<!-- No se pudo escribir en el navegador. Es un AVISO y no una pregunta: el
-     guardado ya falló, no hay nada que cancelar. Antes esto no existía — el
-     error se perdía en un `catch` vacío y la pantalla confirmaba guardados que
-     no ocurrían; el usuario se enteraba al refrescar, viendo trabajo
-     desaparecido.
-     El mensaje nombra la causa más probable y la salida concreta, porque la
-     genérica ("algo salió mal") dejaría a alguien con la cuota llena sin saber
-     qué hacer. Mientras no exista el almacén del servidor, borrar un ejemplo
-     documental es la única forma real de liberar espacio: son ellos los que
-     pesan, el resto del catálogo son unos pocos KB. -->
+<!-- Lo último que se hizo no quedó guardado en el servidor, o quedó distinto de lo que se veía. Es un AVISO y no una
+     pregunta: ya pasó, no hay nada que cancelar. El texto lo pone el módulo de la biblioteca (`estadoBiblioteca`) según lo que
+     pasó: el servidor no contestó (se reintenta solo unas veces), otra persona cambió o borró ese tipo antes (se cargó su
+     versión), o el servidor no aceptó los datos. Antes esto hablaba del espacio del navegador; ya no hay tal límite. -->
 <ConfirmarAccion
 	abierto={estadoBiblioteca.falloAlGuardar}
 	variante="destructivo"
 	soloAviso
-	titulo="No se pudo guardar en este navegador"
-	mensaje="Lo último que hiciste NO quedó guardado. Suele ser que se llenó el espacio del navegador, y lo que más ocupa son los documentos de ejemplo. Quita alguno desde su tipo documental y vuelve a intentarlo."
+	titulo={estadoBiblioteca.avisoTitulo || 'No se pudo guardar'}
+	mensaje={estadoBiblioteca.avisoMensaje || 'Lo último que hiciste no quedó guardado en el servidor.'}
 	etiquetaConfirmar="Entendido"
 	onConfirmar={reconocerFallaDeGuardado}
 	onCerrar={reconocerFallaDeGuardado}
@@ -3410,6 +3444,10 @@
 		tipoEnCalibracion?.recortesPorDocumento[documentoSeleccionado.id]?.[campoRecorteNombre]?.recorte) ||
 		null}
 	otrosRecortes={otrosRecortesDelDocumento}
+	paginaInicial={paginaInicialDelRecorte}
+	onCambioPagina={(n) => {
+		if (documentoSeleccionado) paginaDeTrabajo[documentoSeleccionado.id] = n;
+	}}
 	onCerrar={() => (modalRecorteAbierto = false)}
 />
 

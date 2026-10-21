@@ -10,23 +10,25 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 const texto = (x: unknown): string | null => (typeof x === 'string' && x.trim() !== '' ? x : null);
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	const datos = await request.json().catch(() => null);
 	const tipo = texto(datos?.tipo);
 	const entradaId = texto(datos?.entradaId);
 	if (!tipo || !entradaId) return json({ mensaje: 'Faltan el tipo o la entrada.' }, { status: 400 });
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/webhooks/eventos'), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify({
-				tenant: TENANT_CLIENTE,
+				tenant,
 				tipo,
 				entradaId,
 				tipoDocumental: texto(datos?.tipoDocumental),
@@ -39,11 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = cuerpo?.detail;
-		return json(
-			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json(cuerpo);
 };

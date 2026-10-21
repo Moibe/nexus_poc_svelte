@@ -5,8 +5,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	server: {
-		port: 7000,
-		// Sin esto, si el 7000 está ocupado Vite se brinca al 7001 sin avisar y
+		// El mismo puerto que en el servidor de CSI, para que un número sea
+		// siempre el mismo proyecto: prod 3400, dev 3401.
+		port: 3400,
+		// Sin esto, si el 3400 está ocupado Vite se brinca al 3401 sin avisar y
 		// terminas hablándole a un server viejo sin darte cuenta. Mejor que truene.
 		strictPort: true
 	},
@@ -50,10 +52,18 @@ export default defineConfig({
 			// Van las dos variantes de esquema a propósito: la comparación es por
 			// cadena exacta, así que `https://` no cubre a `http://`. Y NO se usa
 			// `trustedOrigins: ['*']`, que existe y apaga la comprobación entera.
+			//
+			// 2026-10-13: se agrega también el dominio de DEV. Medido ese día contra el servidor: un
+			// POST de formulario con `Origin: https://dev-nexus-doc.buzzword.com.mx` daba 403, o sea que
+			// por ese dominio no habría podido subirse ningún documento (el pipeline manda FormData). Los
+			// enlaces de los correos (`FRONT_URL` en el back) ya apuntan a ese dominio, así que es por
+			// donde va a entrar la gente. Se hornea en el BUILD: hay que reconstruir, no basta reiniciar.
 			csrf: {
 				trustedOrigins: [
 					'https://nexus-doc.buzzword.com.mx',
-					'http://nexus-doc.buzzword.com.mx'
+					'http://nexus-doc.buzzword.com.mx',
+					'https://dev-nexus-doc.buzzword.com.mx',
+					'http://dev-nexus-doc.buzzword.com.mx'
 				]
 			}
 		})

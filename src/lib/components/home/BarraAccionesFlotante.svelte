@@ -51,6 +51,14 @@
 		confirmarCargaPendiente,
 		documentosEnBandeja
 	} from '$lib/state/bandeja.svelte';
+	import {
+		cerrarPanelDeDescarte,
+		confirmarDescarte,
+		conservar,
+		descarte,
+		pedirDescarte
+	} from '$lib/state/descarteBandeja.svelte';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import { documentosEnPipeline, iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
 
 	let {
@@ -132,9 +140,8 @@
 			alHacerClic: alAbrirExpedientes,
 			testid: 'accion-ver-expediente-bandeja'
 		},
-		// Sin comportamiento todavía: es destructivo y merece su propio modal de
-		// confirmación, no un confirm() del navegador.
-		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-bandeja' }
+		// Destructivo: pide confirmación en su propio panel (no un confirm() del navegador) y deja rastro en el servidor.
+		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, alHacerClic: () => pedirDescarte(enBandeja.map((d) => d.id)), testid: 'accion-descartar-bandeja' }
 	]);
 
 	// ── Pipeline documental ─────────────────────────────────────────────────
@@ -219,3 +226,35 @@
 		<BarraAccionesPanel {grupos} />
 	</div>
 {/if}
+
+<ConfirmarAccion
+	abierto={descarte.ids !== null}
+	titulo={descarte.ids && descarte.ids.length > 1 ? `¿Descartar ${descarte.ids.length} documentos?` : '¿Descartar este documento?'}
+	mensaje="Saldrá de la bandeja activa y no se procesará. El archivo no se borra del almacén: lo encuentras en «Descartado» desde los filtros, y queda el registro de quién lo descartó."
+	etiquetaCancelar="Conservar"
+	etiquetaConfirmar={descarte.enviando ? 'Descartando…' : 'Descartar'}
+	onConfirmar={confirmarDescarte}
+	onCancelar={conservar}
+	onCerrar={cerrarPanelDeDescarte}
+>
+	<label for="motivo-descarte" class="text-xs font-medium text-foreground">Motivo (opcional)</label>
+	<textarea
+		id="motivo-descarte"
+		data-testid="motivo-descarte"
+		bind:value={descarte.motivo}
+		maxlength={500}
+		rows={3}
+		placeholder="Por qué se descarta, para quien revise después"
+		class="mt-1.5 w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+	></textarea>
+</ConfirmarAccion>
+
+<ConfirmarAccion
+	abierto={descarte.error !== ''}
+	titulo="No se pudo descartar"
+	mensaje={descarte.error}
+	etiquetaConfirmar="Entendido"
+	soloAviso
+	onConfirmar={() => {}}
+	onCerrar={() => (descarte.error = '')}
+/>

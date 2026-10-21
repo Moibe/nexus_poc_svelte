@@ -1,0 +1,542 @@
+<script lang="ts">
+	/**
+	 * HU12 · "Perfil Administrador" (Figma `1210:52859`) y HU13 · cambiar la
+	 * contraseña desde la sesión (`1340:62809`).
+	 *
+	 * Un panel con tres bloques, cada uno con su lápiz para editarse por
+	 * separado, como el diseño:
+	 *
+	 *   · **Información personal** — nombre, apellido paterno y materno,
+	 *     teléfono. El correo y el rol se muestran pero NO se editan: el correo
+	 *     es con el que inicia sesión y el rol lo mueve quien administra. Por eso
+	 *     llevan el signo de interrogación del diseño, que lo explica.
+	 *   · **Información de recuperación** — correo y teléfono. Con el chip
+	 *     naranja "Incompleto" mientras falte alguno.
+	 *   · **Seguridad** — el correo, y al editar, los tres campos del cambio de
+	 *     contraseña con el mismo medidor del primer acceso.
+	 *
+	 * Al cambiar la contraseña desde aquí la sesión de ESTE dispositivo NO se cierra
+	 * (es un cambio voluntario, no un restablecimiento), pero sí las de los demás
+	 * dispositivos (HU13 CA-4): si la contraseña vieja estaba comprometida, quien la
+	 * tuviera deja de entrar. El panel lo dice al terminar.
+	 */
+	import { tick } from 'svelte';
+	import CircleHelp from '@lucide/svelte/icons/circle-help';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Eye from '@lucide/svelte/icons/eye';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import UserCircle from '@lucide/svelte/icons/circle-user-round';
+
+	import LapizFirmaIcon from '$lib/components/icons/LapizFirmaIcon.svelte';
+	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
+	import CampoTelefono from '$lib/components/organizaciones/CampoTelefono.svelte';
+	import MedidorContrasena from '$lib/components/acceso/MedidorContrasena.svelte';
+	import { LARGO_MAXIMO_CORREO, correoValido, validarCorreo } from '$lib/acceso/correo';
+	import { cumpleTodas } from '$lib/acceso/reglasContrasena';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+
+	type PerfilUsuario = {
+		guid: string;
+		email: string;
+		nombre: string;
+		apellidoPaterno: string;
+		apellidoMaterno: string;
+		telefono: string | null;
+		esAdminPlataforma: boolean;
+		creadoEn: string | null;
+		recuperacion: { email?: string | null; telefono?: string | null };
+		membresias: { tenantGuid: string; rol: string }[];
+	};
+
+	let { open = $bindable(false), rolVisible = '' }: { open?: boolean; rolVisible?: string } = $props();
+
+	let perfil = $state<PerfilUsuario | null>(null);
+	let cargando = $state(false);
+	let editando = $state<'personal' | 'recuperacion' | 'seguridad' | null>(null);
+	let guardando = $state(false);
+	let error = $state('');
+	let guardado = $state('');
+
+	// Lo que se edita (se llena al abrir cada bloque).
+	let nombre = $state('');
+	let paterno = $state('');
+	let materno = $state('');
+	let telefono = $state('');
+	let recEmail = $state('');
+	let recTelefono = $state('');
+	let actual = $state('');
+	/** La contraseña actual que el servidor rechazó: va bajo su campo (HU13 CA-6), no al pie. */
+	let errorActual = $state('');
+	let nueva = $state('');
+	let confirmacion = $state('');
+	let verActual = $state(false);
+	let verNueva = $state(false);
+	let verConfirmacion = $state(false);
+
+	/** HU12 CA-3: la leyenda literal del correo de acceso. */
+	const LEYENDA_CORREO = 'Este correo es tu identificador de cuenta y no puede modificarse.';
+
+	const sinNumero = (t: string | null | undefined) => (t ?? '').replace(/^\+52\s*/, '');
+	const conNumero = (t: string) => (t.trim() ? `+52 ${t.trim()}` : null);
+
+	/** El chip "Incompleto" mira que el correo guardado SIRVA, no solo que haya
+	 *  algo: un "pepito" heredado apagaba el chip y la recuperación se daba por
+	 *  resuelta cuando no lo estaba. */
+	const recuperacionCompleta = $derived(
+		correoValido(perfil?.recuperacion?.email ?? '') && Boolean(perfil?.recuperacion?.telefono?.trim())
+	);
+
+	/** Opcional: vacío está bien. Se avisa al salir del campo. */
+	const correoRecuperacion = $derived(validarCorreo(recEmail, false));
+	let recTocado = $state(false);
+	let errorRecEmail = $state('');
+	const mensajeRecuperacion = $derived(
+		errorRecEmail !== '' ? errorRecEmail : recTocado && !correoRecuperacion.ok ? correoRecuperacion.motivo : ''
+	);
+	const nombreCompleto = $derived(
+		[perfil?.nombre, perfil?.apellidoPaterno, perfil?.apellidoMaterno].filter(Boolean).join(' ')
+	);
+	/** HU13 CA-3: la nueva tiene que ser DISTINTA de la actual. El servidor también lo exige; aquí se dice antes de enviar. */
+	const igualQueLaActual = $derived(actual.length > 0 && nueva.length > 0 && nueva === actual);
+	const contrasenaLista = $derived(
+		actual.length > 0 && cumpleTodas(nueva) && nueva === confirmacion && !igualQueLaActual
+	);
+
+	$effect(() => {
+		if (!open) return;
+		void cargar();
+	});
+
+	async function cargar() {
+		cargando = true;
+		error = '';
+		try {
+			const r = await fetch('/api/auth/yo');
+			const datos = await r.json().catch(() => null);
+			if (!r.ok) {
+				error = datos?.mensaje ?? 'No se pudo cargar tu perfil.';
+				return;
+			}
+			perfil = datos.usuario;
+			editando = null;
+		} finally {
+			cargando = false;
+		}
+	}
+
+	function editar(bloque: 'personal' | 'recuperacion' | 'seguridad') {
+		if (!perfil) return;
+		error = guardado = '';
+		nombre = perfil.nombre;
+		paterno = perfil.apellidoPaterno;
+		materno = perfil.apellidoMaterno;
+		telefono = sinNumero(perfil.telefono);
+		recEmail = perfil.recuperacion?.email ?? '';
+		recTocado = false;
+		errorRecEmail = '';
+		recTelefono = sinNumero(perfil.recuperacion?.telefono);
+		actual = nueva = confirmacion = '';
+		errorActual = '';
+		editando = bloque;
+	}
+
+	async function guardarDatos() {
+		if (!perfil || guardando) return;
+		// Solo se frena cuando la persona está EDITANDO recuperación: el bloque
+		// personal reenvía el correo guardado, y si ese viene malo de antes no se
+		// le puede negar guardar su nombre por un campo que no tiene en pantalla.
+		if (editando === 'recuperacion') {
+			recTocado = true;
+			if (!correoRecuperacion.ok) return;
+		}
+		guardando = true;
+		error = errorRecEmail = '';
+		try {
+			const r = await fetch('/api/auth/perfil', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					nombre: nombre.trim(),
+					apellidoPaterno: paterno.trim(),
+					apellidoMaterno: materno.trim(),
+					telefono: conNumero(telefono),
+					recuperacion: { email: recEmail.trim() || null, telefono: conNumero(recTelefono) }
+				})
+			});
+			const datos = await r.json().catch(() => null);
+			if (!r.ok) {
+				// Bajo su campo si es del correo de recuperación; si no, al pie.
+				if (datos?.codigo === 'correo_recuperacion_invalido') errorRecEmail = datos.mensaje;
+				else error = datos?.mensaje ?? 'No se pudieron guardar los cambios.';
+				return;
+			}
+			perfil = datos.usuario;
+			editando = null;
+			guardado = 'Los cambios en tu información se guardaron correctamente y ya se encuentran disponibles en tu perfil.';
+		} finally {
+			guardando = false;
+		}
+	}
+
+	async function guardarContrasena() {
+		if (!contrasenaLista || guardando) return;
+		guardando = true;
+		error = errorActual = '';
+		try {
+			const r = await fetch('/api/auth/contrasena', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ actual, nueva, confirmacion })
+			});
+			const datos = await r.json().catch(() => null);
+			if (!r.ok) {
+				// La actual equivocada se dice bajo su campo, con el texto del servidor y nada más (CA-6).
+				if (datos?.codigo === 'actual_incorrecta') errorActual = datos?.mensaje ?? 'La contraseña actual es incorrecta.';
+				else error = datos?.mensaje ?? 'No se pudo cambiar la contraseña.';
+				return;
+			}
+			await tick();
+			editando = null;
+			actual = nueva = confirmacion = '';
+			const otras = typeof datos?.otrasSesionesCerradas === 'number' ? datos.otrasSesionesCerradas : 0;
+			guardado =
+				'Los cambios en tu información se guardaron correctamente y ya se encuentran disponibles en tu perfil.' +
+				(otras > 0 ? ` También cerramos ${otras === 1 ? 'tu otra sesión abierta' : `tus otras ${otras} sesiones abiertas`}.` : '');
+		} finally {
+			guardando = false;
+		}
+	}
+
+	function fecha(iso: string | null | undefined): string {
+		if (!iso) return '—';
+		const d = new Date(iso);
+		return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+	}
+
+	const CLASE_INPUT =
+		'h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
+	/** Igual, pero sabe pintarse de rojo. Aparte porque `CLASE_INPUT` la usan
+	 *  también los campos de contraseña, que no validan formato. */
+	const CLASE_INPUT_VALIDABLE =
+		CLASE_INPUT + ' aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20';
+</script>
+
+{#snippet lapiz(bloque: 'personal' | 'recuperacion' | 'seguridad', etiqueta: string)}
+	<button
+		type="button"
+		class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+		data-testid="editar-{bloque}"
+		aria-label={etiqueta}
+		onclick={() => editar(bloque)}
+	>
+		<LapizFirmaIcon class="size-3.5" />
+	</button>
+{/snippet}
+
+{#snippet dato(etiqueta: string, valor: string, ayuda = '', anchoAyuda = 'max-w-62')}
+	<div class="min-w-0">
+		<p class="flex items-center gap-1 text-xs text-muted-foreground">
+			{etiqueta}
+			{#if ayuda}
+				<!-- El «?» del diseño abre un globo oscuro con la explicación (Figma: fondo
+				     azul marino, letras blancas, flecha arriba). Antes era un `title` nativo
+				     del navegador y, para el correo, la misma frase impresa debajo del dato. -->
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<button
+									{...props}
+									type="button"
+									aria-label={ayuda}
+									class="inline-flex rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									data-testid="ayuda-{etiqueta.toLowerCase().replaceAll(' ', '-')}"
+								>
+									<CircleHelp class="size-3" />
+								</button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content
+							side="bottom"
+							sideOffset={6}
+							class="{anchoAyuda} justify-start rounded-lg bg-slate-900 px-3 py-2 text-sm leading-snug text-white"
+							arrowClasses="bg-slate-900 fill-slate-900"
+						>
+							{ayuda}
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+			{/if}
+		</p>
+		<p class="mt-0.5 truncate text-sm text-foreground" title={valor}>{valor || '—'}</p>
+	</div>
+{/snippet}
+
+<Sheet.Root bind:open>
+	<Sheet.Content
+		showCloseButton={false}
+		data-testid="modal-perfil"
+		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[42%] data-[side=right]:xl:w-[36%]"
+	>
+		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
+			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
+				Perfil {rolVisible || 'de usuario'}
+			</Sheet.Title>
+			<button
+				type="button"
+				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+				data-testid="cerrar-perfil"
+				onclick={() => (open = false)}
+			>
+				<CancelSquareIcon />
+				<span class="sr-only">Cerrar</span>
+			</button>
+		</div>
+
+		<div class="flex items-center gap-3 px-6 py-4">
+			<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
+				<UserCircle class="size-5" />
+			</span>
+			<div>
+				<h2 class="text-lg font-medium text-foreground">Información personal</h2>
+				<p class="text-sm text-muted-foreground">
+					Administrar tu información personal y profesional desde un solo lugar.
+				</p>
+			</div>
+		</div>
+
+		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-6">
+			{#if cargando && !perfil}
+				<p class="py-10 text-center text-sm text-muted-foreground">Cargando tu perfil…</p>
+			{:else if perfil}
+				<!-- «Alert Success» del Figma. Arriba y no al pie: el cuerpo se desplaza y, con el bloque de Seguridad
+				     abierto, un aviso al final quedaba fuera de la vista. El `-mb-6` cancela el margen inferior del aviso,
+				     que está pensado para los avisos sueltos de las páginas. -->
+				{#if guardado}
+					<div class="-mb-6" role="status" aria-live="polite">
+						<AvisoVerde testid="perfil-guardado" titulo="Información actualizada" cuerpo={guardado} />
+					</div>
+				{/if}
+				<div class="rounded-xl border border-border p-4">
+					<p class="flex flex-wrap items-center gap-2">
+						<span class="text-xl font-semibold text-foreground" data-testid="perfil-nombre">{nombreCompleto}</span>
+					</p>
+					<p class="mt-1 text-sm text-muted-foreground">
+						{rolVisible || 'Usuario'} <span aria-hidden="true">•</span> {perfil.email}
+					</p>
+				</div>
+
+				<!-- Información personal -->
+				<div class="rounded-xl border border-border p-4">
+					<div class="flex items-center gap-3 border-b border-border pb-3">
+						<p class="flex-1 text-base font-medium text-foreground">Información personal</p>
+						<p class="text-xs text-muted-foreground">Registro | {fecha(perfil.creadoEn)}</p>
+						{#if editando !== 'personal'}{@render lapiz('personal', 'Editar información personal')}{/if}
+					</div>
+					{#if editando === 'personal'}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+							<div class="flex flex-col gap-1.5">
+								<label for="p-nombre" class="text-xs text-muted-foreground">Nombre</label>
+								<input id="p-nombre" bind:value={nombre} class={CLASE_INPUT} />
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="p-paterno" class="text-xs text-muted-foreground">Apellido paterno</label>
+								<input id="p-paterno" bind:value={paterno} class={CLASE_INPUT} />
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="p-materno" class="text-xs text-muted-foreground">Apellido materno</label>
+								<input id="p-materno" bind:value={materno} class={CLASE_INPUT} />
+							</div>
+						</div>
+						<div class="mt-4 max-w-[60%]">
+							<label for="p-tel" class="text-xs text-muted-foreground">Número de teléfono</label>
+							<div class="mt-1.5"><CampoTelefono id="p-tel" bind:value={telefono} /></div>
+						</div>
+					{:else}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+							{@render dato('Nombre', perfil.nombre)}
+							{@render dato('Apellido paterno', perfil.apellidoPaterno)}
+							{@render dato('Apellido materno', perfil.apellidoMaterno)}
+							{@render dato('Número de teléfono', sinNumero(perfil.telefono))}
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
+							{@render dato('Rol de sistema', rolVisible, 'Los privilegios de tu cuenta solo pueden ser modificados por un Super Administrador', 'max-w-56')}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Información de recuperación -->
+				<div class="rounded-xl border border-border p-4">
+					<div class="flex items-center gap-3 border-b border-border pb-3">
+						<p class="flex-1 text-base font-medium text-foreground">Información de recuperación</p>
+						{#if !recuperacionCompleta && editando !== 'recuperacion'}
+							<span
+								class="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+								data-testid="recuperacion-incompleta"
+							>
+								<TriangleAlert class="size-3" />
+								Incompleto
+							</span>
+						{/if}
+						{#if editando !== 'recuperacion'}{@render lapiz('recuperacion', 'Editar información de recuperación')}{/if}
+					</div>
+					{#if editando === 'recuperacion'}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<div class="flex flex-col gap-1.5">
+								<label for="r-email" class="text-xs text-muted-foreground">Correo electrónico</label>
+								<input
+									id="r-email"
+									type="email"
+									placeholder="Ingresa correo de recuperación"
+									bind:value={recEmail}
+									maxlength={LARGO_MAXIMO_CORREO}
+									oninput={() => (errorRecEmail = '')}
+									onblur={() => (recTocado = true)}
+									aria-invalid={mensajeRecuperacion ? 'true' : undefined}
+									class={CLASE_INPUT_VALIDABLE}
+								/>
+								{#if mensajeRecuperacion}
+									<p class="text-xs text-destructive" data-testid="error-correo-recuperacion-perfil">
+										{mensajeRecuperacion}
+									</p>
+								{/if}
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="r-tel" class="text-xs text-muted-foreground">Número de teléfono</label>
+								<CampoTelefono id="r-tel" bind:value={recTelefono} placeholder="Ingresa numero de teléfono" />
+							</div>
+						</div>
+					{:else}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							{@render dato('Correo electrónico', perfil.recuperacion?.email ?? '')}
+							{@render dato('Número de teléfono', sinNumero(perfil.recuperacion?.telefono))}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Seguridad -->
+				<div class="rounded-xl border border-border p-4">
+					<div class="flex items-center gap-3 border-b border-border pb-3">
+						<p class="flex-1 text-base font-medium text-foreground">Seguridad</p>
+						{#if editando !== 'seguridad'}{@render lapiz('seguridad', 'Cambiar contraseña')}{/if}
+					</div>
+					{#if editando === 'seguridad'}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
+							<div class="flex flex-col gap-1.5">
+								<label for="s-actual" class="text-sm font-medium text-foreground">Confirmar contraseña actual</label>
+								<div class="relative">
+									<input
+										id="s-actual"
+										type={verActual ? 'text' : 'password'}
+										autocomplete="current-password"
+										placeholder="Ingresa tu contraseña actual"
+										bind:value={actual}
+										oninput={() => (errorActual = '')}
+										aria-invalid={errorActual ? 'true' : undefined}
+										class="{CLASE_INPUT_VALIDABLE} pr-10"
+									/>
+									<button
+										type="button"
+										class="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+										aria-label={verActual ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+										onclick={() => (verActual = !verActual)}
+									>
+										{#if verActual}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
+									</button>
+								</div>
+								{#if errorActual}
+									<p class="text-xs text-destructive" role="alert" data-testid="perfil-error-actual">{errorActual}</p>
+								{/if}
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="s-nueva" class="text-sm font-medium text-foreground">Nueva contraseña</label>
+								<div class="relative">
+									<input
+										id="s-nueva"
+										type={verNueva ? 'text' : 'password'}
+										autocomplete="new-password"
+										placeholder="Ingresa nueva contraseña"
+										bind:value={nueva}
+										aria-invalid={igualQueLaActual ? 'true' : undefined}
+										class="{CLASE_INPUT_VALIDABLE} pr-10"
+									/>
+									<button
+										type="button"
+										class="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+										aria-label={verNueva ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+										onclick={() => (verNueva = !verNueva)}
+									>
+										{#if verNueva}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
+									</button>
+								</div>
+								{#if igualQueLaActual}
+									<p class="text-xs text-destructive" data-testid="perfil-igual-actual">
+										La nueva contraseña no puede ser igual a la actual.
+									</p>
+								{/if}
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="s-confirma" class="text-sm font-medium text-foreground">Confirmar contraseña</label>
+								<div class="relative">
+									<input
+										id="s-confirma"
+										type={verConfirmacion ? 'text' : 'password'}
+										autocomplete="new-password"
+										placeholder="Confirma nueva contraseña"
+										bind:value={confirmacion}
+										class="{CLASE_INPUT} pr-10"
+									/>
+									<button
+										type="button"
+										class="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+										aria-label={verConfirmacion ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+										onclick={() => (verConfirmacion = !verConfirmacion)}
+									>
+										{#if verConfirmacion}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
+									</button>
+								</div>
+								{#if confirmacion && nueva !== confirmacion}
+									<p class="text-xs text-destructive" data-testid="perfil-no-coincide">
+										La contraseña no coincide; por favor intenta de nuevo.
+									</p>
+								{/if}
+							</div>
+						</div>
+						<div class="mt-4"><MedidorContrasena contrasena={nueva} /></div>
+					{:else}
+						<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
+							{@render dato('Contraseña', '••••••••••••••')}
+						</div>
+					{/if}
+				</div>
+
+				{#if error}
+					<p class="text-xs text-destructive" data-testid="perfil-error">{error}</p>
+				{/if}
+			{/if}
+		</div>
+
+		<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
+			{#if editando === null}
+				<Button data-testid="cerrar-perfil-pie" onclick={() => (open = false)}>Cerrar</Button>
+			{:else}
+				<Button variant="link" class="h-auto p-0 text-destructive" data-testid="cancelar-perfil" onclick={() => (editando = null)}>
+					Cancelar
+				</Button>
+				{#if editando === 'seguridad'}
+					<Button data-testid="guardar-contrasena" disabled={!contrasenaLista || guardando} onclick={guardarContrasena}>
+						{guardando ? 'Guardando…' : 'Guardar cambios'}
+					</Button>
+				{:else}
+					<Button data-testid="guardar-perfil" disabled={!nombre.trim() || guardando} onclick={guardarDatos}>
+						{guardando ? 'Guardando…' : 'Guardar cambios'}
+					</Button>
+				{/if}
+			{/if}
+		</div>
+	</Sheet.Content>
+</Sheet.Root>

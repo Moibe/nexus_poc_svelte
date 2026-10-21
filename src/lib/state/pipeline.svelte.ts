@@ -21,7 +21,9 @@ import {
 } from './bandeja.svelte';
 import {
 	asegurarClasificadorAlDia,
+	cargarBiblioteca,
 	CATEGORIA_OTRO,
+	estadoBiblioteca,
 	normalizarCategoria,
 	tiposDocumentales
 } from './configuracion.svelte';
@@ -231,6 +233,21 @@ async function drenarCola() {
 	if (drenandoCola) return; // ya hay quien va a tomar lo que se acaba de encolar
 	drenandoCola = true;
 	try {
+		// La biblioteca de tipos documentales vive en el servidor (por organización): sin haberla leído, TODO documento caería
+		// en «Tipo documental no configurado» aunque haya tipos activos. Normalmente ya está cargada (el layout la pide al
+		// entrar); esto cubre la carrera de quien sube un documento antes de que llegue.
+		await cargarBiblioteca();
+		if (!estadoBiblioteca.cargada) {
+			// No se pudo leer. Los documentos en cola fallan con el motivo —no se mandan a «no configurado», que diría que no
+			// hay tipo cuando lo que pasa es que no se pudo preguntar— y se reintentan como cualquier otro fallido.
+			for (const d of documentosEnPipeline.filter((x) => x.estado === 'en_cola')) {
+				pasarA(d, 'fallido');
+				d.terminadoEn = new Date();
+				d.error = 'No se pudieron cargar los tipos documentales de tu organización. Revisa la conexión y reintenta.';
+			}
+			return;
+		}
+
 		// Antes de clasificar nada: comprobar que el clasificador de Google
 		// sigue conociendo los mismos tipos que la Biblioteca. Es el momento
 		// exacto en que un desfase duele —clasificar contra un catálogo viejo

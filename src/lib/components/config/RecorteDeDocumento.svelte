@@ -85,7 +85,7 @@
 	     ocupa espacio y la proporción queda exacta. -->
 	<div
 		data-testid="recorte-de-documento"
-		class="relative overflow-hidden rounded-lg bg-white ring-1 ring-border"
+		class="relative overflow-hidden rounded-lg bg-card ring-1 ring-border"
 		style="width: {ancho}; aspect-ratio: {proporcion};"
 	>
 		<img

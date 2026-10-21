@@ -3,7 +3,10 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			/** El usuario de la sesión, o `null`. Lo pone `hooks.server.ts`. */
+			usuario: import('$lib/server/sesion').Usuario | null;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

@@ -46,7 +46,7 @@
 	import FiltrosAvanzados from './FiltrosAvanzados.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { type DocumentoEnPipeline } from '$lib/state/pipeline.svelte';
-	import { calidadDe, camposDe, type CampoExtraido } from '$lib/types/ine';
+	import { calidadDe, camposDe, textoDeAusentes, type CampoExtraido } from '$lib/types/ine';
 	import { usarVistaPrevia } from '$lib/hooks/usarVistaPrevia.svelte';
 	import Download from '@lucide/svelte/icons/download';
 	import { descargarJson, descargarPdf, sinExtension, type Informe } from '$lib/documentos/descargar';
@@ -127,6 +127,8 @@
 	// `confianza_minima` por si algún día se quiere señalar el peor campo.
 	const confianza = $derived(documento?.resultado?.confianza_promedio ?? null);
 	const calidad = $derived(calidadDe(confianza));
+	// Lo obligatorio que el extractor no trajo (`_metadata.campos_ausentes`).
+	const textoAusentes = $derived(textoDeAusentes(documento?.resultado?._metadata?.campos_ausentes));
 
 	// El número de página solo se muestra si el documento tiene más de una: en
 	// uno de una sola página, "Página 1" en cada campo es ruido puro.
@@ -378,6 +380,12 @@
 							documento.resultado._metadata.motivo ??
 								'Document AI respondió sin campos para este documento.'
 						)}
+					{/if}
+
+					{#if textoAusentes}
+						<div data-testid="aviso-campos-ausentes">
+							{@render aviso('ambar', 'Faltan campos obligatorios', `El extractor no encontró: ${textoAusentes}.`)}
+						</div>
 					{/if}
 
 					{#if documento.estado === 'no_configurado'}

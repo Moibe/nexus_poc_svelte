@@ -12,9 +12,10 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { periodoValido } from '$lib/metricas/periodo';
-import { TENANT_CLIENTE, TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ cookies, params, url, locals }) => {
 	const id = params.id ?? '';
 	const desde = url.searchParams.get('desde') ?? '';
 	const hasta = url.searchParams.get('hasta') ?? '';
@@ -25,11 +26,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		);
 	}
 
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
-		const q = new URLSearchParams({ tenant: TENANT_CLIENTE, desde, hasta });
+		const q = new URLSearchParams({ tenant, desde, hasta });
 		respuesta = await fetch(urlNexus(`/webhooks/${encodeURIComponent(id)}/metricas?${q}`), {
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -37,11 +39,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = cuerpo?.detail;
-		return json(
-			{ mensaje: typeof detalle === 'string' ? detalle : `nexus_back respondió ${respuesta.status}.` },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
 };

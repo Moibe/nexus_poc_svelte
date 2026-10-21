@@ -124,6 +124,47 @@ function calcularHash(buffer: ArrayBuffer): string {
 
 export const documentosEnBandeja = $state<DocumentoEnBandeja[]>([]);
 
+/**
+ * Un documento DESCARTADO de la bandeja de preparación (Figma: «movido correctamente a la sección de descartados»). Es un
+ * registro y no un `DocumentoEnBandeja`: ya no se procesa, no tiene archivo en memoria ni historial, y NO debe colarse en lo
+ * que lee el resto de la app de `documentosEnBandeja` (el pipeline, los expedientes, la barra de acciones).
+ *
+ * Los que llegaron por la API (`idEntrada`) los guarda el servidor y se traen con `sincronizarDescartados`; los subidos a mano
+ * solo viven en esta pestaña, igual que antes de descartarse. El archivo no se borra del almacén en ningún caso.
+ */
+export type DocumentoDescartado = {
+	id: string;
+	idEntrada?: string;
+	nombre: string;
+	extension: string;
+	tamanioBytes: number;
+	origen: 'Manual' | 'API REST';
+	agregadoEn: Date;
+	descartadoEn: Date;
+	/** Lo que escribió quien lo descartó, si quiso. */
+	detalle?: string;
+	hashSha256: string | null;
+};
+
+/** Del descarte más reciente al más viejo. */
+export const documentosDescartados = $state<DocumentoDescartado[]>([]);
+
+function registrarDescartado(doc: DocumentoEnBandeja, detalle: string): void {
+	if (doc.idEntrada && documentosDescartados.some((d) => d.idEntrada === doc.idEntrada)) return;
+	documentosDescartados.unshift({
+		id: doc.id,
+		idEntrada: doc.idEntrada,
+		nombre: doc.nombre,
+		extension: doc.extension,
+		tamanioBytes: doc.tamanioBytes,
+		origen: doc.origen,
+		agregadoEn: doc.agregadoEn,
+		descartadoEn: new Date(),
+		detalle: detalle.trim() || undefined,
+		hashSha256: doc.hashSha256
+	});
+}
+
 /** Archivos elegidos/soltados en "Carga documental" que esperan confirmación
  *  ("Subir documentos") antes de pasar a `documentosEnBandeja`. Ver
  *  `ArchivoPendienteDeCarga`. */
@@ -343,16 +384,95 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 export function moverDocumentoAlPipeline(id: string) {
 	const doc = documentosEnBandeja.find((d) => d.id === id);
 	if (doc?.hashSha256) huellasProcesadas.add(doc.hashSha256);
-	quitarDocumento(id, 'pipeline');
+	const indice = documentosEnBandeja.findIndex((d) => d.id === id);
+	if (indice === -1) return;
+	const [quitado] = documentosEnBandeja.splice(indice, 1);
+	// Si llegó por la API, además se le avisa al servidor, para que no reaparezca en la siguiente consulta ni al refrescar.
+	// Descartar NO pasa por aquí: tiene su confirmación, su permiso y su rastro (`descartarDocumentos`).
+	if (quitado.idEntrada) retirarEntrada(quitado.idEntrada, 'pipeline');
 }
 
-/** Saca un documento de la bandeja. Si llegó por la API, además le avisa al
- *  servidor, para que no reaparezca en la siguiente consulta ni al refrescar. */
-export function quitarDocumento(id: string, motivo: 'pipeline' | 'descartado' = 'descartado') {
-	const indice = documentosEnBandeja.findIndex((doc) => doc.id === id);
-	if (indice === -1) return;
-	const [doc] = documentosEnBandeja.splice(indice, 1);
-	if (doc.idEntrada) retirarEntrada(doc.idEntrada, motivo);
+/** Lo que pasó al descartar. `error` solo si se detuvo a la mitad: lo ya descartado se queda descartado. */
+export type ResultadoDescarte = { descartados: number; error?: string };
+
+/**
+ * DESCARTAR documentos de la bandeja de preparación (HU «Descartar archivos»). Distinto de `quitarDocumento`, que no espera
+ * respuesta: aquí SÍ se espera, porque el servidor puede negarlo (el rol de la persona no descarta) y entonces el documento
+ * tiene que quedarse en la lista, no desaparecer y volver a los 10 segundos.
+ *
+ * Lo que llegó por la API se descarta en el servidor (queda su rastro de auditoría y el porqué, `detalle`). Lo que se subió a
+ * mano solo vive en esta pestaña: se quita de la lista y ya. En ningún caso se borra el archivo del almacén.
+ */
+export async function descartarDocumentos(ids: string[], detalle: string): Promise<ResultadoDescarte> {
+	let descartados = 0;
+	for (const id of ids) {
+		const doc = documentosEnBandeja.find((d) => d.id === id);
+		if (!doc) continue;
+		if (doc.idEntrada) {
+			let r: Response;
+			try {
+				r = await fetch(`/api/bandeja/${encodeURIComponent(doc.idEntrada)}/retirar`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ motivo: 'descartado', detalle })
+				});
+			} catch {
+				return { descartados, error: 'No se pudo contactar al servidor. Intenta de nuevo.' };
+			}
+			// Un 404 es que ya había salido (otro navegador la descartó o la mandó al pipeline): para esta lista da igual.
+			if (!r.ok && r.status !== 404) {
+				const cuerpo = await r.json().catch(() => null);
+				return { descartados, error: cuerpo?.mensaje ?? `No se pudo descartar «${doc.nombre}» (${r.status}).` };
+			}
+			entradasRetiradas.add(doc.idEntrada);
+		}
+		const i = documentosEnBandeja.findIndex((d) => d.id === id);
+		if (i !== -1) {
+			const [quitado] = documentosEnBandeja.splice(i, 1);
+			registrarDescartado(quitado, detalle);
+		}
+		descartados++;
+	}
+	return { descartados };
+}
+
+let sincronizandoDescartados = false;
+
+/**
+ * Trae del servidor lo que se descartó (lo que llegó por la API) y lo suma a `documentosDescartados`. Solo hace falta cuando
+ * alguien mira los descartados (el filtro «Descartado»): lo llama el panel de la bandeja con ese filtro puesto. Lo descartado
+ * no vuelve, así que aquí solo se agrega, nunca se quita. Si el servidor no contesta no toca nada.
+ */
+export async function sincronizarDescartados() {
+	if (sincronizandoDescartados) return;
+	sincronizandoDescartados = true;
+	try {
+		const r = await fetch('/api/bandeja?estado=descartados');
+		if (!r.ok) return;
+		const datos = await r.json().catch(() => null);
+		if (!Array.isArray(datos?.entradas)) return;
+		for (const e of datos.entradas as (EntradaApi & { descartadaEn?: string; detalle?: string })[]) {
+			if (documentosDescartados.some((d) => d.idEntrada === e.id)) continue;
+			const extension = EXTENSION_POR_MIME[e.mime] ?? 'PDF';
+			documentosDescartados.push({
+				id: generarId(),
+				idEntrada: e.id,
+				nombre: e.nombreOriginal || `archivo.${extension.toLowerCase()}`,
+				extension,
+				tamanioBytes: e.tamanoBytes,
+				origen: 'API REST',
+				agregadoEn: new Date(e.recibidoEn),
+				descartadoEn: new Date(e.descartadaEn ?? e.recibidoEn),
+				detalle: e.detalle || undefined,
+				hashSha256: e.sha256 || null
+			});
+		}
+		documentosDescartados.sort((a, b) => b.descartadoEn.getTime() - a.descartadoEn.getTime());
+	} catch {
+		/* sin conexión: se reintenta en la siguiente consulta */
+	} finally {
+		sincronizandoDescartados = false;
+	}
 }
 
 // ── Lo que llega por la API de clientes ────────────────────────────────────

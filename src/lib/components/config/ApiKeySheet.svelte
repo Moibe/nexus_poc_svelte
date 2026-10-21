@@ -702,12 +702,12 @@
 		: ''}
 	etiquetaConfirmar="Revocar"
 	onConfirmar={() => {
-		// Se limpia AQUÍ, no solo en `onCerrar`. Confirmando, el diálogo NO dispara
-		// `onCerrar` —`abierto` es una expresión derivada y bits-ui no la puede
-		// apagar solo—, así que sin esto se quedaba trabado en pantalla con la
-		// revocación YA hecha detrás. Los otros cuatro usos de `ConfirmarAccion`
-		// del proyecto ya lo hacían así; este era el único que no. `onCerrar` sigue
-		// sirviendo para Cancelar y Escape, que sí pasan por ahí.
+		// Se limpia AQUÍ además de en `onCerrar`. Antes hacía falta porque al
+		// confirmar el diálogo no disparaba `onCerrar` y se quedaba trabado en
+		// pantalla con la revocación YA hecha detrás; desde el 2026-10-09
+		// `ConfirmarAccion` sí avisa al confirmar, así que esto es redundante.
+		// Se deja porque limpiar dos veces no cuesta nada y el handler no
+		// depende de un detalle del componente.
 		const objetivo = llaveARevocar;
 		llaveARevocar = null;
 		if (!objetivo) return;
