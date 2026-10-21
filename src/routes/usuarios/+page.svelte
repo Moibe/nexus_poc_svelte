@@ -108,13 +108,15 @@
 	 *  Solo cuando el correo SALIÓ, porque el texto del diseño lo afirma («las credenciales de acceso han sido enviadas al
 	 *  correo»). Si no salió, el usuario sí se creó, pero decir eso sería falso: ese caso se queda en el panel, que muestra
 	 *  la contraseña temporal. */
-	let aviso = $state<'creado' | 'reenviado' | 'guardado' | null>(null);
-	/*  Un solo estado para los tres avisos verdes de la página, porque nunca hay más de uno: se apaga al empezar cualquier
-	 *  otra acción (`aviso = null`), y por eso no son tres banderas.
+	let aviso = $state<'creado' | 'reenviado' | 'guardado' | 'habilitada' | null>(null);
+	/*  Un solo estado para los avisos verdes de la página, porque nunca hay más de uno: se apaga al empezar cualquier
+	 *  otra acción (`aviso = null`), y por eso no son varias banderas.
 	 *   - 'creado'    el alta de arriba.
 	 *   - 'reenviado' «Reenviar invitación» («Nuevo enlace enviado»): solo si el reenvío se hizo Y el correo salió; el panel
 	 *                 se cierra y el aviso queda aquí.
-	 *   - 'guardado'  la edición de un usuario en su fila (HU07: nombre y rol): «Cambios guardados correctamente». */
+	 *   - 'guardado'  la edición de un usuario en su fila (HU07: nombre y rol) y también desactivar una cuenta (HU08):
+	 *                 «Cambios guardados correctamente».
+	 *   - 'habilitada' reactivar una cuenta (HU09): «La cuenta fue habilitada exitosamente». */
 
 	function abrirAlta() {
 		aviso = null;
@@ -139,6 +141,7 @@
 		objetivo = usuario;
 		accionMotivo = accion;
 		errorAccion = '';
+		aviso = null;
 		motivoAbierto = true;
 	}
 
@@ -154,6 +157,7 @@
 		if (reactivando) return;
 		reactivando = true;
 		errorAccion = '';
+		aviso = null;
 		try {
 			const r = await fetch(`/api/usuarios/${usuario.guid}/estado`, {
 				method: 'POST',
@@ -165,6 +169,7 @@
 				errorAccion = datos?.mensaje ?? 'No se pudo reactivar la cuenta.';
 				return;
 			}
+			aviso = 'habilitada';
 			seleccionado = null;
 			await invalidateAll();
 		} finally {
@@ -204,6 +209,15 @@
 				testid="cambios-guardados-aviso"
 				titulo="Cambios guardados correctamente."
 				cuerpo="La configuración fue actualizada exitosamente."
+			/>
+		</div>
+	{:else if aviso === 'habilitada'}
+		<!-- Literal del «Alert Success» del Figma (HU009). Sale al reactivar la cuenta. -->
+		<div class="mt-6">
+			<AvisoVerde
+				testid="cuenta-habilitada-aviso"
+				titulo="La cuenta fue habilitada exitosamente."
+				cuerpo="El acceso del usuario ha sido restaurado y sus sesiones podrán iniciarse nuevamente."
 			/>
 		</div>
 	{:else if aviso === 'reenviado'}
@@ -448,6 +462,9 @@
 	accion={accionMotivo}
 	usuario={objetivo}
 	alTerminar={async () => {
+		// Desactivar, además de la tarjeta «La cuenta fue desactivada» del modal, deja el aviso verde de la página
+		// (Figma HU008: «Cambios guardados correctamente»). Cerrar la sesión de alguien no lo lleva.
+		if (accionMotivo === 'desactivar') aviso = 'guardado';
 		seleccionado = null;
 		await invalidateAll();
 	}}

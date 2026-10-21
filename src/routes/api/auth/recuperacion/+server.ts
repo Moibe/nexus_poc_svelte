@@ -5,9 +5,10 @@
  * el user-agent del navegador y el identificador anónimo de este navegador,
  * que el back usa para limitar cuántos enlaces se pueden pedir.
  *
- * Responde LO MISMO exista la cuenta o no (criterio CA-2): aquí no se toma
- * ninguna decisión que dependa de eso. Los únicos errores que pasan son el del
- * correo mal escrito y el del límite de solicitudes.
+ * Aquí no se toma ninguna decisión que dependa de si la cuenta existe: se pasa lo que conteste el back. Hasta el
+ * 2026-10-20 (criterio CA-2) contestaba LO MISMO exista la cuenta o no; ahora, mientras
+ * `RECUPERACION_DICE_SI_EXISTE` esté encendida en el back, un correo sin cuenta pasa como `correo_no_existe` (404),
+ * que es el error del Figma. Los demás errores que pasan son el del correo mal escrito y el del límite de solicitudes.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';

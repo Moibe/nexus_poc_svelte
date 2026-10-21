@@ -97,7 +97,7 @@
 					aria-label={verNueva ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 					onclick={() => (verNueva = !verNueva)}
 				>
-					{#if verNueva}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+					{#if verNueva}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 				</button>
 			</span>
 		</div>
@@ -129,7 +129,7 @@
 					aria-label={verConfirmacion ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 					onclick={() => (verConfirmacion = !verConfirmacion)}
 				>
-					{#if verConfirmacion}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+					{#if verConfirmacion}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 				</button>
 			</span>
 		</div>

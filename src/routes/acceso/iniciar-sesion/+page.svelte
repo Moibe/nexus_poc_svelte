@@ -5,7 +5,8 @@
 	 * Los textos de error son los literales del diseño, elegidos por el `codigo`
 	 * que devuelve el BFF (`/api/auth/login`):
 	 *   · correo_invalido   → bajo el correo
-	 *   · correo_no_existe  → bajo el correo
+	 *   · correo_no_existe  → el aviso rojo «Cuenta no encontrada» arriba del formulario (QA, 2026-10-20; antes era una
+	 *                         línea bajo el correo). Un correo sin forma de correo también lo muestra, además de su línea.
 	 *   · credenciales      → bajo la contraseña + la alerta azul con los intentos
 	 *                         que quedan ("después de N intentos más…")
 	 *   · bloqueada         → pantalla "Has alcanzado el número máximo…" (423)
@@ -21,6 +22,7 @@
 	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
+	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
 	let email = $state('');
@@ -30,6 +32,8 @@
 	let errorCorreo = $state('');
 	let errorContrasena = $state('');
 	let errorGeneral = $state('');
+	/** El aviso rojo del Figma, «Cuenta no encontrada»: el correo no tiene cuenta (o ni siquiera tiene forma de correo). */
+	let cuentaNoEncontrada = $state(false);
 	let intentosRestantes = $state<number | null>(null);
 
 	const RE_CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -39,8 +43,12 @@
 		evento.preventDefault();
 		if (!completo || enviando) return;
 		errorCorreo = errorContrasena = errorGeneral = '';
+		cuentaNoEncontrada = false;
 		if (!RE_CORREO.test(email.trim())) {
 			errorCorreo = 'Formato incorrecto; por favor ingresa un correo electrónico válido.';
+			// QA (HU08 CA7): con un correo inválido también sale el aviso rojo; una dirección sin forma de correo no
+			// puede tener cuenta.
+			cuentaNoEncontrada = true;
 			return;
 		}
 		enviando = true;
@@ -79,12 +87,14 @@
 				await goto('/acceso/activacion-caducada');
 				return;
 			}
-			if (codigo === 'correo_invalido' || codigo === 'correo_no_existe') {
+			if (codigo === 'correo_invalido') {
 				errorCorreo = cuerpo.mensaje;
-				// El correo que no existe también gasta intentos (los cinco son de
-				// uno o de otro), así que el aviso tiene que salir aquí igual.
-				if (codigo === 'correo_no_existe')
-					intentosRestantes = typeof cuerpo.intentosRestantes === 'number' ? cuerpo.intentosRestantes : null;
+				cuentaNoEncontrada = true;
+			} else if (codigo === 'correo_no_existe') {
+				// El aviso rojo del diseño reemplaza a la línea bajo el correo. El correo que no existe también gasta
+				// intentos (los cinco son de uno o de otro), así que el aviso de los intentos tiene que salir aquí igual.
+				cuentaNoEncontrada = true;
+				intentosRestantes = typeof cuerpo.intentosRestantes === 'number' ? cuerpo.intentosRestantes : null;
 			} else if (codigo === 'credenciales') {
 				errorContrasena = cuerpo.mensaje;
 				intentosRestantes = typeof cuerpo.intentosRestantes === 'number' ? cuerpo.intentosRestantes : null;
@@ -105,6 +115,12 @@
 </p>
 
 <form class="mt-10 flex flex-col gap-4" onsubmit={entrar} novalidate>
+	{#if cuentaNoEncontrada}
+		<AvisoRojo testid="cuenta-no-encontrada" titulo="Cuenta no encontrada">
+			No encontramos una cuenta asociada con el correo electrónico ingresado.
+		</AvisoRojo>
+	{/if}
+
 	{#if intentosRestantes !== null && intentosRestantes > 0}
 		<div
 			class="flex gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800"
@@ -128,8 +144,11 @@
 			autocomplete="username"
 			placeholder="Ingresa tu correo electrónico"
 			bind:value={email}
-			aria-invalid={errorCorreo ? 'true' : undefined}
-			oninput={() => (errorCorreo = '')}
+			aria-invalid={errorCorreo || cuentaNoEncontrada ? 'true' : undefined}
+			oninput={() => {
+				errorCorreo = '';
+				cuentaNoEncontrada = false;
+			}}
 			class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
 		/>
 		{#if errorCorreo}
@@ -160,7 +179,7 @@
 					aria-label={verContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 					onclick={() => (verContrasena = !verContrasena)}
 				>
-					{#if verContrasena}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+					{#if verContrasena}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 				</button>
 			</span>
 		</div>

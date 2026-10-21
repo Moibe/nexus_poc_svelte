@@ -25,7 +25,6 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
-	import Check from '@lucide/svelte/icons/check';
 	import UserCircle from '@lucide/svelte/icons/circle-user-round';
 
 	import LapizFirmaIcon from '$lib/components/icons/LapizFirmaIcon.svelte';
@@ -35,6 +34,7 @@
 	import { LARGO_MAXIMO_CORREO, correoValido, validarCorreo } from '$lib/acceso/correo';
 	import { cumpleTodas } from '$lib/acceso/reglasContrasena';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -143,15 +143,6 @@
 		editando = bloque;
 	}
 
-	/** El acceso directo de la alerta de recuperación incompleta (HU12 CA-5): abre el bloque ya en edición y lleva el foco al correo. */
-	async function completarRecuperacion() {
-		editar('recuperacion');
-		await tick();
-		const campo = document.getElementById('r-email');
-		campo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-		campo?.focus();
-	}
-
 	async function guardarDatos() {
 		if (!perfil || guardando) return;
 		// Solo se frena cuando la persona está EDITANDO recuperación: el bloque
@@ -184,7 +175,7 @@
 			}
 			perfil = datos.usuario;
 			editando = null;
-			guardado = 'Tus datos se actualizaron correctamente.';
+			guardado = 'Los cambios en tu información se guardaron correctamente y ya se encuentran disponibles en tu perfil.';
 		} finally {
 			guardando = false;
 		}
@@ -212,7 +203,7 @@
 			actual = nueva = confirmacion = '';
 			const otras = typeof datos?.otrasSesionesCerradas === 'number' ? datos.otrasSesionesCerradas : 0;
 			guardado =
-				'Tu contraseña se actualizó correctamente.' +
+				'Los cambios en tu información se guardaron correctamente y ya se encuentran disponibles en tu perfil.' +
 				(otras > 0 ? ` También cerramos ${otras === 1 ? 'tu otra sesión abierta' : `tus otras ${otras} sesiones abiertas`}.` : '');
 		} finally {
 			guardando = false;
@@ -245,7 +236,7 @@
 	</button>
 {/snippet}
 
-{#snippet dato(etiqueta: string, valor: string, ayuda = '')}
+{#snippet dato(etiqueta: string, valor: string, ayuda = '', anchoAyuda = 'max-w-62')}
 	<div class="min-w-0">
 		<p class="flex items-center gap-1 text-xs text-muted-foreground">
 			{etiqueta}
@@ -271,7 +262,7 @@
 						<Tooltip.Content
 							side="bottom"
 							sideOffset={6}
-							class="max-w-62 justify-start rounded-lg bg-slate-900 px-3 py-2 text-sm leading-snug text-white"
+							class="{anchoAyuda} justify-start rounded-lg bg-slate-900 px-3 py-2 text-sm leading-snug text-white"
 							arrowClasses="bg-slate-900 fill-slate-900"
 						>
 							{ayuda}
@@ -321,6 +312,14 @@
 			{#if cargando && !perfil}
 				<p class="py-10 text-center text-sm text-muted-foreground">Cargando tu perfil…</p>
 			{:else if perfil}
+				<!-- «Alert Success» del Figma. Arriba y no al pie: el cuerpo se desplaza y, con el bloque de Seguridad
+				     abierto, un aviso al final quedaba fuera de la vista. El `-mb-6` cancela el margen inferior del aviso,
+				     que está pensado para los avisos sueltos de las páginas. -->
+				{#if guardado}
+					<div class="-mb-6" role="status" aria-live="polite">
+						<AvisoVerde testid="perfil-guardado" titulo="Información actualizada" cuerpo={guardado} />
+					</div>
+				{/if}
 				<div class="rounded-xl border border-border p-4">
 					<p class="flex flex-wrap items-center gap-2">
 						<span class="text-xl font-semibold text-foreground" data-testid="perfil-nombre">{nombreCompleto}</span>
@@ -329,32 +328,6 @@
 						{rolVisible || 'Usuario'} <span aria-hidden="true">•</span> {perfil.email}
 					</p>
 				</div>
-
-				<!-- HU12 CA-5: la alerta con su acceso directo, mientras falte el correo o el teléfono de recuperación. El chip
-				     «Incompleto» del bloque (el del diseño) se queda: la alerta es lo que pide el criterio. -->
-				{#if !recuperacionCompleta && editando !== 'recuperacion'}
-					<div
-						class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
-						role="alert"
-						data-testid="alerta-recuperacion"
-					>
-						<TriangleAlert class="mt-0.5 size-4 shrink-0 text-amber-600" />
-						<div class="min-w-0 flex-1">
-							<p class="text-sm font-medium text-amber-800">Tu información de recuperación está incompleta</p>
-							<p class="mt-0.5 text-xs text-amber-700">
-								Aún falta tu correo o tu teléfono de recuperación. Complétalos para mantener tu cuenta protegida.
-							</p>
-						</div>
-						<button
-							type="button"
-							class="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
-							data-testid="completar-recuperacion"
-							onclick={completarRecuperacion}
-						>
-							Completar
-						</button>
-					</div>
-				{/if}
 
 				<!-- Información personal -->
 				<div class="rounded-xl border border-border p-4">
@@ -389,7 +362,7 @@
 							{@render dato('Apellido materno', perfil.apellidoMaterno)}
 							{@render dato('Número de teléfono', sinNumero(perfil.telefono))}
 							{@render dato('Correo electrónico', perfil.email, LEYENDA_CORREO)}
-							{@render dato('Rol de sistema', rolVisible, 'Lo asigna quien administra tu organización.')}
+							{@render dato('Rol de sistema', rolVisible, 'Los privilegios de tu cuenta solo pueden ser modificados por un Super Administrador', 'max-w-56')}
 						</div>
 					{/if}
 				</div>
@@ -471,7 +444,7 @@
 										aria-label={verActual ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 										onclick={() => (verActual = !verActual)}
 									>
-										{#if verActual}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+										{#if verActual}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 									</button>
 								</div>
 								{#if errorActual}
@@ -496,7 +469,7 @@
 										aria-label={verNueva ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 										onclick={() => (verNueva = !verNueva)}
 									>
-										{#if verNueva}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+										{#if verNueva}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 									</button>
 								</div>
 								{#if igualQueLaActual}
@@ -522,7 +495,7 @@
 										aria-label={verConfirmacion ? 'Ocultar contraseña' : 'Mostrar contraseña'}
 										onclick={() => (verConfirmacion = !verConfirmacion)}
 									>
-										{#if verConfirmacion}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
+										{#if verConfirmacion}<Eye class="size-4" />{:else}<EyeOff class="size-4" />{/if}
 									</button>
 								</div>
 								{#if confirmacion && nueva !== confirmacion}
@@ -541,16 +514,6 @@
 					{/if}
 				</div>
 
-				{#if guardado}
-					<p
-						class="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700"
-						role="status"
-						data-testid="perfil-guardado"
-					>
-						<Check class="size-3.5" />
-						{guardado}
-					</p>
-				{/if}
 				{#if error}
 					<p class="text-xs text-destructive" data-testid="perfil-error">{error}</p>
 				{/if}

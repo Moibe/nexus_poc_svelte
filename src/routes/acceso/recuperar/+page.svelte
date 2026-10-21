@@ -6,45 +6,34 @@
 	 * que acabaría en el log de accesos y en el historial), el reenvío lo tiene
 	 * a la mano, y recargar devuelve al formulario, que es lo correcto.
 	 *
-	 * ## Lo que esta pantalla NO dice (criterio CA-2)
+	 * ## Lo que esta pantalla decía de la cuenta (criterio CA-2) y ya no
 	 *
-	 * No revela si existe una cuenta con ese correo. Por eso se apartan del
-	 * Figma, a propósito, tres cosas:
+	 * Hasta el 2026-10-20 NO revelaba si existía una cuenta con ese correo, y por eso se apartaba del Figma en tres
+	 * cosas: no dibujaba el error «El correo electrónico no existe…», usaba «Si existe una cuenta…» en vez de «Te
+	 * enviamos un enlace a: X…» y mostraba aparte «Correo indicado: X». QA lo marcó contra el diseño (HU10 CA4 y la
+	 * pantalla «Revisa tu correo») y se volvió al Figma: el servidor contesta `correo_no_existe` cuando el correo no
+	 * tiene cuenta (`RECUPERACION_DICE_SI_EXISTE`, en el back, que se apaga con `=0`) y esta pantalla dibuja el
+	 * error en el campo; a quien sí tiene cuenta le dice «Te enviamos un enlace a: X…». Ese X sale siempre de lo que
+	 * la persona TECLEÓ, nunca de la respuesta del servidor.
 	 *
-	 *   - El estado de error "El correo electrónico no existe; por favor
-	 *     ingresa un correo electrónico válido." NO se dibuja: es exactamente
-	 *     lo que el criterio prohíbe. El campo solo se pinta en rojo para un
-	 *     correo MAL ESCRITO.
-	 *   - "Te enviamos un enlace a: X para restablecer tu contraseña" afirma que
-	 *     se envió, y eso solo es verdad si la cuenta existe. Se usa el texto
-	 *     del criterio ("Si existe una cuenta…") y, aparte, "Correo indicado: X"
-	 *     para que se note un error de dedo.
-	 *   - Ese X sale siempre de lo que la persona TECLEÓ, nunca de la respuesta
-	 *     del servidor.
-	 *
-	 * Otra desviación: el Figma no dibuja confirmación ni límite para
-	 * "Reenviar correo". Aquí avisa y se apaga 60 segundos, que es lo mismo que
-	 * exige el servidor entre dos solicitudes del mismo correo.
+	 * Una desviación que sigue: el Figma no dibuja confirmación ni límite para "Reenviar correo". Aquí avisa y se
+	 * apaga 60 segundos, que es lo mismo que exige el servidor entre dos solicitudes del mismo correo.
 	 */
 	import { onMount } from 'svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Mail from '@lucide/svelte/icons/mail';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	import { validarCorreo } from '$lib/acceso/correo';
+	import CandadoLlaveIlustracion from '$lib/components/icons/CandadoLlaveIlustracion.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
 	/** Debe coincidir con `RECUPERACION_ESPERA_SEG` del back. */
 	const ESPERA_SEGUNDOS = 60;
-	/** El texto del criterio CA-2, por si el servidor no manda el suyo. */
-	const MENSAJE_NEUTRO =
-		'Si existe una cuenta asociada a ese correo electrónico, recibirás un enlace de recuperación en los próximos minutos.';
 
 	let correo = $state('');
 	let paso = $state<'formulario' | 'enviado'>('formulario');
-	/** Lo que se tecleó, ya normalizado: es lo que se enseña en "Correo indicado". */
+	/** Lo que se tecleó, ya normalizado: es lo que se enseña en «Te enviamos un enlace a:». */
 	let correoIndicado = $state('');
-	let mensaje = $state(MENSAJE_NEUTRO);
 	let errorCorreo = $state('');
 	let errorGeneral = $state('');
 	let avisoReenvio = $state('');
@@ -80,12 +69,11 @@
 		}
 		const cuerpo = await r.json().catch(() => null);
 		if (r.ok) {
-			mensaje = cuerpo?.mensaje ?? MENSAJE_NEUTRO;
 			esperaHasta = Date.now() + ESPERA_SEGUNDOS * 1000;
 			ahora = Date.now();
 			return true;
 		}
-		if (cuerpo?.codigo === 'correo_invalido') {
+		if (cuerpo?.codigo === 'correo_invalido' || cuerpo?.codigo === 'correo_no_existe') {
 			errorCorreo = cuerpo.mensaje;
 			paso = 'formulario';
 		} else {
@@ -148,23 +136,26 @@
 	<form class="mt-10 flex flex-col gap-4" onsubmit={enviar} novalidate>
 		<div class="flex flex-col gap-1.5">
 			<label for="correo-recuperacion" class="text-xs font-medium text-foreground">Correo electrónico</label>
-			<input
-				id="correo-recuperacion"
-				type="email"
-				autocomplete="username"
-				placeholder="Ingresa tu correo electrónico"
-				bind:value={correo}
-				onblur={() => (correoTocado = true)}
-				oninput={() => (errorCorreo = errorGeneral = '')}
-				aria-invalid={mensajeCorreo ? 'true' : undefined}
-				data-testid="correo-recuperacion"
-				class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
-			/>
+			<div class="relative">
+				<input
+					id="correo-recuperacion"
+					type="email"
+					autocomplete="username"
+					placeholder="Ingresa tu correo electrónico"
+					bind:value={correo}
+					onblur={() => (correoTocado = true)}
+					oninput={() => (errorCorreo = errorGeneral = '')}
+					aria-invalid={mensajeCorreo ? 'true' : undefined}
+					data-testid="correo-recuperacion"
+					class="h-10 w-full rounded-lg border border-input bg-card pr-10 pl-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
+				/>
+				{#if mensajeCorreo}
+					<!-- El triángulo rojo dentro del campo es del Figma («Recuperar contraseña 3»). -->
+					<TriangleAlert class="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive" aria-hidden="true" />
+				{/if}
+			</div>
 			{#if mensajeCorreo}
-				<p class="flex items-start gap-1 text-xs text-destructive" data-testid="error-correo">
-					<TriangleAlert class="mt-0.5 size-3 shrink-0" />
-					{mensajeCorreo}
-				</p>
+				<p class="text-xs text-destructive" data-testid="error-correo">{mensajeCorreo}</p>
 			{/if}
 		</div>
 
@@ -178,23 +169,21 @@
 	</form>
 {:else}
 	<div class="flex flex-col items-center text-center">
-		<span class="flex size-28 items-center justify-center rounded-full bg-primary/10 text-primary">
-			<Mail class="size-12" />
-		</span>
-		<h1 class="mt-8 text-2xl leading-snug font-semibold text-foreground" data-testid="revisa-titulo">
+		<CandadoLlaveIlustracion class="size-40" />
+		<h1 class="mt-8 text-[28px] leading-snug font-semibold text-foreground" data-testid="revisa-titulo">
 			Revisa tu correo
 		</h1>
-		<p class="mt-4 text-sm text-muted-foreground" data-testid="mensaje-neutro">{mensaje}</p>
-		<p class="mt-2 text-sm text-muted-foreground">Revisa tu bandeja de entrada y sigue las instrucciones para continuar.</p>
-		<p class="mt-4 text-xs text-muted-foreground" data-testid="correo-indicado">
-			Correo indicado: <span class="font-semibold text-foreground">{correoIndicado}</span>
+		<!-- Literal del Figma. El correo es el que la persona tecleó, en negritas. -->
+		<p class="mt-4 text-sm leading-relaxed text-muted-foreground" data-testid="mensaje-enviado">
+			Te enviamos un enlace a: <strong class="font-semibold text-foreground" data-testid="correo-indicado">{correoIndicado}</strong>
+			para restablecer tu contraseña. Revisa tu bandeja de entrada y sigue las instrucciones para continuar.
 		</p>
 
-		<p class="mt-8 text-xs text-muted-foreground">
+		<p class="mt-6 text-sm text-foreground">
 			¿No recibiste el correo?
 			<button
 				type="button"
-				class="font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-60 disabled:no-underline"
+				class="font-medium text-primary underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:no-underline"
 				disabled={enviando || restante > 0}
 				onclick={reenviar}
 				data-testid="reenviar-correo"
