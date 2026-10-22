@@ -101,8 +101,8 @@
 	const enBandeja = $derived(documentosEnBandeja.filter((d) => d.seleccionado));
 
 	// "Iniciar pipeline" solo aparece si hay algo seleccionado que de verdad se
-	// pueda mandar. Un archivo protegido o corrupto es seleccionable pero no es
-	// procesable, y ofrecer el botón para que luego no pase nada es peor que no
+	// pueda mandar. Un archivo protegido, corrupto o en blanco es seleccionable
+	// pero no es procesable, y ofrecer el botón para que luego no pase nada es peor que no
 	// ofrecerlo.
 	const procesables = $derived(enBandeja.filter(sePuedeProcesar));
 

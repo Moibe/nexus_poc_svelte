@@ -15,15 +15,16 @@
 
 	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 
-	// Los tres estados problemáticos se muestran igual: texto rojo bajo los
+	// Los estados problemáticos se muestran igual: texto rojo bajo los
 	// metadatos, sin fondo ni punto de color. Así están en Figma (el token
 	// --error/error-2), donde la tarjeta se queda blanca y solo cambia el texto.
 	const problema = $derived(
 		{
 			duplicado: 'Documento duplicado',
 			protegido: 'Documento protegido mediante contraseña',
-			corrupto: 'Archivo corrupto o ilegible'
-		}[documento.estado as 'duplicado' | 'protegido' | 'corrupto']
+			corrupto: 'Archivo corrupto o ilegible',
+			sin_contenido: 'Documento sin contenido procesable'
+		}[documento.estado as 'duplicado' | 'protegido' | 'corrupto' | 'sin_contenido']
 	);
 </script>
 
@@ -91,7 +92,7 @@
 				{documento.extension} · {formatearTamano(documento.tamanioBytes)} · {formatearFecha(documento.agregadoEn)}
 			</p>
 			{#if problema}
-				<p class="mt-0.5 text-xs text-red-500">{problema}</p>
+				<p class="mt-0.5 text-xs text-red-500" data-testid="problema-documento">{problema}</p>
 			{:else if documento.estado === 'listo'}
 				<!-- «● Listo», como el Figma: el punto verde y la palabra. Los estados con problema ya dicen lo suyo en rojo. -->
 				<p class="mt-0.5 flex items-center gap-1.5 text-xs text-green-600" data-testid="estado-listo">

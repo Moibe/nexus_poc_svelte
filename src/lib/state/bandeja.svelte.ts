@@ -22,6 +22,7 @@
 import { sha256 } from 'js-sha256';
 
 import { detectarProblema } from '$lib/documentos/validar';
+import { sinContenidoProcesable } from '$lib/documentos/sinContenido';
 import {
 	ETIQUETA_BANDEJA,
 	anotarEstado,
@@ -39,7 +40,7 @@ export type DocumentoEnBandeja = {
 	 *  con el que se retira de la bandeja al procesarla o descartarla. */
 	idEntrada?: string;
 	agregadoEn: Date;
-	estado: 'en_cola' | 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto';
+	estado: 'en_cola' | 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto' | 'sin_contenido';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
 	hashSha256: string | null; // null mientras estado === 'subiendo'
 	seleccionado: boolean;
@@ -218,15 +219,41 @@ async function drenarCola() {
  */
 const huellasProcesadas = new Set<string>();
 
+/**
+ * Un archivo que se quiso cargar y NO entró a la lista de pendientes, con la razón en palabras (2026-10-21, incidencia de QA en
+ * HU 21 CA 1). Hasta entonces un PDF de más de 20 MB —o un formato que no se admite— se descartaba EN SILENCIO: la persona
+ * soltaba el archivo y no pasaba nada, ni una fila ni un aviso, y pensaba que la página se había colgado.
+ */
+export type ArchivoRechazado = { nombre: string; motivo: string };
+
+/** Los rechazos de la ÚLTIMA carga que se intentó. Cada carga nueva reemplaza a la anterior (un aviso viejo no tiene por qué
+ *  acompañar a una selección que ya salió bien), y se limpia al cancelar o al subir. Lo muestra `CargaDocumentalPanel`. */
+export const archivosRechazados = $state<ArchivoRechazado[]>([]);
+
+export function limpiarArchivosRechazados() {
+	archivosRechazados.splice(0, archivosRechazados.length);
+}
+
 /** Valida y encola archivos en el primer panel ("Carga documental") como
  *  pendientes de carga. NO toca `documentosEnBandeja` ni la cola de lectura
  *  todavía — eso solo pasa cuando el usuario confirma con
- *  `confirmarCargaPendiente` (botón "Subir documentos"). */
+ *  `confirmarCargaPendiente` (botón "Subir documentos").
+ *
+ *  Lo que no cumple (formato o tamaño) no entra, pero se dice: queda en
+ *  `archivosRechazados`. Los válidos del mismo lote SÍ entran: un PDF demasiado
+ *  pesado no tiene por qué tirar con él a los otros nueve que venían bien. */
 export function agregarArchivosPendientes(files: FileList) {
+	limpiarArchivosRechazados();
 	for (const file of Array.from(files)) {
 		const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-		if (!EXTENSIONES_PERMITIDAS.includes(extension)) continue;
-		if (file.size > TAMANO_MAXIMO_BYTES) continue;
+		if (!EXTENSIONES_PERMITIDAS.includes(extension)) {
+			archivosRechazados.push({ nombre: file.name, motivo: 'formato no permitido' });
+			continue;
+		}
+		if (file.size > TAMANO_MAXIMO_BYTES) {
+			archivosRechazados.push({ nombre: file.name, motivo: 'archivo demasiado grande (máximo 20 MB)' });
+			continue;
+		}
 
 		archivosPendientesDeCarga.push({
 			id: generarId(),
@@ -263,6 +290,7 @@ export function quitarArchivoPendiente(id: string) {
  *  verdad ya usado en este proyecto). */
 export function cancelarCargaPendiente() {
 	archivosPendientesDeCarga.splice(0, archivosPendientesDeCarga.length);
+	limpiarArchivosRechazados();
 }
 
 /** "Subir documentos": mueve a la bandeja de preparación SOLO los pendientes
@@ -271,6 +299,7 @@ export function cancelarCargaPendiente() {
  *  Los que se queden SIN marcar no se pierden: siguen esperando en la lista
  *  de pendientes para una próxima confirmación. */
 export function confirmarCargaPendiente() {
+	limpiarArchivosRechazados();
 	const seleccionados = archivosPendientesDeCarga.filter((a) => a.seleccionado);
 	for (const pendiente of seleccionados) {
 		const { id, archivo } = pendiente;
@@ -358,6 +387,9 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 
 	const hash = calcularHash(buffer);
 	const problema = detectarProblema(new Uint8Array(buffer), extension);
+	// Solo se mira si hay algo que leer cuando el archivo SÍ se puede abrir: uno
+	// corrupto o con contraseña ya tiene su propio aviso, y pdf.js no podría con él.
+	const sinContenido = problema ? false : await sinContenidoProcesable(file, buffer, extension);
 
 	const doc = documentosEnBandeja.find((d) => d.id === id);
 	if (!doc) return; // lo quitaron (botón "quitar") mientras se procesaba
@@ -367,9 +399,14 @@ async function procesarArchivo(id: string, file: File, extension: string) {
 
 	// Prioridad: un archivo que no se puede abrir (corrupto o con contraseña) no
 	// va a poder procesarse aunque además sea duplicado, así que ese problema
-	// manda sobre la marca de duplicado.
+	// manda sobre la marca de duplicado. Lo mismo uno en blanco: mandarlo a
+	// procesar es pagar la página para no encontrar nada, repetido o no.
 	if (problema) {
 		pasarA(doc, problema);
+		return;
+	}
+	if (sinContenido) {
+		pasarA(doc, 'sin_contenido');
 		return;
 	}
 
