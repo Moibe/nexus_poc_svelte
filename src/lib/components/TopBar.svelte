@@ -59,6 +59,7 @@
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -119,6 +120,8 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
+		// Pantalla en blanco (2026-10-24): el expediente es una entidad nueva en el back (`/expedientes`) y la pantalla se arma después.
+		{ etiqueta: 'Expediente', icono: FolderOpen, alSeleccionar: () => goto('/expediente') },
 		{
 			etiqueta: 'Modulo de configuración',
 			icono: SlidersHorizontal,
