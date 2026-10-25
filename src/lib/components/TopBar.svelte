@@ -120,7 +120,7 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
-		// Pantalla en blanco (2026-10-24): el expediente es una entidad nueva en el back (`/expedientes`) y la pantalla se arma después.
+		// Expediente (2026-10-24): hoy solo el alta de TIPOS de expediente; el resto de la sección se arma después.
 		{ etiqueta: 'Expediente', icono: FolderOpen, alSeleccionar: () => goto('/expediente') },
 		{
 			etiqueta: 'Modulo de configuración',
