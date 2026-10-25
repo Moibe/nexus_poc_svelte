@@ -171,7 +171,7 @@
 	const revisados = $derived(filas.filter((f) => f.veredicto !== null).length);
 	/** Cuántos de los campos calificados quedaron "Correcto". Junto con
 	 *  `filas.length` es lo que arma el puntaje del prompt (correctos/total) —
-	 *  ese cálculo vive en `ConfigSheet`, no aquí, porque solo `ConfigSheet`
+	 *  ese cálculo vive en `ModuloConfiguracion`, no aquí, porque solo `ModuloConfiguracion`
 	 *  sabe a qué prompt pertenece este resultado (`RevisionPrompt` no conoce
 	 *  su propio número más que para el título). */
 	const correctos = $derived(filas.filter((f) => f.veredicto === 'correcto').length);

@@ -361,7 +361,7 @@ function leer(): BorradorTipoDocumental | null {
 			// consecuencias reales:
 			//
 			// 1. Un borrador viejo no trae la propiedad y caía en 1. Como el
-			//    $effect de ConfigSheet sincroniza el borrador hacia la biblioteca
+			//    $effect del módulo de configuración sincroniza el borrador hacia la biblioteca
 			//    AL MONTAR —sin que el usuario toque nada— ese 1 se escribía encima
 			//    del valor que `leerPasoMaximo` acababa de inferir para el tipo
 			//    guardado. La migración se anulaba sola, y peor: dejaba el 1
@@ -596,7 +596,7 @@ export function paginaDeRecorte(r: Pick<Recorte, 'pagina'>): number {
  *
  * Se sube desde `CargarDocumentoEjemplo.svelte`; cada campo dibuja su
  * recorte sobre la instancia que esté SELECCIONADA en ese momento en
- * Calibración (`ConfigSheet.svelte` guarda cuál con `documentoSeleccionadoId`,
+ * Calibración (`ModuloConfiguracion.svelte` guarda cuál con `documentoSeleccionadoId`,
  * un estado de pantalla, no de este módulo). Varias instancias es más fiel
  * además a cómo se etiqueta en Document AI: varios documentos de ejemplo en
  * el Dataset, cada uno con sus propias anotaciones.
@@ -1769,7 +1769,7 @@ export async function activarTipoDocumental(
  * campo, no solo el mapeo.
  *
  * Detrás de "Crear nueva versión" del menú desde el 2026-09-02 (se llama
- * desde `ConfigSheet.svelte`). Se había construido antes, con tarjeta y
+ * desde `ModuloConfiguracion.svelte`). Se había construido antes, con tarjeta y
  * menú, y se retiró el mismo día (2026-09-01) a pedido explícito porque no
  * había edición real que ofrecer; ahora sí la hay: el wizard vuelve a
  * abrirse, y al publicar (`activarTipoDocumental`) el back crea un
@@ -1912,7 +1912,7 @@ export async function archivarTipoDocumental(
  *
  * Devuelve el id de la instancia recién creada (o `null` si el tipo no
  * existe) para que quien llama pueda seleccionarla de inmediato — es lo que
- * hace `ConfigSheet.svelte` para dejar la instancia recién subida lista para
+ * hace `ModuloConfiguracion.svelte` para dejar la instancia recién subida lista para
  * recortar sin un paso extra de "selecciónala tú".
  */
 export function agregarDocumentoEjemplo(
@@ -2119,7 +2119,7 @@ export function etiquetaVertical(valor: string): string | undefined {
  * Paleta de colores para marcar, en pantalla, el recorte de CADA campo con un
  * color distinto — usada en dos lugares que antes no compartían nada
  * (`RecortarEjemploCampo.svelte`, para los recortes de los "otros" campos
- * mientras se edita uno; y `ConfigSheet.svelte`, para "ver el documento
+ * mientras se edita uno; y `ModuloConfiguracion.svelte`, para "ver el documento
  * completo con sus recortes"). Vive aquí, no en ninguno de los dos
  * componentes, para que un mismo campo se pinte del MISMO color en ambas
  * vistas. Ninguno es azul: ese es el color del rectángulo ACTIVO en el modal
@@ -2248,16 +2248,17 @@ export function irAPaso(n: number): boolean {
  * parado en un tipo documental nuevo. Hoy lo usa "Configurar" de una fila del
  * Pipeline documental cuyo documento no correspondió a ningún tipo activo.
  *
- * Existe porque las dos piezas no se pueden hablar directo: quién abre el
- * sheet es `TopBar.svelte` (con estado local suyo, `configAbierto`) y quién
- * sabe arrancar un tipo en blanco es `nuevoTipoDocumental()`, una función
- * privada de `ConfigSheet.svelte`. Pasar un callback desde una fila del
- * pipeline hasta allá cruzaría media app; una bandera compartida no.
+ * Existe porque las dos piezas no se pueden hablar directo: quién lleva al
+ * módulo es `TopBar.svelte` y quién sabe arrancar un tipo en blanco es
+ * `nuevoTipoDocumental()`, una función privada de `ModuloConfiguracion.svelte`.
+ * Pasar un callback desde una fila del pipeline hasta allá cruzaría media app;
+ * una bandera compartida no.
  *
- * El handshake es de dos pasos a propósito: `TopBar` ve la bandera y abre el
- * sheet, y `ConfigSheet` —que solo puede navegar cuando YA está abierto— la
- * consume y la apaga. Por eso la apaga el segundo y no el primero: apagarla
- * al abrir dejaría a `ConfigSheet` sin señal que leer.
+ * El handshake es de dos pasos a propósito: `TopBar` ve la bandera y navega a
+ * `/configuracion/tipos-documentales`, y `ModuloConfiguracion` —que solo puede
+ * navegar dentro de sí mismo una vez montado— la consume y la apaga. Por eso la
+ * apaga el segundo y no el primero: apagarla antes lo dejaría sin señal que leer.
+ * (Mientras el módulo fue un panel, el primer paso era abrirlo en vez de navegar.)
  */
 export const pedidoDeConfiguracion = $state({ nuevoTipo: false });
 

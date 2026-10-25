@@ -2,7 +2,7 @@
 	/**
 	 * La miniatura de un recorte GUARDADO (el «Texto seleccionado» de Calibración): el pedazo del documento que se marcó.
 	 *
-	 * Antes `ConfigSheet` le daba a `RecorteDeDocumento` la imagen del documento —la página 1— y listo. Un recorte hecho en la
+	 * Antes `ModuloConfiguracion` le daba a `RecorteDeDocumento` la imagen del documento —la página 1— y listo. Un recorte hecho en la
 	 * página 9 de un PDF tiene que cortarse de la página 9, así que aquí se pide la imagen de la página del recorte
 	 * (`usarPaginaDeEjemplo`) y se la pasa. Para un recorte de la página 1, o de una imagen, es la misma URL de siempre y no se
 	 * abre ningún PDF.

@@ -7,7 +7,7 @@
  * servidor responde 403 `sin_permiso` a los demás roles, y aquí se reenvía tal cual. El tenant lo fija el servidor desde la sesión
  * (`tenantDe`), nunca el navegador, y se reenvía el JWT de la persona para que nexus_back lo compruebe (HU11).
  *
- * El listado no pasa por aquí: lo pide el `load` de `/expediente/tipos`, que ya corre en el servidor con las cookies de la persona. Renombrar
+ * El listado no pasa por aquí: lo pide el `load` de `/configuracion/tipos-expediente`, que ya corre en el servidor con las cookies de la persona. Renombrar
  * y borrar un tipo van en `./[id]/+server.ts`.
  */
 

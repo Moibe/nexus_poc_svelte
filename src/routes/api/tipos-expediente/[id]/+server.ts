@@ -10,7 +10,7 @@
  * pantalla las diga con sus palabras: `ya_existe` (409, otro tipo ya se llama así) y `con_expedientes` (409, un tipo con expedientes no se
  * borra). El tenant lo fija el servidor desde la sesión (`tenantDe`), nunca el navegador, y se reenvía el JWT de la persona (HU11).
  *
- * Crear un tipo y listarlos no pasa por aquí: lo primero es `../+server.ts` y lo segundo lo pide el `load` de `/expediente/tipos`.
+ * Crear un tipo y listarlos no pasa por aquí: lo primero es `../+server.ts` y lo segundo lo pide el `load` de `/configuracion/tipos-expediente`.
  */
 
 import { json } from '@sveltejs/kit';

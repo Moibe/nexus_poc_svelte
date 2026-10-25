@@ -1,7 +1,12 @@
 <script lang="ts">
 	/**
-	 * Expediente · Tipos de expediente (2026-10-24). Ver los tipos de expediente de la organización, DAR DE ALTA uno nuevo, EDITARLO (su
-	 * nombre y su esquema) y BORRARLO. Es la primera pestaña de `/expediente`; el encabezado y las pestañas los pone `../+layout.svelte`.
+	 * Configuración · Tipos de expediente (2026-10-24). Ver los tipos de expediente de la organización, DAR DE ALTA uno nuevo,
+	 * EDITARLO (su nombre y su esquema) y BORRARLO.
+	 *
+	 * Vivía en `/expediente/tipos`, como pestaña junto al listado de expedientes; el 2026-10-25 se mudó aquí, a una de las secciones
+	 * del módulo de configuración, porque un tipo es algo que se CONFIGURA una vez y no algo que se trabaja a diario. En
+	 * `/expediente` quedaron los expedientes, sin pestañas. Como ya no hay cáscara que ponga el encabezado, la migaja y el título
+	 * los pone esta pantalla.
 	 *
 	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque»); cada
 	 * expediente es una instancia de un tipo, con los documentos de UN caso (un paciente, un choque). Un tipo tiene VARIOS tipos
@@ -107,10 +112,17 @@
 
 <svelte:head><title>NexusDoc AI — Tipos de expediente</title></svelte:head>
 
-<p class="max-w-3xl text-sm text-muted-foreground">
-	Un tipo de expediente es la plantilla de la que salen tus expedientes, por ejemplo «Expediente médico» o «Expediente de un choque». Cada
-	expediente es una instancia de un tipo y guarda los documentos de un caso: de un paciente, de un choque.
+<p class="text-xs text-muted-foreground">
+	<a href="/configuracion" class="transition-colors hover:text-foreground" data-testid="volver-a-configuracion">Configuración</a> / Tipos de
+	expediente
 </p>
+<div class="mt-2">
+	<h1 class="text-2xl font-semibold text-foreground">Tipos de expediente</h1>
+	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
+		Un tipo de expediente es la plantilla de la que salen tus expedientes, por ejemplo «Expediente médico» o «Expediente de un
+		choque». Cada expediente es una instancia de un tipo y guarda los documentos de un caso: de un paciente, de un choque.
+	</p>
+</div>
 
 <!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se monta junto con
      su texto no se anuncia. Vacío no mide nada; el margen va dentro del `if` por lo mismo. -->

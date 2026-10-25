@@ -54,7 +54,6 @@
 		window.location.assign('/acceso/iniciar-sesion');
 	}
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import ConfigSheet from '$lib/components/config/ConfigSheet.svelte';
 	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
@@ -66,21 +65,19 @@
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import Webhook from '@lucide/svelte/icons/webhook';
 
-	// El sheet se monta aquí junto al menú que lo abre; se renderiza en un portal
-	// sobre todo el documento, así que no importa que viva dentro del header.
-	let configAbierto = $state(false);
-
-	/** El modal de "Configuración de API Key", hermano del anterior. */
+	/** El modal de "Configuración de API Key". */
 	let apiKeyAbierto = $state(false);
 
-	/** El modal de "Configuración de webhook", hermano de los dos anteriores. */
+	/** El modal de "Configuración de webhook", hermano del anterior. */
 	let webhooksAbierto = $state(false);
 
-	// Algo fuera del header puede pedir que se abra (hoy: "Configurar" en una
-	// fila del Pipeline documental). Aquí SOLO se abre; la bandera la apaga
-	// ConfigSheet cuando ya navegó — ver `pedidoDeConfiguracion`.
+	// Algo fuera del header puede pedir entrar directo a dar de alta un tipo
+	// documental (hoy nadie lo usa; lo usaba "Configurar" en una fila del
+	// Pipeline documental). Hasta el 2026-10-25 el módulo era un panel que se
+	// abría desde aquí; ahora es una página, así que lo único que hace falta es
+	// navegar: la bandera la lee y la apaga el propio módulo al montarse.
 	$effect(() => {
-		if (pedidoDeConfiguracion.nuevoTipo) configAbierto = true;
+		if (pedidoDeConfiguracion.nuevoTipo) goto('/configuracion/tipos-documentales');
 	});
 
 	// "Organizaciones" (HU02) solo para el administrador de plataforma: es quien
@@ -120,12 +117,15 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
-		// Expediente (2026-10-24): hoy solo el alta de TIPOS de expediente; el resto de la sección se arma después.
+		// Expediente (2026-10-24): los expedientes de la organización. Los TIPOS de expediente se configuran, así que desde el
+		// 2026-10-25 viven en el módulo de configuración y ya no cuelgan de aquí.
 		{ etiqueta: 'Expediente', icono: FolderOpen, alSeleccionar: () => goto('/expediente') },
+		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
+		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
 			etiqueta: 'Modulo de configuración',
 			icono: SlidersHorizontal,
-			alSeleccionar: () => (configAbierto = true)
+			alSeleccionar: () => goto('/configuracion')
 		},
 		{ etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
 		{ etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
@@ -298,6 +298,5 @@
 </header>
 
 <PerfilSheet bind:open={perfilAbierto} rolVisible={etiquetaDeRol} />
-<ConfigSheet bind:open={configAbierto} />
 <ApiKeySheet bind:open={apiKeyAbierto} />
 <WebhookSheet bind:open={webhooksAbierto} />

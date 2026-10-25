@@ -1,5 +1,6 @@
 /**
- * Expediente · los TIPOS de expediente de MI organización. La lista la pide el servidor, que es quien tiene el JWT en la cookie.
+ * Configuración · los TIPOS de expediente de MI organización. La lista la pide el servidor, que es quien tiene el JWT en la cookie.
+ * (Vivía en la pestaña de tipos de `/expediente`; el 2026-10-25 se mudó al módulo de configuración.)
  *
  * Todos los roles pueden VER los tipos (quien organiza expedientes necesita elegir uno); crearlos, renombrarlos y borrarlos es de quien
  * administra, y de eso solo decide si se le ofrecen los botones: nexus_back responde 403 igual (`roles.PUEDEN_ADMINISTRAR`, espejo de

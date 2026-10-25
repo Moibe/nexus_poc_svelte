@@ -35,7 +35,7 @@
 		campoNombre?: string | null;
 		/** La instancia de documento YA SUBIDA sobre la que se recorta — un tipo
 		 *  documental puede tener varias (2026-09-04); esta es la que esté
-		 *  SELECCIONADA en Calibración en ese momento (`ConfigSheet.svelte`
+		 *  SELECCIONADA en Calibración en ese momento (`ModuloConfiguracion.svelte`
 		 *  decide cuál). Este modal ya no sube nada, solo recorta sobre lo que
 		 *  traiga. `null` no debería pasar en la práctica: el botón que abre
 		 *  este modal viene deshabilitado sin ninguna instancia seleccionada. */

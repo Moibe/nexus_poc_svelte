@@ -49,7 +49,7 @@
 	/** Copiar, en tres escalones.
 	 *
 	 *  El repo tiene una regla escrita de NO poner botones de copiar (VistaJson,
-	 *  el ID del procesador en ConfigSheet, docs/pendientes-ux.md) porque
+	 *  el ID del procesador en el módulo de configuración, docs/pendientes-ux.md) porque
 	 *  `navigator.clipboard` es API de contexto seguro y el server de CSI sirve por
 	 *  HTTP plano, donde no existe. Aquí el botón SÍ va, y es la excepción: en las
 	 *  otras pantallas copiar es comodidad y el texto seleccionable alcanza; en
@@ -172,7 +172,7 @@
 <!-- El contenedor con `aria-live` va SIEMPRE montado, aunque esté
      vacío: una región que se monta junto con su texto no se anuncia
      —el lector tiene que estar observándola de antes—. Misma razón
-     que el aviso de éxito de ConfigSheet. Vacío no mide nada. -->
+     que el aviso de éxito del módulo de configuración. Vacío no mide nada. -->
 <div
 	role="status"
 	aria-live="polite"
