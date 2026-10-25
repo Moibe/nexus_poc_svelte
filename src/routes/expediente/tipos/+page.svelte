@@ -1,14 +1,15 @@
 <script lang="ts">
 	/**
-	 * Expediente · Tipos de expediente (2026-10-24). Ver los tipos de expediente de la organización, DAR DE ALTA uno nuevo, EDITARLE el nombre
-	 * y BORRARLO. Es la primera pestaña de `/expediente`; el encabezado y las pestañas los pone `../+layout.svelte`.
+	 * Expediente · Tipos de expediente (2026-10-24). Ver los tipos de expediente de la organización, DAR DE ALTA uno nuevo, EDITARLO (su
+	 * nombre y su esquema) y BORRARLO. Es la primera pestaña de `/expediente`; el encabezado y las pestañas los pone `../+layout.svelte`.
 	 *
 	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque»); cada
 	 * expediente es una instancia de un tipo, con los documentos de UN caso (un paciente, un choque). Un tipo tiene VARIOS tipos
-	 * documentales y ese conjunto es su esquema: se define AL CREARLO (el modal exige al menos uno) y la tabla lo muestra. Cambiar el
-	 * esquema de un tipo ya creado todavía no está en pantalla.
+	 * documentales y ese conjunto es su esquema: se define AL CREARLO (el modal exige al menos uno), la tabla lo muestra y se puede
+	 * cambiar después (un esquema nunca se deja vacío).
 	 *
-	 * **Editar** abre el mismo modal del alta con el nombre actual. Los expedientes del tipo ven el nombre nuevo sin tocarlos.
+	 * **Editar** abre el mismo modal del alta con el nombre y el esquema actuales. Los expedientes del tipo ven el nombre nuevo sin
+	 * tocarlos, y cambiar el esquema no toca sus documentos. El aviso verde dice lo que de verdad cambió.
 	 * **Borrar** pide confirmación con el diálogo de la casa (`ConfirmarAccion`, nunca el `confirm()` del navegador). Un tipo CON expedientes
 	 * no se puede borrar —todo expediente es instancia de un tipo—: el botón no se apaga (apagado no explicaría nada), abre un aviso que lo
 	 * dice con cuántos tiene. Nexus_back lo vuelve a comprobar al borrar y, si en el ínterin alguien creó un expediente de ese tipo, el
@@ -34,7 +35,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import { fechaCorta } from '$lib/expedientes/expedientes';
-	import type { TipoDeExpediente } from '$lib/expedientes/tipos';
+	import { avisoDeEdicionDeTipo, type TipoDeExpediente } from '$lib/expedientes/tipos';
 
 	let { data } = $props();
 
@@ -47,7 +48,7 @@
 
 	let altaAbierta = $state(false);
 	let edicionAbierta = $state(false);
-	/** El tipo al que se le edita el nombre: el modal de edición lo recibe, y el aviso verde lo usa para decir cómo se llamaba. */
+	/** El tipo que se edita: el modal de edición lo recibe (con su nombre y su esquema), y el aviso verde lo usa para decir cómo se llamaba. */
 	let aEditar = $state<TipoDeExpediente | null>(null);
 	/** El tipo que se está por borrar (la confirmación abierta). */
 	let aBorrar = $state<TipoDeExpediente | null>(null);
@@ -219,7 +220,7 @@
 											variant="ghost"
 											size="icon-sm"
 											aria-label={`Editar «${tipo.nombre}»`}
-											title="Editar nombre"
+											title="Editar"
 											data-testid="editar-tipo-expediente"
 											onclick={() => abrirEdicion(tipo)}
 										>
@@ -265,15 +266,11 @@
 <TipoExpedienteModal
 	bind:open={edicionAbierta}
 	tipo={aEditar}
-	alRenombrar={async (nombre, cambiado) => {
-		// Si el nombre, ya limpio, era el mismo, no cambió nada y no hay de qué avisar.
-		if (cambiado) {
-			aviso = {
-				testid: 'tipo-expediente-renombrado-aviso',
-				titulo: 'Tipo de expediente actualizado',
-				cuerpo: `«${aEditar?.nombre ?? ''}» ahora se llama «${nombre}».`
-			};
-		}
+	tiposDocumentales={data.tiposDocumentales}
+	tiposDocumentalesFallo={data.tiposDocumentalesFallo}
+	alEditar={async (resultado) => {
+		// El tipo YA está guardado: el aviso se pone antes de recargar. Si nada cambió de verdad no hay de qué avisar (y `aviso` ya venía apagado).
+		aviso = avisoDeEdicionDeTipo(aEditar?.nombre ?? '', resultado);
 		await invalidateAll();
 	}}
 />

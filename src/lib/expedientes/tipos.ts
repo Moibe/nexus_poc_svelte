@@ -3,8 +3,8 @@
  * «Expediente médico» o «Expediente de un choque». Cada expediente es una instancia de un tipo (la carpeta de UN paciente, de UN
  * choque, con sus documentos). Aquí solo viven los campos que la pantalla usa.
  *
- * El esquema del tipo son los tipos documentales que lo describen (varios; ese conjunto ES el esquema). Se define al crear el tipo y
- * describe, no restringe: los expedientes del tipo reciben cualquier archivo.
+ * El esquema del tipo son los tipos documentales que lo describen (varios; ese conjunto ES el esquema). Se define al crear el tipo, se
+ * puede cambiar después y describe, no restringe: los expedientes del tipo reciben cualquier archivo.
  */
 export type TipoDeExpediente = {
 	id: string;
@@ -25,6 +25,43 @@ export type TipoDocumentalOpcion = {
 	/** Un `archivado` no se ofrece (la biblioteca tampoco lo muestra); un `borrador` sí, con su etiqueta. */
 	estado: 'borrador' | 'activo';
 };
+
+/** Lo que dice nexus_back al editar un tipo (`PATCH /tipos-expediente/{id}`), para que la pantalla avise de lo que SÍ cambió. */
+export type ResultadoEdicionTipo = {
+	/** El nombre con que quedó guardado el tipo. */
+	nombre: string;
+	/** El nombre cambió de verdad (no, si ya limpio era el mismo). */
+	nombreCambiado: boolean;
+	/** El esquema cambió de verdad (no, si era la misma lista en el mismo orden). */
+	esquemaCambiado: boolean;
+	/** Cuántos tipos documentales tiene el esquema que quedó. */
+	totalTiposDocumentales: number;
+};
+
+/** `1 tipo documental`, `3 tipos documentales`. */
+export function tiposDocumentalesEnTexto(total: number): string {
+	return `${total} ${total === 1 ? 'tipo documental' : 'tipos documentales'}`;
+}
+
+/**
+ * El aviso verde de una edición que salió bien, diciendo lo que SÍ cambió (el nombre, el esquema o los dos), o `null` si nada cambió de
+ * verdad: no hay de qué avisar. `nombreAnterior` es como se llamaba el tipo antes. El `testid` del aviso de un cambio de nombre (solo o
+ * junto con el esquema) es el de siempre; el de un cambio solo del esquema es otro.
+ */
+export function avisoDeEdicionDeTipo(nombreAnterior: string, r: ResultadoEdicionTipo): { testid: string; titulo: string; cuerpo: string } | null {
+	if (!r.nombreCambiado && !r.esquemaCambiado) return null;
+	const esquema = tiposDocumentalesEnTexto(r.totalTiposDocumentales);
+	const cuerpo = !r.esquemaCambiado
+		? `«${nombreAnterior}» ahora se llama «${r.nombre}».`
+		: !r.nombreCambiado
+			? `El esquema de «${r.nombre}» ahora tiene ${esquema}.`
+			: `«${nombreAnterior}» ahora se llama «${r.nombre}» y su esquema tiene ${esquema}.`;
+	return {
+		testid: r.nombreCambiado ? 'tipo-expediente-renombrado-aviso' : 'tipo-expediente-esquema-aviso',
+		titulo: 'Tipo de expediente actualizado',
+		cuerpo
+	};
+}
 
 /** El tope del nombre: el mismo que impone nexus_back (`servicios/tipos_expediente.py`). */
 export const MAX_NOMBRE_TIPO = 200;
