@@ -92,7 +92,7 @@
 				</span>
 				<span class="min-w-0 flex-1">
 					<span class="block text-lg font-medium text-secondary-foreground">Nuevo tipo de expediente</span>
-					<span class="mt-3 block text-sm text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico».</span>
+					<span class="mt-3 block text-sm text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico», y elige sus tipos documentales.</span>
 				</span>
 			</button>
 		{:else}
@@ -205,6 +205,8 @@
 
 <TipoExpedienteModal
 	bind:open={tipoAbierto}
+	tiposDocumentales={data.tiposDocumentales}
+	tiposDocumentalesFallo={data.tiposDocumentalesFallo}
 	alCrear={async (nombre) => {
 		aviso = {
 			testid: 'tipo-expediente-creado-aviso',

@@ -4,8 +4,9 @@
 	 * y BORRARLO. Es la primera pestaña de `/expediente`; el encabezado y las pestañas los pone `../+layout.svelte`.
 	 *
 	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque»); cada
-	 * expediente es una instancia de un tipo, con los documentos de UN caso (un paciente, un choque). Asignar tipos documentales al
-	 * esquema de un tipo: todavía no está en pantalla.
+	 * expediente es una instancia de un tipo, con los documentos de UN caso (un paciente, un choque). Un tipo tiene VARIOS tipos
+	 * documentales y ese conjunto es su esquema: se define AL CREARLO (el modal exige al menos uno) y la tabla lo muestra. Cambiar el
+	 * esquema de un tipo ya creado todavía no está en pantalla.
 	 *
 	 * **Editar** abre el mismo modal del alta con el nombre actual. Los expedientes del tipo ven el nombre nuevo sin tocarlos.
 	 * **Borrar** pide confirmación con el diálogo de la casa (`ConfirmarAccion`, nunca el `confirm()` del navegador). Un tipo CON expedientes
@@ -38,6 +39,11 @@
 	let { data } = $props();
 
 	const tipos = $derived(data.tipos);
+
+	/** Cuántos tipos documentales del esquema se nombran en la fila; el resto se cuenta («+2») y se lee completo al pasar el cursor. */
+	const MAX_VISIBLES = 3;
+	/** Un tipo documental que ya se borró de la biblioteca sigue en el esquema como un id sin nombre. */
+	const SIN_NOMBRE = 'Tipo documental eliminado';
 
 	let altaAbierta = $state(false);
 	let edicionAbierta = $state(false);
@@ -135,7 +141,7 @@
 				<span class="mt-0.5 shrink-0 text-primary"><FolderPlus class="size-5" /></span>
 				<span class="min-w-0 flex-1">
 					<span class="block text-sm font-medium text-foreground">Nuevo tipo de expediente</span>
-					<span class="block text-xs text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico».</span>
+					<span class="block text-xs text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico», y elige sus tipos documentales.</span>
 				</span>
 			</button>
 		{:else}
@@ -169,6 +175,7 @@
 				<thead>
 					<tr class="border-y border-border text-xs text-muted-foreground">
 						<th class="py-2.5 pr-4 pl-2 font-normal">Tipo de expediente</th>
+						<th class="py-2.5 pr-4 font-normal">Tipos documentales</th>
 						<th class="py-2.5 pr-4 font-normal">Expedientes</th>
 						<th class="py-2.5 pr-2 font-normal">Fecha de creación</th>
 						{#if data.puedeAdministrar}
@@ -181,6 +188,27 @@
 						<tr class="border-b border-border last:border-0" data-tipo-id={tipo.id}>
 							<td class="min-w-0 py-3 pr-4 pl-2">
 								<p class="truncate font-medium text-foreground" data-testid="tipo-expediente-nombre">{tipo.nombre}</p>
+							</td>
+							<td class="py-3 pr-4" data-testid="tipo-expediente-esquema">
+								{#if tipo.tiposDocumentales.length === 0}
+									<span class="text-xs text-muted-foreground">Sin esquema</span>
+								{:else}
+									<div class="flex flex-wrap items-center gap-1" title={tipo.tiposDocumentales.map((t) => t.nombre ?? SIN_NOMBRE).join(', ')}>
+										{#each tipo.tiposDocumentales.slice(0, MAX_VISIBLES) as td (td.id)}
+											<span
+												class="max-w-40 truncate rounded-sm border border-border bg-secondary px-2 py-0.5 text-xs text-foreground"
+												data-testid="tipo-expediente-esquema-item"
+											>
+												{td.nombre ?? SIN_NOMBRE}
+											</span>
+										{/each}
+										{#if tipo.tiposDocumentales.length > MAX_VISIBLES}
+											<span class="text-xs text-muted-foreground" data-testid="tipo-expediente-esquema-mas">
+												+{tipo.tiposDocumentales.length - MAX_VISIBLES}
+											</span>
+										{/if}
+									</div>
+								{/if}
 							</td>
 							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">{tipo.totalExpedientes}</td>
 							<td class="py-3 pr-2 text-xs text-muted-foreground">{fechaCorta(tipo.creadoEn)}</td>
@@ -221,9 +249,15 @@
 
 <TipoExpedienteModal
 	bind:open={altaAbierta}
-	alCrear={async (nombre) => {
+	tiposDocumentales={data.tiposDocumentales}
+	tiposDocumentalesFallo={data.tiposDocumentalesFallo}
+	alCrear={async (nombre, total) => {
 		// El tipo YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		aviso = { testid: 'tipo-expediente-creado-aviso', titulo: 'Tipo de expediente creado', cuerpo: `«${nombre}» quedó registrado en tu organización.` };
+		aviso = {
+			testid: 'tipo-expediente-creado-aviso',
+			titulo: 'Tipo de expediente creado',
+			cuerpo: `«${nombre}» quedó registrado en tu organización, con ${total} ${total === 1 ? 'tipo documental' : 'tipos documentales'} en su esquema.`
+		};
 		await invalidateAll();
 	}}
 />

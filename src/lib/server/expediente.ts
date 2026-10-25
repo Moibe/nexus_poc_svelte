@@ -7,8 +7,9 @@
  * dice con el texto que cada pantalla pase.
  */
 
-import { error, type Cookies } from '@sveltejs/kit';
+import { error, isRedirect, type Cookies } from '@sveltejs/kit';
 
+import { opcionesDeTiposDocumentales, type TipoDocumentalOpcion } from '$lib/expedientes/tipos';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion';
 
@@ -30,6 +31,24 @@ export async function leerDeNexus(
 	if (respuesta.status === 404 && noExiste) error(404, noExiste);
 	if (!respuesta.ok) error(respuesta.status, fallo);
 	return cuerpo as Record<string, unknown> | null;
+}
+
+/**
+ * Los tipos documentales de la organización, para elegir cuáles forman el esquema de un tipo de expediente al crearlo. Solo se piden
+ * cuando quien mira puede crear tipos. Si no se pueden leer (el servidor tardó, falló), NO se rompe la pantalla: `fallo` lo dice y el
+ * modal avisa y no deja crear sin esquema. La sesión que se cerró desde otro lado sí manda al inicio de sesión, como en cualquier lectura.
+ */
+export async function tiposDocumentalesParaEsquema(
+	sesion: { cookies: Cookies; url: URL },
+	tenant: string
+): Promise<{ opciones: TipoDocumentalOpcion[]; fallo: boolean }> {
+	try {
+		const cuerpo = await leerDeNexus(`/tipos-documentales/?tenant=${encodeURIComponent(tenant)}`, sesion, 'No se pudieron cargar los tipos documentales.');
+		return { opciones: opcionesDeTiposDocumentales(listaDe<unknown>(cuerpo, 'tipos')), fallo: false };
+	} catch (e) {
+		if (isRedirect(e)) throw e;
+		return { opciones: [], fallo: true };
+	}
 }
 
 /** El código con que nexus_back distingue un error (`detail.codigo`: `ya_existe`, `con_expedientes`, `sin_permiso`…), si lo trae. */
