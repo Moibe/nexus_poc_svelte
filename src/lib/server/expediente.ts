@@ -32,6 +32,12 @@ export async function leerDeNexus(
 	return cuerpo as Record<string, unknown> | null;
 }
 
+/** El código con que nexus_back distingue un error (`detail.codigo`: `ya_existe`, `con_expedientes`, `sin_permiso`…), si lo trae. */
+export function codigoDe(cuerpo: unknown): string | undefined {
+	const detalle = (cuerpo as { detail?: { codigo?: unknown } } | null)?.detail;
+	return typeof detalle?.codigo === 'string' ? detalle.codigo : undefined;
+}
+
 /** La lista que viene bajo `clave` en la respuesta, o vacía si no vino una. */
 export function listaDe<T>(cuerpo: Record<string, unknown> | null, clave: string): T[] {
 	const valor = cuerpo?.[clave];

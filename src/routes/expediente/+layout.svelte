@@ -5,9 +5,13 @@
 	 *
 	 * Sale del encabezado del Figma del Sprint 5 (HUN2): migaja, título «Gestión de…», una línea que dice para qué sirve la pantalla y,
 	 * debajo, las pestañas con la vigente subrayada. Las pestañas del diseño son «Documentos procesados» y «Expedientes»; aquí son
-	 * «Expedientes» y «Tipos de expediente», porque la biblioteca de documentos no es de esta pantalla y el tipo es parte de cómo se
+	 * «Tipos de expediente» y «Expedientes», porque la biblioteca de documentos no es de esta pantalla y el tipo es parte de cómo se
 	 * organizan los expedientes. Las pestañas son enlaces (cada una su ruta) y no un estado: se puede volver con «Atrás», recargar y
 	 * compartir la dirección. El expediente abierto cuelga de «Expedientes», que sigue subrayada, como en el diseño.
+	 *
+	 * El ORDEN de las pestañas es el del trabajo (Moibe, 2026-10-24): primero «Tipos de expediente», porque sin un tipo no se puede crear un
+	 * expediente, y después «Expedientes». Es solo el orden en que se pintan: `/expediente`, a donde lleva el engrane, sigue siendo el listado
+	 * de expedientes (la segunda pestaña), que es lo que se consulta a diario; los tipos se arman una vez.
 	 */
 	import { page } from '$app/state';
 
@@ -16,8 +20,8 @@
 	const enTipos = $derived(page.route.id === '/expediente/tipos');
 
 	const pestanas = $derived([
-		{ nombre: 'Expedientes', href: '/expediente', activa: !enTipos, testid: 'pestana-expedientes' },
-		{ nombre: 'Tipos de expediente', href: '/expediente/tipos', activa: enTipos, testid: 'pestana-tipos-expediente' }
+		{ nombre: 'Tipos de expediente', href: '/expediente/tipos', activa: enTipos, testid: 'pestana-tipos-expediente' },
+		{ nombre: 'Expedientes', href: '/expediente', activa: !enTipos, testid: 'pestana-expedientes' }
 	]);
 </script>
 

@@ -1,19 +1,25 @@
 <script lang="ts">
 	/**
-	 * «Nuevo tipo de expediente» (2026-10-24): el alta de un tipo con SOLO su nombre.
+	 * «Nuevo tipo de expediente» y «Editar tipo de expediente» (2026-10-24): el alta y el cambio de NOMBRE de un tipo, en el mismo modal.
 	 *
 	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque»). Por ahora lo
 	 * único que se pide es el nombre; el esquema (los tipos documentales que lo describen) se agrega después.
 	 *
+	 * Sin `tipo` el modal da de alta uno. Con `tipo` EDITA su nombre: viene con el nombre actual ya seleccionado, «Guardar cambios» solo se
+	 * enciende si el nombre cambió, y los expedientes del tipo ven el nombre nuevo sin tocarlos (guardan el id del tipo). Es el mismo modal
+	 * porque es el mismo campo, la misma validación y el mismo «ya existe»: dos pantallas distintas dirían lo mismo de dos maneras.
+	 *
 	 * Es un modal centrado de 684 px con el molde del «Registro de motivo» (`MotivoModal`): `Dialog` de bits-ui en un portal, cabecera con
-	 * su migaja y la X, título con su ícono, cuerpo con el campo y pie con «Cancelar» y el botón principal. NO salió de un frame de
-	 * Figma: se agotó la cuota de lectura del archivo y el Sprint 5 no se pudo abrir, así que si el diseño trae otra cosa, hay que
-	 * ajustar esto contra él.
+	 * su migaja y la X, título con su ícono, cuerpo con el campo y pie con «Cancelar» y el botón principal. El tipo de expediente NO existe
+	 * en el Figma (se buscó en todo el Sprint 5 el 2026-10-24), así que no hay un diseño propio que copiar.
 	 *
 	 * El nombre es obligatorio y mide como mucho `MAX_NOMBRE_TIPO` caracteres. Nexus_back lo vuelve a comprobar, limpia los espacios de más
-	 * y no deja repetir un nombre dentro de la organización (sin distinguir mayúsculas): ese caso se dice aquí mismo, sin cerrar el modal.
+	 * y no deja repetir un nombre dentro de la organización (sin distinguir mayúsculas; cambiarle solo las mayúsculas al nombre propio sí se
+	 * puede): ese caso se dice aquí mismo, sin cerrar el modal.
 	 */
+	import { tick } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
+	import FolderPen from '@lucide/svelte/icons/folder-pen';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
@@ -22,11 +28,17 @@
 
 	let {
 		open = $bindable(false),
-		alCrear
+		tipo = null,
+		alCrear,
+		alRenombrar
 	}: {
 		open?: boolean;
+		/** Con un tipo, el modal EDITA su nombre; sin él (`null`), da de alta uno nuevo. */
+		tipo?: { id: string; nombre: string } | null;
 		/** El tipo YA se creó y el modal ya se cerró; recibe el nombre con que quedó guardado. */
-		alCrear: (nombre: string) => Promise<void> | void;
+		alCrear?: (nombre: string) => Promise<void> | void;
+		/** El tipo YA se renombró y el modal ya se cerró; recibe el nombre con que quedó y si de verdad cambió (`false` si, ya limpio, era el mismo). */
+		alRenombrar?: (nombre: string, cambiado: boolean) => Promise<void> | void;
 	} = $props();
 
 	let nombre = $state('');
@@ -34,35 +46,50 @@
 	let error = $state('');
 	let campo = $state<HTMLInputElement | null>(null);
 
-	const completo = $derived(nombre.trim().length > 0);
+	const editando = $derived(tipo !== null);
+	// Al editar, dejar el nombre igual no es un cambio: no hay nada que guardar.
+	const completo = $derived(nombre.trim().length > 0 && (tipo === null || nombre.trim() !== tipo.nombre));
 
-	// Cada vez que se abre, el formulario arranca limpio.
+	// Cada vez que se abre, el formulario arranca limpio (o con el nombre actual, al editar).
 	$effect(() => {
 		if (!open) return;
-		nombre = '';
+		nombre = tipo?.nombre ?? '';
 		error = '';
 	});
 
-	async function crear() {
+	async function pedir(): Promise<Response | null> {
+		const cabeceras = { 'Content-Type': 'application/json' };
+		const cuerpo = JSON.stringify({ nombre: nombre.trim() });
+		try {
+			return tipo
+				? await fetch(`/api/tipos-expediente/${encodeURIComponent(tipo.id)}`, { method: 'PATCH', headers: cabeceras, body: cuerpo })
+				: await fetch('/api/tipos-expediente', { method: 'POST', headers: cabeceras, body: cuerpo });
+		} catch {
+			return null;
+		}
+	}
+
+	async function guardar() {
 		if (!completo || enviando) return;
 		enviando = true;
 		error = '';
 		try {
-			const r = await fetch('/api/tipos-expediente', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ nombre: nombre.trim() })
-			});
+			const r = await pedir();
+			if (r === null) {
+				error = 'No se pudo contactar al servidor. Intenta de nuevo.';
+				return;
+			}
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
 				error =
 					datos?.codigo === 'ya_existe'
 						? 'Ya existe un tipo de expediente con ese nombre.'
-						: (datos?.mensaje ?? 'No se pudo crear el tipo de expediente. Intenta de nuevo.');
+						: (datos?.mensaje ?? (editando ? 'No se pudo guardar el cambio. Intenta de nuevo.' : 'No se pudo crear el tipo de expediente. Intenta de nuevo.'));
 				return;
 			}
 			open = false;
-			await alCrear(typeof datos?.nombre === 'string' ? datos.nombre : nombre.trim());
+			if (tipo) await alRenombrar?.(typeof datos?.tipo?.nombre === 'string' ? datos.tipo.nombre : nombre.trim(), datos?.cambiado !== false);
+			else await alCrear?.(typeof datos?.nombre === 'string' ? datos.nombre : nombre.trim());
 		} finally {
 			enviando = false;
 		}
@@ -75,9 +102,13 @@
 		<DialogPrimitive.Content
 			data-testid="modal-tipo-expediente"
 			onOpenAutoFocus={(e) => {
-				// Quien abre el alta quiere escribir: el cursor va al campo y no a la X.
+				// Quien abre el modal quiere escribir: el cursor va al campo y no a la X. Al editar, con el nombre actual seleccionado, para
+				// reemplazarlo de un tirón; el nombre se pone en un efecto, así que se espera a que el campo ya lo tenga.
 				e.preventDefault();
-				campo?.focus();
+				tick().then(() => {
+					campo?.focus();
+					campo?.select();
+				});
 			}}
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
 		>
@@ -98,12 +129,18 @@
 			<!-- header.modal -->
 			<div class="flex h-16 shrink-0 items-center gap-3">
 				<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-					<FolderPlus class="size-4" />
+					{#if editando}
+						<FolderPen class="size-4" />
+					{:else}
+						<FolderPlus class="size-4" />
+					{/if}
 				</span>
 				<div class="min-w-0">
-					<DialogPrimitive.Title class="text-lg leading-relaxed font-medium text-foreground">Nuevo tipo de expediente</DialogPrimitive.Title>
+					<DialogPrimitive.Title class="text-lg leading-relaxed font-medium text-foreground">
+						{editando ? 'Editar tipo de expediente' : 'Nuevo tipo de expediente'}
+					</DialogPrimitive.Title>
 					<DialogPrimitive.Description class="text-xs leading-relaxed text-muted-foreground">
-						Completa la información requerida.
+						{editando ? 'Cambia el nombre del tipo. Sus expedientes verán el nombre nuevo.' : 'Completa la información requerida.'}
 					</DialogPrimitive.Description>
 				</div>
 			</div>
@@ -112,7 +149,7 @@
 				class="contents"
 				onsubmit={(e) => {
 					e.preventDefault();
-					crear();
+					guardar();
 				}}
 			>
 				<!-- body.modal -->
@@ -131,7 +168,11 @@
 						class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
 					/>
 					<p id="ayuda-tipo-expediente" class="text-xs text-muted-foreground">
-						Por ejemplo: «Expediente médico» o «Expediente de un choque». Cada expediente que crees después será una instancia de un tipo.
+						{#if editando}
+							Solo cambia el nombre: los expedientes de este tipo siguen siendo suyos y verán el nombre nuevo.
+						{:else}
+							Por ejemplo: «Expediente médico» o «Expediente de un choque». Cada expediente que crees después será una instancia de un tipo.
+						{/if}
 					</p>
 					{#if error}
 						<p class="text-xs text-destructive" role="alert" data-testid="error-tipo-expediente">{error}</p>
@@ -149,8 +190,17 @@
 					>
 						Cancelar
 					</Button>
-					<Button type="submit" class="h-9.5 px-4" data-testid="crear-tipo-expediente" disabled={!completo || enviando}>
-						{enviando ? 'Creando…' : 'Crear tipo de expediente'}
+					<Button
+						type="submit"
+						class="h-9.5 px-4"
+						data-testid={editando ? 'guardar-tipo-expediente' : 'crear-tipo-expediente'}
+						disabled={!completo || enviando}
+					>
+						{#if editando}
+							{enviando ? 'Guardando…' : 'Guardar cambios'}
+						{:else}
+							{enviando ? 'Creando…' : 'Crear tipo de expediente'}
+						{/if}
 					</Button>
 				</div>
 			</form>

@@ -6,11 +6,13 @@
  * responde 403 `sin_permiso` a los demás roles, y aquí se reenvía tal cual. El tenant lo fija el servidor desde la sesión
  * (`tenantDe`), nunca el navegador, y se reenvía el JWT de la persona para que nexus_back lo compruebe (HU11).
  *
- * El listado no pasa por aquí: lo pide el `load` de `/expediente`, que ya corre en el servidor con las cookies de la persona.
+ * El listado no pasa por aquí: lo pide el `load` de `/expediente/tipos`, que ya corre en el servidor con las cookies de la persona. Renombrar
+ * y borrar un tipo van en `./[id]/+server.ts`.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { codigoDe } from '$lib/server/expediente';
 import { mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -36,11 +38,7 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
 		// `ya_existe` (409) es el nombre repetido: la pantalla lo dice con sus palabras, así que viaja el código además del texto.
-		const detalle = (cuerpo as { detail?: { codigo?: unknown } } | null)?.detail;
-		return json(
-			{ mensaje: mensajeDeError(cuerpo, respuesta.status), codigo: typeof detalle?.codigo === 'string' ? detalle.codigo : undefined },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status), codigo: codigoDe(cuerpo) }, { status: respuesta.status });
 	}
 	return json(cuerpo, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 };
