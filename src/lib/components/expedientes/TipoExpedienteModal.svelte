@@ -192,7 +192,7 @@
 		>
 			<!-- header . navigation -->
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="flex-1 text-sm text-muted-foreground">Expediente / Tipos de expediente</p>
+				<p class="flex-1 text-sm text-muted-foreground">Configuración / Tipos de expediente</p>
 				<button
 					type="button"
 					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
@@ -335,6 +335,9 @@
 									{:else}
 										{fuera} tipos documentales de este esquema ya no están disponibles en la biblioteca (se eliminaron o se archivaron): si cambias el esquema,
 										se quitarán.
+									{/if}
+									{#if actuales.length === 0}
+										Ninguno de este esquema sigue en la biblioteca: elige al menos uno para poder guardar los cambios.
 									{/if}
 								</p>
 							{/if}
