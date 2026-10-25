@@ -1,153 +1,216 @@
 <script lang="ts">
 	/**
-	 * Expediente · Tipos de expediente (2026-10-24). Lo único que hace esta pantalla, por ahora: ver los tipos de expediente de la
-	 * organización y DAR DE ALTA uno nuevo (solo su nombre).
+	 * Expediente · Expedientes (2026-10-24, Figma Sprint 5 HUN2: estado vacío `5387:99538`, listado `5387:101094`). Ver los expedientes
+	 * de la organización como carpetas, buscarlos, ordenarlos, CREAR uno y abrirlo. Es la primera pestaña de `/expediente`; el
+	 * encabezado y las pestañas los pone `./+layout.svelte`.
 	 *
-	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque»); cada
-	 * expediente es una instancia de un tipo, con los documentos de UN caso (un paciente, un choque). Crear los expedientes, asignar
-	 * tipos documentales al esquema de un tipo, renombrar o borrar tipos: nada de eso está todavía.
+	 * Un expediente es la carpeta de UN caso (un paciente, un choque) y es instancia de un tipo de expediente. Cuatro estados:
+	 *   · Sin tipos: no se puede crear un expediente sin tipo, así que se dice, y quien administra puede crear el primero aquí mismo.
+	 *   · Con tipos y sin expedientes: el estado vacío del diseño, con su tarjeta «Crea un nuevo expediente» (solo para quien organiza).
+	 *   · Con expedientes: el listado del diseño. El buscador mira el nombre y el tipo, sin importar mayúsculas ni acentos.
+	 *   · Con expedientes, pero ninguno coincide con la búsqueda: se dice, para que no parezca un error.
 	 *
-	 * Tres estados, como la pantalla de Usuarios, de la que se tomó el lenguaje (migas de pan, título, tarjeta con tabla, estado vacío
-	 * y aviso verde): sin tipos —con el botón para crear el primero, solo para quien administra—, y con tipos. NO salió de un frame de
-	 * Figma: se agotó la cuota de lectura del archivo y el Sprint 5 no se pudo abrir; si el diseño trae otra cosa, se ajusta contra él.
+	 * Lo que se aparta del diseño, porque chocaba con cómo se organiza un expediente aquí: la tarjeta lleva el NOMBRE y no un folio, y
+	 * trae el tipo; el buscador dice «Buscar expediente» (el del diseño dice «Buscar tipo documental», heredado de otra pantalla).
 	 *
-	 * Quién puede crear tipos lo decide nexus_back (Administrador y Supervisor); aquí `puedeCrear` solo decide si se OFRECE el botón.
-	 * Todos los roles ven la lista.
+	 * Quién puede crear lo decide nexus_back; aquí `puedeOrganizar` y `puedeCrearTipo` solo deciden qué se OFRECE. Todos los roles ven
+	 * la lista.
 	 */
 	import { invalidateAll } from '$app/navigation';
-	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
-	import Plus from '@lucide/svelte/icons/plus';
+	import List from '@lucide/svelte/icons/list';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
+	import ExpedienteModal from '$lib/components/expedientes/ExpedienteModal.svelte';
+	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
+	import TarjetaExpediente from '$lib/components/expedientes/TarjetaExpediente.svelte';
 	import TipoExpedienteModal from '$lib/components/expedientes/TipoExpedienteModal.svelte';
+	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { normalizar, OPCIONES_ORDEN_EXPEDIENTES, ordenar, type OrdenExpedientes } from '$lib/expedientes/expedientes';
 
 	let { data } = $props();
 
+	const expedientes = $derived(data.expedientes);
 	const tipos = $derived(data.tipos);
 
-	let abierto = $state(false);
-	/** El nombre del último tipo creado, para el aviso verde. Se apaga al abrir otra alta: a partir de ahí hablaría del anterior. */
-	let creado = $state<string | null>(null);
+	let busqueda = $state('');
+	let orden = $state<OrdenExpedientes>('recientes');
 
-	function abrirAlta() {
-		creado = null;
-		abierto = true;
+	const visibles = $derived.by(() => {
+		const q = normalizar(busqueda);
+		const coinciden = q ? expedientes.filter((e) => normalizar(`${e.nombre} ${e.tipo?.nombre ?? ''}`).includes(q)) : expedientes;
+		return ordenar(coinciden, orden);
+	});
+
+	let expedienteAbierto = $state(false);
+	let tipoAbierto = $state(false);
+	/** El último alta que salió bien, para el aviso verde. Se apaga al abrir otra: a partir de ahí hablaría de la anterior. */
+	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
+
+	function abrirAltaExpediente() {
+		aviso = null;
+		expedienteAbierto = true;
 	}
 
-	function fecha(iso: string | null): string {
-		if (!iso) return '—';
-		const d = new Date(iso);
-		return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+	function abrirAltaTipo() {
+		aviso = null;
+		tipoAbierto = true;
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Expediente</title></svelte:head>
-
-<p class="text-xs text-muted-foreground">Expediente / Tipos de expediente</p>
-<div class="mt-2">
-	<h1 class="text-2xl font-semibold text-foreground">Tipos de expediente</h1>
-	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-		Un tipo de expediente es la plantilla de la que salen tus expedientes, por ejemplo «Expediente médico» o «Expediente de un choque». Cada
-		expediente es una instancia de un tipo y guarda los documentos de un caso: de un paciente, de un choque.
-	</p>
-</div>
+<svelte:head><title>NexusDoc AI — Expedientes</title></svelte:head>
 
 <!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se monta junto con
-     su texto no se anuncia. Vacío no mide nada; el margen va dentro del `if` por lo mismo. -->
+     su texto no se anuncia. Vacío no mide nada. -->
 <div role="status" aria-live="polite">
-	{#if creado}
-		<div class="mt-6">
-			<AvisoVerde
-				testid="tipo-expediente-creado-aviso"
-				titulo="Tipo de expediente creado"
-				cuerpo={`«${creado}» quedó registrado en tu organización.`}
-			/>
-		</div>
+	{#if aviso}
+		<AvisoVerde testid={aviso.testid} titulo={aviso.titulo} cuerpo={aviso.cuerpo} />
 	{/if}
 </div>
 
 {#if tipos.length === 0}
-	<div class="mt-8 flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center" data-testid="tipos-expediente-vacio">
+	<div class="flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center" data-testid="expedientes-sin-tipos">
 		<Sparkles class="size-10 text-primary" />
-		{#if data.puedeCrear}
+		{#if data.puedeCrearTipo}
 			<div>
-				<p class="text-lg font-medium text-foreground">Crea tu primer tipo de expediente</p>
-				<p class="mt-1 max-w-lg text-sm text-muted-foreground">
-					Define la clase de expediente con la que trabaja tu organización. Después, cada caso —un paciente, un choque— será un
-					expediente de ese tipo, con sus propios documentos.
+				<h2 class="text-2xl font-semibold text-foreground">Primero crea un tipo de expediente</h2>
+				<p class="mt-2 max-w-xl text-base text-muted-foreground">
+					Cada expediente es una instancia de un tipo, por ejemplo «Expediente médico». Crea el primero y después podrás registrar los
+					expedientes de cada caso.
 				</p>
 			</div>
 			<button
 				type="button"
-				class="flex w-full max-w-md items-start gap-3 rounded-xl border border-border bg-background p-4 text-left transition-colors hover:bg-muted"
-				data-testid="crear-primer-tipo-expediente"
-				onclick={abrirAlta}
+				class="flex w-full max-w-120 items-start gap-3 rounded-xl border border-slate-300 bg-card p-3 text-left transition-colors hover:bg-muted"
+				data-testid="crear-primer-tipo-desde-expedientes"
+				onclick={abrirAltaTipo}
 			>
-				<span class="mt-0.5 shrink-0 text-primary"><FolderPlus class="size-5" /></span>
+				<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground">
+					<FolderPlus class="size-4" />
+				</span>
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-medium text-foreground">Nuevo tipo de expediente</span>
-					<span class="block text-xs text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico».</span>
+					<span class="block text-lg font-medium text-secondary-foreground">Nuevo tipo de expediente</span>
+					<span class="mt-3 block text-sm text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico».</span>
 				</span>
 			</button>
 		{:else}
 			<div>
-				<p class="text-lg font-medium text-foreground">Todavía no hay tipos de expediente</p>
-				<p class="mt-1 max-w-lg text-sm text-muted-foreground">Quien administra tu organización puede crear el primero.</p>
+				<h2 class="text-2xl font-semibold text-foreground">Todavía no hay tipos de expediente</h2>
+				<p class="mt-2 max-w-xl text-base text-muted-foreground">
+					Para crear expedientes hace falta al menos un tipo. Quien administra tu organización puede crear el primero.
+				</p>
 			</div>
 		{/if}
 	</div>
+{:else if expedientes.length === 0}
+	<div class="flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center" data-testid="expedientes-vacio">
+		<Sparkles class="size-12.5 text-primary" />
+		<div>
+			<h2 class="text-2xl font-semibold text-foreground">Aún no tienes expedientes registrados</h2>
+			<p class="mt-3 max-w-xl text-base text-muted-foreground">
+				Aquí encontrarás los expedientes creados y los documentos asociados a cada uno.
+				{#if data.puedeOrganizar}
+					Crea tu primer expediente para comenzar a organizar y centralizar la información documental.
+				{/if}
+			</p>
+		</div>
+		{#if data.puedeOrganizar}
+			<button
+				type="button"
+				class="flex w-full max-w-120 items-start gap-3 rounded-xl border border-slate-300 bg-card p-3 text-left transition-colors hover:bg-muted"
+				data-testid="crear-primer-expediente"
+				onclick={abrirAltaExpediente}
+			>
+				<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground">
+					<FolderPlus class="size-4" />
+				</span>
+				<span class="min-w-0 flex-1">
+					<span class="block text-lg font-medium text-secondary-foreground">Crea un nuevo expediente</span>
+					<span class="mt-3 block text-sm text-muted-foreground">
+						Crea un expediente para agrupar documentos relacionados, mantener su información organizada.
+					</span>
+				</span>
+			</button>
+		{:else}
+			<p class="max-w-md text-sm text-muted-foreground">Quien organiza expedientes en tu organización puede crear el primero.</p>
+		{/if}
+	</div>
 {:else}
-	<div class="mt-8 rounded-2xl border-2 border-border bg-card p-5">
-		<div class="flex flex-wrap items-center gap-3">
-			<div class="min-w-0 flex-1">
-				<p class="text-sm font-medium text-foreground">Listado de tipos de expediente</p>
-				<p class="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="total-tipos-expediente">
-					<FolderOpen class="size-3.5" />
-					{tipos.length}
-					{tipos.length === 1 ? 'tipo de expediente en total' : 'tipos de expediente en total'}
-				</p>
+	<div class="rounded-2xl border-2 border-border bg-card p-3">
+		<div class="flex min-h-12.5 flex-wrap items-center justify-between gap-3">
+			<div class="flex items-center gap-3">
+				<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground">
+					<List class="size-4" />
+				</span>
+				<div>
+					<p class="text-sm font-medium text-foreground">Listado de expedientes</p>
+					<p class="flex items-center gap-1 text-xs text-muted-foreground">
+						<span
+							class="flex size-4.25 items-center justify-center rounded-sm bg-primary/10 text-[10px] font-medium text-primary"
+							data-testid="total-expedientes">{expedientes.length}</span
+						>
+						Total de expedientes
+					</p>
+				</div>
 			</div>
-			{#if data.puedeCrear}
-				<Button data-testid="nuevo-tipo-expediente" onclick={abrirAlta}>
-					<Plus class="size-4" />
-					Nuevo tipo de expediente
-				</Button>
-			{/if}
+
+			<div class="flex flex-wrap items-center gap-2">
+				<div class="flex h-9 w-58.5 items-center gap-3 rounded-lg border border-border bg-background px-3">
+					<SearchIcon />
+					<input
+						type="search"
+						placeholder="Buscar expediente"
+						aria-label="Buscar expediente"
+						bind:value={busqueda}
+						data-testid="buscar-expediente"
+						class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+					/>
+				</div>
+				<span class="h-9 w-px bg-border" aria-hidden="true"></span>
+				<OrdenarMenu valor={orden} opciones={OPCIONES_ORDEN_EXPEDIENTES} alCambiar={(valor) => (orden = valor)} testid="ordenar-expedientes" />
+				{#if data.puedeOrganizar}
+					<span class="h-9.5 w-px bg-border" aria-hidden="true"></span>
+					<Button size="icon" class="size-9.5" data-testid="nuevo-expediente" aria-label="Nuevo expediente" title="Nuevo expediente" onclick={abrirAltaExpediente}>
+						<FolderPlus class="size-4" />
+					</Button>
+				{/if}
+			</div>
 		</div>
 
-		<div class="mt-4 overflow-x-auto">
-			<table class="w-full text-left text-sm">
-				<thead>
-					<tr class="border-y border-border text-xs text-muted-foreground">
-						<th class="py-2.5 pr-4 pl-2 font-normal">Tipo de expediente</th>
-						<th class="py-2.5 pr-4 font-normal">Expedientes</th>
-						<th class="py-2.5 pr-2 font-normal">Fecha de creación</th>
-					</tr>
-				</thead>
-				<tbody data-testid="tabla-tipos-expediente">
-					{#each tipos as tipo (tipo.id)}
-						<tr class="border-b border-border last:border-0">
-							<td class="min-w-0 py-3 pr-4 pl-2">
-								<p class="truncate font-medium text-foreground" data-testid="tipo-expediente-nombre">{tipo.nombre}</p>
-							</td>
-							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">{tipo.totalExpedientes}</td>
-							<td class="py-3 pr-2 text-xs text-muted-foreground">{fecha(tipo.creadoEn)}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+		{#if visibles.length === 0}
+			<p class="py-16 text-center text-sm text-muted-foreground" data-testid="expedientes-sin-resultados">
+				No encontramos expedientes con «{busqueda.trim()}». Revisa el nombre o el tipo e intenta de nuevo.
+			</p>
+		{:else}
+			<ul class="mt-3 flex flex-wrap gap-3" data-testid="lista-expedientes">
+				{#each visibles as expediente (expediente.id)}
+					<li><TarjetaExpediente {expediente} /></li>
+				{/each}
+			</ul>
+		{/if}
 	</div>
 {/if}
 
-<TipoExpedienteModal
-	bind:open={abierto}
+<ExpedienteModal
+	bind:open={expedienteAbierto}
+	tipos={tipos.map((t) => ({ id: t.id, nombre: t.nombre }))}
 	alCrear={async (nombre) => {
-		// El tipo YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		creado = nombre;
+		// El expediente YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
+		aviso = { testid: 'expediente-creado-aviso', titulo: 'Expediente creado', cuerpo: `«${nombre}» quedó registrado en tu organización.` };
+		await invalidateAll();
+	}}
+/>
+
+<TipoExpedienteModal
+	bind:open={tipoAbierto}
+	alCrear={async (nombre) => {
+		aviso = {
+			testid: 'tipo-expediente-creado-aviso',
+			titulo: 'Tipo de expediente creado',
+			cuerpo: `«${nombre}» quedó registrado en tu organización. Ya puedes crear expedientes de este tipo.`
+		};
 		await invalidateAll();
 	}}
 />
