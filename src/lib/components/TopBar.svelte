@@ -18,6 +18,7 @@
 	import { APP_NOMBRE, APP_VERSION } from '$lib/version';
 	import PerfilSheet from '$lib/components/perfil/PerfilSheet.svelte';
 	import type { Usuario } from '$lib/server/sesion';
+	import { puedeAdministrar } from '$lib/usuarios/permisos';
 
 	let { usuario = null }: { usuario?: Usuario | null } = $props();
 
@@ -58,6 +59,7 @@
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -97,6 +99,7 @@
 	const puedeAdministrarUsuarios = $derived(
 		Boolean(usuario?.esAdminPlataforma) || usuario?.rol === 'ADMIN'
 	);
+	const puedeConfigurar = $derived(puedeAdministrar(usuario));
 	const navItems = $derived([
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
 		...(usuario?.esAdminPlataforma
@@ -117,6 +120,8 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
+		// Expediente (2026-10-24): hoy solo el alta de TIPOS de expediente; el resto de la sección se arma después.
+		{ etiqueta: 'Expediente', icono: FolderOpen, alSeleccionar: () => goto('/expediente') },
 		{
 			etiqueta: 'Modulo de configuración',
 			icono: SlidersHorizontal,
@@ -176,6 +181,9 @@
 			>
 				<NotificationBellIcon />
 			</button>
+			<!-- El engrane (API Key, Webhooks, motor de reglas, configuración) solo para quien administra (NEX-472): el servidor
+			     les responde 403 a los demás roles, y enseñar una puerta cerrada no sirve de nada. -->
+			{#if puedeConfigurar}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
@@ -198,6 +206,7 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
+			{/if}
 			<div class="h-6 w-px bg-border"></div>
 			<!-- El usuario de la sesión (Sprint 1, HU03). Hasta el 2026-10-07 era un
 			     nombre fijo. El rol todavía no existe en la sesión (llega con HU07),

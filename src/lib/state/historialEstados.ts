@@ -61,7 +61,8 @@ export const ETIQUETA_BANDEJA: Record<string, { texto: string; tono: 'ok' | 'err
 	// contempla el diseño. Es un aviso.
 	duplicado: { texto: 'Duplicado detectado', tono: 'proceso' },
 	protegido: { texto: 'Protegido con contraseña', tono: 'error' },
-	corrupto: { texto: 'Archivo ilegible', tono: 'error' }
+	corrupto: { texto: 'Archivo ilegible', tono: 'error' },
+	sin_contenido: { texto: 'Documento sin contenido procesable', tono: 'error' }
 };
 
 /**

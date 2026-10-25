@@ -397,10 +397,16 @@
 				Editar
 			</button>
 			{#if elegido.activo}
+				<!-- Como en el Figma (incidencia de QA, 2026-10-22): primero se cierra la sesión de la persona y DESPUÉS el
+				     administrador puede desactivarla. Con sesión abierta el botón se apaga; se enciende cuando la lista se
+				     refresca y ya no tiene una. Solo ordena lo que se OFRECE: el servidor sigue cerrando las sesiones que queden
+				     al desactivar (HU08 CA-1), por si alguien entra justo en medio. -->
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10"
+					class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-card/10 disabled:cursor-not-allowed disabled:text-slate-500 disabled:hover:bg-transparent"
 					data-testid="desactivar-usuario"
+					disabled={elegido.sesionActiva}
+					title={elegido.sesionActiva ? 'Primero cierra la sesión de esta persona.' : undefined}
 					onclick={() => pedirMotivo(elegido, 'desactivar')}
 				>
 					<UserRoundX class="size-3.5" />

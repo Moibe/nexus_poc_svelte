@@ -5,11 +5,13 @@
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
 	import ArrowDownIcon from '$lib/components/icons/ArrowDownIcon.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import {
 		agregarArchivosPendientes,
-		archivosPendientesDeCarga
+		archivosPendientesDeCarga,
+		archivosRechazados
 	} from '$lib/state/bandeja.svelte';
 
 	/**
@@ -181,6 +183,20 @@
 				Buscar archivos
 			</span>
 		</button>
+	{/if}
+
+	<!-- HU 21 CA 1: lo que no se pudo cargar se dice (antes se descartaba en silencio). Va justo bajo el dropzone porque es la
+	     respuesta a lo que la persona acaba de soltar; solo existe para el origen Manual, que es el único con dropzone. -->
+	{#if origen === 'manual' && archivosRechazados.length > 0}
+		<AvisoRojo testid="aviso-carga-no-valida" titulo="La carga contiene archivos no válidos">
+			<ul class="list-disc pl-4">
+				{#each archivosRechazados as rechazado, i (i)}
+					<li data-testid="archivo-rechazado">
+						<span class="font-medium break-all">{rechazado.nombre}</span>: {rechazado.motivo}
+					</li>
+				{/each}
+			</ul>
+		</AvisoRojo>
 	{/if}
 
 	{#if archivosPendientesDeCarga.length === 0}

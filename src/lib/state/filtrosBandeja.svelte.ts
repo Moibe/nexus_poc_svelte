@@ -17,8 +17,8 @@
  *
  * El Figma ofrece Pendiente, Duplicado, Descartado y Listo. Un documento de la bandeja está en uno de los seis estados
  * internos; se reparten así: `listo` → Listo, `duplicado` → Duplicado, y todo lo demás —en cola, calculando la huella, con
- * contraseña, corrupto— es Pendiente (todavía no está listo para procesar). Es una decisión mía: el diseño no dice dónde cae un
- * documento protegido o corrupto.
+ * contraseña, corrupto, sin contenido— es Pendiente (todavía no está listo para procesar). Es una decisión mía: el diseño no dice
+ * dónde cae un documento protegido, corrupto o en blanco.
  */
 
 import {

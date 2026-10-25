@@ -22,6 +22,11 @@
 	 *  - el sello es el de lucide a 20 px: llena menos su caja que el de Hugeicons del
 	 *    diseño, y a 20 px el sello se ve del mismo tamaño que allá.
 	 *
+	 * ANCHO (2026-10-22, incidencia de QA en «Gestionar rol de usuario»): el diseño dibuja este aviso de **684 px** de ancho,
+	 * no a todo lo ancho de la pantalla, que es lo que hacía mientras no tenía tope y vivía en una página de 1440. Ahora mide
+	 * como mucho 684 px, alineado a la izquierda; dentro de un panel más angosto se adapta, porque el tope solo recorta lo que
+	 * sobra. (El `AvisoRojo` NO lo lleva todavía aunque su variante del diseño también es de 684: nadie lo ha reportado.)
+	 *
 	 * `green-700` para el texto, no el verde más vivo que parece dibujar Figma: el 600
 	 * sobre `green-50` da ~3.1:1 y AA pide 4.5:1.
 	 *
@@ -37,7 +42,7 @@
 
 <div
 	data-testid={testid}
-	class="mb-6 flex items-start gap-2 rounded-lg border border-green-400 bg-green-50 px-4 py-3"
+	class="mb-6 flex max-w-171 items-start gap-2 rounded-lg border border-green-400 bg-green-50 px-4 py-3"
 >
 	<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
 	<div class="min-w-0">

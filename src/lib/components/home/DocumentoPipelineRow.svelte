@@ -27,8 +27,11 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import ImageIcon from '$lib/components/icons/ImageIcon.svelte';
+	import { page } from '$app/state';
+	import type { Usuario } from '$lib/server/sesion';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { pedirConfigurarNuevoTipo } from '$lib/state/configuracion.svelte';
+	import { puedeAdministrar } from '$lib/usuarios/permisos';
 	import {
 		alternarSeleccionPipeline,
 		continuarSinConfiguracion,
@@ -37,6 +40,10 @@
 	} from '$lib/state/pipeline.svelte';
 
 	let { documento }: { documento: DocumentoEnPipeline } = $props();
+
+	// «Configurar» abre la biblioteca de tipos documentales, que solo administran Administrador y Supervisor (NEX-472): al resto
+	// se le deja «Continuar sin configuración» y nada más.
+	const puedeConfigurar = $derived(puedeAdministrar(page.data.usuario as Usuario | null | undefined));
 
 	const esImagen = $derived(['JPG', 'JPEG', 'PNG', 'TIFF'].includes(documento.extension));
 	// `etiquetaDe` y no `ETIQUETA_ESTADO[estado]`: los textos de 'clasificado'
@@ -177,14 +184,16 @@
 			>
 				Continuar sin configuración
 			</button>
-			<span class="text-border" aria-hidden="true">|</span>
-			<button
-				type="button"
-				class="text-xs font-medium text-primary transition-colors hover:text-primary/80"
-				onclick={pedirConfigurarNuevoTipo}
-			>
-				Configurar
-			</button>
+			{#if puedeConfigurar}
+				<span class="text-border" aria-hidden="true">|</span>
+				<button
+					type="button"
+					class="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+					onclick={pedirConfigurarNuevoTipo}
+				>
+					Configurar
+				</button>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -179,12 +179,58 @@ const puerta: Handle = async ({ event, resolve }) => {
  */
 export const handle: Handle = async (entrada) => {
 	const respuesta = await puerta(entrada);
-	if (!respuesta.headers.has('cache-control')) {
-		try {
-			respuesta.headers.set('cache-control', 'no-store');
-		} catch {
-			// Cabeceras inmutables (una respuesta reenviada tal cual): se deja como está.
+	try {
+		if (!respuesta.headers.has('cache-control')) respuesta.headers.set('cache-control', 'no-store');
+		for (const [nombre, valor] of Object.entries(CABECERAS_DE_SEGURIDAD)) {
+			if (!respuesta.headers.has(nombre)) respuesta.headers.set(nombre, valor);
 		}
+		// La CSP solo tiene sentido en lo que el navegador RENDERIZA.
+		if (respuesta.headers.get('content-type')?.startsWith('text/html')) {
+			respuesta.headers.set('content-security-policy-report-only', CSP);
+		}
+	} catch {
+		// Cabeceras inmutables (una respuesta reenviada tal cual): se deja como está.
 	}
 	return respuesta;
 };
+
+/**
+ * Cabeceras de seguridad (NEX-474, auditoría de QA, 2026-10-22). Se ponen aquí, en la propia aplicación, para que viajen con
+ * cualquier proxy que haya delante. `Strict-Transport-Security` NO va aquí: lo pone el proxy y esta app también se sirve por HTTP
+ * plano en la red de CSI, donde esa cabecera no tiene sentido.
+ *
+ *  - `nosniff`: el navegador no adivina el tipo de lo que descarga.
+ *  - `X-Frame-Options: DENY`: nadie puede meter la app en un marco (clickjacking). La app no usa iframes.
+ *  - `Referrer-Policy`: a otro sitio solo se le dice el origen, no la ruta.
+ *  - `Permissions-Policy`: la app no usa cámara, micrófono, ubicación ni pagos; se apagan.
+ */
+const CABECERAS_DE_SEGURIDAD: Record<string, string> = {
+	'x-content-type-options': 'nosniff',
+	'x-frame-options': 'DENY',
+	'referrer-policy': 'strict-origin-when-cross-origin',
+	'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+};
+
+/**
+ * Content-Security-Policy, por ahora SOLO EN MODO REPORTE (`Content-Security-Policy-Report-Only`): el navegador anota en la consola
+ * lo que bloquearía, pero no bloquea nada. Es a propósito: la app carga el worker de pdf.js, pinta vistas previas con `blob:` y
+ * `data:` y SvelteKit mete un script en línea, y activarla a ciegas rompería la carga o la vista previa de documentos.
+ *
+ * Para pasarla a firme (`content-security-policy`): navegar por Inicio, Configuración, API Key, Webhooks, Motor de reglas, Usuarios
+ * y Organizaciones, subir un PDF y una imagen, abrir su detalle, y confirmar que la consola no reporta violaciones. Lo ideal
+ * entonces es quitar `'unsafe-inline'` de `script-src` con `kit.csp` (nonces o hashes de SvelteKit). `frame-ancestors` no se
+ * aplica en modo reporte; lo cubre `X-Frame-Options` y entra en firme con la CSP.
+ */
+const CSP = [
+	"default-src 'self'",
+	"script-src 'self' 'unsafe-inline'",
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' data: blob:",
+	"font-src 'self' data:",
+	"connect-src 'self'",
+	"worker-src 'self' blob:",
+	"object-src 'none'",
+	"base-uri 'self'",
+	"form-action 'self'",
+	"frame-ancestors 'none'"
+].join('; ');
