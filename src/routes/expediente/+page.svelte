@@ -1,17 +1,25 @@
 <script lang="ts">
 	/**
 	 * Expediente · Expedientes (2026-10-24, Figma Sprint 5 HUN2: estado vacío `5387:99538`, listado `5387:101094`). Ver los expedientes
-	 * de la organización como carpetas, buscarlos, ordenarlos, CREAR uno y abrirlo. Es la primera pestaña de `/expediente`; el
-	 * encabezado y las pestañas los pone `./+layout.svelte`.
+	 * de la organización, buscarlos, filtrarlos, ordenarlos, CREAR uno y abrirlo. El encabezado lo pone `./+layout.svelte`.
 	 *
 	 * Un expediente es la carpeta de UN caso (un paciente, un choque) y es instancia de un tipo de expediente. Cuatro estados:
 	 *   · Sin tipos: no se puede crear un expediente sin tipo, así que se dice, y quien administra puede crear el primero aquí mismo.
 	 *   · Con tipos y sin expedientes: el estado vacío del diseño, con su tarjeta «Crea un nuevo expediente» (solo para quien organiza).
-	 *   · Con expedientes: el listado del diseño. El buscador mira el nombre y el tipo, sin importar mayúsculas ni acentos.
-	 *   · Con expedientes, pero ninguno coincide con la búsqueda: se dice, para que no parezca un error.
+	 *   · Con expedientes: el listado, que se ve como LISTA (una tabla con una fila por expediente) o como MOSAICO (una carpeta por
+	 *     expediente, que es el del diseño). Es lo mismo en las dos: los mismos filtros, el mismo orden y los mismos expedientes.
+	 *   · Con expedientes, pero ninguno cumple lo buscado o filtrado: se dice, para que no parezca un error.
+	 *
+	 * Desde 2026-10-25 (pedido de Moibe) el listado es una tabla con columnas, la del TIPO de expediente la que más importa. Cada
+	 * columna ordena al picar su encabezado (en el mosaico, que no tiene encabezados, ordena el menú «Ordenar»: son los mismos diez
+	 * órdenes). Los filtros son el buscador —nombre y tipo, sin importar mayúsculas ni acentos—, el tipo, con o sin documentos y la
+	 * fecha de creación. Un expediente se abre con un clic en su fila o en su carpeta.
 	 *
 	 * Lo que se aparta del diseño, porque chocaba con cómo se organiza un expediente aquí: la tarjeta lleva el NOMBRE y no un folio, y
 	 * trae el tipo; el buscador dice «Buscar expediente» (el del diseño dice «Buscar tipo documental», heredado de otra pantalla).
+	 *
+	 * La vista se recuerda en una cookie que lee `+page.server.ts` (así no hay destello de la otra al cargar); el orden y los filtros
+	 * se quedan en la pantalla, no se recuerdan.
 	 *
 	 * Quién puede crear lo decide nexus_back; aquí `puedeOrganizar` y `puedeCrearTipo` solo deciden qué se OFRECE. Todos los roles ven
 	 * la lista.
@@ -22,27 +30,57 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
+	import AlternarVista from '$lib/components/expedientes/AlternarVista.svelte';
+	import BarraFiltrosExpedientes from '$lib/components/expedientes/BarraFiltrosExpedientes.svelte';
 	import ExpedienteModal from '$lib/components/expedientes/ExpedienteModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
+	import TablaExpedientes from '$lib/components/expedientes/TablaExpedientes.svelte';
 	import TarjetaExpediente from '$lib/components/expedientes/TarjetaExpediente.svelte';
 	import TipoExpedienteModal from '$lib/components/expedientes/TipoExpedienteModal.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { normalizar, OPCIONES_ORDEN_EXPEDIENTES, ordenar, type OrdenExpedientes } from '$lib/expedientes/expedientes';
+	import {
+		COOKIE_VISTA_EXPEDIENTES,
+		filtrarExpedientes,
+		hayFiltros,
+		mensajeSinResultados,
+		OPCIONES_ORDEN_EXPEDIENTES,
+		ordenAlPicar,
+		ordenarExpedientes,
+		SIN_FILTROS,
+		type ColumnaExpedientes,
+		type FiltrosExpedientes,
+		type OrdenExpedientes,
+		type VistaExpedientes
+	} from '$lib/expedientes/expedientes';
 
 	let { data } = $props();
 
 	const expedientes = $derived(data.expedientes);
 	const tipos = $derived(data.tipos);
 
-	let busqueda = $state('');
-	let orden = $state<OrdenExpedientes>('recientes');
+	/** Siempre un objeto nuevo, con sus listas propias: `SIN_FILTROS` es la constante y no se debe tocar. */
+	const sinFiltros = (): FiltrosExpedientes => ({ ...SIN_FILTROS, tipos: [], documentos: [] });
 
-	const visibles = $derived.by(() => {
-		const q = normalizar(busqueda);
-		const coinciden = q ? expedientes.filter((e) => normalizar(`${e.nombre} ${e.tipo?.nombre ?? ''}`).includes(q)) : expedientes;
-		return ordenar(coinciden, orden);
-	});
+	let filtros = $state<FiltrosExpedientes>(sinFiltros());
+	let orden = $state<OrdenExpedientes>('recientes');
+	/** La vista que eligió quien mira en esta visita; mientras no elija, manda la cookie que leyó el servidor. */
+	let vistaElegida = $state<VistaExpedientes | null>(null);
+	const vista = $derived(vistaElegida ?? data.vista);
+
+	const filtrando = $derived(hayFiltros(filtros));
+	const visibles = $derived(ordenarExpedientes(filtrarExpedientes(expedientes, filtros), orden));
+
+	function elegirVista(nueva: VistaExpedientes) {
+		vistaElegida = nueva;
+		// Un año, solo para `/expediente` (de ahí cuelga el detalle, y nada más la necesita). `Secure` solo si la página va por https:
+		// en http el navegador descartaría la cookie entera.
+		document.cookie = `${COOKIE_VISTA_EXPEDIENTES}=${nueva}; path=/expediente; max-age=31536000; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
+	}
+
+	function picarColumna(columna: ColumnaExpedientes) {
+		orden = ordenAlPicar(orden, columna);
+	}
 
 	let expedienteAbierto = $state(false);
 	let tipoAbierto = $state(false);
@@ -163,13 +201,17 @@
 						type="search"
 						placeholder="Buscar expediente"
 						aria-label="Buscar expediente"
-						bind:value={busqueda}
+						bind:value={filtros.texto}
 						data-testid="buscar-expediente"
 						class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
 					/>
 				</div>
 				<span class="h-9 w-px bg-border" aria-hidden="true"></span>
-				<OrdenarMenu valor={orden} opciones={OPCIONES_ORDEN_EXPEDIENTES} alCambiar={(valor) => (orden = valor)} testid="ordenar-expedientes" />
+				<!-- En la lista se ordena picando el encabezado de cada columna; el mosaico no tiene encabezados, y para eso es este menú. -->
+				{#if vista === 'mosaico'}
+					<OrdenarMenu valor={orden} opciones={OPCIONES_ORDEN_EXPEDIENTES} alCambiar={(valor) => (orden = valor)} testid="ordenar-expedientes" />
+				{/if}
+				<AlternarVista valor={vista} alCambiar={elegirVista} />
 				{#if data.puedeOrganizar}
 					<span class="h-9.5 w-px bg-border" aria-hidden="true"></span>
 					<Button size="icon" class="size-9.5" data-testid="nuevo-expediente" aria-label="Nuevo expediente" title="Nuevo expediente" onclick={abrirAltaExpediente}>
@@ -179,12 +221,21 @@
 			</div>
 		</div>
 
+		<BarraFiltrosExpedientes
+			bind:filtros
+			{tipos}
+			{filtrando}
+			mostrados={visibles.length}
+			total={expedientes.length}
+			alLimpiar={() => (filtros = sinFiltros())}
+		/>
+
 		{#if visibles.length === 0}
-			<p class="py-16 text-center text-sm text-muted-foreground" data-testid="expedientes-sin-resultados">
-				No encontramos expedientes con «{busqueda.trim()}». Revisa el nombre o el tipo e intenta de nuevo.
-			</p>
+			<p class="py-16 text-center text-sm text-muted-foreground" data-testid="expedientes-sin-resultados">{mensajeSinResultados(filtros)}</p>
+		{:else if vista === 'lista'}
+			<TablaExpedientes expedientes={visibles} {orden} alPicar={picarColumna} />
 		{:else}
-			<ul class="mt-3 flex flex-wrap gap-3" data-testid="lista-expedientes">
+			<ul class="mt-3 flex flex-wrap gap-3" data-testid="mosaico-expedientes">
 				{#each visibles as expediente (expediente.id)}
 					<li><TarjetaExpediente {expediente} /></li>
 				{/each}

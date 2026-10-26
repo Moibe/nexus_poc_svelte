@@ -9,11 +9,14 @@
  * Si no hay tipos y quien mira administra, el estado vacío le deja crear el primero aquí mismo, y ese alta pide elegir los tipos
  * DOCUMENTALES de su esquema: solo en ese caso se leen (en las demás, esta pantalla no los necesita).
  *
+ * La vista del listado (lista o mosaico) la recuerda una cookie que escribe el navegador al elegirla; se lee AQUÍ, en el servidor, para
+ * que la página llegue ya pintada como la dejó quien mira y no se vea un destello de la otra antes de que cargue.
+ *
  * El administrador de plataforma, que no pertenece a ninguna organización, opera en su espacio de plataforma (`tenantDe`), igual que
  * con las API Keys y los webhooks.
  */
 
-import type { Expediente } from '$lib/expedientes/expedientes';
+import { COOKIE_VISTA_EXPEDIENTES, vistaDe, type Expediente } from '$lib/expedientes/expedientes';
 import type { TipoDeExpediente } from '$lib/expedientes/tipos';
 import { leerDeNexus, listaDe, tiposDocumentalesParaEsquema } from '$lib/server/expediente';
 import { tenantDe } from '$lib/server/nexus';
@@ -34,6 +37,7 @@ export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	return {
 		expedientes: listaDe<Expediente>(expedientes, 'expedientes'),
 		tipos,
+		vista: vistaDe(cookies.get(COOKIE_VISTA_EXPEDIENTES)),
 		puedeOrganizar: puedeOrganizar(locals.usuario),
 		puedeCrearTipo,
 		tiposDocumentales: esquema.opciones,
