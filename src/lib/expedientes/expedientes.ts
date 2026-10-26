@@ -306,7 +306,7 @@ export function filtrarExpedientes<T extends Filtrable>(lista: T[], f: FiltrosEx
 }
 
 /** Lo mismo para los documentos, que se llaman `nombreOriginal`; con «tamano», el más grande primero. */
-export function ordenarDocumentos(lista: DocumentoDeExpediente[], orden: OrdenDocumentos): DocumentoDeExpediente[] {
+export function ordenarDocumentos<T extends DocumentoDeExpediente>(lista: T[], orden: OrdenDocumentos): T[] {
 	if (orden === 'tamano') return [...lista].sort((a, b) => b.tamanoBytes - a.tamanoBytes);
 	if (orden === 'nombre') return [...lista].sort((a, b) => porNombre(a.nombreOriginal, b.nombreOriginal));
 	return orden === 'recientes' ? [...lista].reverse() : [...lista];

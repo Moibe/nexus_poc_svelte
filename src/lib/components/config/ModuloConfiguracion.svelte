@@ -1221,7 +1221,7 @@
 			{:else if vista === 'prompts'}
 				Generación de prompt
 			{:else}
-				Modulo de configuración
+				Módulo de configuración
 			{/if}
 		</p>
 		<!-- La X sube UN NIVEL, no sale siempre: estando en el wizard regresa a

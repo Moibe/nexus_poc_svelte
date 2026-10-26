@@ -123,7 +123,7 @@
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
-			etiqueta: 'Modulo de configuración',
+			etiqueta: 'Módulo de configuración',
 			icono: SlidersHorizontal,
 			alSeleccionar: () => goto('/configuracion')
 		},
