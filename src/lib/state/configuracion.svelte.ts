@@ -1454,6 +1454,8 @@ export function prepararBiblioteca(usuarioGuid: string | null) {
 		reintentos = 0;
 		cola = Promise.resolve();
 		Object.assign(estadoBiblioteca, { cargada: false, cargando: false, errorCarga: '', falloAlGuardar: false, avisoTitulo: '', avisoMensaje: '' });
+		// El clasificador es de cada organización: quien entra después puede ser de otra, y hay que volver a comprobar el suyo.
+		clasificadorRevisado = false;
 		duenoDeBiblioteca = usuarioGuid ?? '';
 	}
 	if (usuarioGuid) void cargarBiblioteca();
@@ -1617,16 +1619,17 @@ export async function completarNombreProcesador(idTipo: string): Promise<void> {
 }
 
 /**
- * Sincroniza el Classifier ÚNICO de Document AI (`POST /procesadores/clasificador/sincronizar`).
+ * Sincroniza el Classifier de Document AI DE LA ORGANIZACIÓN (`POST /procesadores/clasificador/sincronizar`).
  *
- * Desde el 2026-10-15 NO manda la lista de tipos: nexus_back arma las categorías con los tipos ACTIVOS de TODAS las
- * organizaciones, leídos de su propio registro. Antes los mandaba cada navegador, y el último que sincronizaba pisaba a los
- * demás. Por eso, ANTES de llamar se espera a que lo que cambió aquí (activar, archivar, borrar) esté guardado en el
- * servidor: si el guardado no llegó, sincronizar usaría el estado viejo, y se avisa en vez de hacerlo.
+ * Desde el 2026-10-15 NO manda la lista de tipos: nexus_back arma las categorías con los tipos ACTIVOS de la organización,
+ * leídos de su propio registro. Antes los mandaba cada navegador, y el último que sincronizaba pisaba a los demás. Desde el
+ * 2026-10-26 cada organización tiene SU clasificador (antes era uno para todo el sistema, con los tipos de todas). Por eso,
+ * ANTES de llamar se espera a que lo que cambió aquí (activar, archivar, borrar) esté guardado en el servidor: si el guardado
+ * no llegó, sincronizar usaría el estado viejo, y se avisa en vez de hacerlo.
  *
  * Se llama automáticamente después de cada mutación que puede cambiar el conjunto de activos (`activarTipoDocumental`,
- * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la UI. Si no hay NINGÚN tipo activo en todo el
- * sistema, el servidor responde 422 y aquí eso es un "no hay nada que sincronizar", no un error.
+ * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la UI. Si la organización no tiene NINGÚN tipo
+ * activo, el servidor responde 422 y aquí eso es un "no hay nada que sincronizar", no un error.
  */
 export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje: string }> {
 	await vaciarGuardado();
@@ -1641,7 +1644,7 @@ export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje:
 	if (r.status === 0) {
 		return { ok: false, mensaje: 'No se pudo contactar al servidor para actualizar el clasificador.' };
 	}
-	// Sin tipos activos en todo el sistema no hay nada que distinguir: no es un fallo.
+	// Sin tipos activos en la organización no hay nada que distinguir: no es un fallo.
 	if (r.status === 422) return { ok: true, mensaje: '' };
 	if (!r.ok) {
 		return { ok: false, mensaje: textoDe(r, `No se pudo actualizar el clasificador (HTTP ${r.status}).`) };
@@ -1654,8 +1657,8 @@ export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje:
 let clasificadorRevisado = false;
 
 /**
- * Le pide al servidor que compare el clasificador que Google tiene con los tipos activos de su registro y, si no coinciden,
- * lo sincronice (`POST /procesadores/clasificador/asegurar`).
+ * Le pide al servidor que compare el clasificador de la organización que Google tiene con sus tipos activos del registro y, si
+ * no coinciden (o si todavía no existe), lo sincronice (`POST /procesadores/clasificador/asegurar`).
  *
  * Nació de un fallo real (2026-09-08): el clasificador se quedó con la categoría de un INE que el usuario había borrado
  * mientras su INE vigente tenía otro id, y un INE de verdad se clasificaba en una categoría que la Biblioteca ya no
