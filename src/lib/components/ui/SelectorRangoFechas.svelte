@@ -19,8 +19,19 @@
 		id,
 		desde = $bindable(null),
 		hasta = $bindable(null),
+		marcador = 'Selecciona un rango de fechas',
+		compacto = false,
 		testid
-	}: { id: string; desde?: Date | null; hasta?: Date | null; testid: string } = $props();
+	}: {
+		id: string;
+		desde?: Date | null;
+		hasta?: Date | null;
+		/** Lo que dice el botón mientras no hay rango. */
+		marcador?: string;
+		/** Más bajo y con letra chica (h-9), para una barra de filtros en vez de un formulario. */
+		compacto?: boolean;
+		testid: string;
+	} = $props();
 
 	const hoy = today(getLocalTimeZone());
 	let abierto = $state(false);
@@ -66,9 +77,11 @@
 	<Popover.Trigger
 		{id}
 		data-testid={testid}
-		class="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+		class="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 {compacto
+			? 'h-9 text-xs'
+			: 'h-10 text-sm'}"
 	>
-		<span class="truncate {texto ? 'text-foreground' : 'text-muted-foreground'}">{texto || 'Selecciona un rango de fechas'}</span>
+		<span class="truncate {texto ? 'text-foreground' : 'text-muted-foreground'}">{texto || marcador}</span>
 		<CalendarDays class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 	</Popover.Trigger>
 	<Popover.Portal>

@@ -17,6 +17,7 @@
 		opciones,
 		valor = $bindable([]),
 		conteos = {},
+		compacto = false,
 		testid
 	}: {
 		id: string;
@@ -25,6 +26,8 @@
 		valor?: T[];
 		/** Insignia roja con el número, por opción. Solo sale si es mayor que 0. */
 		conteos?: Partial<Record<T, number>>;
+		/** Más bajo y con letra chica (h-9, la altura del buscador y de «Ordenar»), para una barra de filtros en vez de un formulario. */
+		compacto?: boolean;
 		testid: string;
 	} = $props();
 
@@ -48,7 +51,9 @@
 	<Popover.Trigger
 		{id}
 		data-testid={testid}
-		class="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+		class="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 {compacto
+			? 'h-9 text-xs'
+			: 'h-10 text-sm'}"
 	>
 		<span class="truncate {resumen ? 'text-foreground' : 'text-muted-foreground'}">{resumen || marcador}</span>
 		<ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -58,7 +63,7 @@
 			align="start"
 			sideOffset={4}
 			data-testid="{testid}-lista"
-			class="z-70 w-(--bits-popover-anchor-width) min-w-52 rounded-xl border border-border bg-popover p-1.5 shadow-lg"
+			class="z-70 w-max max-w-80 min-w-[max(13rem,var(--bits-popover-anchor-width))] rounded-xl border border-border bg-popover p-1.5 shadow-lg"
 		>
 			{#each opciones as opcion (opcion.valor)}
 				{@const cuantos = conteos[opcion.valor] ?? 0}

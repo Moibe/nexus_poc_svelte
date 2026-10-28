@@ -3,11 +3,13 @@
 	/**
 	 * Modal "Configuración de API Key" (capturas del 2026-09-23).
 	 *
-	 * Es el HERMANO de `ConfigSheet.svelte`: misma cáscara —encabezado con el
-	 * nombre del módulo y su X, banda de título con ícono redondo, y abajo dos
-	 * columnas (sidebar de 330px + panel de contenido)—, así que aquí se copia
-	 * esa estructura al pie de la letra en vez de inventar una propia. Si esa
-	 * cáscara cambia allá, este archivo tiene que seguirla.
+	 * Copió su cáscara de `ModuloConfiguracion.svelte` —encabezado con el nombre
+	 * del módulo y su X, banda de título con ícono redondo, y abajo dos columnas
+	 * (sidebar de 330px + panel de contenido)—, al pie de la letra en vez de
+	 * inventar una propia. Desde el 2026-10-25 ya no son hermanos del todo: aquel
+	 * dejó de ser panel y es una página (`/configuracion/tipos-documentales`),
+	 * mientras que este sigue abriéndose como panel desde el engrane. Lo de
+	 * adentro sí sigue siendo igual, así que un cambio de forma allá se copia aquí.
 	 *
 	 * TRES vistas, las tres dibujadas: el estado vacío de entrada, el formulario
 	 * de alta, y la pantalla del secret recién creado.
@@ -291,7 +293,7 @@
 	 *  sobrevive): sin esto, cerrar con la X y reabrir mostraría otra vez el mismo
 	 *  secret, y el párrafo que el propio diseño manda imprimir —"no volveremos a
 	 *  mostrarlo después de cerrar esta vista"— sería falso desde el primer día.
-	 *  Mismo patrón que el `$effect` de cierre de ConfigSheet. */
+	 *  Mismo patrón que el `$effect` de cierre del módulo de configuración. */
 	$effect(() => {
 		if (open) return;
 		vista = 'lista';
@@ -331,7 +333,7 @@
 				Configuración de API Key
 			</Sheet.Title>
 			<!-- La X cierra el módulo completo, desde cualquiera de las tres vistas. A
-			     diferencia de ConfigSheet no sube de nivel: el camino de vuelta al
+			     diferencia del módulo de configuración no sube de nivel: el camino de vuelta al
 			     estado vacío es "Cancelar configuración", que además limpia lo
 			     capturado; la X deja el borrador en pie (pero NO el secret). -->
 			<Sheet.Close

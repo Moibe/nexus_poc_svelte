@@ -32,7 +32,7 @@
 	 *
 	 * OJO: este NO es el único verde del proyecto. Siguen con el estilo chico y el
 	 * degradado de antes los avisos que flotan (`AvisosFlotantes`) y el de «Nuevo tipo
-	 * documental agregado» de la Biblioteca (en `ConfigSheet`), que son bloques
+	 * documental agregado» de la Biblioteca (en `ModuloConfiguracion`), que son bloques
 	 * propios y no pasan por aquí.
 	 */
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';

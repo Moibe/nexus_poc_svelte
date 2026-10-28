@@ -37,7 +37,7 @@ export default defineConfig({
 			// header `Origin` no coincida con el origen que el server cree tener, y
 			// ese origen está clavado por la variable ORIGIN del proceso pm2 en
 			// `http://172.10.30.15:3400`. Entrando por IP coincide; entrando por
-			// `nexus-doc.buzzword.com.mx` no, y el pipeline moría en el primer paso
+			// `biblioratum.buzzword.com.mx` no, y el pipeline moría en el primer paso
 			// con un mensaje que no explicaba nada (la respuesta es texto plano, así
 			// que el front ni siquiera podía leer el detalle).
 			//
@@ -54,16 +54,16 @@ export default defineConfig({
 			// `trustedOrigins: ['*']`, que existe y apaga la comprobación entera.
 			//
 			// 2026-10-13: se agrega también el dominio de DEV. Medido ese día contra el servidor: un
-			// POST de formulario con `Origin: https://dev-nexus-doc.buzzword.com.mx` daba 403, o sea que
+			// POST de formulario con `Origin: https://dev-biblioratum.buzzword.com.mx` daba 403, o sea que
 			// por ese dominio no habría podido subirse ningún documento (el pipeline manda FormData). Los
 			// enlaces de los correos (`FRONT_URL` en el back) ya apuntan a ese dominio, así que es por
 			// donde va a entrar la gente. Se hornea en el BUILD: hay que reconstruir, no basta reiniciar.
 			csrf: {
 				trustedOrigins: [
-					'https://nexus-doc.buzzword.com.mx',
-					'http://nexus-doc.buzzword.com.mx',
-					'https://dev-nexus-doc.buzzword.com.mx',
-					'http://dev-nexus-doc.buzzword.com.mx'
+					'https://biblioratum.buzzword.com.mx',
+					'http://biblioratum.buzzword.com.mx',
+					'https://dev-biblioratum.buzzword.com.mx',
+					'http://dev-biblioratum.buzzword.com.mx'
 				]
 			}
 		})

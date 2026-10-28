@@ -2,15 +2,18 @@
  * BFF: dar de alta (POST) un tipo de expediente en la organización de quien pide.
  *
  * Un tipo de expediente es la clase de la que salen los expedientes («expediente médico», «expediente de un choque»); vive por
- * organización en nexus_back (`/tipos-expediente`). Quien crea tipos es quien administra (Administrador y Supervisor): el servidor
- * responde 403 `sin_permiso` a los demás roles, y aquí se reenvía tal cual. El tenant lo fija el servidor desde la sesión
+ * organización en nexus_back (`/tipos-expediente`). Se crea con su ESQUEMA: los tipos documentales que lo forman (al menos uno; nexus_back
+ * lo exige también y comprueba que sean de la organización). Quien crea tipos es quien administra (Administrador y Supervisor): el
+ * servidor responde 403 `sin_permiso` a los demás roles, y aquí se reenvía tal cual. El tenant lo fija el servidor desde la sesión
  * (`tenantDe`), nunca el navegador, y se reenvía el JWT de la persona para que nexus_back lo compruebe (HU11).
  *
- * El listado no pasa por aquí: lo pide el `load` de `/expediente`, que ya corre en el servidor con las cookies de la persona.
+ * El listado no pasa por aquí: lo pide el `load` de `/configuracion/tipos-expediente`, que ya corre en el servidor con las cookies de la persona. Renombrar
+ * y borrar un tipo van en `./[id]/+server.ts`.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { codigoDe } from '$lib/server/expediente';
 import { mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -21,13 +24,17 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	if (typeof datos?.nombre !== 'string' || !datos.nombre.trim()) {
 		return json({ mensaje: 'Escribe el nombre del tipo de expediente.' }, { status: 400 });
 	}
+	const tiposDocumentales: unknown = datos.tiposDocumentales;
+	if (!Array.isArray(tiposDocumentales) || tiposDocumentales.length === 0 || tiposDocumentales.some((id) => typeof id !== 'string')) {
+		return json({ mensaje: 'Elige al menos un tipo documental para el esquema.' }, { status: 400 });
+	}
 	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/tipos-expediente/'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant, nombre: datos.nombre }),
+			body: JSON.stringify({ tenant, nombre: datos.nombre, tiposDocumentales }),
 			signal: AbortSignal.timeout(ESPERA_MS)
 		});
 	} catch {
@@ -36,11 +43,7 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
 		// `ya_existe` (409) es el nombre repetido: la pantalla lo dice con sus palabras, así que viaja el código además del texto.
-		const detalle = (cuerpo as { detail?: { codigo?: unknown } } | null)?.detail;
-		return json(
-			{ mensaje: mensajeDeError(cuerpo, respuesta.status), codigo: typeof detalle?.codigo === 'string' ? detalle.codigo : undefined },
-			{ status: respuesta.status }
-		);
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status), codigo: codigoDe(cuerpo) }, { status: respuesta.status });
 	}
 	return json(cuerpo, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 };

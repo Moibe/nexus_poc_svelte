@@ -23,7 +23,7 @@
 		 *  "Subir" simplemente no hace nada sin él. */
 		tipoId?: string | null;
 		/** Se llama justo después de agregar la instancia, con su id — lo usa
-		 *  `ConfigSheet.svelte` para dejarla seleccionada de inmediato en vez de
+		 *  `ModuloConfiguracion.svelte` para dejarla seleccionada de inmediato en vez de
 		 *  obligar a un segundo clic para elegirla. */
 		onGuardado?: (idDocumento: string) => void;
 		onCerrar: () => void;
