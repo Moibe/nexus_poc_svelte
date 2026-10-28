@@ -39,7 +39,7 @@
 	/** El Swagger PÚBLICO de la API (`nexus_back/documentacion.py`, `/docs`):
 	 *  solo "mandar un documento", que es lo que un cliente necesita. Es el
 	 *  dominio de los clientes, no el del servidor interno. */
-	const URL_DOCS_API = 'https://nexus-doc-api.buzzword.com.mx/docs';
+	const URL_DOCS_API = 'https://biblioratum-api.buzzword.com.mx/docs';
 
 	let fileInput = $state<HTMLInputElement>();
 	let files = $state<FileList | null>(null);
