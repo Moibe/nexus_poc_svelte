@@ -3161,8 +3161,22 @@
 									{/if}
 
 									<div class="mt-6 rounded-xl border border-border p-4">
-										<p class="text-sm font-medium text-foreground">Cardinalidad</p>
-										<RadioGroup.Root bind:value={campo.cardinalidad} class="mt-3 gap-0">
+										<p class="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+											Cardinalidad
+											{#if campo.cardinalidadSugerida}
+												<!-- La propuso Document AI con un solo ejemplo («Generar a partir de un documento»): conviene revisarla. -->
+												<span
+													class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-normal text-primary"
+													title="Document AI la propuso leyendo el documento de ejemplo. Revísala: un solo ejemplo no garantiza que el dato nunca se repita."
+													data-testid="cardinalidad-sugerida">Sugerida por el documento</span
+												>
+											{/if}
+										</p>
+										<RadioGroup.Root
+											bind:value={campo.cardinalidad}
+											onValueChange={() => delete campo.cardinalidadSugerida}
+											class="mt-3 gap-0"
+										>
 											{#each CARDINALIDADES as c, i (c.value)}
 												{#if i > 0}
 													<div class="my-3 border-t border-border"></div>
