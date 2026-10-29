@@ -45,6 +45,9 @@
 			? 'Administrador de plataforma'
 			: (usuario?.rol && NOMBRE_DE_ROL[usuario.rol]) || 'Usuario'
 	);
+	/** La empresa a la que pertenece, a un lado del rol («Administrador · Dorama»). El
+	 *  administrador de plataforma no pertenece a ninguna, así que a él no se le pone. */
+	const empresa = $derived(usuario?.esAdminPlataforma ? null : usuario?.organizacionNombre || null);
 
 	/** Cerrar sesión: el BFF revoca en nexus_back y borra las cookies; luego al
 	 *  login. `location` y no `goto`: así se vacía todo el estado en memoria
@@ -214,7 +217,16 @@
 			<div class="flex items-center gap-3">
 				<div>
 					<p class="text-sm font-medium text-foreground" data-testid="usuario-nombre">{usuario?.nombre ?? '—'}</p>
-					<p class="text-xs text-muted-foreground" data-testid="usuario-rol">{etiquetaDeRol}</p>
+					<!-- El rol y, a su lado, la empresa. Van en dos elementos aparte para que quien busque
+					     solo el rol (`usuario-rol`) siga encontrándolo sin la empresa. Un nombre largo se
+					     recorta con puntos suspensivos y se lee completo al pasar el cursor. -->
+					<p class="flex max-w-60 items-baseline gap-1 text-xs text-muted-foreground">
+						<span class="shrink-0" data-testid="usuario-rol">{etiquetaDeRol}</span>
+						{#if empresa}
+							<span aria-hidden="true">·</span>
+							<span class="truncate" title={empresa} data-testid="usuario-empresa">{empresa}</span>
+						{/if}
+					</p>
 				</div>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>

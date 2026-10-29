@@ -42,6 +42,10 @@ export type Usuario = {
 	/** El guid de su organización, o `null` si no pertenece a ninguna. Es lo
 	 *  que aísla sus datos de los de las demás (HU11). */
 	tenantGuid: string | null;
+	/** El nombre de su organización (la empresa), solo para mostrarlo junto al rol en
+	 *  la barra de arriba. Sale del claim `tnn` del JWT; nunca decide nada (eso es
+	 *  `tenantGuid` y `rol`). `null` si no pertenece a una o el back no lo dijo. */
+	organizacionNombre: string | null;
 };
 
 /** Lo que nexus_back devuelve en /auth/login y /auth/refresh. */
@@ -93,7 +97,8 @@ export async function verificarToken(token: string | undefined): Promise<TokenVe
 				esAdminPlataforma: payload.adm === true,
 				debeCambiarContrasena: payload.dcc === true,
 				rol: typeof payload.rol === 'string' ? payload.rol : null,
-				tenantGuid: typeof payload.tnt === 'string' ? payload.tnt : null
+				tenantGuid: typeof payload.tnt === 'string' ? payload.tnt : null,
+				organizacionNombre: typeof payload.tnn === 'string' && payload.tnn.trim() ? payload.tnn.trim() : null
 			},
 			// El guid de la sesión NO va en `Usuario`: ese objeto se publica al navegador.
 			sesionGuid: payload.sid
