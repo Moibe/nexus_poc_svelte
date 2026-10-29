@@ -54,6 +54,10 @@ export type DocumentoEnPipeline = {
 	 *  el `id` que recibió el cliente al subirlo. Con él se le avisa al servidor
 	 *  cómo terminó, para sus webhooks (ver `avisosWebhook.ts`). */
 	idEntrada?: string;
+	/** Solo lo que se cargó a mano: el id del documento que el servidor creó para él al empezar a procesarse
+	 *  (`registrarDocumentoManual`). Lo que llega por la API ya nace como documento allá, con su entrada. Sirve para no
+	 *  registrarlo dos veces si se reintenta. */
+	documentoId?: string;
 	/** Ya se le avisó al servidor cómo terminó: se avisa UNA vez por documento. */
 	avisado: boolean;
 	agregadoEn: Date;
@@ -212,6 +216,22 @@ export async function iniciarPipeline() {
 		moverDocumentoAlPipeline(doc.id);
 	}
 
+	// Lo cargado a mano se registra AHORA, al entrar al pipeline, y no hasta que le toque turno: así queda en «Archivos procesados»
+	// aunque la preparación del lote (leer los tipos, revisar el clasificador) falle o el procesamiento termine mal. Lo que llega por la
+	// API no pasa por aquí: ya nació como documento en el servidor. Las subidas son chicas y van en paralelo.
+	await Promise.all(
+		elegibles
+			.filter((d) => d.origen === 'Manual')
+			.map(async (d) => {
+				const registro = await asegurarRegistro(d.id);
+				const vivo = documentosEnPipeline.find((x) => x.id === d.id);
+				if (!vivo || registro.ok || vivo.estado !== 'en_cola') return;
+				pasarA(vivo, 'fallido');
+				vivo.terminadoEn = new Date();
+				vivo.error = `No se pudo guardar el documento: ${registro.mensaje}`;
+			})
+	);
+
 	await drenarCola();
 }
 
@@ -301,6 +321,20 @@ async function procesarUno(id: string) {
 	// seguido con .tiff), y el back valida justamente ese header. Sin esto, un
 	// TIFF válido se rechazaría con "formato no soportado" sin motivo real.
 	const archivo = new File([doc.archivo], doc.nombre, { type: mime });
+
+	// Lo cargado a mano ya se registró al entrar al pipeline (`iniciarPipeline`); esto cubre el REINTENTO de uno que no se pudo
+	// registrar entonces. Si sigue sin poderse, se queda en `fallido` con el motivo: lo contrario sería procesarlo sin dejar rastro.
+	if (doc.origen === 'Manual' && !doc.documentoId) {
+		const registro = await asegurarRegistro(id);
+		const vivo = documentosEnPipeline.find((d) => d.id === id);
+		if (!vivo) return; // lo quitaron mientras se registraba
+		if (!registro.ok) {
+			pasarA(vivo, 'fallido');
+			vivo.terminadoEn = new Date();
+			vivo.error = `No se pudo guardar el documento: ${registro.mensaje}`;
+			return;
+		}
+	}
 
 	pasarA(doc, 'clasificando');
 	const categoria = await clasificar(id, archivo);
@@ -433,6 +467,54 @@ const PAUSA_CLASIFICADO_MS = 1000;
 
 function esperar(ms: number): Promise<void> {
 	return new Promise((listo) => setTimeout(listo, ms));
+}
+
+type Registro = { ok: true; documentoId: string } | { ok: false; mensaje: string };
+
+/** Los registros que van en vuelo, por documento: así el que se hace al entrar al pipeline y el que haría `procesarUno` si le toca
+ *  turno mientras tanto son UNO solo, y un documento no nace dos veces. */
+const registrosEnCurso = new Map<string, Promise<Registro>>();
+
+/**
+ * Se asegura de que un documento cargado a mano esté registrado en el servidor, y deja su `documentoId` en el documento.
+ * Si ya lo tiene, no vuelve a registrarlo; si ya hay un registro en vuelo, espera ese. El archivo lleva el MIME que le toca por su
+ * extensión (el navegador deja `File.type` vacío con algunas, como .tiff, y el servidor valida justo ese tipo).
+ */
+function asegurarRegistro(id: string): Promise<Registro> {
+	const doc = documentosEnPipeline.find((d) => d.id === id);
+	if (!doc) return Promise.resolve({ ok: false, mensaje: 'El documento ya no está en el pipeline.' });
+	if (doc.documentoId) return Promise.resolve({ ok: true, documentoId: doc.documentoId });
+	const enCurso = registrosEnCurso.get(id);
+	if (enCurso) return enCurso;
+	const mime = MIME_POR_EXTENSION[doc.extension];
+	if (!mime) return Promise.resolve({ ok: false, mensaje: `Document AI no procesa archivos ${doc.extension}.` });
+	const promesa = registrarDocumentoManual(new File([doc.archivo], doc.nombre, { type: mime }))
+		.then((r) => {
+			const vivo = documentosEnPipeline.find((d) => d.id === id);
+			if (vivo && r.ok) vivo.documentoId = r.documentoId;
+			return r;
+		})
+		.finally(() => registrosEnCurso.delete(id));
+	registrosEnCurso.set(id, promesa);
+	return promesa;
+}
+
+/** Registra en el servidor el documento de una carga manual (`/api/documentos`, que lo anota con `canal: MANUAL`). No lanza: devuelve
+ *  el id que le dio el servidor o el motivo. */
+async function registrarDocumentoManual(archivo: File): Promise<Registro> {
+	const cuerpo = new FormData();
+	cuerpo.append('archivo', archivo, archivo.name);
+	try {
+		const respuesta = await fetch('/api/documentos', { method: 'POST', body: cuerpo });
+		const datos: unknown = await respuesta.json().catch(() => null);
+		const id = (datos as { id?: unknown } | null)?.id;
+		if (!respuesta.ok || typeof id !== 'string' || id === '') {
+			return { ok: false, mensaje: mensajeDeFallo(datos, respuesta.status, 'al guardar el documento') };
+		}
+		return { ok: true, documentoId: id };
+	} catch (err) {
+		return { ok: false, mensaje: err instanceof Error ? err.message : 'Error desconocido al guardar el documento.' };
+	}
 }
 
 /** Llama a `/api/pipeline/clasificar`. Devuelve la categoría ganadora
