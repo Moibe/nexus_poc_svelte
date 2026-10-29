@@ -58,12 +58,23 @@ export default defineConfig({
 			// por ese dominio no habría podido subirse ningún documento (el pipeline manda FormData). Los
 			// enlaces de los correos (`FRONT_URL` en el back) ya apuntan a ese dominio, así que es por
 			// donde va a entrar la gente. Se hornea en el BUILD: hay que reconstruir, no basta reiniciar.
+			//
+			// 2026-10-29: los dominios viejos (nexus-doc) vuelven TEMPORALMENTE junto a los nuevos: `biblioratum` y
+			// `dev-biblioratum` todavía no tienen registro DNS (no resuelven; el proxy y el certificado ya los atienden), y
+			// mientras tanto la única forma de entrar es por los viejos. Quitar los de nexus-doc cuando el DNS de los nuevos
+			// esté dado de alta. Se agrega también el de staging, que sí resuelve y no estaba.
 			csrf: {
 				trustedOrigins: [
 					'https://biblioratum.buzzword.com.mx',
 					'http://biblioratum.buzzword.com.mx',
 					'https://dev-biblioratum.buzzword.com.mx',
-					'http://dev-biblioratum.buzzword.com.mx'
+					'http://dev-biblioratum.buzzword.com.mx',
+					'https://staging-biblioratum.buzzword.com.mx',
+					'http://staging-biblioratum.buzzword.com.mx',
+					'https://nexus-doc.buzzword.com.mx',
+					'http://nexus-doc.buzzword.com.mx',
+					'https://dev-nexus-doc.buzzword.com.mx',
+					'http://dev-nexus-doc.buzzword.com.mx'
 				]
 			}
 		})
