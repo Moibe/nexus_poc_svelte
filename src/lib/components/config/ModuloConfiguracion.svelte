@@ -64,13 +64,15 @@
 	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
 	import RevisionPrompt from './RevisionPrompt.svelte';
 	import SubcamposGrupo from './SubcamposGrupo.svelte';
+	import GenerarCamposDesdeDocumento from './GenerarCamposDesdeDocumento.svelte';
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
-	import type { TipoDocumentalGuardado, Recorte } from '$lib/state/configuracion.svelte';
+	import type { TipoDocumentalGuardado, Recorte, CampoPropuesto } from '$lib/state/configuracion.svelte';
 	import {
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
+		agregarCamposPropuestos,
 		agregarValorLista,
 		alCambiarTipoDato,
 		alternarEjemploDocumental,
@@ -505,6 +507,17 @@
 	function guardarCampoEnCaptura() {
 		agregarCampoEnCaptura();
 		mostrarFormularioCampo = false;
+	}
+
+	// «Generar a partir de un documento» (2026-10-29): el modal que propone campos leyendo un documento de ejemplo.
+	let generarCamposAbierto = $state(false);
+
+	/** Lo que la persona eligió de la propuesta cae en «Campos agregados». Si el formulario de captura estaba en blanco se
+	 *  oculta (como al guardar un campo), para que lo agregado quede a la vista; si tenía algo a medias, se respeta. */
+	function agregarPropuestos(elegidos: CampoPropuesto[]) {
+		agregarCamposPropuestos(elegidos);
+		generarCamposAbierto = false;
+		if (campoIntacto(borrador.campoEnCaptura)) mostrarFormularioCampo = false;
 	}
 
 	// El tipo documental que se está por eliminar. Guarda también si TIENE un
@@ -2710,6 +2723,17 @@
 					Completa la información requerida para agregar un nuevo campo al modelo documental y
 					mejorar la precisión de la extracción automática.
 				</p>
+				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
+				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. -->
+				<Button
+					variant="outline"
+					class="mt-4 gap-2"
+					data-testid="abrir-generar-campos"
+					onclick={() => (generarCamposAbierto = true)}
+				>
+					<Sparkles class="size-4 text-primary" />
+					Generar a partir de un documento
+				</Button>
 
 				{#if mostrarFormularioCampo}
 					<!-- El formulario de alta. Ya NO queda siempre visible (cambio del
@@ -3459,6 +3483,15 @@
 <!-- Los dos pasos previos a la pantalla de revisión: cuántos prompts, y sobre
      qué documento probarlos. Ver los comentarios de `pedirDocumentoParaPrompts`
      e `irARevisionDePrompts`. -->
+<GenerarCamposDesdeDocumento
+	abierto={generarCamposAbierto}
+	nombreTipo={borrador.nombre}
+	descripcionTipo={borrador.descripcion}
+	existentes={borrador.campos.map((c) => c.nombre)}
+	onCerrar={() => (generarCamposAbierto = false)}
+	onAgregar={agregarPropuestos}
+/>
+
 <GenerarPrompts
 	abierto={tipoGenerandoPrompts !== null}
 	onCerrar={() => (tipoGenerandoPrompts = null)}
