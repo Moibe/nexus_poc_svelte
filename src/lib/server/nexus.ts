@@ -31,8 +31,12 @@ const BASE = (env.NEXUS_API_URL ?? 'http://127.0.0.1:8083').replace(/\/+$/, '');
  * organización. Su trabajo es crearlas (HU02), pero conserva un espacio propio
  * para probar la carga de documentos, las API Keys y los webhooks sin entrar a
  * la organización de nadie.
+ *
+ * Se llamaba `demo` hasta el 2026-10-26. Cambiar el nombre aquí NO basta: lo que ese espacio ya tenía (tipos documentales, la bandeja, los
+ * archivos…) está guardado bajo el nombre viejo, y `nexus_back/renombrar_tenant.py` lo pasa al nuevo CONSERVÁNDOLO. Un `NEXUS_TENANT`
+ * puesto en el `.env` gana sobre este valor: si dice `demo`, el administrador de plataforma seguiría entrando al espacio viejo.
  */
-const TENANT_PLATAFORMA = env.NEXUS_TENANT || 'demo';
+const TENANT_PLATAFORMA = env.NEXUS_TENANT || 'plataforma';
 
 /**
  * El tenant con el que opera QUIEN PIDE (HU11).

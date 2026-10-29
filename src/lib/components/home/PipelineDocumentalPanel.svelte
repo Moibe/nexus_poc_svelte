@@ -3,6 +3,10 @@
 	import PanelIconCluster from './PanelIconCluster.svelte';
 	import DocumentoPipelineRow from './DocumentoPipelineRow.svelte';
 	import ClockBadgeIcon from '$lib/components/icons/ClockBadgeIcon.svelte';
+	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { goto } from '$app/navigation';
 	import { documentosEnPipeline } from '$lib/state/pipeline.svelte';
 
 	// La píldora de acciones de esta bandeja ya no se monta aquí: flota al pie de
@@ -18,7 +22,31 @@
 			<p class="text-base font-medium text-foreground">Pipeline documental</p>
 			<p class="text-xs text-muted-foreground">Progreso de los documentos procesados</p>
 		</div>
-		<PanelIconCluster />
+		<div class="flex items-center gap-2">
+			<PanelIconCluster />
+			<!-- El ⋮ del diseño (Figma Sprint 5, HUN1): lleva a «Archivos procesados», con los documentos procesados y los expedientes. -->
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							type="button"
+							aria-label="Más opciones del pipeline documental"
+							data-testid="menu-pipeline"
+							class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted"
+						>
+							<MoreVerticalIcon />
+						</button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-64 p-2">
+					<DropdownMenu.Item data-testid="ver-archivos-procesados" class="h-10 gap-3 px-2 whitespace-nowrap" onSelect={() => goto('/archivos-procesados')}>
+						<FolderOpen class="size-4 text-muted-foreground" />
+						Ver archivos procesados
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		</div>
 	</div>
 
 	{#if documentosEnPipeline.length > 0}

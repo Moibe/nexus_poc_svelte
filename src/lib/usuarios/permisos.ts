@@ -19,3 +19,17 @@ export function puedeAdministrar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'r
 	if (!usuario) return false;
 	return usuario.esAdminPlataforma || (usuario.rol !== null && ROLES_QUE_ADMINISTRAN.has(usuario.rol));
 }
+
+/**
+ * Lo que cada rol puede ORGANIZAR (2026-10-24): crear un expediente y, cuando haya pantalla para ello, meter o sacar documentos de él.
+ * Espejo de `roles.PUEDEN_ORGANIZAR` de nexus_back, que es quien MANDA (responde 403 `sin_permiso` a los demás): Administrador,
+ * Supervisor, Analista y Operador, que son quienes trabajan la bandeja, y el administrador de plataforma. Compliance, Auditor y Viewer
+ * consultan y no mueven el trabajo de otro: ven los expedientes sin el botón de crear. Propuesta de producto pendiente de confirmar
+ * con César; si cambia, cambia en los dos lados.
+ */
+const ROLES_QUE_ORGANIZAN = new Set(['ADMIN', 'SUPERVISOR', 'ANALISTA', 'OPERADOR']);
+
+export function puedeOrganizar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'rol'> | null | undefined): boolean {
+	if (!usuario) return false;
+	return usuario.esAdminPlataforma || (usuario.rol !== null && ROLES_QUE_ORGANIZAN.has(usuario.rol));
+}

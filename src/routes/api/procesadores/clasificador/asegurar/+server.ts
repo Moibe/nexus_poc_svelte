@@ -1,20 +1,25 @@
 /**
- * BFF: `POST /procesadores/clasificador/asegurar` de nexus_back — compara lo que el Classifier tiene en Document AI con los
- * tipos activos del registro y lo sincroniza solo si difieren. El front lo llama una vez por sesión, antes de clasificar.
+ * BFF: `POST /procesadores/clasificador/asegurar` de nexus_back — compara lo que el Classifier de la organización tiene en Document AI
+ * con sus tipos activos del registro y lo sincroniza solo si difieren (o lo crea, si todavía no tiene). El front lo llama una vez por
+ * sesión, antes de clasificar.
  *
- * Sin cuerpo: todo sale del registro del servidor. La respuesta (`{ sincronizado, motivo }`) se devuelve tal cual.
+ * Sin cuerpo: todo sale del registro del servidor. El tenant lo fija el servidor desde la sesión (`tenantDe`) y se reenvía el JWT de la
+ * persona (HU11), igual que en tipos documentales: cada organización tiene SU clasificador (desde el 2026-10-26). La respuesta
+ * (`{ sincronizado, motivo }`) se devuelve tal cual.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async ({ cookies, locals }) => {
+	const tenant = tenantDe(locals);
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus('/procesadores/clasificador/asegurar'), {
+		respuesta = await fetch(urlNexus(`/procesadores/clasificador/asegurar?tenant=${encodeURIComponent(tenant)}`), {
 			method: 'POST',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
@@ -22,8 +27,7 @@ export const POST: RequestHandler = async () => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = typeof cuerpo?.detail === 'string' ? cuerpo.detail : `HTTP ${respuesta.status}`;
-		return json({ mensaje: detalle }, { status: respuesta.status });
+		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json(cuerpo);
 };

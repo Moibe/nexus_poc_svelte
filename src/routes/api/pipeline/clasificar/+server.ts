@@ -5,11 +5,15 @@
  * real de la API solo la conoce este handler). Se llama ANTES de `/ine` en el
  * pipeline: primero se clasifica a qué tipo documental pertenece el
  * documento, y solo si corresponde a INE se manda al extractor.
+ *
+ * Cada organización tiene SU clasificador (desde el 2026-10-26): el tenant lo fija el servidor desde la sesión (`tenantDe`), nunca el
+ * navegador, y se reenvía el JWT de la persona para que nexus_back compruebe (HU11) que es de esa organización.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 // Mismos tres números alineados que `/api/pipeline/extraer` (ver el comentario
 // gemelo ahí): el dropzone de Figma, este guardia, y MAX_SUBIDA_MB en el .env
@@ -22,7 +26,8 @@ function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, cookies, locals }) => {
+	const tenant = tenantDe(locals);
 	let entrada: FormData;
 	try {
 		entrada = await request.formData();
@@ -58,9 +63,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus('/ia/clasificar'), {
+		respuesta = await fetch(urlNexus(`/ia/clasificar?tenant=${encodeURIComponent(tenant)}`), {
 			method: 'POST',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			body: salida,
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
@@ -92,11 +97,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	if (!respuesta.ok) {
-		const detalle =
-			typeof cuerpo === 'object' && cuerpo !== null && 'detail' in cuerpo
-				? String((cuerpo as { detail: unknown }).detail)
-				: `nexus_back respondió ${respuesta.status}.`;
-		return fallo(detalle, respuesta.status);
+		return fallo(mensajeDeError(cuerpo, respuesta.status), respuesta.status);
 	}
 
 	return json(cuerpo);
