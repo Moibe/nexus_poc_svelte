@@ -122,8 +122,9 @@
 			     "Falló el procesamiento" no dice nada accionable, y la causa real
 			     (documento muy largo, archivo protegido, cuota agotada) ya viene
 			     redactada desde el back — ver `_POR_MOTIVO` en routers/ia.py. Se
-			     limita a 2 renglones para que una fila no crezca sin control. -->
-			<p class="mt-0.5 line-clamp-2 text-xs text-red-500">
+			     limita a 2 renglones para que una fila no crezca sin control; el
+			     mensaje completo se lee al pasar el cursor (title). -->
+			<p class="mt-0.5 line-clamp-2 text-xs text-red-500" title={documento.error ?? etiqueta.texto} data-testid="error-documento-pipeline">
 				{documento.error ?? etiqueta.texto}
 			</p>
 		{:else}
