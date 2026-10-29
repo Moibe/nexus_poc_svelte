@@ -27,6 +27,7 @@ import {
 	normalizarCategoria,
 	tiposDocumentales
 } from './configuracion.svelte';
+import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 import type { ResultadoIne } from '$lib/types/ine';
 import { anotarEstado, type EventoDeEstado } from './historialEstados';
 import { avisarSiTermino } from './avisosWebhook';
@@ -458,7 +459,7 @@ async function clasificar(id: string, archivo: File): Promise<string | null> {
 		if (!respuesta.ok || datos === null) {
 			pasarA(vivo, 'fallido');
 			vivo.terminadoEn = new Date();
-			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status} al clasificar.`;
+			vivo.error = mensajeDeFallo(datos, respuesta.status, 'al clasificar');
 			return null;
 		}
 
@@ -534,7 +535,7 @@ async function procesarRespuestaExtraccion(id: string, promesa: Promise<Response
 
 		if (!respuesta.ok || datos === null) {
 			pasarA(vivo, 'fallido');
-			vivo.error = datos?.mensaje ?? `La API respondió ${respuesta.status}.`;
+			vivo.error = mensajeDeFallo(datos, respuesta.status);
 			return;
 		}
 
