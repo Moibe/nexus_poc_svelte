@@ -229,7 +229,22 @@
 									</div>
 								{/if}
 							</td>
-							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">{tipo.totalExpedientesVirtuales}</td>
+							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">
+								<!-- La cuenta es la de las instancias del tipo; picarla lleva al mosaico de esos expedientes virtuales (2026-10-30). Con cero
+								     no hay a dónde ir, así que es solo el número. -->
+								{#if tipo.totalExpedientesVirtuales > 0}
+									<a
+										href={`/configuracion/tipos-expediente/${encodeURIComponent(tipo.id)}`}
+										class="-ml-1.5 inline-block rounded-md px-1.5 py-0.5 font-medium text-primary underline-offset-2 transition-colors outline-none hover:bg-primary/10 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+										data-testid="ver-expedientes-virtuales"
+										title="Ver los expedientes virtuales de «{tipo.nombre}»"
+										aria-label="Ver {tipo.totalExpedientesVirtuales === 1 ? 'el expediente virtual' : `los ${tipo.totalExpedientesVirtuales} expedientes virtuales`} de «{tipo.nombre}»"
+										>{tipo.totalExpedientesVirtuales}</a
+									>
+								{:else}
+									{tipo.totalExpedientesVirtuales}
+								{/if}
+							</td>
 							<td class="py-3 pr-2 text-xs text-muted-foreground">{fechaCorta(tipo.creadoEn)}</td>
 							{#if data.puedeAdministrar}
 								<td class="py-2 pr-2">

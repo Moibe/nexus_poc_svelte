@@ -55,6 +55,21 @@ export type ExpedienteVirtualResumen = {
 	totalDocumentos: number;
 };
 
+/**
+ * Un expediente virtual tal como viene en la lista de los de UN tipo (`/tipos-expediente/{id}/virtuales`, 2026-10-30): como esa lista cruza
+ * todos los expedientes de la organización, cada uno dice a cuál pertenece y cuántos documentos tiene ese expediente, para poder escribir
+ * «2 de 3 documentos» sin pedir cada expediente.
+ */
+export type ExpedienteVirtualDeTipo = {
+	id: string;
+	nombre: string;
+	expediente: { id: string; nombre: string; totalDocumentos: number };
+	/** Cuántos de los documentos del expediente forman este virtual. */
+	totalDocumentos: number;
+	creadoPor: string | null;
+	creadoEn: string | null;
+};
+
 /** Un expediente virtual abierto (`/expedientes/{id}/virtuales/{vid}`): su tipo con el esquema, su expediente y sus documentos completos. */
 export type ExpedienteVirtual = {
 	id: string;
