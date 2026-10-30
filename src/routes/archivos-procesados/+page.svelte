@@ -6,13 +6,22 @@
 	 *     fecha de ingesta y el expediente (o expedientes) en que están. Se busca, se ordena y se pagina.
 	 *   · Expedientes: el listado de expedientes (la misma tabla de `/expediente`), que se busca y se ordena por encabezado.
 	 *
-	 * Convive con `/expediente` sin mezclarse con él: aquí solo se LEE, y cada expediente enlaza a su detalle de siempre.
+	 * Convive con `/expediente` sin mezclarse con él: cada expediente enlaza a su detalle de siempre. Desde el 2026-10-29 (Figma Sprint 5,
+	 * HUN2) quien organiza (Administrador, Supervisor, Analista, Operador) elige documentos con casillas y los AGREGA a un expediente que
+	 * ya existe, desde la barra flotante (ver `AgregarAExpediente.svelte`); los demás roles solo leen, sin casillas.
 	 *
 	 * Lo que se aparta del diseño, porque el servidor todavía no lo guarda: la columna «Tipo documental» y el «Estatus de procesamiento»
 	 * del documento no salen (ningún documento guarda su tipo documental ni un estado), y «Canal» ocupa su lugar; tampoco está «Filtrar».
 	 */
 	import List from '@lucide/svelte/icons/list';
+	import FolderInput from '@lucide/svelte/icons/folder-input';
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { invalidateAll } from '$app/navigation';
 
+	import AgregarAExpediente, { type ResultadoAgregar } from '$lib/components/expedientes/AgregarAExpediente.svelte';
+	import BarraAccionesPanel from '$lib/components/home/BarraAccionesPanel.svelte';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import TablaExpedientes from '$lib/components/expedientes/TablaExpedientes.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -57,6 +66,28 @@
 	});
 	const paginaDeDocumentos = $derived(documentosVisibles.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA));
 
+	// ---- elegir documentos y agregarlos a un expediente (solo quien organiza)
+	const elegidos = new SvelteSet<string>();
+	const documentosElegidos = $derived(data.documentos.filter((d) => elegidos.has(d.id)));
+	const paginaCompleta = $derived(paginaDeDocumentos.length > 0 && paginaDeDocumentos.every((d) => elegidos.has(d.id)));
+	let panelAbierto = $state(false);
+	let aviso = $state('');
+	function alternarPagina(marcar: boolean) {
+		for (const d of paginaDeDocumentos) {
+			if (marcar) elegidos.add(d.id);
+			else elegidos.delete(d.id);
+		}
+	}
+	async function alAgregar({ expediente, agregados, yaEstaban }: ResultadoAgregar) {
+		const partes = [];
+		if (agregados) partes.push(`${agregados === 1 ? 'Se agregó 1 documento' : `Se agregaron ${agregados} documentos`} a «${expediente.nombre}».`);
+		if (yaEstaban) partes.push(yaEstaban === 1 ? '1 ya estaba en ese expediente.' : `${yaEstaban} ya estaban en ese expediente.`);
+		aviso = partes.join(' ');
+		panelAbierto = false;
+		elegidos.clear();
+		await invalidateAll();
+	}
+
 	// ---- expedientes
 	let busquedaExpedientes = $state('');
 	let ordenExpedientes = $state<OrdenExpedientes>('recientes');
@@ -77,6 +108,14 @@
 		Da seguimiento a los documentos procesados y consulta cómo se han organizado y asociado dentro de los expedientes.
 	</p>
 </div>
+
+{#if aviso}
+	<div class="mt-4 flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status" data-testid="aviso-agregado">
+		<BadgeCheck class="mt-0.5 size-4 shrink-0" />
+		<p class="flex-1">{aviso}</p>
+		<button type="button" class="text-xs text-green-700 hover:underline" onclick={() => (aviso = '')}>Cerrar</button>
+	</div>
+{/if}
 
 <div role="tablist" aria-label="Secciones" class="mt-6 flex gap-6 border-b border-border">
 	{#each PESTANAS as p (p.id)}
@@ -158,6 +197,16 @@
 					<table class="w-full min-w-3xl text-left text-sm" data-testid="tabla-documentos">
 						<thead>
 							<tr class="border-y border-border text-xs text-muted-foreground">
+								{#if data.puedeOrganizar}
+									<th scope="col" class="w-8 py-2.5 pl-2">
+										<Checkbox
+											aria-label="Elegir los documentos de esta página"
+											checked={paginaCompleta}
+											onCheckedChange={(v) => alternarPagina(v === true)}
+											data-testid="elegir-pagina"
+										/>
+									</th>
+								{/if}
 								<th scope="col" class="w-16 py-2.5 pr-4 pl-2 font-normal">ID</th>
 								<th scope="col" class="py-2.5 pr-4 font-normal">Nombre de archivo</th>
 								<th scope="col" class="py-2.5 pr-4 font-normal">Canal</th>
@@ -167,7 +216,17 @@
 						</thead>
 						<tbody>
 							{#each paginaDeDocumentos as d (d.id)}
-								<tr class="border-b border-border last:border-0" data-testid="fila-documento">
+								<tr class="border-b border-border last:border-0 {elegidos.has(d.id) ? 'bg-muted/50' : ''}" data-testid="fila-documento">
+									{#if data.puedeOrganizar}
+										<td class="py-3 pl-2">
+											<Checkbox
+												aria-label="Elegir {d.nombreOriginal}"
+												checked={elegidos.has(d.id)}
+												onCheckedChange={(v) => (v === true ? elegidos.add(d.id) : elegidos.delete(d.id))}
+												data-testid="elegir-documento"
+											/>
+										</td>
+									{/if}
 									<td class="py-3 pr-4 pl-2 text-xs text-muted-foreground" data-testid="documento-id">{d.numero}</td>
 									<td class="min-w-0 py-3 pr-4">
 										<p class="max-w-md truncate font-medium text-foreground" title={d.nombreOriginal} data-testid="documento-nombre">{d.nombreOriginal}</p>
@@ -215,3 +274,27 @@
 		</div>
 	{/if}
 </div>
+
+{#if pestana === 'documentos' && data.puedeOrganizar && elegidos.size > 0}
+	<!-- La barra flotante de la casa (la de la bandeja) y, encima, el panel para elegir el expediente. -->
+	<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-3 px-4" data-testid="carril-archivos">
+		{#if panelAbierto}
+			<AgregarAExpediente documentos={documentosElegidos} expedientes={data.expedientes} onCerrar={() => (panelAbierto = false)} onAgregado={alAgregar} />
+		{/if}
+		<BarraAccionesPanel
+			grupos={[
+				{
+					bandeja: 'Documentos',
+					acciones: [
+						{
+							etiqueta: `Agregar a expediente (${elegidos.size}) ›`,
+							icono: FolderInput,
+							alHacerClic: () => (panelAbierto = !panelAbierto),
+							testid: 'abrir-agregar-a-expediente'
+						}
+					]
+				}
+			]}
+		/>
+	</div>
+{/if}
