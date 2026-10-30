@@ -112,6 +112,7 @@
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
+		MAX_INSTRUCCIONES,
 		REGLAS_TRANSFORMACION,
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
@@ -949,6 +950,7 @@
 		return JSON.stringify({
 			nombre: borrador.nombre,
 			descripcion: borrador.descripcion,
+			instrucciones: borrador.instrucciones,
 			vertical: borrador.vertical,
 			campos: $state.snapshot(borrador.campos)
 		});
@@ -2720,6 +2722,27 @@
 								{/each}
 							</Select.Content>
 						</Select.Root>
+					</div>
+
+					<!-- Opcional (2026-10-30), al final a propósito: el panel tiene su propio scroll y puesto antes de la Vertical la
+					     empujaba fuera de la vista. La Descripción de arriba está escrita como una etiqueta (qué documento es) y sirve
+					     para CLASIFICAR; esto es otra cosa: contexto para LEER el documento al extraer, que viaja al extractor como el
+					     `documentPrompt` de su esquema. Medido contra Google: orienta qué dato se toma (titular o beneficiario), y si se le
+					     pide reescribir un valor (otro formato, mayúsculas) ese campo desaparece de la respuesta. De ahí el aviso. -->
+					<div class="space-y-2">
+						<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
+						<Textarea
+							id="instrucciones-tipo"
+							data-testid="instrucciones-tipo"
+							bind:value={borrador.instrucciones}
+							maxlength={MAX_INSTRUCCIONES}
+							rows={3}
+							placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
+						/>
+						<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
+							Opcional. Orienta a Document AI al leer el documento: qué dato tomar cuando hay varios o de qué país es. No le pidas
+							cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no coincide con lo impreso se descarta.
+						</p>
 					</div>
 				</div>
 			{:else if borrador.paso === 2}

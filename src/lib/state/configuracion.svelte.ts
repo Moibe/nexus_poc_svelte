@@ -174,9 +174,18 @@ export type CampoBorrador = {
 	cardinalidadSugerida?: boolean;
 };
 
+/** Largo máximo de las «instrucciones para la extracción»; el servidor (`MAX_INSTRUCCIONES` en nexus_back) las rechaza si pasan. */
+export const MAX_INSTRUCCIONES = 1000;
+
 export type BorradorTipoDocumental = {
 	nombre: string;
 	descripcion: string;
+	/**
+	 * «Instrucciones para la extracción» (opcionales, 2026-10-30): contexto para que Document AI lea el documento (qué dato tomar
+	 * cuando hay varios, de qué país es). Viajan al Custom Extractor como el `documentPrompt` de su esquema. Orientan QUÉ se
+	 * extrae; pedirle que reescriba un valor (otro formato, mayúsculas) hace que ese campo desaparezca de la respuesta de Google.
+	 */
+	instrucciones: string;
 	vertical: string;
 	/** Los campos YA agregados, los que se listan bajo "Campos agregados". */
 	campos: CampoBorrador[];
@@ -245,6 +254,7 @@ function vacio(): BorradorTipoDocumental {
 	return {
 		nombre: '',
 		descripcion: '',
+		instrucciones: '',
 		vertical: '',
 		campos: [],
 		campoEnCaptura: campoVacio(),
@@ -359,6 +369,7 @@ function leer(): BorradorTipoDocumental | null {
 		return {
 			nombre: typeof datos.nombre === 'string' ? datos.nombre : '',
 			descripcion: typeof datos.descripcion === 'string' ? datos.descripcion : '',
+			instrucciones: typeof datos.instrucciones === 'string' ? datos.instrucciones : '',
 			vertical: typeof datos.vertical === 'string' ? datos.vertical : '',
 			campoEnCaptura: leerCampo(datos.campoEnCaptura) ?? campoVacio(),
 			campos,
@@ -397,6 +408,7 @@ export function hayBorrador(): boolean {
 	return (
 		borradorTipoDocumental.nombre.trim() !== '' ||
 		borradorTipoDocumental.descripcion.trim() !== '' ||
+		borradorTipoDocumental.instrucciones.trim() !== '' ||
 		borradorTipoDocumental.vertical !== '' ||
 		borradorTipoDocumental.campos.length > 0 ||
 		!campoIntacto(borradorTipoDocumental.campoEnCaptura)
@@ -811,6 +823,8 @@ export type TipoDocumentalGuardado = {
 	id: string;
 	nombre: string;
 	descripcion: string;
+	/** Ver `BorradorTipoDocumental.instrucciones`. Vacío en los tipos anteriores al 2026-10-30 y en los que no las llevan. */
+	instrucciones: string;
 	vertical: string;
 	campos: CampoBorrador[];
 	/** Hasta qué paso se configuró. Al retomarlo, esos pasos quedan navegables
@@ -1121,6 +1135,7 @@ function leerTipoGuardado(crudo: unknown): TipoDocumentalGuardado | null {
 		id: typeof d.id === 'string' ? d.id : idTipo(),
 		nombre: d.nombre,
 		descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+		instrucciones: typeof d.instrucciones === 'string' ? d.instrucciones : '',
 		vertical: typeof d.vertical === 'string' ? d.vertical : '',
 		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : [],
 		pasoMaximo: leerPasoMaximo(d),
@@ -1266,6 +1281,7 @@ function alinearBorradorCon(id: string) {
 	Object.assign(borradorTipoDocumental, {
 		nombre: tipo.nombre,
 		descripcion: tipo.descripcion,
+		instrucciones: tipo.instrucciones,
 		vertical: tipo.vertical,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[],
 		// Sin esto el efecto del asistente, que sincroniza el borrador hacia la biblioteca en cuanto cambia, escribiría el
@@ -1556,6 +1572,7 @@ export function guardarTipoDocumental(): string | null {
 	const datos = {
 		nombre: b.nombre.trim(),
 		descripcion: b.descripcion.trim(),
+		instrucciones: b.instrucciones.trim(),
 		vertical: b.vertical,
 		campos: $state.snapshot(b.campos) as CampoBorrador[],
 		pasoMaximo: b.pasoMaximo
@@ -1779,6 +1796,7 @@ export async function activarTipoDocumental(
 				id: tipo.id,
 				nombre: tipo.nombre,
 				descripcion: tipo.descripcion,
+				instrucciones: tipo.instrucciones,
 				campos: $state.snapshot(tipo.campos),
 				// La versión YA publicada (0 = nunca). El back publica la SIGUIENTE
 				// como un procesador nuevo — nunca adopta el de una versión
@@ -2239,6 +2257,7 @@ export function cargarTipoDocumental(id: string): boolean {
 	Object.assign(borradorTipoDocumental, {
 		nombre: tipo.nombre,
 		descripcion: tipo.descripcion,
+		instrucciones: tipo.instrucciones,
 		vertical: tipo.vertical,
 		campos: tipo.campos.map((c) => ({ ...$state.snapshot(c), id: idCampo() })),
 		campoEnCaptura: campoVacio(),
