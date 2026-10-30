@@ -1747,7 +1747,8 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 /**
  * Activa un modelo: crea (o adopta) su Custom Extractor en Document AI, vía el
  * back, y solo si Google respondió marca el estado local. Es el botón
- * "Activar" de la tarjeta (HU038), y es LA operación del sistema: convierte la
+ * "Activar" de la tarjeta (HU038; desde el 2026-10-30 el rótulo es
+ * "Confirmar configuración"), y es LA operación del sistema: convierte la
  * configuración capturada en un extractor zero-shot utilizable.
  *
  * El orden importa: primero el procesador, después el estado. Al revés

@@ -1623,11 +1623,11 @@
 							     La tarjeta NO es clicable (2026-09-06, a pedido explícito). Antes
 							     el ícono y los textos eran un <button> que abría el modo edición,
 							     pero llevaba `flex-1`: se estiraba por todo el espacio libre hasta
-							     "Activar", así que picar en el área VACÍA de la tarjeta —donde no
+							     "Confirmar configuración", así que picar en el área VACÍA de la tarjeta —donde no
 							     hay nada que sugiera que sea clicable— también entraba a editar.
 							     Ahora la ÚNICA puerta al modo edición es el renglón "Editar" del
 							     menú `⋮` (que ya trae su propio guardia para modelos activos), y
-							     en la tarjeta quedan solo dos controles reales: "Activar" y el
+							     en la tarjeta quedan solo dos controles reales: "Confirmar configuración" y el
 							     menú. Ojo si se reintroduce algo clicable aquí: un <button>
 							     dentro de otro es HTML inválido —el navegador deshace el
 							     anidamiento y los clics dejan de llegar a quien deben—, que es el
@@ -1681,8 +1681,13 @@
 								     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
 								     2026-09-14, cuando se pidió que dijera "Configurado": el
 								     estado interno del tipo SIGUE siendo `activo` —la clave, el
-								     testid y el botón "Activar" no cambiaron—, solo cambia la
+								     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
 								     palabra que ve el usuario.
+								     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
+								     el tipo no queda "activo, listo para usarse"): confirmar los campos
+								     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
+								     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
+								     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
 								     NO se implementó el estado intermedio "Validando configuración..."
 								     que aparece en una de las capturas: no hay nada que validar sin
 								     el back, y una animación de espera sobre trabajo que nadie está
@@ -1755,9 +1760,9 @@
 									<Button
 										size="sm"
 										data-testid="activar-tipo"
-										class="h-9.5 w-20.5 shrink-0"
+										class="h-9.5 shrink-0 px-4"
 										disabled={activandoId !== null}
-										onclick={() => activar(tipo.id)}>Activar</Button
+										onclick={() => activar(tipo.id)}>Confirmar configuración</Button
 									>
 								{/if}
 
