@@ -21,6 +21,44 @@ export function puedeAdministrar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'r
 }
 
 /**
+ * Quién puede USAR el producto (2026-10-30): trabajar el centro operativo documental y consultar los expedientes. Es TODO el que pertenece
+ * a una organización con algún rol (Administrador, Supervisor, Analista, Operador, Compliance Officer, Auditor o Viewer) y el administrador
+ * de plataforma: nexus_back deja LEER y operar el pipeline a cualquiera de ellos (`aislamiento.exigir`). Lo único que se le quita a un rol de
+ * consulta es lo que MUEVE el trabajo (`puedeOrganizar`) y lo que se configura (`puedeAdministrar`).
+ */
+export function puedeUsar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'rol'> | null | undefined): boolean {
+	if (!usuario) return false;
+	return usuario.esAdminPlataforma || usuario.rol !== null;
+}
+
+/**
+ * Las opciones del engrane de la barra, y a quién se le OFRECE cada una (2026-10-30). Antes el engrane entero era de quien administra;
+ * ahora lo ve cualquiera que use el producto, y cada opción aparece solo a quien le toca. Es la ÚNICA tabla de esta decisión: la barra
+ * filtra con ella, y la sección «Roles» de Nexus Monitor la muestra tal cual (si cambia aquí, cambia allá).
+ *
+ *   modulo-de-uso            → todos los roles (`puedeUsar`)
+ *   las demás                → quien administra (`puedeAdministrar`: Administrador, Supervisor y administrador de plataforma)
+ *
+ * «Conectores» y «Auditoría y trazabilidad» todavía no tienen pantalla: quedan con quien administra hasta que se defina quién más las usa
+ * (el diseño habla de Auditor y Compliance Officer para la auditoría, pero eso se decide cuando exista).
+ */
+export type OpcionDelEngrane =
+	| 'motor-de-reglas'
+	| 'modulo-de-uso'
+	| 'modulo-de-configuracion'
+	| 'conectores'
+	| 'auditoria-y-trazabilidad'
+	| 'api-key'
+	| 'webhooks';
+
+export function puedeVerOpcionDelEngrane(
+	usuario: Pick<Usuario, 'esAdminPlataforma' | 'rol'> | null | undefined,
+	opcion: OpcionDelEngrane
+): boolean {
+	return opcion === 'modulo-de-uso' ? puedeUsar(usuario) : puedeAdministrar(usuario);
+}
+
+/**
  * Lo que cada rol puede ORGANIZAR (2026-10-24): crear un expediente y, cuando haya pantalla para ello, meter o sacar documentos de él.
  * Espejo de `roles.PUEDEN_ORGANIZAR` de nexus_back, que es quien MANDA (responde 403 `sin_permiso` a los demás): Administrador,
  * Supervisor, Analista y Operador, que son quienes trabajan la bandeja, y el administrador de plataforma. Compliance, Auditor y Viewer

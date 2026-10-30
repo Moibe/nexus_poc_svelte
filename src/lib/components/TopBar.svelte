@@ -18,7 +18,7 @@
 	import { APP_NOMBRE, APP_VERSION } from '$lib/version';
 	import PerfilSheet from '$lib/components/perfil/PerfilSheet.svelte';
 	import type { Usuario } from '$lib/server/sesion';
-	import { puedeAdministrar } from '$lib/usuarios/permisos';
+	import { puedeVerOpcionDelEngrane, type OpcionDelEngrane } from '$lib/usuarios/permisos';
 
 	let { usuario = null }: { usuario?: Usuario | null } = $props();
 
@@ -99,12 +99,8 @@
 	const puedeAdministrarUsuarios = $derived(
 		Boolean(usuario?.esAdminPlataforma) || usuario?.rol === 'ADMIN'
 	);
-	const puedeConfigurar = $derived(puedeAdministrar(usuario));
 	const navItems = $derived([
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
-		// Módulo de uso (2026-10-30): para TODOS los roles, no solo para quien administra: es donde se trabaja a diario. Por eso va en la
-		// barra y no en el engrane, que es solo de quien administra. Se queda marcado también dentro de los expedientes, que cuelgan de él.
-		{ href: '/uso', label: 'Módulo de uso', icon: LayoutGrid, iconClass: 'size-4', tambienEn: ['/expediente'] },
 		...(usuario?.esAdminPlataforma
 			? [{ href: '/organizaciones', label: 'Organizaciones', icon: Network }]
 			: []),
@@ -120,29 +116,36 @@
 	// la que tengo el volcado), así que no pude sacar los SVG reales como sí se
 	// hizo con los del header. Si aparece el link de Figma de este menú, vale la
 	// pena reemplazarlos por los exportados.
-	const opcionesConfiguracion = [
+	//
+	// Quién ve cada una lo decide `puedeVerOpcionDelEngrane` (permisos.ts): el engrane lo ve cualquiera que use el producto y cada opción
+	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña.
+	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof Cog; alSeleccionar: (() => void) | undefined }[] = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
-		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
-		// «Expediente» ya no está aquí desde el 2026-10-30: lo sustituyó el módulo de uso, que ahora va en la barra de arriba (todos los
-		// roles lo ven; este engrane es solo de quien administra). Los TIPOS de expediente se configuran: viven en el módulo de configuración.
+		{ id: 'motor-de-reglas', etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
+		// Módulo de uso (2026-10-30): sustituyó a «Expediente». Una página con un cuadro por cosa que se USA a diario —el centro operativo
+		// documental (las tres bandejas del inicio) y los expedientes—, como el módulo de configuración lo es de lo que se configura. Es
+		// la única opción que ve TODO rol. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
+		{ id: 'modulo-de-uso', etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
+			id: 'modulo-de-configuracion',
 			etiqueta: 'Módulo de configuración',
 			icono: SlidersHorizontal,
 			alSeleccionar: () => goto('/configuracion')
 		},
-		{ etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
-		{ etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
+		{ id: 'conectores', etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
+		{ id: 'auditoria-y-trazabilidad', etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
 		// Agregada el 2026-09-23. Va al final del menú, que es donde la pone la
 		// captura del diseño, y con la pieza de rompecabezas que ahí se ve —no una
 		// llave, aunque semánticamente pegaría más.
-		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) },
+		{ id: 'api-key', etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) },
 		// Agregada el 2026-09-30, junto a API Key: las dos son cosas que se
 		// configuran para que un tercero use Biblioratum. El ícono es de lucide, sin
 		// captura del menú que lo confirme.
-		{ etiqueta: 'Webhooks', icono: Webhook, alSeleccionar: () => (webhooksAbierto = true) }
+		{ id: 'webhooks', etiqueta: 'Webhooks', icono: Webhook, alSeleccionar: () => (webhooksAbierto = true) }
 	];
+	const opcionesConfiguracion = $derived(TODAS_LAS_OPCIONES.filter((o) => puedeVerOpcionDelEngrane(usuario, o.id)));
 </script>
 
 <header class="sticky top-0 z-40 border-b border-border bg-card">
@@ -154,10 +157,7 @@
 
 			<nav class="flex items-center gap-2">
 				{#each navItems as item (item.href)}
-					{@const active =
-						item.href === '/'
-							? page.url.pathname === '/'
-							: [item.href, ...(item.tambienEn ?? [])].some((ruta) => page.url.pathname.startsWith(ruta))}
+					{@const active = item.href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.href)}
 					<a
 						href={item.href}
 						class={[
@@ -167,7 +167,7 @@
 								: 'text-foreground hover:bg-muted'
 						]}
 					>
-						<item.icon {...(item.iconClass ? { class: item.iconClass } : {})} />
+						<item.icon />
 						{item.label}
 					</a>
 				{/each}
@@ -189,9 +189,10 @@
 			>
 				<NotificationBellIcon />
 			</button>
-			<!-- El engrane (API Key, Webhooks, motor de reglas, configuración) solo para quien administra (NEX-472): el servidor
-			     les responde 403 a los demás roles, y enseñar una puerta cerrada no sirve de nada. -->
-			{#if puedeConfigurar}
+			<!-- El engrane lo ve cualquiera que use el producto, pero cada opción solo a quien le toca (NEX-472, y desde el 2026-10-30 el
+			     módulo de uso, que es de todos): el servidor le responde 403 a los roles sin permiso, y enseñar una puerta cerrada no sirve de
+			     nada. Quién ve qué: `puedeVerOpcionDelEngrane` en permisos.ts, y la tabla «Roles» de Nexus Monitor. -->
+			{#if opcionesConfiguracion.length > 0}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
