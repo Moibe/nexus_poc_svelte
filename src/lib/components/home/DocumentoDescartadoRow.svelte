@@ -39,7 +39,7 @@
 			Descartado el {formatearFecha(documento.descartadoEn)}
 		</p>
 		{#if documento.detalle}
-			<p class="mt-0.5 line-clamp-2 text-xs text-muted-foreground" data-testid="motivo-del-descarte">Motivo: {documento.detalle}</p>
+			<p class="mt-0.5 line-clamp-2 text-xs text-muted-foreground" title="Motivo: {documento.detalle}" data-testid="motivo-del-descarte">Motivo: {documento.detalle}</p>
 		{/if}
 	</div>
 </div>

@@ -166,6 +166,12 @@ export type CampoBorrador = {
 	 * `valoresLista`: tirar lo que alguien escribió por tocar un desplegable es peor que dejar un dato inerte.
 	 */
 	subcampos: SubcampoBorrador[];
+	/**
+	 * La cardinalidad la propuso Document AI leyendo un documento de ejemplo («Generar a partir de un documento», 2026-10-29), no
+	 * la persona: el paso 3 lo señala para que se revise (un solo ejemplo no prueba que un dato nunca se repita). Se apaga en cuanto
+	 * la persona elige otra cardinalidad. Ausente en los campos capturados a mano.
+	 */
+	cardinalidadSugerida?: boolean;
 };
 
 export type BorradorTipoDocumental = {
@@ -323,7 +329,8 @@ function leerCampo(c: unknown): CampoBorrador | null {
 			typeof d.valorListaEnCaptura === 'string' ? d.valorListaEnCaptura : '',
 		subcampos: Array.isArray(d.subcampos)
 			? (d.subcampos.map(leerSubcampo).filter(Boolean) as SubcampoBorrador[])
-			: []
+			: [],
+		...(d.cardinalidadSugerida === true ? { cardinalidadSugerida: true } : {})
 	};
 }
 
@@ -428,6 +435,65 @@ export function agregarCampoEnCaptura(): boolean {
 	borradorTipoDocumental.campos.push({ ...$state.snapshot(c), id: idCampo() });
 	borradorTipoDocumental.campoEnCaptura = campoVacio();
 	return true;
+}
+
+/**
+ * Un campo tal como lo PROPONE «Generar a partir de un documento» (`POST /api/procesadores/generar-campos`): la forma que arma
+ * `campos_desde_esquema` en nexus_back. Sin `id` ni propiedades del paso 3: eso lo pone `agregarCamposPropuestos`.
+ */
+export type CampoPropuesto = {
+	nombre: string;
+	tipoDato: string;
+	descripcion: string;
+	obligatorio: boolean;
+	cardinalidad: string;
+	valoresLista: string[];
+	subcampos: { nombre: string; tipoDato: string; descripcion: string; obligatorio: boolean }[];
+};
+
+/**
+ * Agrega a «Campos agregados» los campos propuestos que la persona eligió. Cada uno nace como un campo nuevo (`campoVacio`, con los
+ * defaults del paso 3) con lo propuesto encima, y queda editable como cualquier otro. Un nombre que ya existe (o que se repite en
+ * la misma propuesta) NO se agrega: duplicarlo produciría dos campos que compiten por el mismo dato (`nombreCampoDuplicado`).
+ * Un tipo que el paso 2 no conoce cae a texto, y una descripción vacía toma el nombre, para que el campo nazca completo.
+ *
+ * Nacen OBLIGATORIOS (también sus subcampos), igual que un campo capturado a mano (`campoVacio`), sin importar lo que diga Google:
+ * en todas las pruebas del 2026-10-29 propuso todo como opcional, y eso dejaba lo generado con un criterio distinto de lo manual
+ * (Moibe, 2026-10-29). La cardinalidad sí se toma de la propuesta, marcada como sugerida para revisarla en el paso 3.
+ */
+export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregados: number; omitidos: string[] } {
+	const omitidos: string[] = [];
+	let agregados = 0;
+	for (const p of propuestos) {
+		const nombre = p.nombre.trim();
+		if (nombre === '' || nombreCampoDuplicado(nombre, borradorTipoDocumental.campos)) {
+			omitidos.push(nombre);
+			continue;
+		}
+		const tipo = VALORES_TIPO.includes(p.tipoDato) ? p.tipoDato : 'texto';
+		borradorTipoDocumental.campos.push({
+			...campoVacio(),
+			nombre,
+			tipoDato: tipo,
+			descripcion: p.descripcion.trim() || nombre,
+			obligatorio: true,
+			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
+			cardinalidadSugerida: true,
+			valoresLista: tipo === 'lista' ? [...p.valoresLista] : [],
+			subcampos:
+				tipo === 'grupo'
+					? p.subcampos.map((s) => ({
+							id: idCampo(),
+							nombre: s.nombre.trim(),
+							tipoDato: VALORES_SUBTIPO.includes(s.tipoDato) ? s.tipoDato : 'texto',
+							descripcion: s.descripcion.trim(),
+							obligatorio: true
+						}))
+					: []
+		});
+		agregados += 1;
+	}
+	return { agregados, omitidos };
 }
 
 export function quitarCampo(id: string) {
