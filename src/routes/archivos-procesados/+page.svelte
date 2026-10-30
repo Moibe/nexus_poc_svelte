@@ -10,8 +10,9 @@
 	 * HUN2) quien organiza (Administrador, Supervisor, Analista, Operador) elige documentos con casillas y los AGREGA a un expediente que
 	 * ya existe, desde la barra flotante (ver `AgregarAExpediente.svelte`); los demás roles solo leen, sin casillas.
 	 *
-	 * Lo que se aparta del diseño, porque el servidor todavía no lo guarda: la columna «Tipo documental» y el «Estatus de procesamiento»
-	 * del documento no salen (ningún documento guarda su tipo documental ni un estado), y «Canal» ocupa su lugar; tampoco está «Filtrar».
+	 * Desde el 2026-10-29 sale la columna «Tipo documental» del diseño: el servidor guarda la clasificación y los datos extraídos de cada
+	 * documento (migración 0007). El tipo abre sus DATOS EXTRAÍDOS (`DatosExtraidosModal`). Lo procesado antes de eso no se guardó y sale
+	 * «Sin tipo» (Moibe: «podemos prescindir de lo que no se guardó»). Siguen sin salir el «Estatus de procesamiento» y «Filtrar».
 	 */
 	import List from '@lucide/svelte/icons/list';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
@@ -20,6 +21,7 @@
 	import { invalidateAll } from '$app/navigation';
 
 	import AgregarAExpediente, { type ResultadoAgregar } from '$lib/components/expedientes/AgregarAExpediente.svelte';
+	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
 	import BarraAccionesPanel from '$lib/components/home/BarraAccionesPanel.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
@@ -60,7 +62,7 @@
 	const documentosVisibles = $derived.by(() => {
 		const q = normalizar(busquedaDocumentos);
 		const coinciden = q
-			? conId.filter((d) => normalizar(`${d.nombreOriginal} ${d.expedientes.map((e) => e.nombre).join(' ')}`).includes(q))
+			? conId.filter((d) => normalizar(`${d.nombreOriginal} ${d.tipoDocumental?.nombre ?? ''} ${d.expedientes.map((e) => e.nombre).join(' ')}`).includes(q))
 			: conId;
 		return ordenarDocumentos(coinciden, ordenDocumentos);
 	});
@@ -71,6 +73,8 @@
 	const documentosElegidos = $derived(data.documentos.filter((d) => elegidos.has(d.id)));
 	const paginaCompleta = $derived(paginaDeDocumentos.length > 0 && paginaDeDocumentos.every((d) => elegidos.has(d.id)));
 	let panelAbierto = $state(false);
+	/** El documento cuyos datos extraídos se están viendo. */
+	let datosDe = $state<{ id: string; nombre: string } | null>(null);
 	let aviso = $state('');
 	function alternarPagina(marcar: boolean) {
 		for (const d of paginaDeDocumentos) {
@@ -209,6 +213,7 @@
 								{/if}
 								<th scope="col" class="w-16 py-2.5 pr-4 pl-2 font-normal">ID</th>
 								<th scope="col" class="py-2.5 pr-4 font-normal">Nombre de archivo</th>
+								<th scope="col" class="py-2.5 pr-4 font-normal">Tipo documental</th>
 								<th scope="col" class="py-2.5 pr-4 font-normal">Canal</th>
 								<th scope="col" class="py-2.5 pr-4 font-normal">Fecha de ingesta</th>
 								<th scope="col" class="py-2.5 pr-2 font-normal">Expediente asociado</th>
@@ -231,6 +236,24 @@
 									<td class="min-w-0 py-3 pr-4">
 										<p class="max-w-md truncate font-medium text-foreground" title={d.nombreOriginal} data-testid="documento-nombre">{d.nombreOriginal}</p>
 										<p class="text-xs text-muted-foreground">{formatoDe(d)} | {formatearTamano(d.tamanoBytes)}</p>
+									</td>
+									<td class="py-3 pr-4 text-xs" data-testid="documento-tipo">
+										{#if d.tipoDocumental}
+											<button
+												type="button"
+												class="text-left text-primary underline-offset-2 hover:underline"
+												title={d.tipoDocumental.origen === 'clasificacion' ? 'Clasificado, sin datos extraídos todavía' : 'Ver los datos extraídos'}
+												onclick={() => (datosDe = { id: d.id, nombre: d.nombreOriginal })}
+												data-testid="ver-datos">{d.tipoDocumental.nombre}</button
+											>
+											{#if d.tipoDocumental.origen === 'clasificacion'}
+												<span class="block text-muted-foreground">Sin extraer</span>
+											{:else if d.tipoDocumental.estado === 'no_reconocido'}
+												<span class="block text-muted-foreground">Campos no reconocidos</span>
+											{/if}
+										{:else}
+											<span class="text-muted-foreground">Sin tipo</span>
+										{/if}
 									</td>
 									<td class="py-3 pr-4 text-xs text-muted-foreground" data-testid="documento-canal">{d.canal === 'API' ? 'API' : 'Carga manual'}</td>
 									<td class="py-3 pr-4 text-xs text-muted-foreground" data-testid="documento-fecha">{fechaCorta(d.recibidoEn)}</td>
@@ -298,3 +321,5 @@
 		/>
 	</div>
 {/if}
+
+<DatosExtraidosModal bind:documento={datosDe} />

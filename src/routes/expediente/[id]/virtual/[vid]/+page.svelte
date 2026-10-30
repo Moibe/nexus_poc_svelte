@@ -174,12 +174,18 @@
 		{#if v.tipo.tiposDocumentales.length === 0}
 			Su tipo no tiene esquema.
 		{:else}
-			El tipo «{v.tipo.nombre}» lleva: {v.tipo.tiposDocumentales.map((t) => t.nombre).join(', ')}.
+			El tipo «{v.tipo.nombre}» lleva:
+			<!-- Desde la migración 0007 los documentos guardan su tipo documental: cada tipo del esquema dice si algún documento lo cubre. -->
+			{#each v.tipo.tiposDocumentales as t, i (t.id)}
+				<span class={t.documentos === undefined ? '' : t.documentos.length ? 'text-green-700' : 'text-red-700'} data-testid="esquema-tipo"
+					>{t.nombre}{#if t.documentos !== undefined}&nbsp;{t.documentos.length ? '✓' : '(falta)'}{/if}</span
+				>{i < v.tipo.tiposDocumentales.length - 1 ? ', ' : '.'}
+			{/each}
 		{/if}
 	</p>
 
-	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Correrlos sobre él llegará cuando los
-	     documentos guarden su tipo documental y sus datos extraídos, que es lo que las reglas comparan. -->
+	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Los documentos ya guardan su tipo documental y
+	     sus datos extraídos (migración 0007), que es lo que las reglas comparan; falta el motor que los corra sobre él. -->
 	<div class="mt-1 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground" data-testid="virtual-procesos">
 		{#if (v.procesos ?? []).length === 0}
 			Ningún proceso del motor de reglas corre todavía sobre el tipo «{v.tipo.nombre}».

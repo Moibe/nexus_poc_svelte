@@ -54,9 +54,9 @@ export type DocumentoEnPipeline = {
 	 *  el `id` que recibió el cliente al subirlo. Con él se le avisa al servidor
 	 *  cómo terminó, para sus webhooks (ver `avisosWebhook.ts`). */
 	idEntrada?: string;
-	/** Solo lo que se cargó a mano: el id del documento que el servidor creó para él al empezar a procesarse
-	 *  (`registrarDocumentoManual`). Lo que llega por la API ya nace como documento allá, con su entrada. Sirve para no
-	 *  registrarlo dos veces si se reintenta. */
+	/** El id del documento en el servidor. Lo que llega por la API lo trae desde la bandeja; lo cargado a mano lo recibe al empezar a
+	 *  procesarse (`registrarDocumentoManual`), y así no se registra dos veces si se reintenta. Con él, el servidor guarda la clasificación
+	 *  y los datos extraídos del documento (migración 0007). */
 	documentoId?: string;
 	/** Ya se le avisó al servidor cómo terminó: se avisa UNA vez por documento. */
 	avisado: boolean;
@@ -189,6 +189,7 @@ export async function iniciarPipeline() {
 			tamanioBytes: doc.tamanioBytes,
 			origen: doc.origen,
 			idEntrada: doc.idEntrada,
+			documentoId: doc.documentoId,
 			avisado: false,
 			agregadoEn: doc.agregadoEn,
 			hashSha256: doc.hashSha256,
@@ -445,7 +446,7 @@ async function procesarUno(id: string) {
 	// punto de `estado`, partir `fecha_registro`) dejan de aplicarse porque
 	// viven del lado de `/ia/ine`.
 	pasarA(sigueVivo, 'procesando');
-	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
+	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion, tipo.id);
 }
 
 /**
@@ -524,6 +525,9 @@ async function registrarDocumentoManual(archivo: File): Promise<Registro> {
 async function clasificar(id: string, archivo: File): Promise<string | null> {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo);
+	// Con el documento, el servidor guarda la clasificación (qué tipo documental es). Sin él clasifica igual, pero sin dejar rastro.
+	const documentoId = documentosEnPipeline.find((d) => d.id === id)?.documentoId;
+	if (documentoId) cuerpo.append('documento', documentoId);
 
 	try {
 		const respuesta = await fetch('/api/pipeline/clasificar', { method: 'POST', body: cuerpo });
@@ -575,11 +579,18 @@ async function extraerConProcesador(
 	id: string,
 	archivo: File,
 	procesador: string,
-	version: string
+	version: string,
+	tipoId: string
 ) {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo);
 	cuerpo.append('procesador', procesador);
+	// Con el documento y su tipo, el servidor GUARDA la corrida y sus datos extraídos (uno por campo); reprocesar crea otra corrida.
+	const documentoId = documentosEnPipeline.find((d) => d.id === id)?.documentoId;
+	if (documentoId) {
+		cuerpo.append('documento', documentoId);
+		cuerpo.append('tipoDocumental', tipoId);
+	}
 	// La versión viaja solo si el tipo la tiene guardada. Sin ella Google usa
 	// su default, que puede cambiar sin aviso — mismo criterio que
 	// DOCAI_VERSION_INE en el back.

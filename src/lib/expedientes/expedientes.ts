@@ -27,6 +27,18 @@ export type DocumentoDeExpediente = {
 	/** Por dónde entró: la API o la carga manual. */
 	canal: 'API' | 'MANUAL';
 	recibidoEn: string | null;
+	/** Qué tipo documental es, según lo que se guardó al procesarlo (migración 0007): el de su última extracción o, si no se extrajo, el
+	 *  de su última clasificación. `null` si nunca se procesó desde que se guarda o el clasificador dijo «otro». */
+	tipoDocumental?: TipoDeDocumento | null;
+};
+
+export type TipoDeDocumento = {
+	id: string;
+	nombre: string;
+	origen: 'extraccion' | 'clasificacion';
+	/** De la extracción: `ok` o `no_reconocido` (sus campos no se reconocieron). */
+	estado: 'ok' | 'no_reconocido' | null;
+	confianza: number | null;
 };
 
 /**
@@ -47,7 +59,8 @@ export type ExpedienteVirtualResumen = {
 export type ExpedienteVirtual = {
 	id: string;
 	nombre: string;
-	tipo: { id: string; nombre: string; tiposDocumentales: { id: string; nombre: string }[] };
+	/** Cada tipo documental del esquema con los documentos del virtual que lo cubren (por su tipo guardado; vacío = falta). */
+	tipo: { id: string; nombre: string; tiposDocumentales: { id: string; nombre: string; documentos?: string[] }[] };
 	expediente: { id: string; nombre: string };
 	creadoPor: string | null;
 	creadoEn: string | null;

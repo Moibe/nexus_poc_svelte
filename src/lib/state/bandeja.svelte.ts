@@ -39,6 +39,9 @@ export type DocumentoEnBandeja = {
 	/** Solo para lo que llegó por la API: el id de su entrada en el servidor,
 	 *  con el que se retira de la bandeja al procesarla o descartarla. */
 	idEntrada?: string;
+	/** Lo que llegó por la API ya nació como documento en el servidor: su id, para que el pipeline guarde ahí su clasificación y sus
+	 *  datos extraídos. (Lo cargado a mano lo recibe al registrarse, en el pipeline.) */
+	documentoId?: string;
 	agregadoEn: Date;
 	estado: 'en_cola' | 'subiendo' | 'listo' | 'duplicado' | 'protegido' | 'corrupto' | 'sin_contenido';
 	progreso: number; // 0-100; solo relevante mientras estado === 'subiendo'
@@ -516,6 +519,7 @@ export async function sincronizarDescartados() {
 
 type EntradaApi = {
 	id: string;
+	documentoId?: string;
 	rutaRelativa: string;
 	sha256: string;
 	tamanoBytes: number;
@@ -592,6 +596,7 @@ export async function sincronizarEntradasApi() {
 			documentosEnBandeja.push({
 				id,
 				idEntrada: e.id,
+				documentoId: e.documentoId || undefined,
 				nombre: e.nombreOriginal || `archivo.${extension.toLowerCase()}`,
 				extension,
 				tamanioBytes: e.tamanoBytes,
