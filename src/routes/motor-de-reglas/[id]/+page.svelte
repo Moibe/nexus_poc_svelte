@@ -17,7 +17,7 @@
 	const entrada = $derived(page.params.id ?? 'nuevo');
 </script>
 
-<svelte:head><title>NexusDoc AI — Motor de reglas</title></svelte:head>
+<svelte:head><title>Biblioratum — Motor de reglas</title></svelte:head>
 
 <div>
 	<h1 class="text-2xl font-semibold text-foreground">Motor de reglas</h1>

@@ -1,5 +1,5 @@
 /**
- * Los webhooks configurados: endpoints de un cliente a los que NexusDoc le
+ * Los webhooks configurados: endpoints de un cliente a los que Biblioratum le
  * avisa cuando un documento suyo termina de procesarse, falla o es rechazado.
  *
  * DESDE EL 2026-10-01 VIVEN EN EL SERVIDOR. Los registra y los guarda nexus_back
@@ -39,7 +39,7 @@ import { browser } from '$app/environment';
  * dice el diseño (`Documento_completado`).
  *
  *   · completado → el documento se procesó y la extracción terminó.
- *   · fallido    → NexusDoc falló al procesarlo (un error del servicio). El
+ *   · fallido    → Biblioratum falló al procesarlo (un error del servicio). El
  *                  documento puede estar bien: reintentar tiene sentido.
  *   · rechazado  → el documento no se puede procesar como vino: formato no
  *                  admitido o tipo no reconocido. Reintentar igual no sirve.
@@ -66,7 +66,7 @@ export const EVENTOS_WEBHOOK = [
 	{
 		valor: 'documento.fallido',
 		etiqueta: 'Documento_fallido',
-		descripcion: 'NexusDoc falló al procesarlo por un error del servicio; se puede reintentar.'
+		descripcion: 'Biblioratum falló al procesarlo por un error del servicio; se puede reintentar.'
 	},
 	{
 		valor: 'documento.rechazado',
@@ -159,7 +159,7 @@ export function validarUrlWebhook(texto: string): ResultadoUrl {
 	} catch {
 		return {
 			ok: false,
-			motivo: 'No parece una URL válida. Ejemplo: https://api.empresa.com/webhooks/nexusdoc'
+			motivo: 'No parece una URL válida. Ejemplo: https://api.empresa.com/webhooks/Biblioratum'
 		};
 	}
 	const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
@@ -579,7 +579,7 @@ export async function cargarHistorialWebhook(id: string): Promise<IntentoWebhook
 // Los de antes: se borran de este navegador. Ver el docstring de arriba.
 if (browser) {
 	try {
-		window.localStorage.removeItem('nexusdoc:webhooks:v1');
+		window.localStorage.removeItem('Biblioratum:webhooks:v1');
 	} catch {
 		// localStorage bloqueado: no hay nada que borrar que se pueda leer.
 	}

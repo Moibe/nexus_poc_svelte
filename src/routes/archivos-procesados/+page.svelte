@@ -99,9 +99,9 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Archivos procesados</title></svelte:head>
+<svelte:head><title>Biblioratum — Archivos procesados</title></svelte:head>
 
-<p class="text-xs text-muted-foreground">NexusDoc AI / Archivos procesados</p>
+<p class="text-xs text-muted-foreground">Biblioratum / Archivos procesados</p>
 <div class="mt-2">
 	<h1 class="text-2xl font-semibold text-foreground">Gestión de documentos y expedientes</h1>
 	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">

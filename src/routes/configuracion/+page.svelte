@@ -28,7 +28,7 @@
 			href: '/configuracion/tipos-documentales',
 			icono: SetupIcon,
 			descripcion:
-				'La biblioteca de tu organización: qué documentos reconoce NexusDoc, qué campos extrae de cada uno y cómo se calibran con ejemplos.'
+				'La biblioteca de tu organización: qué documentos reconoce Biblioratum, qué campos extrae de cada uno y cómo se calibran con ejemplos.'
 		},
 		{
 			id: 'tipos-expediente',
@@ -41,13 +41,13 @@
 	];
 </script>
 
-<svelte:head><title>NexusDoc AI — Módulo de configuración</title></svelte:head>
+<svelte:head><title>Biblioratum — Módulo de configuración</title></svelte:head>
 
 <p class="text-xs text-muted-foreground">Configuración</p>
 <div class="mt-2">
 	<h1 class="text-2xl font-semibold text-foreground">Módulo de configuración</h1>
 	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-		Configura la forma en que NexusDoc comprende tus documentos y cómo se organizan tus expedientes. Elige la sección que quieres
+		Configura la forma en que Biblioratum comprende tus documentos y cómo se organizan tus expedientes. Elige la sección que quieres
 		trabajar.
 	</p>
 </div>

@@ -310,7 +310,7 @@
      Webhooks (ahí está la nota del estilo y del contraste AA).
 
      Los dos textos son literales de las capturas y hablan de "solicitudes
-     autenticadas en NexusDoc". Desde el 2026-09-30 es cierto: una llave emitida
+     autenticadas en Biblioratum". Desde el 2026-09-30 es cierto: una llave emitida
      aquí autentica `POST /bandeja/` en nexus_back. -->
 
 <Sheet.Root bind:open>
@@ -356,7 +356,7 @@
 				<h2 class="text-lg font-medium text-foreground">Claves de acceso API Keys</h2>
 				<Sheet.Description class="text-sm">
 					Configura y administra las credenciales que permiten autenticar integraciones y
-					solicitudes a los servicios de NexusDoc.
+					solicitudes a los servicios de Biblioratum.
 				</Sheet.Description>
 			</div>
 		</div>
@@ -456,9 +456,9 @@
 					     nada, así que no separa nada cuando no hay aviso. -->
 					<div role="status" aria-live="polite">
 						{#if vista === 'creada'}
-							<AvisoVerde testid="aviso-api-creada" titulo="API creada correctamente" cuerpo="La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en NexusDoc." />
+							<AvisoVerde testid="aviso-api-creada" titulo="API creada correctamente" cuerpo="La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en Biblioratum." />
 						{:else if avisoRevocada}
-							<AvisoVerde testid="aviso-api-revocada" titulo="API Key revocada correctamente" cuerpo="La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en NexusDoc." />
+							<AvisoVerde testid="aviso-api-revocada" titulo="API Key revocada correctamente" cuerpo="La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en Biblioratum." />
 						{/if}
 					</div>
 

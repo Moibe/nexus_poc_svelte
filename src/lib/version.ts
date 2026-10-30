@@ -4,4 +4,4 @@
  *  package.json metería todo su contenido en el bundle del navegador.
  */
 export const APP_VERSION = '0.0.1';
-export const APP_NOMBRE = 'NexusDoc AI';
+export const APP_NOMBRE = 'Biblioratum';

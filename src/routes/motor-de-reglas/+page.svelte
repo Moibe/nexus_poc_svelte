@@ -10,6 +10,6 @@
 	import ListaDeProcesos from '$lib/components/reglas/ListaDeProcesos.svelte';
 </script>
 
-<svelte:head><title>NexusDoc AI — Motor de reglas</title></svelte:head>
+<svelte:head><title>Biblioratum — Motor de reglas</title></svelte:head>
 
 <ListaDeProcesos />

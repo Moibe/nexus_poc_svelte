@@ -98,7 +98,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Expedientes</title></svelte:head>
+<svelte:head><title>Biblioratum — Expedientes</title></svelte:head>
 
 <!-- El contenedor con `aria-live` va SIEMPRE montado y la bandera controla el aviso de adentro: una región que se monta junto con
      su texto no se anuncia. Vacío no mide nada. -->

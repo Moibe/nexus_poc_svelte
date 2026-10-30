@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * El historial de intentos de un webhook (2026-10-01): cada vez que NexusDoc
+	 * El historial de intentos de un webhook (2026-10-01): cada vez que Biblioratum
 	 * le habló a su endpoint —al validarlo y al entregarle avisos—, con la hora,
 	 * el número de intento, el código de respuesta, cuánto tardó y el motivo.
 	 *
@@ -61,7 +61,7 @@
 			<div class="min-w-0">
 				<p class="text-sm font-medium text-foreground">Historial de intentos</p>
 				<p class="mt-1 text-xs text-muted-foreground">
-					Cada vez que NexusDoc le habló a tu endpoint, al validarlo y al entregarle avisos: del más
+					Cada vez que Biblioratum le habló a tu endpoint, al validarlo y al entregarle avisos: del más
 					reciente al más viejo.
 				</p>
 			</div>
@@ -83,7 +83,7 @@
 					<EmptyState
 						icon={ClockBadgeIcon}
 						title="Todavía no hay intentos"
-						description="Aquí aparecerá cada vez que NexusDoc le hable a tu endpoint: al validarlo y al entregarle avisos."
+						description="Aquí aparecerá cada vez que Biblioratum le hable a tu endpoint: al validarlo y al entregarle avisos."
 					/>
 				</div>
 			{:else if intentos}

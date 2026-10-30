@@ -204,7 +204,7 @@
 			<EmptyState
 				icon={ClockBadgeIcon}
 				title="Tu área de carga está lista"
-				description="Agrega documentos para iniciar el procesamiento, lectura y validación inteligente dentro de NexusDoc."
+				description="Agrega documentos para iniciar el procesamiento, lectura y validación inteligente dentro de Biblioratum."
 			/>
 		</div>
 	{:else}

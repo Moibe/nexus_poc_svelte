@@ -178,7 +178,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Usuarios</title></svelte:head>
+<svelte:head><title>Biblioratum — Usuarios</title></svelte:head>
 
 <p class="text-xs text-muted-foreground">Usuarios / Listado de usuarios</p>
 <div class="mt-2">

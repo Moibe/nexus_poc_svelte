@@ -31,7 +31,7 @@
 	});
 </script>
 
-<svelte:head><title>NexusDoc AI — {expediente.nombre}</title></svelte:head>
+<svelte:head><title>Biblioratum — {expediente.nombre}</title></svelte:head>
 
 <div class="rounded-2xl border-2 border-border bg-card p-3">
 	<div class="flex min-h-12.5 flex-wrap items-center justify-between gap-3">

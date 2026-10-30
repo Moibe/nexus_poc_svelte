@@ -16,7 +16,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 </script>
 
-<svelte:head><title>NexusDoc AI — Enlace de activación caducado</title></svelte:head>
+<svelte:head><title>Biblioratum — Enlace de activación caducado</title></svelte:head>
 
 <div class="flex flex-col items-center text-center">
 	<span class="flex size-28 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -32,7 +32,7 @@
 	<p class="mt-4 text-sm text-muted-foreground">
 		Contacta al administrador de tu organización para generar un nuevo acceso.
 	</p>
-	<Button href="mailto:soporte@nexusdoc.com" class="mt-8 h-10 w-full" data-testid="contactar-administrador">
+	<Button href="mailto:soporte@Biblioratum.com" class="mt-8 h-10 w-full" data-testid="contactar-administrador">
 		Contactar al administrador
 	</Button>
 	<a href="/acceso/iniciar-sesion" class="mt-4 text-xs font-medium text-primary hover:underline">Regresar a login</a>

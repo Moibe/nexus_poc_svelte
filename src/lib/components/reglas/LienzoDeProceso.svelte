@@ -573,7 +573,7 @@
 />
 
 <style>
-	/* El lienzo toma los colores de NexusDoc en vez de los de la librería. */
+	/* El lienzo toma los colores de Biblioratum en vez de los de la librería. */
 	.lienzo :global(.svelte-flow) {
 		--xy-background-color: var(--card);
 		--xy-background-color-default: var(--card);

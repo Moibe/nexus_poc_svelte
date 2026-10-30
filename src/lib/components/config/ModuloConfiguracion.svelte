@@ -1288,7 +1288,7 @@
 			{:else}
 				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
 				<p class="text-sm text-muted-foreground">
-					Configura la forma en que NexusDoc comprende tus documentos.
+					Configura la forma en que Biblioratum comprende tus documentos.
 				</p>
 			{/if}
 		</div>
@@ -2063,7 +2063,7 @@
 									     id abajo, y se pidió quitar las dos cosas —"me sirve más
 									     éste" (el nombre) "y quítale lo de 'Procesador en Document
 									     AI' para que quepa en una sola línea"—. El nombre se explica
-									     solo: empieza con `nexusdoc--` y es idéntico al que se lee en
+									     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
 									     la consola de GCP.
 									     Viene de Google (`procesadorDisplayName`, lo devuelve
 									     "Activar"), no se arma aquí: si el tipo se renombró después

@@ -110,7 +110,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Tipos de expediente</title></svelte:head>
+<svelte:head><title>Biblioratum — Tipos de expediente</title></svelte:head>
 
 <p class="text-xs text-muted-foreground">
 	<a href="/configuracion" class="transition-colors hover:text-foreground" data-testid="volver-a-configuracion">Configuración</a> / Tipos de

@@ -137,7 +137,7 @@
 		// llave, aunque semánticamente pegaría más.
 		{ etiqueta: 'API Key', icono: Puzzle, alSeleccionar: () => (apiKeyAbierto = true) },
 		// Agregada el 2026-09-30, junto a API Key: las dos son cosas que se
-		// configuran para que un tercero use NexusDoc. El ícono es de lucide, sin
+		// configuran para que un tercero use Biblioratum. El ícono es de lucide, sin
 		// captura del menú que lo confirme.
 		{ etiqueta: 'Webhooks', icono: Webhook, alSeleccionar: () => (webhooksAbierto = true) }
 	];

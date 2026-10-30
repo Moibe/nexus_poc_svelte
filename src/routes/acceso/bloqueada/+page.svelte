@@ -24,7 +24,7 @@
 	const sigueBloqueada = $derived(Number.isFinite(hasta.getTime()) && restante > 0);
 </script>
 
-<svelte:head><title>NexusDoc AI — Cuenta bloqueada</title></svelte:head>
+<svelte:head><title>Biblioratum — Cuenta bloqueada</title></svelte:head>
 
 <div class="flex flex-col items-center text-center">
 	<span class="flex size-28 items-center justify-center rounded-full bg-primary/10 text-primary">

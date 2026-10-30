@@ -202,7 +202,7 @@
 						<p class="text-sm font-medium text-foreground">Crea tu proceso</p>
 						<p class="mt-1 max-w-md text-xs text-muted-foreground">
 							Define los tipos documentales que forman parte del proceso y las reglas que deben cumplir los documentos de un expediente.
-							NexusDoc probará cada regla con valores de ejemplo mientras la armas.
+							Biblioratum probará cada regla con valores de ejemplo mientras la armas.
 						</p>
 					</div>
 					<Button class="w-60" data-testid="crear-proceso" onclick={nuevo}>Crear proceso</Button>
