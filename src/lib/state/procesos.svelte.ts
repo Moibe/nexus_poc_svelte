@@ -11,6 +11,7 @@
  * Cada proceso trae una `revision`. Si otra persona lo guardó antes, el servidor responde 409 con la `revisionActual`: aquí se
  * devuelve como `conflicto: true` y NO se pisa nada; la pantalla decide qué hacer.
  */
+import { NODO_TIPO } from '$lib/reglas/reglas';
 import { hexAleatorio } from '$lib/state/configuracion.svelte';
 
 export type DatosProceso = {
@@ -18,6 +19,12 @@ export type DatosProceso = {
 	descripcion: string;
 	nodos: unknown[];
 	aristas: unknown[];
+	/**
+	 * Si el proceso está activo (2026-10-29, la lista de procesos del Figma Sprint 5). Ausente = activo: los procesos guardados antes de
+	 * este campo siguen siéndolo. nexus_back lo conserva sin interpretarlo (guarda lo que venga dentro de `datos`), así que no hizo falta
+	 * tocarlo. Hoy solo MARCA el proceso: todavía no hay un motor que corra procesos sobre expedientes y lo respete.
+	 */
+	activo?: boolean;
 };
 
 export type ProcesoGuardado = {
@@ -39,6 +46,14 @@ export const estadoProcesos = $state<{
 	error: string;
 	lista: ProcesoGuardado[];
 }>({ cargada: false, cargando: false, error: '', lista: [] });
+
+/** ¿Está activo? Todo lo que no diga `false` expreso lo está (los procesos de antes del campo, y un valor que no sea booleano). */
+export const procesoActivo = (p: ProcesoGuardado): boolean => p.datos.activo !== false;
+
+/** Cuántos tipos documentales componen el proceso: los nodos de tipo documental de su dibujo («Documentos configurados | 3»). */
+export function tiposDelProceso(p: ProcesoGuardado): number {
+	return p.datos.nodos.filter((n) => (n as { type?: unknown } | null)?.type === NODO_TIPO).length;
+}
 
 /** El id de un proceso: `proceso-` y 32 hexadecimales al azar. Único en TODAS las organizaciones (nexus_back lo exige). */
 export function idDeProceso(): string {

@@ -1,24 +1,15 @@
 <script lang="ts">
 	/**
-	 * Motor de reglas (2026-10-20): se arma un PROCESO en un lienzo de Svelte Flow y se guarda en el servidor, por organización.
+	 * Motor de reglas · la lista de procesos de la organización (2026-10-29). Es por donde se entra al motor, como lo indica el Figma Sprint 5
+	 * (HUN5 «Crear proceso»): de aquí se llega al lienzo de un proceso (`/motor-de-reglas/[id]`) o a uno nuevo (`/motor-de-reglas/nuevo`).
+	 * Hasta ese día esta dirección abría directo el lienzo, con el último proceso que se había tocado.
 	 *
-	 * Un proceso es un conjunto de reglas y corre sobre un expediente (un conjunto de documentos): los tipos documentales son sus
-	 * entradas y los operadores (igual, distinto, contiene, mayor, menor, y, o, no) son las reglas, que se pueden encadenar. Todavía
-	 * no hay un motor que corra un proceso sobre un expediente de verdad: el lienzo prueba cada regla con valores de ejemplo.
+	 * La pantalla entera es `ListaDeProcesos.svelte`: trae su propio encabezado con la X, así que aquí no se repite ni título ni migaja.
+	 * Quién puede entrar lo decide `+layout.server.ts` (Administrador y Supervisor).
 	 */
-	import { SvelteFlowProvider } from '@xyflow/svelte';
-
-	import LienzoDeProceso from '$lib/components/reglas/LienzoDeProceso.svelte';
+	import ListaDeProcesos from '$lib/components/reglas/ListaDeProcesos.svelte';
 </script>
 
-<div>
-	<h1 class="text-2xl font-semibold text-foreground">Motor de reglas</h1>
-	<p class="mt-1.5 text-sm text-muted-foreground">
-		Un proceso es un conjunto de reglas que corre sobre un expediente. Arma el tuyo con los tipos documentales como entradas y los
-		operadores como reglas; las reglas se prueban con valores de ejemplo.
-	</p>
-</div>
+<svelte:head><title>NexusDoc AI — Motor de reglas</title></svelte:head>
 
-<SvelteFlowProvider>
-	<LienzoDeProceso />
-</SvelteFlowProvider>
+<ListaDeProcesos />
