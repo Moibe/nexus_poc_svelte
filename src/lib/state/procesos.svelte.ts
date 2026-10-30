@@ -25,6 +25,11 @@ export type DatosProceso = {
 	 * tocarlo. Hoy solo MARCA el proceso: todavía no hay un motor que corra procesos sobre expedientes y lo respete.
 	 */
 	activo?: boolean;
+	/**
+	 * El tipo de expediente VIRTUAL sobre cuyas instancias corre el proceso (2026-10-29), por ejemplo «Solicitud de crédito»; `null` mientras
+	 * no se elija. nexus_back exige que sea de la organización y lo guarda con una llave foránea real: si el tipo se borra, vuelve como `null`.
+	 */
+	tipoExpedienteVirtualId?: string | null;
 };
 
 export type ProcesoGuardado = {

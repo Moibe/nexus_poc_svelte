@@ -10,7 +10,7 @@ import { error } from '@sveltejs/kit';
 import type { ExpedienteConDocumentos, ExpedienteVirtual } from '$lib/expedientes/expedientes';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
 import { tenantDe } from '$lib/server/nexus';
-import { puedeOrganizar } from '$lib/usuarios/permisos';
+import { puedeAdministrar, puedeOrganizar } from '$lib/usuarios/permisos';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ cookies, locals, params, url }) => {
@@ -27,6 +27,8 @@ export const load: PageServerLoad = async ({ cookies, locals, params, url }) => 
 	return {
 		virtual: { ...virtual, documentos: listaDe(virtual, 'documentos') } as unknown as ExpedienteVirtual,
 		documentosDelExpediente: listaDe<ExpedienteConDocumentos['documentos'][number]>(expediente, 'documentos'),
-		puedeOrganizar: organiza
+		puedeOrganizar: organiza,
+		// Para ofrecer abrir en el motor de reglas los procesos que le aplican (el motor es de quien administra).
+		puedeAdministrar: puedeAdministrar(locals.usuario)
 	};
 };

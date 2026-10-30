@@ -178,6 +178,28 @@
 		{/if}
 	</p>
 
+	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Correrlos sobre él llegará cuando los
+	     documentos guarden su tipo documental y sus datos extraídos, que es lo que las reglas comparan. -->
+	<div class="mt-1 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground" data-testid="virtual-procesos">
+		{#if (v.procesos ?? []).length === 0}
+			Ningún proceso del motor de reglas corre todavía sobre el tipo «{v.tipo.nombre}».
+		{:else}
+			<span>Procesos que le aplican:</span>
+			{#each v.procesos ?? [] as pr (pr.id)}
+				{#if data.puedeAdministrar}
+					<a
+						href={`/motor-de-reglas/${pr.id}`}
+						class="rounded-sm border border-border bg-secondary px-2 py-0.5 text-foreground hover:border-primary/40"
+						data-testid="virtual-proceso">{pr.nombre}{pr.activo ? '' : ' (inactivo)'}</a
+					>
+				{:else}
+					<span class="rounded-sm border border-border bg-secondary px-2 py-0.5 text-foreground" data-testid="virtual-proceso">{pr.nombre}{pr.activo ? '' : ' (inactivo)'}</span>
+				{/if}
+			{/each}
+			<span>· todavía no se corren sobre sus documentos.</span>
+		{/if}
+	</div>
+
 	{#if error}
 		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-virtual">{error}</p>
 	{/if}

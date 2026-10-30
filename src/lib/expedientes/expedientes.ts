@@ -53,6 +53,8 @@ export type ExpedienteVirtual = {
 	creadoEn: string | null;
 	totalDocumentos: number;
 	documentos: DocumentoDeExpediente[];
+	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. Todavía no hay motor que los corra sobre él. */
+	procesos?: { id: string; nombre: string; activo: boolean }[];
 };
 
 /** El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y sus expedientes virtuales. */

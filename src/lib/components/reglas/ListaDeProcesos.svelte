@@ -24,6 +24,7 @@
 	 * Solo lo ve quien administra: el candado está en `+layout.server.ts`.
 	 */
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
@@ -212,6 +213,7 @@
 					{#each visibles as p (p.id)}
 						{@const activo = procesoActivo(p)}
 						{@const tipos = tiposDelProceso(p)}
+						{@const tipoVirtual = p.datos.tipoExpedienteVirtualId}
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
@@ -229,6 +231,14 @@
 											Sin documentos configurados
 										{:else}
 											Documentos configurados | {tipos}
+										{/if}
+									</span>
+									<!-- El tipo de expediente virtual sobre el que corre (2026-10-29). -->
+									<span class="block truncate text-xs text-muted-foreground" data-testid="proceso-tipo-virtual-en-lista">
+										{#if tipoVirtual}
+											Corre sobre: {page.data.tiposVirtuales?.find((t: { id: string; nombre: string }) => t.id === tipoVirtual)?.nombre ?? 'un tipo de expediente virtual'}
+										{:else}
+											Sin tipo de expediente virtual
 										{/if}
 									</span>
 								</span>

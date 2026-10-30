@@ -42,6 +42,7 @@
 	import '@xyflow/svelte/dist/style.css';
 
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount, setContext, tick, untrack } from 'svelte';
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
@@ -280,8 +281,10 @@
 	/** Si el proceso está activo (se cambia desde la lista de procesos, no aquí). Aquí solo se CONSERVA: al guardar se manda lo mismo que se
 	 *  leyó, porque guardar arma el proceso entero y, sin esto, cada guardado lo dejaría activo otra vez. */
 	let activo = $state(true);
+	/** El tipo de expediente virtual sobre el que corre (2026-10-29), o `null`. Se elige en la barra y se guarda con el proceso. */
+	let tipoVirtual = $state<string | null>(null);
 	/** Lo último que se guardó (o se abrió): con esto se compara para saber si hay cambios. */
-	let guardado = $state({ huella: HUELLA_VACIA, nombre: '' });
+	let guardado = $state<{ huella: string; nombre: string; tipo: string | null }>({ huella: HUELLA_VACIA, nombre: '', tipo: null });
 	let guardando = $state(false);
 
 	/** Se está leyendo el proceso del servidor (solo cuando la dirección trae el id de uno guardado). */
@@ -291,7 +294,9 @@
 
 	const huella = $derived(huellaDelDibujo(serializarDibujo(nodes, edges)));
 	const sucio = $derived(
-		existe ? huella !== guardado.huella || nombre.trim() !== guardado.nombre : nodes.length > 0 || edges.length > 0 || nombre.trim() !== ''
+		existe
+			? huella !== guardado.huella || nombre.trim() !== guardado.nombre || tipoVirtual !== guardado.tipo
+			: nodes.length > 0 || edges.length > 0 || nombre.trim() !== '' || tipoVirtual !== null
 	);
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
 	const puedeGuardar = $derived(sucio && nombre.trim() !== '');
@@ -310,9 +315,10 @@
 		nombre = p.datos.nombre;
 		descripcion = p.datos.descripcion ?? '';
 		activo = procesoActivo(p);
+		tipoVirtual = p.datos.tipoExpedienteVirtualId ?? null;
 		// La huella se saca de lo que quedó en el lienzo, no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya
 		// no existe) el proceso no debe aparecer con cambios sin que nadie los haya hecho.
-		guardado = { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre: p.datos.nombre.trim() };
+		guardado = { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre: p.datos.nombre.trim(), tipo: tipoVirtual };
 		aviso = '';
 		await tick();
 		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
@@ -337,14 +343,15 @@
 		guardando = true;
 		const limpio = nombre.trim();
 		const dibujo = serializarDibujo(nodes, edges);
-		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, ...dibujo });
+		const tipo = tipoVirtual;
+		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, tipoExpedienteVirtualId: tipo, ...dibujo });
 		guardando = false;
 		if (r.ok) {
 			revision = r.proceso.revision;
 			existe = true;
 			nombre = limpio;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
-			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
+			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio, tipo };
 			avisarExito('Proceso guardado', `«${limpio}» quedó guardado.`);
 			// Un proceso que nació en `/motor-de-reglas/nuevo` ya tiene su dirección: se cambia la barra del navegador SIN navegar (recargar o
 			// compartir el enlace abre ESTE proceso, y no un lienzo en blanco).
@@ -445,6 +452,8 @@
 
 <BarraDeProceso
 	bind:nombre
+	bind:tipoVirtual
+	tiposVirtuales={page.data.tiposVirtuales ?? []}
 	estado={estadoDeProceso}
 	{guardando}
 	{puedeGuardar}
