@@ -43,9 +43,9 @@ export function puedeUsar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'rol'> | 
  * (el diseño habla de Auditor y Compliance Officer para la auditoría, pero eso se decide cuando exista).
  */
 export type OpcionDelEngrane =
-	| 'motor-de-reglas'
 	| 'modulo-de-uso'
 	| 'modulo-de-configuracion'
+	| 'motor-de-reglas'
 	| 'conectores'
 	| 'auditoria-y-trazabilidad'
 	| 'api-key'

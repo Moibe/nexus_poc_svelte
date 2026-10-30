@@ -118,10 +118,9 @@
 	// pena reemplazarlos por los exportados.
 	//
 	// Quién ve cada una lo decide `puedeVerOpcionDelEngrane` (permisos.ts): el engrane lo ve cualquiera que use el producto y cada opción
-	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña.
+	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña:
+	// los dos módulos (de uso y de configuración) hasta arriba, antes que el motor de reglas (Moibe, 2026-10-30).
 	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof Cog; alSeleccionar: (() => void) | undefined }[] = [
-		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
-		{ id: 'motor-de-reglas', etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
 		// Módulo de uso (2026-10-30): sustituyó a «Expediente». Una página con un cuadro por cosa que se USA a diario —el centro operativo
 		// documental (las tres bandejas del inicio) y los expedientes—, como el módulo de configuración lo es de lo que se configura. Es
 		// la única opción que ve TODO rol. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
@@ -134,6 +133,8 @@
 			icono: SlidersHorizontal,
 			alSeleccionar: () => goto('/configuracion')
 		},
+		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
+		{ id: 'motor-de-reglas', etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
 		{ id: 'conectores', etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
 		{ id: 'auditoria-y-trazabilidad', etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
 		// Agregada el 2026-09-23. Va al final del menú, que es donde la pone la
