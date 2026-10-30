@@ -33,11 +33,11 @@
 		},
 		{
 			id: 'tipos-expediente',
-			nombre: 'Tipos de expediente',
+			nombre: 'Tipos de expediente virtual',
 			href: '/configuracion/tipos-expediente',
 			icono: FolderOpen,
 			descripcion:
-				'Las clases de las que salen tus expedientes, por ejemplo «Expediente médico», y los tipos documentales que forman el esquema de cada una.'
+				'Los grupos de documentos que se arman dentro de cada expediente, por ejemplo «Solicitud de crédito», y los tipos documentales que forman el esquema de cada uno.'
 		},
 		{
 			id: 'procesos-y-reglas',
@@ -92,7 +92,7 @@
 		<div>
 			<p class="text-lg font-medium text-foreground">Esta parte la configura quien administra</p>
 			<p class="mt-1 max-w-lg text-sm text-muted-foreground">
-				Los tipos documentales, los tipos de expediente y los procesos los define quien administra tu organización. Si necesitas un cambio aquí,
+				Los tipos documentales, los tipos de expediente virtual y los procesos los define quien administra tu organización. Si necesitas un cambio aquí,
 				pídeselo.
 			</p>
 		</div>

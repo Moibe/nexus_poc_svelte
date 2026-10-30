@@ -3,6 +3,10 @@
 	 * «Nuevo tipo de expediente» y «Editar tipo de expediente» (2026-10-24): el alta de un tipo con su ESQUEMA y la edición de uno ya creado
 	 * (su nombre y su esquema), en el mismo modal.
 	 *
+	 * **Desde el 2026-10-29 son tipos de expediente VIRTUAL** (decisión de Moibe): el expediente quedó como receptáculo de documentos, sin
+	 * tipo, y lo que es instancia de un tipo es el expediente virtual, un grupito de documentos de un expediente. Los textos de pantalla ya lo
+	 * dicen; lo de abajo, donde dice «expediente», debe leerse «expediente virtual».
+	 *
 	 * Un tipo de expediente es la clase de la que salen los expedientes («Expediente médico», «Expediente de un choque») y puede tener VARIOS
 	 * tipos documentales: ese conjunto es su esquema. Desde 2026-10-25 el esquema se define AL CREAR el tipo: el alta pide el nombre y que se
 	 * elija al menos un tipo documental de la biblioteca de la organización (`tiposDocumentales`, que pone la página). El esquema describe, no
@@ -192,7 +196,7 @@
 		>
 			<!-- header . navigation -->
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="flex-1 text-sm text-muted-foreground">Configuración / Tipos de expediente</p>
+				<p class="flex-1 text-sm text-muted-foreground">Configuración / Tipos de expediente virtual</p>
 				<button
 					type="button"
 					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
@@ -215,10 +219,10 @@
 				</span>
 				<div class="min-w-0">
 					<DialogPrimitive.Title class="text-lg leading-relaxed font-medium text-foreground">
-						{editando ? 'Editar tipo de expediente' : 'Nuevo tipo de expediente'}
+						{editando ? 'Editar tipo de expediente virtual' : 'Nuevo tipo de expediente virtual'}
 					</DialogPrimitive.Title>
 					<DialogPrimitive.Description class="text-xs leading-relaxed text-muted-foreground">
-						{editando ? 'Cambia el nombre del tipo o los tipos documentales de su esquema. Sus expedientes seguirán siendo suyos.' : 'Completa la información requerida.'}
+						{editando ? 'Cambia el nombre del tipo o los tipos documentales de su esquema. Sus expedientes virtuales seguirán siendo suyos.' : 'Completa la información requerida.'}
 					</DialogPrimitive.Description>
 				</div>
 			</div>
@@ -233,7 +237,7 @@
 				<!-- body.modal -->
 				<div class="flex flex-col gap-5 px-4 py-4">
 					<div class="flex flex-col gap-2">
-						<label for="nombre-tipo-expediente" class="text-base font-medium text-foreground">Nombre del tipo de expediente *</label>
+						<label for="nombre-tipo-expediente" class="text-base font-medium text-foreground">Nombre del tipo de expediente virtual *</label>
 						<input
 							id="nombre-tipo-expediente"
 							type="text"
@@ -248,9 +252,9 @@
 						/>
 						<p id="ayuda-tipo-expediente" class="text-xs text-muted-foreground">
 							{#if editando}
-								Los expedientes de este tipo siguen siendo suyos y verán el nombre nuevo.
+								Los expedientes virtuales de este tipo siguen siendo suyos y verán el nombre nuevo.
 							{:else}
-								Por ejemplo: «Expediente médico» o «Expediente de un choque». Cada expediente que crees después será una instancia de un tipo.
+								Por ejemplo: «Solicitud de crédito» o «Póliza de seguro». Dentro de cada expediente podrás armar grupos de documentos de este tipo: sus expedientes virtuales.
 							{/if}
 						</p>
 						{#if error && errorEnNombre}
@@ -270,8 +274,8 @@
 							{/if}
 						</div>
 						<p id="ayuda-esquema-tipo-expediente" class="text-xs text-muted-foreground">
-							Elige los tipos documentales que lleva este tipo de expediente. Describen qué se espera de sus expedientes, pero no limitan los
-							archivos que reciben.{editando ? ' Cambiarlos no toca los documentos de los expedientes que ya tiene.' : ''}
+							Elige los tipos documentales que lleva este tipo de expediente virtual. Describen qué se espera de sus expedientes virtuales, pero no limitan los
+							documentos que reciben.{editando ? ' Cambiarlos no toca los documentos de los expedientes virtuales que ya tiene.' : ''}
 						</p>
 						{#if tiposDocumentalesFallo}
 							<p
@@ -369,7 +373,7 @@
 						{#if editando}
 							{enviando ? 'Guardando…' : 'Guardar cambios'}
 						{:else}
-							{enviando ? 'Creando…' : 'Crear tipo de expediente'}
+							{enviando ? 'Creando…' : 'Crear tipo de expediente virtual'}
 						{/if}
 					</Button>
 				</div>

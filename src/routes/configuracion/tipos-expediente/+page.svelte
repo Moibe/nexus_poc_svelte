@@ -3,6 +3,11 @@
 	 * Configuración · Tipos de expediente (2026-10-24). Ver los tipos de expediente de la organización, DAR DE ALTA uno nuevo,
 	 * EDITARLO (su nombre y su esquema) y BORRARLO.
 	 *
+	 * **Desde el 2026-10-29 son tipos de expediente VIRTUAL** (decisión de Moibe): el expediente es un receptáculo de documentos sin
+	 * tipo, y lo que es instancia de un tipo es el expediente virtual, un grupito de documentos de un expediente. Cambiaron los textos y
+	 * la cuenta (`totalExpedientesVirtuales`); la ruta y el resto de la pantalla siguen igual. Lo de abajo, donde dice «expediente»,
+	 * debe leerse «expediente virtual».
+	 *
 	 * Vivía en `/expediente/tipos`, como pestaña junto al listado de expedientes; el 2026-10-25 se mudó aquí, a una de las secciones
 	 * del módulo de configuración, porque un tipo es algo que se CONFIGURA una vez y no algo que se trabaja a diario. En
 	 * `/expediente` quedaron los expedientes, sin pestañas. Como ya no hay cáscara que ponga el encabezado, la migaja y el título
@@ -74,12 +79,12 @@
 	}
 
 	const conExpedientes = (nombre: string, total: number) =>
-		`«${nombre}» tiene ${total} ${total === 1 ? 'expediente' : 'expedientes'}: un tipo con expedientes no se puede borrar.`;
+		`«${nombre}» tiene ${total} ${total === 1 ? 'expediente virtual' : 'expedientes virtuales'}: un tipo con expedientes virtuales no se puede borrar.`;
 
 	function pedirBorrado(tipo: TipoDeExpediente) {
 		aviso = null;
-		if (tipo.totalExpedientes > 0) {
-			sinBorrar = { titulo: 'No se puede borrar el tipo', mensaje: conExpedientes(tipo.nombre, tipo.totalExpedientes) };
+		if (tipo.totalExpedientesVirtuales > 0) {
+			sinBorrar = { titulo: 'No se puede borrar el tipo', mensaje: conExpedientes(tipo.nombre, tipo.totalExpedientesVirtuales) };
 			return;
 		}
 		aBorrar = tipo;
@@ -105,22 +110,23 @@
 			return;
 		}
 		// El tipo YA está borrado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		aviso = { testid: 'tipo-expediente-borrado-aviso', titulo: 'Tipo de expediente borrado', cuerpo: `«${tipo.nombre}» se borró de tu organización.` };
+		aviso = { testid: 'tipo-expediente-borrado-aviso', titulo: 'Tipo de expediente virtual borrado', cuerpo: `«${tipo.nombre}» se borró de tu organización.` };
 		await invalidateAll();
 	}
 </script>
 
-<svelte:head><title>Biblioratum — Tipos de expediente</title></svelte:head>
+<svelte:head><title>Biblioratum — Tipos de expediente virtual</title></svelte:head>
 
 <p class="text-xs text-muted-foreground">
 	<a href="/configuracion" class="transition-colors hover:text-foreground" data-testid="volver-a-configuracion">Configuración</a> / Tipos de
-	expediente
+	expediente virtual
 </p>
 <div class="mt-2">
-	<h1 class="text-2xl font-semibold text-foreground">Tipos de expediente</h1>
+	<h1 class="text-2xl font-semibold text-foreground">Tipos de expediente virtual</h1>
 	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-		Un tipo de expediente es la plantilla de la que salen tus expedientes, por ejemplo «Expediente médico» o «Expediente de un
-		choque». Cada expediente es una instancia de un tipo y guarda los documentos de un caso: de un paciente, de un choque.
+		Un tipo de expediente virtual es la plantilla de un grupo de documentos, por ejemplo «Solicitud de crédito»: su esquema dice qué
+		tipos documentales lleva. Dentro de cada expediente (la carpeta de un cliente o de un caso) puedes armar expedientes virtuales de
+		estos tipos, con los documentos de ese expediente que les correspondan; son los que usará el motor de reglas.
 	</p>
 </div>
 
@@ -139,10 +145,10 @@
 		<Sparkles class="size-10 text-primary" />
 		{#if data.puedeAdministrar}
 			<div>
-				<p class="text-lg font-medium text-foreground">Crea tu primer tipo de expediente</p>
+				<p class="text-lg font-medium text-foreground">Crea tu primer tipo de expediente virtual</p>
 				<p class="mt-1 max-w-lg text-sm text-muted-foreground">
-					Define la clase de expediente con la que trabaja tu organización. Después, cada caso —un paciente, un choque— será un
-					expediente de ese tipo, con sus propios documentos.
+					Define un grupo de documentos con el que trabaja tu organización, por ejemplo «Solicitud de crédito». Después, dentro de cada
+					expediente, podrás armar grupos de ese tipo con sus documentos.
 				</p>
 			</div>
 			<button
@@ -153,13 +159,13 @@
 			>
 				<span class="mt-0.5 shrink-0 text-primary"><FolderPlus class="size-5" /></span>
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-medium text-foreground">Nuevo tipo de expediente</span>
-					<span class="block text-xs text-muted-foreground">Ponle un nombre, por ejemplo «Expediente médico», y elige sus tipos documentales.</span>
+					<span class="block text-sm font-medium text-foreground">Nuevo tipo de expediente virtual</span>
+					<span class="block text-xs text-muted-foreground">Ponle un nombre, por ejemplo «Solicitud de crédito», y elige sus tipos documentales.</span>
 				</span>
 			</button>
 		{:else}
 			<div>
-				<p class="text-lg font-medium text-foreground">Todavía no hay tipos de expediente</p>
+				<p class="text-lg font-medium text-foreground">Todavía no hay tipos de expediente virtual</p>
 				<p class="mt-1 max-w-lg text-sm text-muted-foreground">Quien administra tu organización puede crear el primero.</p>
 			</div>
 		{/if}
@@ -168,17 +174,17 @@
 	<div class="mt-6 rounded-2xl border-2 border-border bg-card p-5">
 		<div class="flex flex-wrap items-center gap-3">
 			<div class="min-w-0 flex-1">
-				<p class="text-sm font-medium text-foreground">Listado de tipos de expediente</p>
+				<p class="text-sm font-medium text-foreground">Listado de tipos de expediente virtual</p>
 				<p class="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="total-tipos-expediente">
 					<FolderOpen class="size-3.5" />
 					{tipos.length}
-					{tipos.length === 1 ? 'tipo de expediente en total' : 'tipos de expediente en total'}
+					{tipos.length === 1 ? 'tipo de expediente virtual en total' : 'tipos de expediente virtual en total'}
 				</p>
 			</div>
 			{#if data.puedeAdministrar}
 				<Button data-testid="nuevo-tipo-expediente" onclick={abrirAlta}>
 					<Plus class="size-4" />
-					Nuevo tipo de expediente
+					Nuevo tipo de expediente virtual
 				</Button>
 			{/if}
 		</div>
@@ -187,9 +193,9 @@
 			<table class="w-full text-left text-sm">
 				<thead>
 					<tr class="border-y border-border text-xs text-muted-foreground">
-						<th class="py-2.5 pr-4 pl-2 font-normal">Tipo de expediente</th>
+						<th class="py-2.5 pr-4 pl-2 font-normal">Tipo de expediente virtual</th>
 						<th class="py-2.5 pr-4 font-normal">Tipos documentales</th>
-						<th class="py-2.5 pr-4 font-normal">Expedientes</th>
+						<th class="py-2.5 pr-4 font-normal">Expedientes virtuales</th>
 						<th class="py-2.5 pr-2 font-normal">Fecha de creación</th>
 						{#if data.puedeAdministrar}
 							<th class="w-20 py-2.5 pr-2"><span class="sr-only">Acciones</span></th>
@@ -223,7 +229,7 @@
 									</div>
 								{/if}
 							</td>
-							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">{tipo.totalExpedientes}</td>
+							<td class="py-3 pr-4 text-foreground" data-testid="tipo-expediente-total">{tipo.totalExpedientesVirtuales}</td>
 							<td class="py-3 pr-2 text-xs text-muted-foreground">{fechaCorta(tipo.creadoEn)}</td>
 							{#if data.puedeAdministrar}
 								<td class="py-2 pr-2">
@@ -268,7 +274,7 @@
 		// El tipo YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
 		aviso = {
 			testid: 'tipo-expediente-creado-aviso',
-			titulo: 'Tipo de expediente creado',
+			titulo: 'Tipo de expediente virtual creado',
 			cuerpo: `«${nombre}» quedó registrado en tu organización, con ${total} ${total === 1 ? 'tipo documental' : 'tipos documentales'} en su esquema.`
 		};
 		await invalidateAll();
@@ -289,7 +295,7 @@
 
 <ConfirmarAccion
 	abierto={aBorrar !== null}
-	titulo="Borrar el tipo de expediente"
+	titulo="Borrar el tipo de expediente virtual"
 	mensaje={`«${aBorrar?.nombre ?? ''}» se borrará de tu organización y no se puede deshacer.`}
 	etiquetaConfirmar="Borrar"
 	onConfirmar={() => {

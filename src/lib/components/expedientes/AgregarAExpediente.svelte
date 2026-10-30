@@ -8,7 +8,7 @@
 	 * Lo que se aparta del diseño, a propósito (el Figma es solo el look and feel):
 	 *   · El diseño dice «Mover». En Biblioratum un documento puede estar en VARIOS expedientes, así que esto AGREGA: no lo saca de los
 	 *     que ya tenía. Por eso el botón dice «Agregar».
-	 *   · Los expedientes se identifican por su nombre (no hay folio) y el buscador busca también por tipo.
+	 *   · Los expedientes se identifican por su nombre (no hay folio).
 	 *   · Solo se ofrecen expedientes que existen (los que el servidor listó); si uno se borró mientras tanto, el servidor responde 404 y
 	 *     se dice aquí.
 	 */
@@ -42,7 +42,7 @@
 
 	const visibles = $derived.by(() => {
 		const q = normalizar(busqueda);
-		return q ? expedientes.filter((e) => normalizar(`${e.nombre} ${e.tipo?.nombre ?? ''}`).includes(q)) : expedientes;
+		return q ? expedientes.filter((e) => normalizar(e.nombre).includes(q)) : expedientes;
 	});
 	/** ¿Todos los documentos elegidos ya están en este expediente? Entonces no hay nada que agregar. */
 	const yaTieneTodos = (e: Expediente) => documentos.every((d) => d.expedientes.some((x) => x.id === e.id));
