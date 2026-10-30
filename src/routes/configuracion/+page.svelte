@@ -7,8 +7,8 @@
 	 * Son tres —tipos documentales, tipos de expediente y, desde el 2026-10-29, procesos y reglas (lleva al mismo
 	 * `/motor-de-reglas` que la opción «Motor de reglas» del engrane)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
 	 *
-	 * Los expedientes NO viven aquí: siguen en su propia entrada del engrane (`/expediente`). Aquí se configura de qué están
-	 * hechos; allá se trabaja con ellos.
+	 * Los expedientes NO viven aquí: se trabajan en el módulo de uso (`/uso`, la opción «Módulo de uso» del engrane, que sustituyó a
+	 * «Expediente» el 2026-10-30). Aquí se configura de qué están hechos; allá se trabaja con ellos.
 	 *
 	 * Quien no administra no ve el engrane (`TopBar.svelte`), pero la dirección se puede escribir a mano: en ese caso se dice que
 	 * esta parte es de quien administra, en vez de enseñar cuadros que llevan a pantallas que no va a poder usar.

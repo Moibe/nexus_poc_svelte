@@ -61,7 +61,7 @@
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
 	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import Cog from '@lucide/svelte/icons/cog';
-	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -120,9 +120,10 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
-		// Expediente (2026-10-24): los expedientes de la organización. Los TIPOS de expediente se configuran, así que desde el
-		// 2026-10-25 viven en el módulo de configuración y ya no cuelgan de aquí.
-		{ etiqueta: 'Expediente', icono: FolderOpen, alSeleccionar: () => goto('/expediente') },
+		// Módulo de uso (2026-10-30, pedido de Moibe): sustituye a la opción «Expediente». Es una página con un cuadro por cosa que se
+		// USA a diario —el centro operativo documental (las tres bandejas del inicio) y los expedientes—, como el módulo de
+		// configuración lo es de lo que se configura. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
+		{ etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
