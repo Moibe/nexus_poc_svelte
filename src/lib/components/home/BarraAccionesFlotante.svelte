@@ -59,7 +59,16 @@
 		pedirDescarte
 	} from '$lib/state/descarteBandeja.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import { documentosEnPipeline, iniciarPipeline, sePuedeProcesar } from '$lib/state/pipeline.svelte';
+	import {
+		documentosEnPipeline,
+		iniciarPipeline,
+		quitarSeleccionadosDelPipeline,
+		reintentarPipeline,
+		sePuedeProcesar,
+		sePuedeQuitar,
+		sePuedeReintentar
+	} from '$lib/state/pipeline.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
 	let {
 		alAbrirDetalle,
@@ -152,9 +161,16 @@
 	const unico = $derived(enPipeline.length === 1 ? enPipeline[0].id : null);
 
 	// "Iniciar pipeline" NO va en este grupo: estos documentos ya pasaron por
-	// ahí. Coincide con Figma (HU001|106 muestra solo Detalle / Eventos /
-	// Descartar para un documento ya procesado).
+	// ahí. Pero uno que terminó MAL se quedaba «muerto» en la lista (Moibe,
+	// 2026-10-29): ahora se puede reintentar y quitar. «Reintentar» solo aparece
+	// si entre lo elegido hay algo que valga la pena volver a mandar.
+	const reintentables = $derived(enPipeline.filter(sePuedeReintentar));
+	const quitables = $derived(enPipeline.filter(sePuedeQuitar));
+	let pidiendoQuitar = $state(false);
 	const accionesPipeline = $derived<AccionPanel[]>([
+		...(reintentables.length > 0
+			? [{ etiqueta: `Reintentar pipeline (${reintentables.length})`, icono: RotateCcw, alHacerClic: reintentarPipeline, testid: 'accion-reintentar-pipeline' }]
+			: []),
 		{
 			etiqueta: 'Detalle',
 			icono: Eye,
@@ -198,9 +214,15 @@
 			alHacerClic: alAbrirExpedientes,
 			testid: 'accion-ver-expediente'
 		},
-		// "Descartar" es destructivo y merece su propio modal de confirmación, no
-		// un confirm() del navegador; sigue sin cablear.
-		{ etiqueta: 'Descartar', icono: CircleX, peligro: true, testid: 'accion-descartar-pipeline' }
+		// Antes era un «Descartar» sin cablear. Quitar saca de ESTA lista lo que ya terminó (con su confirmación de la casa); no
+		// borra nada en el servidor. Apagado si todo lo elegido sigue en camino.
+		{
+			etiqueta: quitables.length > 1 ? `Quitar del pipeline (${quitables.length})` : 'Quitar del pipeline',
+			icono: CircleX,
+			peligro: true,
+			alHacerClic: quitables.length > 0 ? () => (pidiendoQuitar = true) : undefined,
+			testid: 'accion-quitar-pipeline'
+		}
 	]);
 
 	// El orden es el de las columnas en pantalla, de izquierda a derecha. Leer la
@@ -248,6 +270,20 @@
 		class="mt-1.5 w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 	></textarea>
 </ConfirmarAccion>
+
+<ConfirmarAccion
+	abierto={pidiendoQuitar}
+	titulo={quitables.length > 1 ? `¿Quitar ${quitables.length} documentos del Pipeline?` : '¿Quitar este documento del Pipeline?'}
+	mensaje="Saldrá de esta lista y su resultado de esta sesión se pierde. Si ya se guardó como documento de tu organización, lo sigues encontrando en «Archivos procesados». Lo que todavía se está procesando no se quita."
+	etiquetaCancelar="Conservar"
+	etiquetaConfirmar="Quitar"
+	onConfirmar={() => {
+		quitarSeleccionadosDelPipeline();
+		pidiendoQuitar = false;
+	}}
+	onCancelar={() => (pidiendoQuitar = false)}
+	onCerrar={() => (pidiendoQuitar = false)}
+/>
 
 <ConfirmarAccion
 	abierto={descarte.error !== ''}

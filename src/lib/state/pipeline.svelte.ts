@@ -665,6 +665,45 @@ export function quitarDelPipeline(id: string) {
 	if (indice !== -1) documentosEnPipeline.splice(indice, 1);
 }
 
+/** Terminaron sin resultado útil y vale la pena volver a mandarlos (2026-10-29, Moibe: «si no se pudo procesar se queda muerto
+ *  ahí»). Fuera quedan `no_soportado` (Document AI no lee ese formato: reintentar sería pagar por el mismo «no»), `procesado`
+ *  (ya tiene resultado) y lo que todavía está en camino. */
+const SE_PUEDE_REINTENTAR: readonly EstadoPipeline[] = ['fallido', 'no_configurado', 'pendiente_revision', 'no_reconocido'];
+export const sePuedeReintentar = (doc: DocumentoEnPipeline) => SE_PUEDE_REINTENTAR.includes(doc.estado);
+
+/** Lo que todavía está en camino no se quita: el worker lo está procesando y lo buscaría después. */
+const EN_CAMINO: readonly EstadoPipeline[] = ['en_cola', 'clasificando', 'clasificado', 'procesando'];
+export const sePuedeQuitar = (doc: DocumentoEnPipeline) => !EN_CAMINO.includes(doc.estado);
+
+/**
+ * «Reintentar pipeline»: los documentos elegidos que terminaron mal vuelven a la cola, con su archivo, y el mismo worker los
+ * procesa de nuevo de a uno (clasificar y extraer otra vez: si ya se configuró o calibró el tipo, ahora sí entra). Se limpia lo
+ * del intento anterior (error, tipo detectado, resultado) y queda en su historia. Lo cargado a mano NO se registra dos veces: ya
+ * trae su `documentoId` (ver `asegurarRegistro`).
+ */
+export async function reintentarPipeline() {
+	const elegidos = documentosEnPipeline.filter((d) => d.seleccionado && sePuedeReintentar(d));
+	if (elegidos.length === 0) return;
+	for (const d of elegidos) {
+		d.seleccionado = false;
+		d.error = null;
+		d.tipoDetectado = null;
+		d.resultado = null;
+		d.terminadoEn = null;
+		d.enviadoEn = new Date();
+		pasarA(d, 'en_cola');
+	}
+	await drenarCola();
+}
+
+/** «Quitar del pipeline»: saca de esta lista los elegidos que ya terminaron. No borra nada en el servidor: lo que se guardó
+ *  como documento sigue en «Archivos procesados». */
+export function quitarSeleccionadosDelPipeline(): number {
+	const ids = documentosEnPipeline.filter((d) => d.seleccionado && sePuedeQuitar(d)).map((d) => d.id);
+	for (const id of ids) quitarDelPipeline(id);
+	return ids.length;
+}
+
 /** Texto y color de cada estado, en un solo lugar, para que la fila y el modal
  *  de detalle no se contradigan. */
 export const ETIQUETA_ESTADO: Record<EstadoPipeline, { texto: string; tono: 'ok' | 'error' | 'proceso' }> = {
