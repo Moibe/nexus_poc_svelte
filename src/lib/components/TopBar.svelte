@@ -102,6 +102,9 @@
 	const puedeConfigurar = $derived(puedeAdministrar(usuario));
 	const navItems = $derived([
 		{ href: '/', label: 'Inicio', icon: DashboardCircleIcon },
+		// Módulo de uso (2026-10-30): para TODOS los roles, no solo para quien administra: es donde se trabaja a diario. Por eso va en la
+		// barra y no en el engrane, que es solo de quien administra. Se queda marcado también dentro de los expedientes, que cuelgan de él.
+		{ href: '/uso', label: 'Módulo de uso', icon: LayoutGrid, iconClass: 'size-4', tambienEn: ['/expediente'] },
 		...(usuario?.esAdminPlataforma
 			? [{ href: '/organizaciones', label: 'Organizaciones', icon: Network }]
 			: []),
@@ -120,10 +123,8 @@
 	const opcionesConfiguracion = [
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
-		// Módulo de uso (2026-10-30, pedido de Moibe): sustituye a la opción «Expediente». Es una página con un cuadro por cosa que se
-		// USA a diario —el centro operativo documental (las tres bandejas del inicio) y los expedientes—, como el módulo de
-		// configuración lo es de lo que se configura. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
-		{ etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
+		// «Expediente» ya no está aquí desde el 2026-10-30: lo sustituyó el módulo de uso, que ahora va en la barra de arriba (todos los
+		// roles lo ven; este engrane es solo de quien administra). Los TIPOS de expediente se configuran: viven en el módulo de configuración.
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
@@ -153,7 +154,10 @@
 
 			<nav class="flex items-center gap-2">
 				{#each navItems as item (item.href)}
-					{@const active = item.href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.href)}
+					{@const active =
+						item.href === '/'
+							? page.url.pathname === '/'
+							: [item.href, ...(item.tambienEn ?? [])].some((ruta) => page.url.pathname.startsWith(ruta))}
 					<a
 						href={item.href}
 						class={[
@@ -163,7 +167,7 @@
 								: 'text-foreground hover:bg-muted'
 						]}
 					>
-						<item.icon />
+						<item.icon {...(item.iconClass ? { class: item.iconClass } : {})} />
 						{item.label}
 					</a>
 				{/each}
