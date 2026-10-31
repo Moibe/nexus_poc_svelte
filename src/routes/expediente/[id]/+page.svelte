@@ -4,7 +4,7 @@
 	 * el total de archivos, buscador y «Ordenar», y una tarjeta por documento. Cuelga de la pestaña «Expedientes» de `/expediente`.
 	 *
 	 * Un expediente vacío se dice como tal. El diseño no trae ese estado; se hizo con el mismo lenguaje del estado vacío del listado y
-	 * SIN prometer una forma de agregar documentos que todavía no existe en pantalla.
+	 * con el botón «Subir archivos» para quien organiza (hasta el 2026-10-30 no prometía una forma de agregar documentos, porque no existía).
 	 *
 	 * Lo que se aparta del diseño: el encabezado lleva el NOMBRE del expediente y no un folio. Los documentos no traen páginas ni tipo
 	 * documental (el servidor aún no los guarda); ver `TarjetaDocumento`.
@@ -14,16 +14,23 @@
 	 * Juan Pérez»), cada uno con su tipo y cuántos de los documentos del expediente tiene; se abren en `/expediente/[id]/virtual/[vid]`.
 	 * Quien organiza crea uno con «Nuevo expediente virtual» (`ExpedienteVirtualModal`). No hay diseño para esto en el Figma: se hizo con
 	 * el lenguaje de esta misma pantalla.
+	 *
+	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
+	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
+	 * archivos y se suben a ESTE expediente como documentos de la organización (carga manual, salen también en «Archivos procesados»). Quedan sin
+	 * tipo documental hasta que pasen por el pipeline. Al cerrar la ventana, la página se pone al día y dice cuántos entraron.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import Upload from '@lucide/svelte/icons/upload';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import ExpedienteVirtualModal from '$lib/components/expedientes/ExpedienteVirtualModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
+	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -34,6 +41,7 @@
 		ordenarDocumentos,
 		type OrdenDocumentos
 	} from '$lib/expedientes/expedientes';
+	import { avisoDeSubida } from '$lib/expedientes/subida';
 
 	let { data } = $props();
 
@@ -43,6 +51,7 @@
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
 	let altaVirtual = $state(false);
+	let subida = $state(false);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 
 	const visibles = $derived.by(() => {
@@ -89,8 +98,8 @@
 			</div>
 		</div>
 
-		{#if expediente.documentos.length > 0}
-			<div class="flex flex-wrap items-center gap-2">
+		<div class="flex flex-wrap items-center gap-2">
+			{#if expediente.documentos.length > 0}
 				<div class="flex h-9 w-58.5 items-center gap-3 rounded-lg border border-border bg-background px-3">
 					<SearchIcon />
 					<input
@@ -104,14 +113,35 @@
 				</div>
 				<span class="h-9 w-px bg-border" aria-hidden="true"></span>
 				<OrdenarMenu valor={orden} opciones={OPCIONES_ORDEN_DOCUMENTOS} alCambiar={(valor) => (orden = valor)} testid="ordenar-documentos" />
-			</div>
-		{/if}
+			{/if}
+			<!-- Subir archivos a ESTE expediente (2026-10-30): solo quien organiza. Va aquí y no dentro del bloque de arriba porque un expediente
+			     vacío es justo donde más hace falta. -->
+			{#if data.puedeOrganizar}
+				{#if expediente.documentos.length > 0}
+					<span class="h-9.5 w-px bg-border" aria-hidden="true"></span>
+				{/if}
+				<Button
+					data-testid="subir-archivos-expediente"
+					onclick={() => {
+						aviso = null;
+						subida = true;
+					}}
+				>
+					<Upload class="size-4" />
+					Subir archivos
+				</Button>
+			{/if}
+		</div>
 	</div>
 
 	{#if expediente.documentos.length === 0}
 		<div class="flex flex-col items-center gap-2 py-24 text-center" data-testid="expediente-sin-documentos">
 			<h3 class="text-2xl font-semibold text-foreground">Este expediente todavía no tiene documentos</h3>
-			<p class="max-w-xl text-base text-muted-foreground">Cuando se agreguen documentos a «{expediente.nombre}», aparecerán aquí.</p>
+			{#if data.puedeOrganizar}
+				<p class="max-w-xl text-base text-muted-foreground">Sube archivos a «{expediente.nombre}» con el botón «Subir archivos»; aparecerán aquí.</p>
+			{:else}
+				<p class="max-w-xl text-base text-muted-foreground">Cuando se agreguen documentos a «{expediente.nombre}», aparecerán aquí.</p>
+			{/if}
 		</div>
 	{:else if visibles.length === 0}
 		<p class="py-16 text-center text-sm text-muted-foreground" data-testid="documentos-sin-resultados">
@@ -214,6 +244,17 @@
 			titulo: 'Expediente virtual creado',
 			cuerpo: `«${v.nombre}» (${v.tipo.nombre}) quedó en «${expediente.nombre}» con ${n} ${n === 1 ? 'documento' : 'documentos'}.`
 		};
+		await invalidateAll();
+	}}
+/>
+
+<SubirArchivosModal
+	bind:open={subida}
+	expediente={{ id: expediente.id, nombre: expediente.nombre }}
+	alTerminar={async ({ subidos, fallidos }) => {
+		// Los archivos YA entraron: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
+		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos);
+		if (dicho) aviso = { testid: 'archivos-subidos-aviso', ...dicho };
 		await invalidateAll();
 	}}
 />
