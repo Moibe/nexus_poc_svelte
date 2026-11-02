@@ -1,11 +1,11 @@
 <script lang="ts">
 	/**
 	 * Lo que se puede poner en el lienzo (motor de reglas, 2026-10-20): los tipos documentales, que son las entradas del proceso, los
-	 * operadores, que son las reglas, y los valores fijos.
+	 * operadores, que son las reglas, los valores fijos y las salidas del proceso (valores finales y resultado).
 	 *
 	 * Va en MENÚS RETRAÍBLES, uno por grupo (2026-10-21): con quince operadores la lista era tan larga que la paleta pedía desplazarse
-	 * un buen rato. Son seis menús independientes —los tipos, los cuatro grupos de operadores y los valores—, abrir uno no cierra los
-	 * demás, y TODOS arrancan retraídos: hay que abrir un grupo para ver lo que trae. Cada encabezado dice cuántos elementos tiene,
+	 * un buen rato. Son siete menús independientes —los tipos, los cuatro grupos de operadores, los valores y, desde el 2026-11-03, las salidas
+	 * del proceso (el «Valor final» y el «Resultado»)—, abrir uno no cierra los demás, y TODOS arrancan retraídos: hay que abrir un grupo para ver lo que trae. Cada encabezado dice cuántos elementos tiene,
 	 * para que se sepa qué hay detrás sin abrirlo. Lo abierto no se recuerda al salir de la página.
 	 *
 	 * Desde el 2026-11-03 los tipos que se ofrecen son SOLO los del ESQUEMA del tipo de expediente virtual sobre el que corre el proceso (Moibe:
@@ -21,11 +21,21 @@
 	 * Si la biblioteca no se pudo leer, o todavía está cargando, el encabezado de los tipos lo dice aunque el menú esté retraído
 	 * («Error», «…»): un fallo escondido detrás de un menú cerrado se confundiría con «no hay tipos».
 	 */
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import Flag from '@lucide/svelte/icons/flag';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
-	import { GRUPOS_DE_OPERADORES, MIME_CONSTANTE, MIME_OPERADOR, MIME_TIPO_DOCUMENTAL, OPERADORES } from '$lib/reglas/reglas';
+	import {
+		GRUPOS_DE_OPERADORES,
+		MIME_CONSTANTE,
+		MIME_OPERADOR,
+		MIME_RESULTADO,
+		MIME_TIPO_DOCUMENTAL,
+		MIME_VALOR_FINAL,
+		OPERADORES
+	} from '$lib/reglas/reglas';
 	import { estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
 
 	let {
@@ -33,9 +43,12 @@
 		tipoElegido,
 		esquema,
 		nombreDelTipo,
+		hayResultado,
 		alAgregar,
 		alAgregarOperador,
-		alAgregarConstante
+		alAgregarConstante,
+		alAgregarValorFinal,
+		alAgregarResultado
 	}: {
 		/** Ids de los tipos que ya tienen su nodo. */
 		enLienzo: ReadonlySet<string>;
@@ -51,6 +64,12 @@
 		alAgregarOperador: (clave: string) => void;
 		/** Un clic en «Valor fijo»: agrega uno nuevo. */
 		alAgregarConstante: () => void;
+		/** El proceso ya tiene su nodo de resultado (es uno solo): su fila lo dice y al pulsarla lleva a él. */
+		hayResultado: boolean;
+		/** Un clic en «Valor final»: agrega uno nuevo. */
+		alAgregarValorFinal: () => void;
+		/** Un clic en «Resultado»: lo agrega o, si ya está, lo enfoca. */
+		alAgregarResultado: () => void;
 	} = $props();
 
 	const activos = $derived(tiposDocumentales.filter((t) => t.estado === 'activo' && (esquema === null || esquema.has(t.id))));
@@ -211,6 +230,57 @@
 								<span class="min-w-0 flex-1">
 									<span class="block truncate text-sm font-medium text-foreground">Valor fijo</span>
 									<span class="block text-xs text-muted-foreground">Un texto, un número, una fecha o un sí/no.</span>
+								</span>
+							</button>
+						</li>
+					</ul>
+				</Accordion.Content>
+			</Accordion.Item>
+
+			<!-- Lo que entrega el proceso al terminar: los valores finales y la palabra del resultado -->
+			<Accordion.Item value="salidas" class="border-border" data-testid="grupo-paleta" data-grupo="salidas">
+				{@render disparador('salidas', 'Salidas del proceso', '2', false, 2)}
+				<Accordion.Content class="px-0 pb-1 [&_p:not(:last-child)]:mb-0">
+					<p class="px-4 pb-2 text-xs text-muted-foreground">Lo que entrega el proceso al terminar: sus datos finales y la palabra del resultado.</p>
+					<ul class="flex flex-col gap-1.5 px-2">
+						<li>
+							<button
+								type="button"
+								draggable="true"
+								data-testid="valor-final-de-paleta"
+								title="Arrástralo al lienzo o pulsa para agregarlo"
+								class="flex w-full cursor-grab items-center gap-2 rounded-lg border border-border bg-card px-2 py-2 text-left transition-colors hover:bg-muted active:cursor-grabbing"
+								ondragstart={(e) => alArrastrar(e, MIME_VALOR_FINAL, 'valor-final')}
+								onclick={alAgregarValorFinal}
+							>
+								<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
+								<span class="flex size-5 shrink-0 items-center justify-center rounded bg-primary/10 text-primary" aria-hidden="true"><Flag class="size-3" /></span>
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium text-foreground">Valor final</span>
+									<span class="block text-xs text-muted-foreground">Un dato que entra a la lista de la corrida.</span>
+								</span>
+							</button>
+						</li>
+						<li>
+							<button
+								type="button"
+								draggable="true"
+								data-testid="resultado-de-paleta"
+								data-en-lienzo={hayResultado}
+								title={hayResultado ? 'Ya está en el lienzo: pulsa para ir a él' : 'Arrástralo al lienzo o pulsa para agregarlo'}
+								class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors active:cursor-grabbing {hayResultado
+									? 'border-primary/40 bg-primary/5'
+									: 'border-border bg-card hover:bg-muted'}"
+								ondragstart={(e) => alArrastrar(e, MIME_RESULTADO, 'resultado-final')}
+								onclick={alAgregarResultado}
+							>
+								<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
+								<span class="flex size-5 shrink-0 items-center justify-center rounded bg-primary/10 text-primary" aria-hidden="true"><BadgeCheck class="size-3.5" /></span>
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-sm font-medium text-foreground">Resultado</span>
+									<span class="block text-xs text-muted-foreground">
+										{#if hayResultado}En el lienzo · {/if}La palabra con la que termina el proceso.
+									</span>
 								</span>
 							</button>
 						</li>

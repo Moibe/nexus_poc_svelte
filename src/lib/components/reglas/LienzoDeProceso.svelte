@@ -16,6 +16,12 @@
 	 * Qué se acepta conectar lo decide `motivoDeRechazo` (en `reglas.ts`, probado aparte). Cuando se rechaza, el lienzo dice POR QUÉ
 	 * en un aviso sobre el canvas: soltar un cable y que no pase nada es lo peor que le puede pasar a quien está armando una regla.
 	 *
+	 * ## Cómo termina (2026-11-03)
+	 *
+	 * Los nodos FINALES dicen qué entrega el proceso: cada «Valor final» es un dato que entra, con su nombre, a la lista de la corrida, y el
+	 * «Resultado» —uno solo por proceso— es la palabra con la que termina («Aprobado», «Certificado»…) según pase o no la regla que se le conecta.
+	 * No tienen salida. Con los valores de ejemplo, el lienzo dice qué entraría a la lista y con qué palabra terminaría (`evaluar`).
+	 *
 	 * ## Guardar
 	 *
 	 * Un proceso se guarda cuando la persona lo pide (botón o Ctrl+S) y vive en el servidor, por organización (`procesos.svelte.ts`).
@@ -49,18 +55,26 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import NodoConstante from '$lib/components/reglas/NodoConstante.svelte';
 	import NodoOperador from '$lib/components/reglas/NodoOperador.svelte';
+	import NodoResultado from '$lib/components/reglas/NodoResultado.svelte';
 	import NodoTipoDocumental from '$lib/components/reglas/NodoTipoDocumental.svelte';
+	import NodoValorFinal from '$lib/components/reglas/NodoValorFinal.svelte';
 	import PaletaDeTipos from '$lib/components/reglas/PaletaDeTipos.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
 		CLAVE_ESQUEMA,
 		CLAVE_VEREDICTOS,
+		ID_NODO_RESULTADO,
 		MIME_CONSTANTE,
 		MIME_OPERADOR,
+		MIME_RESULTADO,
 		MIME_TIPO_DOCUMENTAL,
+		MIME_VALOR_FINAL,
 		NODO_CONSTANTE,
 		NODO_OPERADOR,
+		NODO_RESULTADO,
 		NODO_TIPO,
+		NODO_VALOR_FINAL,
+		TEXTOS_DEL_RESULTADO,
 		evaluar,
 		hidratarDibujo,
 		huellaDelDibujo,
@@ -73,7 +87,9 @@
 		type Conexion,
 		type DatosNodoConstante,
 		type DatosNodoOperador,
-		type DatosNodoTipo
+		type DatosNodoResultado,
+		type DatosNodoTipo,
+		type DatosNodoValorFinal
 	} from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import { tiposDocumentales } from '$lib/state/configuracion.svelte';
@@ -100,10 +116,16 @@
 	let edges = $state.raw<Edge[]>([]);
 	let zona = $state<HTMLDivElement>();
 
-	const nodeTypes = { [NODO_TIPO]: NodoTipoDocumental, [NODO_OPERADOR]: NodoOperador, [NODO_CONSTANTE]: NodoConstante };
+	const nodeTypes = {
+		[NODO_TIPO]: NodoTipoDocumental,
+		[NODO_OPERADOR]: NodoOperador,
+		[NODO_CONSTANTE]: NodoConstante,
+		[NODO_VALOR_FINAL]: NodoValorFinal,
+		[NODO_RESULTADO]: NodoResultado
+	};
 
-	// El estado de CADA regla y el valor de las que entregan uno, calculados una vez para todo el grafo: una regla que depende de otra
-	// tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
+	// El estado de CADA regla y el valor de las que entregan uno, lo que entrega cada valor final y con qué palabra termina el proceso, calculados
+	// una vez para todo el grafo: una regla que depende de otra tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
 	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales));
 	setContext(CLAVE_VEREDICTOS, {
 		get todos() {
@@ -111,6 +133,12 @@
 		},
 		get valores() {
 			return evaluacion.valores;
+		},
+		get finales() {
+			return evaluacion.finales;
+		},
+		get resultado() {
+			return evaluacion.resultado;
 		}
 	});
 
@@ -118,6 +146,8 @@
 	const enLienzo = $derived(
 		new Set(nodes.flatMap((n) => (n.type === NODO_TIPO ? [(n.data as DatosNodoTipo).tipoId] : [])))
 	);
+	/** El proceso termina con UNA palabra: si ya tiene su nodo de resultado, la paleta no ofrece otro. */
+	const hayResultado = $derived(nodes.some((n) => n.type === NODO_RESULTADO));
 
 	type Posicion = { x: number; y: number };
 
@@ -160,6 +190,30 @@
 		nodes = [...nodes, nuevo];
 	}
 
+	/** Un valor final se puede poner las veces que haga falta (cada uno es un dato de la lista de la corrida) y su número no se reutiliza. */
+	let valoresFinalesPuestos = 0;
+	function agregarValorFinal(posicion: Posicion) {
+		valoresFinalesPuestos += 1;
+		const nuevo: Node<DatosNodoValorFinal> = {
+			id: `valor-final-${valoresFinalesPuestos}`,
+			type: NODO_VALOR_FINAL,
+			position: posicion,
+			data: { nombre: '', a: '' }
+		};
+		nodes = [...nodes, nuevo];
+	}
+
+	/** El resultado es UNO por proceso: si ya está, no se duplica, se enfoca (como un tipo documental). */
+	function agregarResultado(posicion: Posicion) {
+		if (nodes.some((n) => n.type === NODO_RESULTADO)) {
+			const existente = nodes.find((n) => n.type === NODO_RESULTADO);
+			if (existente) fitView({ nodes: [{ id: existente.id }], duration: 300, maxZoom: 1 });
+			return;
+		}
+		const nuevo: Node<DatosNodoResultado> = { id: ID_NODO_RESULTADO, type: NODO_RESULTADO, position: posicion, data: { ...TEXTOS_DEL_RESULTADO } };
+		nodes = [...nodes, nuevo];
+	}
+
 	/** Un clic en la paleta: el nodo aparece en el centro de lo que se ve, escalonado para que varios no queden encimados. */
 	function alCentro(): Posicion | null {
 		const caja = zona?.getBoundingClientRect();
@@ -179,10 +233,19 @@
 		const posicion = alCentro();
 		if (posicion) agregarConstante(posicion);
 	}
+	function agregarValorFinalAlCentro() {
+		const posicion = alCentro();
+		if (posicion) agregarValorFinal(posicion);
+	}
+	function agregarResultadoAlCentro() {
+		const posicion = alCentro();
+		if (posicion) agregarResultado(posicion);
+	}
 
 	function alPasarPorEncima(e: DragEvent) {
 		const tipos = e.dataTransfer?.types;
-		if (!tipos?.includes(MIME_TIPO_DOCUMENTAL) && !tipos?.includes(MIME_OPERADOR) && !tipos?.includes(MIME_CONSTANTE)) return;
+		const cosas = [MIME_TIPO_DOCUMENTAL, MIME_OPERADOR, MIME_CONSTANTE, MIME_VALOR_FINAL, MIME_RESULTADO];
+		if (!cosas.some((mime) => tipos?.includes(mime))) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 	}
@@ -204,6 +267,16 @@
 		if (e.dataTransfer?.getData(MIME_CONSTANTE)) {
 			e.preventDefault();
 			agregarConstante(posicion);
+			return;
+		}
+		if (e.dataTransfer?.getData(MIME_VALOR_FINAL)) {
+			e.preventDefault();
+			agregarValorFinal(posicion);
+			return;
+		}
+		if (e.dataTransfer?.getData(MIME_RESULTADO)) {
+			e.preventDefault();
+			agregarResultado(posicion);
 		}
 	}
 
@@ -362,6 +435,7 @@
 		edges = dibujo.edges;
 		operadoresPuestos = dibujo.operadoresPuestos;
 		constantesPuestas = dibujo.constantesPuestas;
+		valoresFinalesPuestos = dibujo.valoresFinalesPuestos;
 		procesoId = p.id;
 		revision = p.revision;
 		existe = true;
@@ -528,7 +602,12 @@
 		tipoElegido={tipoVirtual !== null}
 		{esquema}
 		nombreDelTipo={tipoElegido?.nombre ?? null}
-		alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} alAgregarConstante={agregarConstanteAlCentro} />
+		{hayResultado}
+		alAgregar={agregarAlCentro}
+		alAgregarOperador={agregarOperadorAlCentro}
+		alAgregarConstante={agregarConstanteAlCentro}
+		alAgregarValorFinal={agregarValorFinalAlCentro}
+		alAgregarResultado={agregarResultadoAlCentro} />
 
 	<!-- Mientras se lee el proceso, o si no se pudo abrir, una cubierta tapa la paleta y el canvas: un lienzo en blanco se leería como un
 	     proceso perdido, y soltar nodos encima de lo que está por llegar se perdería al abrirlo. -->

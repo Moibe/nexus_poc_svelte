@@ -19,6 +19,11 @@
  * un veredicto. `Existe documento` recibe un documento entero y dice si el expediente lo trae. Los LÓGICOS (Y, O, No, Implica) reciben
  * veredictos de otras reglas, y así se encadenan: `Implica` es el «si… entonces…» (si la primera regla pasa, la segunda también debe
  * pasar; si la primera no pasa no hay nada que exigir).
+ *
+ * Los nodos FINALES (2026-11-03) dicen qué entrega el proceso al terminar. Un VALOR FINAL es un dato que ya no se compara más y que entra,
+ * con su nombre, a la lista de valores finales de la corrida; el RESULTADO es la palabra con la que termina el proceso («Aprobado»,
+ * «Certificado»…): recibe una regla y guarda un texto para cuando pasa, otro para cuando no y otro para cuando no se puede saber por falta de
+ * datos. No entregan nada a otro nodo: solo reciben cable.
  */
 import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 
@@ -41,15 +46,49 @@ export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string 
 /** Lo que lleva un nodo de valor fijo: de qué clase es y el valor. A diferencia de un ejemplo, éste es parte de la regla. */
 export type DatosNodoConstante = { familia: Familia; valor: string };
 
+/**
+ * Lo que lleva un nodo «Valor final»: el nombre con el que entra a la lista de valores finales de la corrida (vacío = el que el lienzo le da por
+ * su número, ver `nombreDeValorFinal`) y, como un operador, el valor de EJEMPLO con que se prueba (`a`; solo se escribe cuando lo que le llega es
+ * un campo: un valor fijo o una regla ya traen el suyo).
+ */
+export type DatosNodoValorFinal = { nombre: string; a: string };
+
+/** Los tres casos con que puede terminar un proceso: la regla que decide pasa (`si`), no pasa (`no`) o no se puede saber por falta de datos (`sin`). */
+export type CasoDelResultado = 'si' | 'no' | 'sin';
+
+/** Lo que lleva el nodo «Resultado»: la palabra de cada caso, escrita por la organización («Aprobado», «Certificado»…). */
+export type DatosNodoResultado = Record<CasoDelResultado, string>;
+
 /** Los tipos de nodo que registra el lienzo (`nodeTypes`). */
 export const NODO_TIPO = 'tipo-documental';
 export const NODO_OPERADOR = 'operador';
 export const NODO_CONSTANTE = 'constante';
+export const NODO_VALOR_FINAL = 'valor-final';
+export const NODO_RESULTADO = 'resultado-final';
 
 /** Con qué se arrastra algo desde la paleta hasta el lienzo (`DataTransfer`). */
 export const MIME_TIPO_DOCUMENTAL = 'application/x-nexusdoc-tipo-documental';
 export const MIME_OPERADOR = 'application/x-nexusdoc-operador';
 export const MIME_CONSTANTE = 'application/x-nexusdoc-constante';
+export const MIME_VALOR_FINAL = 'application/x-nexusdoc-valor-final';
+export const MIME_RESULTADO = 'application/x-nexusdoc-resultado-final';
+
+/** Los dos nodos finales reciben UN cable, por este punto, y no entregan nada. */
+export const ENTRADA_FINAL = 'a';
+/** Un proceso termina con UNA palabra, así que el nodo del resultado es único y su id es fijo (como el de un tipo documental, que sale del tipo). */
+export const ID_NODO_RESULTADO = 'resultado-final';
+
+/** Lo que dice cada caso del resultado mientras la organización no escriba otra cosa. */
+export const TEXTOS_DEL_RESULTADO: Readonly<DatosNodoResultado> = { si: 'Aprobado', no: 'Rechazado', sin: 'Sin datos' };
+/** Los casos del resultado, en el orden en que se muestran, con cómo se le llama a cada uno. */
+export const CASOS_DEL_RESULTADO: readonly { caso: CasoDelResultado; etiqueta: string }[] = [
+	{ caso: 'si', etiqueta: 'Si se cumple' },
+	{ caso: 'no', etiqueta: 'Si no se cumple' },
+	{ caso: 'sin', etiqueta: 'Si faltan datos' }
+];
+/** Lo que cabe en el nombre de un valor final y en cada palabra del resultado (el back pone los mismos topes). */
+export const MAX_NOMBRE_FINAL = 80;
+export const MAX_TEXTO_RESULTADO = 60;
 
 /** El punto por el que un operador entrega su resultado (un veredicto o un valor, según el operador). */
 export const SALIDA_RESULTADO = 'resultado';
@@ -77,8 +116,24 @@ export const CLAVE_ESQUEMA = 'nexusdoc-esquema-del-proceso';
  */
 export const idNodoDeTipo = (tipoId: string) => `tipo-${tipoId}`;
 
-/** El número con el que se distingue un operador o un valor fijo de otro del mismo tipo («Igual a #2», «Valor fijo #1»). */
-export const numeroDeOperador = (nodoId: string) => nodoId.replace(/^(operador|constante)-/, '');
+/** El número con el que se distingue un operador, un valor fijo o un valor final de otro del mismo tipo («Igual a #2», «Valor fijo #1», «Valor final #3»). */
+export const numeroDeOperador = (nodoId: string) => nodoId.replace(/^(operador|constante|valor-final)-/, '');
+
+/**
+ * Las palabras de un resultado tal como se guardan: sin espacios de más y, si una quedó vacía o no es texto, la de siempre (`TEXTOS_DEL_RESULTADO`).
+ * Un resultado sin palabra para algún caso no diría nada cuando le tocara.
+ */
+export function textosDelResultado(datos: Partial<Record<CasoDelResultado, unknown>> | null | undefined): DatosNodoResultado {
+	const de = (caso: CasoDelResultado) => {
+		const texto = datos?.[caso];
+		return typeof texto === 'string' && texto.trim() ? texto.trim().slice(0, MAX_TEXTO_RESULTADO) : TEXTOS_DEL_RESULTADO[caso];
+	};
+	return { si: de('si'), no: de('no'), sin: de('sin') };
+}
+
+/** El nombre con el que un valor final entra a la lista de la corrida: el que se escribió o, sin nombre, «Valor final #N» (su número). */
+export const nombreDeValorFinal = (nodoId: string, datos: { nombre?: unknown } | null | undefined): string =>
+	(typeof datos?.nombre === 'string' ? datos.nombre.trim() : '') || `Valor final #${numeroDeOperador(nodoId)}`;
 
 // ── Qué es comparable con qué ────────────────────────────────────────────────
 
@@ -508,6 +563,32 @@ function noLeSirve(fuente: Fuente, acepta: Acepta, def: DefOperador): string | n
 }
 
 /**
+ * Por qué un nodo FINAL no acepta este cable; `null` si lo acepta. Los dos reciben por un solo punto y no entregan nada, así que no hay ciclos ni
+ * «el otro lado» que comparar: solo importa QUÉ llega.
+ *   · «Valor final» entrega un dato a la lista de la corrida: sirve un valor, una lista de valores o el pasa / no pasa de una regla. No sirve
+ *     el documento entero (no es un dato) ni las filas de un grupo (hay que contarlas o elegir una columna).
+ *   · «Resultado» se decide por una regla: solo sirve su pasa / no pasa.
+ */
+function motivoDeRechazoFinal(c: Conexion, destino: NodoMinimo, nodos: readonly NodoMinimo[], tipos: readonly TipoDocumentalGuardado[]): string | null {
+	if (c.targetHandle !== ENTRADA_FINAL) return 'Un campo, un valor o un resultado se conecta al punto de entrada del nodo.';
+	const fuente = fuenteDeConexion(c, nodos, tipos);
+	if (typeof fuente === 'string') return fuente;
+	if (destino.type === NODO_RESULTADO) {
+		return fuente.forma === 'veredicto'
+			? null
+			: '«Resultado» se decide por una regla que pasa o no pasa: conecta el resultado de una regla (una comparación, Y, O…), no un campo ni un valor.';
+	}
+	switch (fuente.forma) {
+		case 'documento':
+			return '«Valor final» entrega un dato, no un documento entero: conecta uno de sus campos, o el documento a «Existe documento» para entregar si está.';
+		case 'filas':
+			return '«Valor final» entrega un dato y un grupo trae filas: cuéntalas con «Cantidad» o conecta una de sus columnas.';
+		default:
+			return null;
+	}
+}
+
+/**
  * Por qué NO se acepta esta conexión; `null` si se acepta. La razón se le dice a la persona: soltar un cable y que no pase nada,
  * sin decir por qué, es lo peor de un lienzo.
  */
@@ -520,6 +601,7 @@ export function motivoDeRechazo(
 	const origen = nodos.find((n) => n.id === c.source);
 	const destino = nodos.find((n) => n.id === c.target);
 	if (!origen || !destino) return 'No se puede conectar eso.';
+	if (destino.type === NODO_VALOR_FINAL || destino.type === NODO_RESULTADO) return motivoDeRechazoFinal(c, destino, nodos, tipos);
 	const def = operadorDelNodo(destino);
 	const entrada = def?.entradas.find((e) => e.id === c.targetHandle);
 	if (!def || !entrada) return 'Un campo, un valor o un resultado se conecta a una de las entradas de un operador.';
@@ -774,8 +856,51 @@ export function evaluarLista(clave: ClaveOperador, familia: Familia, elementos: 
 	}
 }
 
-/** Lo que evaluó el lienzo: el estado de CADA regla y el valor de las que entregan uno. */
-export type Evaluacion = { estados: Record<string, Estado>; valores: Record<string, string> };
+/**
+ * Lo que entrega un nodo «Valor final» con los valores de ejemplo: `listo` (ya tiene su valor), `sin_valores` (está conectado pero falta el
+ * ejemplo de un campo, o la regla de la que viene no lo tiene) o `sin_conexion` (no tiene nada conectado, o lo conectado ya no sirve).
+ */
+export type EvaluacionDeValorFinal = { estado: 'listo' | 'sin_valores' | 'sin_conexion'; valor?: string };
+
+/**
+ * Con qué palabra terminaría el proceso con los valores de ejemplo. `condicion` es el veredicto de la regla conectada (`sin_conexion` si no hay
+ * ninguna, o está incompleta) y `caso` y `texto` salen de él: pasa → `si`, no pasa → `no`, sin valores → `sin`; sin conexión no dice nada (`null`).
+ */
+export type EvaluacionDelResultado = { condicion: Veredicto; caso: CasoDelResultado | null; texto: string | null };
+
+/** Lo que evaluó el lienzo: el estado de CADA regla y el valor de las que entregan uno, lo que entrega cada valor final y cómo termina el proceso. */
+export type Evaluacion = {
+	estados: Record<string, Estado>;
+	valores: Record<string, string>;
+	finales: Record<string, EvaluacionDeValorFinal>;
+	/** `null` si el lienzo no tiene nodo de resultado. */
+	resultado: EvaluacionDelResultado | null;
+};
+
+/** Lo que el lienzo les ofrece a sus nodos por contexto (`CLAVE_VEREDICTOS`): lo evaluado para todo el grafo. */
+export type EvaluadoDelLienzo = {
+	readonly todos: Record<string, Estado>;
+	readonly valores: Record<string, string>;
+	readonly finales: Record<string, EvaluacionDeValorFinal>;
+	readonly resultado: EvaluacionDelResultado | null;
+};
+
+/** Lo que llega a una entrada de un nodo: un campo, un valor fijo o la regla de la que viene. */
+export type OrigenDeEntrada =
+	| { clase: 'campo'; salida: Salida }
+	| { clase: 'fijo'; numero: string; valor: string }
+	| { clase: 'regla'; nombre: string; estado: Estado; valor: string | undefined; entrega: 'veredicto' | 'valor' };
+
+/** Los ids de los valores finales cuyo nombre (el escrito o el que les da su número) lo lleva también otro: en la lista de la corrida se confundirían. */
+export function valoresFinalesRepetidos(nodos: readonly NodoMinimo[]): Set<string> {
+	const porNombre = new Map<string, string[]>();
+	for (const n of nodos) {
+		if (n.type !== NODO_VALOR_FINAL) continue;
+		const nombre = nombreDeValorFinal(n.id, n.data).toLocaleLowerCase('es');
+		porNombre.set(nombre, [...(porNombre.get(nombre) ?? []), n.id]);
+	}
+	return new Set([...porNombre.values()].flatMap((ids) => (ids.length > 1 ? ids : [])));
+}
 
 /**
  * El estado de CADA operador del lienzo, siguiendo los cables: las comparaciones y las listas leen sus campos con sus valores de
@@ -840,7 +965,41 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 	};
 
 	for (const n of nodos) if (operadorDelNodo(n)) de(n.id, new Set());
-	return { estados, valores };
+
+	// Los nodos finales leen lo que ya se evaluó: no entregan nada a nadie, así que no hay dependencias entre ellos.
+	const cableDe = (id: string) => aristas.find((a) => a.target === id && a.targetHandle === ENTRADA_FINAL);
+
+	/** Lo que entrega un valor final: el valor del campo (el ejemplo del propio nodo), del valor fijo o de la regla; el pasa / no pasa de una regla se entrega como «Pasa» o «No pasa». */
+	const valorFinal = (n: NodoMinimo): EvaluacionDeValorFinal => {
+		const cable = cableDe(n.id);
+		const fuente = cable ? fuenteDeConexion(cable, nodos, tipos) : null;
+		if (!cable || fuente === null || typeof fuente === 'string' || fuente.forma === 'filas' || fuente.forma === 'documento') return { estado: 'sin_conexion' };
+		const origen = nodos.find((o) => o.id === cable.source);
+		if (origen?.type === NODO_OPERADOR) {
+			const estado = estados[origen.id] ?? 'sin_conexion';
+			if (estado === 'sin_conexion' || estado === 'sin_valores') return { estado };
+			return { estado: 'listo', valor: estado === 'listo' ? (valores[origen.id] ?? '') : estado === 'pasa' ? 'Pasa' : 'No pasa' };
+		}
+		const muestra = origen?.type === NODO_CONSTANTE ? String((origen.data as DatosNodoConstante).valor ?? '') : String((n.data as DatosNodoValorFinal).a ?? '');
+		const texto = fuente.forma === 'lista' ? lineasDeEjemplo(muestra).join(', ') : muestra.trim();
+		return texto ? { estado: 'listo', valor: texto } : { estado: 'sin_valores' };
+	};
+	const finales: Record<string, EvaluacionDeValorFinal> = {};
+	for (const n of nodos) if (n.type === NODO_VALOR_FINAL) finales[n.id] = valorFinal(n);
+
+	/** Con qué palabra termina el proceso: la de su nodo de resultado según el veredicto de la regla conectada. Con dos nodos (no debería haberlos), manda el primero. */
+	let resultado: EvaluacionDelResultado | null = null;
+	const nodoResultado = nodos.find((n) => n.type === NODO_RESULTADO);
+	if (nodoResultado) {
+		const cable = cableDe(nodoResultado.id);
+		const fuente = cable ? fuenteDeConexion(cable, nodos, tipos) : null;
+		const origen = cable && nodos.find((o) => o.id === cable.source);
+		const estado = origen && operadorDelNodo(origen) && fuente && typeof fuente !== 'string' && fuente.forma === 'veredicto' ? estados[origen.id] : undefined;
+		const condicion: Veredicto = estado === 'pasa' || estado === 'no_pasa' || estado === 'sin_valores' ? estado : 'sin_conexion';
+		const caso: CasoDelResultado | null = condicion === 'pasa' ? 'si' : condicion === 'no_pasa' ? 'no' : condicion === 'sin_valores' ? 'sin' : null;
+		resultado = { condicion, caso, texto: caso ? textosDelResultado(nodoResultado.data)[caso] : null };
+	}
+	return { estados, valores, finales, resultado };
 }
 
 // ── Guardar el dibujo y volver a abrirlo ─────────────────────────────────────
@@ -848,9 +1007,9 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 /** Un nodo tal como se guarda: solo lo que el lienzo necesita (la librería le suma medidas y banderas de selección que no van). */
 export type NodoGuardado = {
 	id: string;
-	type: typeof NODO_TIPO | typeof NODO_OPERADOR | typeof NODO_CONSTANTE;
+	type: typeof NODO_TIPO | typeof NODO_OPERADOR | typeof NODO_CONSTANTE | typeof NODO_VALOR_FINAL | typeof NODO_RESULTADO;
 	position: { x: number; y: number };
-	data: DatosNodoTipo | DatosNodoOperador | DatosNodoConstante;
+	data: DatosNodoTipo | DatosNodoOperador | DatosNodoConstante | DatosNodoValorFinal | DatosNodoResultado;
 };
 /** Un cable tal como se guarda. */
 export type AristaGuardada = { id: string; source: string; sourceHandle: string | null; target: string; targetHandle: string | null };
@@ -878,6 +1037,12 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 		} else if (n.type === NODO_CONSTANTE) {
 			const d = n.data as DatosNodoConstante;
 			nodos.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: esFamilia(d.familia) ? d.familia : 'texto', valor: d.valor ?? '' } });
+		} else if (n.type === NODO_VALOR_FINAL) {
+			const d = n.data as DatosNodoValorFinal;
+			// El nombre se guarda sin espacios de más: «RFC » y «RFC» son el mismo nombre y escribirle un espacio no es un cambio por guardar.
+			nodos.push({ id: n.id, type: NODO_VALOR_FINAL, position, data: { nombre: (d.nombre ?? '').trim(), a: d.a ?? '' } });
+		} else if (n.type === NODO_RESULTADO) {
+			nodos.push({ id: n.id, type: NODO_RESULTADO, position, data: textosDelResultado(n.data as Partial<DatosNodoResultado>) });
 		}
 	}
 	const existentes = new Set(nodos.map((n) => n.id));
@@ -902,14 +1067,15 @@ const esNumeroFinito = (v: unknown): v is number => typeof v === 'number' && Num
 /**
  * Lo guardado, de vuelta a nodos y cables del lienzo. Lo que no se entiende se deja fuera en vez de reventar la pantalla (un nodo
  * de un tipo que ya no existe, un cable a un nodo que no está, un operador que el catálogo ya no tiene): el servidor valida lo que
- * recibe, pero el catálogo de operadores puede cambiar entre versiones. `operadoresPuestos` y `constantesPuestas` son por dónde sigue
- * la numeración, para que un nodo nuevo no se llame igual que uno ya guardado.
+ * recibe, pero el catálogo de operadores puede cambiar entre versiones. `operadoresPuestos`, `constantesPuestas` y `valoresFinalesPuestos` son
+ * por dónde sigue la numeración, para que un nodo nuevo no se llame igual que uno ya guardado.
  */
 export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown }): {
 	nodes: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }[];
 	edges: { id: string; source: string; sourceHandle: string | null; target: string; targetHandle: string | null }[];
 	operadoresPuestos: number;
 	constantesPuestas: number;
+	valoresFinalesPuestos: number;
 } {
 	const nodes: ReturnType<typeof hidratarDibujo>['nodes'] = [];
 	for (const n of Array.isArray(guardado.nodos) ? guardado.nodos : []) {
@@ -927,6 +1093,11 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {
 			nodes.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: n.data.familia, valor: typeof n.data.valor === 'string' ? n.data.valor : '' } });
+		} else if (n.type === NODO_VALOR_FINAL) {
+			nodes.push({ id: n.id, type: NODO_VALOR_FINAL, position, data: { nombre: typeof n.data.nombre === 'string' ? n.data.nombre : '', a: typeof n.data.a === 'string' ? n.data.a : '' } });
+		} else if (n.type === NODO_RESULTADO && !nodes.some((o) => o.type === NODO_RESULTADO)) {
+			// Un proceso termina con UNA palabra: si lo guardado trae más de un nodo de resultado (a mano), solo se abre el primero.
+			nodes.push({ id: n.id, type: NODO_RESULTADO, position, data: textosDelResultado(n.data) });
 		}
 	}
 	const existentes = new Set(nodes.map((n) => n.id));
@@ -950,11 +1121,14 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 	}
 	let operadoresPuestos = 0;
 	let constantesPuestas = 0;
+	let valoresFinalesPuestos = 0;
 	for (const n of nodes) {
 		const op = n.type === NODO_OPERADOR ? /^operador-(\d+)$/.exec(n.id) : null;
 		if (op) operadoresPuestos = Math.max(operadoresPuestos, Number(op[1]));
 		const k = n.type === NODO_CONSTANTE ? /^constante-(\d+)$/.exec(n.id) : null;
 		if (k) constantesPuestas = Math.max(constantesPuestas, Number(k[1]));
+		const vf = n.type === NODO_VALOR_FINAL ? /^valor-final-(\d+)$/.exec(n.id) : null;
+		if (vf) valoresFinalesPuestos = Math.max(valoresFinalesPuestos, Number(vf[1]));
 	}
-	return { nodes, edges, operadoresPuestos, constantesPuestas };
+	return { nodes, edges, operadoresPuestos, constantesPuestas, valoresFinalesPuestos };
 }
