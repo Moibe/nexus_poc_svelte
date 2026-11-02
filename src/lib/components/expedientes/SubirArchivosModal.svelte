@@ -19,11 +19,10 @@
 	 * documento en otro expediente es legítimo. La comparación es contra lo que la página cargó; si otra persona acaba de subir lo mismo, no
 	 * se entera.
 	 *
-	 * **Clasificar al subir (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado por ahí»).** nexus_back clasifica cada
-	 * archivo en la misma llamada con que lo sube (la fila dice «Subiendo y clasificando…») y, si el clasificador lo reconoce con la confianza
-	 * mínima, lo mete solo a los expedientes virtuales de este expediente que esperan ese tipo. Cada archivo subido dice qué pasó
-	 * (`lineaDeClasificacion`), y una nota fija sobre la lista dice la regla con su mínimo, que llega de la API (`confianzaMinima`) y no se copia
-	 * aquí. Clasificar nunca tumba la subida: si no se pudo, el archivo queda subido y la fila lo dice.
+	 * **Clasificar al subir (2026-11-02, Moibe: «los dos clasifican»; sin confianza mínima: basta con ser de ese tipo).** nexus_back clasifica cada
+	 * archivo en la misma llamada con que lo sube (la fila dice «Subiendo y clasificando…») y, si el clasificador lo reconoce como de un tipo,
+	 * lo mete solo a los expedientes virtuales de este expediente que esperan ese tipo. Cada archivo subido dice qué pasó
+	 * (`lineaDeClasificacion`), y una nota fija sobre la lista dice la regla. Clasificar nunca tumba la subida: si no se pudo, el archivo queda subido y la fila lo dice.
 	 *
 	 * Mismo molde que «Nuevo expediente virtual» (`ExpedienteVirtualModal`): modal centrado de 684 px con cabecera, título con su ícono,
 	 * cuerpo y pie con «Cancelar» y el botón principal.
@@ -77,7 +76,6 @@
 		open = $bindable(false),
 		expediente,
 		existentes = [],
-		confianzaMinima,
 		alTerminar
 	}: {
 		open?: boolean;
@@ -85,8 +83,6 @@
 		expediente: { id: string; nombre: string };
 		/** Los documentos que YA están en el expediente (nombre y huella), para avisar de duplicados. */
 		existentes?: { nombre: string; sha256?: string }[];
-		/** La confianza (0-100) con que el clasificador mete un documento solo a un expediente virtual: la dice nexus_back (`clasificacionAutomatica`). */
-		confianzaMinima?: number;
 		/**
 		 * Se cierra la ventana y entró al menos un archivo: la página se pone al día y avisa. `omitidos` son los duplicados que no se subieron;
 		 * `colocados`, los archivos que el clasificador metió solo a algún expediente virtual.
@@ -329,7 +325,7 @@
 				<!-- La regla del clasificador, dicha donde se sube (2026-11-02): con el mínimo que fija nexus_back, que no se copia aquí. -->
 				<p class="flex items-start gap-2 text-xs text-muted-foreground" data-testid="nota-clasificacion">
 					<Sparkles class="mt-0.5 size-3.5 shrink-0 text-primary" />
-					<span>{notaDeSubida(confianzaMinima)}</span>
+					<span>{notaDeSubida()}</span>
 				</p>
 				<input
 					bind:this={entrada}

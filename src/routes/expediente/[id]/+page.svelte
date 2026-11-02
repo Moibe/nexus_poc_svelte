@@ -21,10 +21,10 @@
 	 * la ventana, la página se pone al día y dice cuántos entraron. Los DUPLICADOS (mismo contenido que algo que ya está en el expediente o que
 	 * otro archivo de la misma tanda) se avisan en la ventana y no se suben salvo que la persona lo decida (2026-11-02).
 	 *
-	 * **El clasificador (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado por ahí»).** Cada archivo se CLASIFICA al
-	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo y, si el clasificador lo reconoce con la confianza mínima (que fija nexus_back y
-	 * llega en `clasificacionAutomatica`), entra solo a los expedientes virtuales de este expediente que esperan ese tipo, a todos los que haya.
-	 * La ventana de subir dice la regla con su mínimo, y el aviso de la página cuenta cuántos archivos metió el clasificador.
+	 * **El clasificador (2026-11-02, Moibe: «los dos clasifican»; sin confianza mínima: basta con ser de ese tipo).** Cada archivo se CLASIFICA al
+	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo y, si el clasificador lo reconoce como de un tipo, entra solo a los expedientes
+	 * virtuales de este expediente que esperan ese tipo, a todos los que haya. La ventana de subir dice la regla, y el aviso de la página cuenta
+	 * cuántos archivos metió el clasificador.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
@@ -241,7 +241,6 @@
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
 	documentos={expediente.documentos}
 	tipos={data.tiposVirtuales}
-	confianzaMinima={expediente.clasificacionAutomatica?.confianzaMinima}
 	puedeCrearTipo={data.puedeAdministrar}
 	alCrear={async (v) => {
 		// El virtual YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
@@ -262,7 +261,6 @@
 	bind:open={subida}
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
 	existentes={expediente.documentos.map((d) => ({ nombre: d.nombreOriginal, sha256: d.sha256 }))}
-	confianzaMinima={expediente.clasificacionAutomatica?.confianzaMinima}
 	alTerminar={async ({ subidos, fallidos, omitidos, colocados }) => {
 		// Los archivos YA entraron: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
 		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos, colocados);

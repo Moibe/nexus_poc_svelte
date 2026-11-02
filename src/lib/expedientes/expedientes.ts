@@ -36,12 +36,6 @@ export type DocumentoDeExpediente = {
 	agregadoPorClasificador?: boolean;
 };
 
-/** Lo que nexus_back dice del clasificador cuando mete documentos solo a los expedientes virtuales (viene en el expediente y en el virtual). */
-export type ClasificacionAutomatica = {
-	/** La confianza (0-100) con que el clasificador tiene que reconocer un documento para meterlo solo. La fija nexus_back. */
-	confianzaMinima: number;
-};
-
 export type TipoDeDocumento = {
 	id: string;
 	nombre: string;
@@ -93,16 +87,12 @@ export type ExpedienteVirtual = {
 	documentos: DocumentoDeExpediente[];
 	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. Todavía no hay motor que los corra sobre él. */
 	procesos?: { id: string; nombre: string; activo: boolean }[];
-	/** Con qué confianza mínima el clasificador mete documentos solo a un expediente virtual (para decirlo en pantalla sin copiar el número). */
-	clasificacionAutomatica?: ClasificacionAutomatica;
 };
 
 /** El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y sus expedientes virtuales. */
 export type ExpedienteConDocumentos = Expediente & {
 	documentos: DocumentoDeExpediente[];
 	expedientesVirtuales: ExpedienteVirtualResumen[];
-	/** Con qué confianza mínima el clasificador mete documentos solo a un expediente virtual (para decirlo en pantalla sin copiar el número). */
-	clasificacionAutomatica?: ClasificacionAutomatica;
 };
 
 /** El tope del nombre: el mismo que impone nexus_back (`servicios/expedientes.py` y `servicios/expedientes_virtuales.py`). */

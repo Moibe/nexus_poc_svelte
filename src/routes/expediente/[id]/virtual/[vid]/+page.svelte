@@ -6,9 +6,9 @@
 	 *
 	 * **Los documentos entran SOLOS (2026-11-02, Moibe: «el botón de agregar documentos no debería existir, los documentos se agregan
 	 * automáticamente al expediente virtual si son del tipo que pide»).** Aquí no se agrega nada a mano: el clasificador mete a todos los
-	 * expedientes virtuales que lo esperan el documento que reconoce como de alguno de los tipos del esquema, con la confianza mínima que fija
-	 * nexus_back («el mínimo sea 75% y sea mencionado por ahí»). La tarjeta lo dice («Agregado por el clasificador») y la nota bajo el esquema
-	 * cuenta la regla con su mínimo. Un virtual no recibe archivos propios: si el expediente no tiene documentos, la pantalla manda a subirlos
+	 * expedientes virtuales que lo esperan el documento que reconoce como de alguno de los tipos del esquema, de cualquier confianza (primero se
+	 * pidió un mínimo de 75% y se quitó: «pasa simplemente por ser de ese tipo»). La tarjeta lo dice («Agregado por el clasificador») y la nota
+	 * bajo el esquema cuenta la regla. Un virtual no recibe archivos propios: si el expediente no tiene documentos, la pantalla manda a subirlos
 	 * al expediente.
 	 *
 	 * Quien organiza puede:
@@ -144,7 +144,7 @@
 	{#if v.tipo.tiposDocumentales.length > 0}
 		<p class="mt-1 flex items-start gap-1.5 px-1 text-xs text-muted-foreground" data-testid="virtual-nota-clasificador">
 			<Sparkles class="mt-0.5 size-3.5 shrink-0 text-primary" />
-			<span>{notaDeVirtual(v.clasificacionAutomatica?.confianzaMinima)}</span>
+			<span>{notaDeVirtual()}</span>
 		</p>
 	{/if}
 

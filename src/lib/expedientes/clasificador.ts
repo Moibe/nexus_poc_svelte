@@ -1,31 +1,21 @@
 /**
- * Lo que el clasificador hace SOLO con los expedientes virtuales, dicho a la persona (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y
- * sea mencionado por ahí»).
+ * Lo que el clasificador hace SOLO con los expedientes virtuales, dicho a la persona (2026-11-02, Moibe: «los dos clasifican»; primero pidió un
+ * mínimo de 75% de confianza y después lo quitó: «pasa simplemente por ser de ese tipo»).
  *
- * La regla vive en nexus_back (`servicios/expedientes_virtuales.py`): un documento que el clasificador reconoce como de un tipo documental, con
- * cierta confianza como mínimo, entra solo a los expedientes virtuales de su expediente que esperan ese tipo; si hay dos del mismo tipo, a los dos.
- * El número del mínimo NO se copia aquí: llega en `clasificacionAutomatica.confianzaMinima` de la API y todos estos textos lo reciben como dato.
- * Sin él (un servidor viejo, una respuesta rara) dicen «suficiente confianza» en vez de romperse.
+ * La regla vive en nexus_back (`servicios/expedientes_virtuales.py`): un documento que el clasificador reconoce como de un tipo documental entra
+ * solo a los expedientes virtuales de su expediente que esperan ese tipo; si hay dos del mismo tipo, a los dos. No hay confianza mínima.
  *
  * Es lógica PURA (sin Svelte ni red) para poder probarla sola.
  */
 
-/**
- * La confianza como se dice en pantalla: «92.5%», «75%». Sin ceros de relleno y con hasta dos decimales, para que 74.99% no se lea como «75%»
- * junto al mínimo de 75%.
- */
+/** La confianza como se dice en pantalla: «92.5%», «68%». Sin ceros de relleno y con hasta dos decimales. */
 export function porcentaje(valor: number): string {
 	return `${Number(valor.toFixed(2))}%`;
 }
 
-/** «al menos 75% de confianza», o «suficiente confianza» si no se sabe el mínimo. */
-export function confianzaNecesaria(minimo?: number): string {
-	return typeof minimo === 'number' && Number.isFinite(minimo) ? `al menos ${porcentaje(minimo)} de confianza` : 'suficiente confianza';
-}
-
 /** La nota fija de la ventana de subir archivos a un expediente. */
-export function notaDeSubida(minimo?: number): string {
-	return `Cada archivo se clasifica al subirlo. Si el clasificador lo reconoce con ${confianzaNecesaria(minimo)}, entra solo a los expedientes virtuales de este expediente que esperan ese tipo documental.`;
+export function notaDeSubida(): string {
+	return 'Cada archivo se clasifica al subirlo. Si el clasificador lo reconoce como de un tipo documental, entra solo a los expedientes virtuales de este expediente que esperan ese tipo.';
 }
 
 /**
@@ -38,16 +28,16 @@ export function avisoDeColocados(colocados: number, cosa: 'archivo' | 'documento
 }
 
 /** La nota de un expediente virtual abierto: qué mete solo el clasificador y que se puede quitar. */
-export function notaDeVirtual(minimo?: number): string {
-	return `El clasificador agrega solo los documentos del expediente que reconoce como de alguno de estos tipos con ${confianzaNecesaria(minimo)}. Los que agregó dicen «Agregado por el clasificador» y se quitan como cualquier otro.`;
+export function notaDeVirtual(): string {
+	return 'Los documentos del expediente que el clasificador reconoce como de alguno de estos tipos entran solos. Los que agregó dicen «Agregado por el clasificador» y se quitan como cualquier otro.';
 }
 
 /** La nota de la ventana «Nuevo expediente virtual»: lo ya clasificado entra solo al crearlo. */
-export function notaAlCrearVirtual(minimo?: number): string {
-	return `Los documentos del expediente que el clasificador ya reconoció como de alguno de los tipos del esquema, con ${confianzaNecesaria(minimo)}, entran solos al crearlo. Los demás los marcas tú.`;
+export function notaAlCrearVirtual(): string {
+	return 'Los documentos del expediente que el clasificador ya reconoció como de alguno de los tipos del esquema entran solos al crearlo. Los demás los marcas tú.';
 }
 
-// ── El clasificador al subir (Moibe, 2026-11-02: «clasifican al subir»; mínimo 75%, y «sea mencionado por ahí») ──────────────────
+// ── El clasificador al subir ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
  * Lo que nexus_back dice de la clasificación de un archivo recién subido (`clasificacion` en la respuesta de
@@ -59,8 +49,6 @@ export type ClasificacionDeSubida = {
 	tipo: { id: string; nombre: string } | null;
 	/** De 0 a 100, o `null` si no hay. */
 	confianza: number | null;
-	/** La confianza mínima con que el clasificador puede meterlo SOLO a un expediente virtual (la fija nexus_back). */
-	minimo: number;
 };
 
 /** A cuál expediente virtual entró solo el archivo. */
@@ -80,8 +68,7 @@ export function leerClasificacion(valor: unknown): ClasificacionDeSubida | null 
 	return {
 		estado: v.estado as ClasificacionDeSubida['estado'],
 		tipo: tipo && typeof tipo.id === 'string' && typeof tipo.nombre === 'string' ? { id: tipo.id, nombre: tipo.nombre } : null,
-		confianza: typeof v.confianza === 'number' ? v.confianza : null,
-		minimo: typeof v.minimo === 'number' ? v.minimo : 0
+		confianza: typeof v.confianza === 'number' ? v.confianza : null
 	};
 }
 
@@ -111,9 +98,6 @@ export function lineaDeClasificacion(c: ClasificacionDeSubida, virtuales: readon
 			const tipo = c.tipo?.nombre ?? 'un tipo documental';
 			const con = c.confianza === null ? '' : ` (${porcentaje(c.confianza)})`;
 			if (virtuales.length > 0) return { tono: 'bien', texto: `Clasificado como «${tipo}»${con}. Entró a ${nombres(virtuales.map((v) => v.nombre))}.` };
-			if (c.confianza !== null && c.confianza < c.minimo) {
-				return { tono: 'aviso', texto: `Clasificado como «${tipo}»${con}, por debajo del mínimo de ${porcentaje(c.minimo)} para entrar solo a un expediente virtual.` };
-			}
 			return { tono: 'neutro', texto: `Clasificado como «${tipo}»${con}. Ningún expediente virtual de este expediente lo espera.` };
 		}
 		case 'sin_tipo':

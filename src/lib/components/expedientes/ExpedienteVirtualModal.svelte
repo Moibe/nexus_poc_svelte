@@ -5,9 +5,9 @@
 	 * esquema: qué tipos documentales lleva, para saber qué documentos marcar), el nombre (de entrada, el del tipo) y los documentos del
 	 * expediente con que nace (pueden ser ninguno: se agregan después).
 	 *
-	 * Los documentos se eligen A MANO, y además entran SOLOS los que el clasificador ya reconoció como de alguno de los tipos del esquema con la
-	 * confianza mínima que fija nexus_back (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado por ahí»): la nota sobre la
-	 * lista lo dice con ese mínimo (`confianzaMinima`, de la API). El esquema describe, no restringe: se puede marcar cualquier documento.
+	 * Los documentos se eligen A MANO, y además entran SOLOS los que el clasificador ya reconoció como de alguno de los tipos del esquema
+	 * (2026-11-02, Moibe: «los dos clasifican»; sin confianza mínima): la nota sobre la lista lo dice. El esquema describe, no restringe: se
+	 * puede marcar cualquier documento.
 	 *
 	 * Mismo molde que «Nuevo expediente» (`ExpedienteModal`): modal centrado de 684 px con cabecera, título con su ícono, cuerpo y pie con
 	 * «Cancelar» y el botón principal. El selector del tipo va en `z-70` para quedar sobre el modal. Sin tipos de expediente virtual en la
@@ -34,7 +34,6 @@
 		expediente,
 		documentos,
 		tipos,
-		confianzaMinima,
 		puedeCrearTipo = false,
 		alCrear
 	}: {
@@ -45,8 +44,6 @@
 		documentos: DocumentoDeExpediente[];
 		/** Los tipos de expediente virtual de la organización, con su esquema. */
 		tipos: TipoDeExpediente[];
-		/** La confianza (0-100) con que el clasificador mete un documento solo a un expediente virtual: la dice nexus_back (`clasificacionAutomatica`). */
-		confianzaMinima?: number;
 		/** Quien mira administra: si no hay tipos, se le ofrece ir a crearlos. */
 		puedeCrearTipo?: boolean;
 		/** El virtual YA se creó y el modal ya se cerró. */
@@ -208,7 +205,7 @@
 							<span id="etiqueta-documentos-virtual" class="text-base font-medium text-foreground">Documentos</span>
 							<p class="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="nota-clasificador-al-crear">
 								<Sparkles class="mt-0.5 size-3.5 shrink-0 text-primary" />
-								<span>{notaAlCrearVirtual(confianzaMinima)}</span>
+								<span>{notaAlCrearVirtual()}</span>
 							</p>
 							{#if documentos.length === 0}
 								<p class="rounded-lg border border-dashed border-border bg-muted/40 px-3 py-4 text-sm text-muted-foreground" data-testid="virtual-sin-documentos-para-elegir">
