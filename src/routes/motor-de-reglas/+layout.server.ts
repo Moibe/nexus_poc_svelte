@@ -8,7 +8,10 @@
  *
  * También desde el 2026-10-29 lee los TIPOS DE EXPEDIENTE VIRTUAL de la organización: un proceso se liga a uno (el grupito de
  * documentos sobre el que correrá), la lista dice a cuál y el lienzo deja elegirlo. Si no se pueden leer, el motor se sigue usando:
- * la lista dice el id que no pudo nombrar y el selector ofrece solo «Sin tipo».
+ * la lista dice el id que no pudo nombrar y el selector no ofrece nada que elegir.
+ *
+ * Desde el 2026-11-03 cada tipo trae también los ids de su ESQUEMA (sus tipos documentales): el tipo es OBLIGATORIO para guardar un proceso
+ * y el lienzo ofrece como entradas solo los tipos documentales de ese esquema.
  */
 import { isRedirect, redirect } from '@sveltejs/kit';
 
@@ -25,7 +28,12 @@ export const load: LayoutServerLoad = async ({ locals, cookies, url }) => {
 		return null;
 	});
 	return {
-		tiposVirtuales: listaDe<{ id: string; nombre: string }>(cuerpo, 'tipos').map((t) => ({ id: t.id, nombre: t.nombre })),
+		// `tiposDocumentales` son los ids del ESQUEMA de cada tipo: el lienzo ofrece solo esos como entradas del proceso (2026-11-03).
+		tiposVirtuales: listaDe<{ id: string; nombre: string; tiposDocumentales?: { id: string }[] }>(cuerpo, 'tipos').map((t) => ({
+			id: t.id,
+			nombre: t.nombre,
+			tiposDocumentales: (t.tiposDocumentales ?? []).map((d) => d.id)
+		})),
 		tiposVirtualesFallo: cuerpo === null
 	};
 };

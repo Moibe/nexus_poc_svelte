@@ -8,7 +8,11 @@
 	 * normal: si hay cambios sin guardar, el lienzo pregunta antes de dejarlos (`beforeNavigate`).
 	 *
 	 * Desde el 2026-10-29 trae también el TIPO DE EXPEDIENTE VIRTUAL sobre el que corre el proceso («Corre sobre: Solicitud de crédito»):
-	 * un selector con los tipos de la organización y «Sin tipo». Cambiarlo es un cambio del proceso, como el nombre: se guarda con «Guardar».
+	 * un selector con los tipos de la organización. Cambiarlo es un cambio del proceso, como el nombre: se guarda con «Guardar».
+	 *
+	 * Desde el 2026-11-03 el tipo es OBLIGATORIO para guardar (ya no hay «Sin tipo»; Moibe: «me gustan, haz todas tus recomendaciones»): de él
+	 * salen los tipos documentales que el lienzo ofrece. Elegir uno NO lo asigna aquí: avisa a `alCambiarTipo`, porque cambiarlo con nodos
+	 * puestos puede quitar algunos y el lienzo pregunta antes.
 	 *
 	 * Es solo presentación: quien decide qué pasa con cada botón es `LienzoDeProceso`, que es dueño del dibujo.
 	 */
@@ -26,14 +30,15 @@
 
 	let {
 		nombre = $bindable(),
-		tipoVirtual = $bindable(),
+		tipoVirtual,
 		tiposVirtuales,
 		estado,
 		guardando,
 		puedeGuardar,
 		puedeBorrar,
 		alGuardar,
-		alBorrar
+		alBorrar,
+		alCambiarTipo
 	}: {
 		nombre: string;
 		/** El id del tipo de expediente virtual elegido, o `null`. */
@@ -46,6 +51,8 @@
 		puedeBorrar: boolean;
 		alGuardar: () => void;
 		alBorrar: () => void;
+		/** Se eligió otro tipo: el lienzo decide si lo aplica (puede preguntar antes). */
+		alCambiarTipo: (id: string) => void;
 	} = $props();
 
 	const TEXTO_DE_ESTADO: Record<EstadoDeProceso, string> = {
@@ -69,18 +76,22 @@
 	</div>
 	<div class="flex items-center gap-2">
 		<label class="shrink-0 text-xs text-muted-foreground" for="tipo-virtual-del-proceso">Corre sobre</label>
-		<Select.Root type="single" value={tipoVirtual ?? SIN_TIPO} onValueChange={(v) => (tipoVirtual = v === SIN_TIPO ? null : v)}>
+		<!-- Controlado de verdad (binding con función): si el lienzo no aplica el cambio (la persona canceló), el selector se queda en el tipo de
+		     siempre y volver a elegir la otra opción vuelve a preguntar. Con `value` suelto se quedaba con lo último que se pulsó. -->
+		<Select.Root
+			type="single"
+			bind:value={() => tipoVirtual ?? SIN_TIPO, (v) => v !== SIN_TIPO && alCambiarTipo(v)}
+		>
 			<Select.Trigger
 				id="tipo-virtual-del-proceso"
-				class="h-9 w-56"
+				class="h-9 w-56 {tipoVirtual ? '' : 'border-primary'}"
 				data-testid="proceso-tipo-virtual"
 				title="El tipo de expediente virtual sobre cuyas instancias corre este proceso"
 			>
 				<!-- Un id que no está en la lista (un tipo que se borró mientras el lienzo estaba abierto) se dice, en vez de esconderlo. -->
-				{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Sin tipo de expediente virtual')}
+				{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Elige un tipo de expediente virtual')}
 			</Select.Trigger>
 			<Select.Content>
-				<Select.Item value={SIN_TIPO} label="Sin tipo de expediente virtual" data-testid="opcion-sin-tipo-virtual" />
 				{#each tiposVirtuales as t (t.id)}
 					<Select.Item value={t.id} label={t.nombre} data-testid="opcion-tipo-virtual" />
 				{/each}
@@ -106,7 +117,13 @@
 		<Button
 			data-testid="guardar-proceso"
 			disabled={!puedeGuardar || guardando}
-			title={!nombre.trim() ? 'Ponle un nombre al proceso para guardarlo' : !puedeGuardar ? 'No hay cambios que guardar' : 'Guardar (Ctrl+S)'}
+			title={!nombre.trim()
+				? 'Ponle un nombre al proceso para guardarlo'
+				: !tipoVirtual
+					? 'Elige sobre qué tipo de expediente virtual corre el proceso para guardarlo'
+					: !puedeGuardar
+						? 'No hay cambios que guardar'
+						: 'Guardar (Ctrl+S)'}
 			onclick={alGuardar}
 		>
 			<Save />

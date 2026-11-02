@@ -62,6 +62,12 @@ export const HANDLE_DOCUMENTO = '@documento';
 export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
 
 /**
+ * La clave del contexto con que el lienzo dice a sus nodos de tipo documental si SU tipo está fuera del esquema del tipo de expediente virtual
+ * sobre el que corre el proceso (2026-11-03): `{ fuera(tipoId): boolean, nombre: string | null }`. Un nodo fuera del esquema se marca en ámbar.
+ */
+export const CLAVE_ESQUEMA = 'nexusdoc-esquema-del-proceso';
+
+/**
  * Un proceso corre sobre un expediente, o sea un conjunto de documentos, así que cada tipo documental aparece UNA vez: el nodo
  * «Acta constitutiva» es el acta de ESTE expediente. De ahí que el id del nodo salga del tipo y no se pueda repetir.
  */

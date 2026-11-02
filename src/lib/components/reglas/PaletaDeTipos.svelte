@@ -8,6 +8,11 @@
 	 * demás, y TODOS arrancan retraídos: hay que abrir un grupo para ver lo que trae. Cada encabezado dice cuántos elementos tiene,
 	 * para que se sepa qué hay detrás sin abrirlo. Lo abierto no se recuerda al salir de la página.
 	 *
+	 * Desde el 2026-11-03 los tipos que se ofrecen son SOLO los del ESQUEMA del tipo de expediente virtual sobre el que corre el proceso (Moibe:
+	 * «me gustan, haz todas tus recomendaciones»): el expediente virtual solo recibe documentos de esos tipos, así que una regla sobre otro
+	 * daría «sin valores» siempre. Sin tipo elegido no se ofrece ninguno y el menú dice que primero se elija (el tipo es obligatorio para
+	 * guardar). Un tipo de expediente anterior a la regla del esquema (sin tipos documentales) no filtra: se ofrecen todos los activos.
+	 *
 	 * De los tipos, solo los ACTIVOS: un borrador todavía no se puede procesar y uno archivado ya no está en la biblioteca, así que
 	 * una regla sobre ellos no tendría de dónde sacar datos. Cada uno se arrastra al lienzo o se agrega con un clic (el clic es
 	 * también el camino de quien no puede arrastrar). Un tipo que ya está en el lienzo no se duplica: su fila lo dice y al pulsarla
@@ -25,12 +30,21 @@
 
 	let {
 		enLienzo,
+		tipoElegido,
+		esquema,
+		nombreDelTipo,
 		alAgregar,
 		alAgregarOperador,
 		alAgregarConstante
 	}: {
 		/** Ids de los tipos que ya tienen su nodo. */
 		enLienzo: ReadonlySet<string>;
+		/** Ya se eligió el tipo de expediente virtual del proceso. Sin él no se ofrece ningún tipo documental. */
+		tipoElegido: boolean;
+		/** Los ids de los tipos documentales de su esquema; `null` si el tipo no trae esquema (entonces no se filtra). */
+		esquema: ReadonlySet<string> | null;
+		/** El nombre del tipo de expediente virtual, para decirlo en los mensajes. */
+		nombreDelTipo: string | null;
 		/** Un clic en un tipo: lo agrega o, si ya está, lo enfoca. */
 		alAgregar: (tipoId: string) => void;
 		/** Un clic en un operador: agrega uno nuevo. */
@@ -39,14 +53,14 @@
 		alAgregarConstante: () => void;
 	} = $props();
 
-	const activos = $derived(tiposDocumentales.filter((t) => t.estado === 'activo'));
+	const activos = $derived(tiposDocumentales.filter((t) => t.estado === 'activo' && (esquema === null || esquema.has(t.id))));
 
 	/** Los menús que están abiertos (por su `value`). Vacío = todos retraídos, que es como arranca la paleta. */
 	let abiertos = $state<string[]>([]);
 
 	/** Lo que dice el encabezado de los tipos a la derecha: cuántos hay, o por qué todavía no se sabe. */
 	const cuentaDeTipos = $derived(
-		estadoBiblioteca.errorCarga ? { texto: 'Error', malo: true } : !estadoBiblioteca.cargada ? { texto: '…', malo: false } : { texto: String(activos.length), malo: false }
+		estadoBiblioteca.errorCarga ? { texto: 'Error', malo: true } : !estadoBiblioteca.cargada ? { texto: '…', malo: false } : !tipoElegido ? { texto: '0', malo: false } : { texto: String(activos.length), malo: false }
 	);
 
 	function alArrastrar(e: DragEvent, mime: string, valor: string) {
@@ -80,7 +94,9 @@
 			<Accordion.Item value="tipos" class="border-border" data-testid="grupo-paleta" data-grupo="tipos">
 				{@render disparador('tipos', 'Tipos documentales', cuentaDeTipos.texto, cuentaDeTipos.malo, 2)}
 				<Accordion.Content class="px-0 pb-1 [&_p:not(:last-child)]:mb-0">
-					<p class="px-4 pb-2 text-xs text-muted-foreground">Las entradas del proceso. Arrástralos al lienzo o pulsa para agregarlos.</p>
+					<p class="px-4 pb-2 text-xs text-muted-foreground">
+						Las entradas del proceso{esquema !== null ? `: los tipos de «${nombreDelTipo}»` : ''}. Arrástralos al lienzo o pulsa para agregarlos.
+					</p>
 					<div class="px-2">
 						{#if estadoBiblioteca.errorCarga}
 							<p class="px-2 py-3 text-xs text-destructive" data-testid="paleta-error">
@@ -88,9 +104,17 @@
 							</p>
 						{:else if !estadoBiblioteca.cargada}
 							<p class="px-2 py-3 text-xs text-muted-foreground" data-testid="paleta-cargando">Cargando…</p>
+						{:else if !tipoElegido}
+							<p class="px-2 py-3 text-xs text-muted-foreground" data-testid="paleta-sin-tipo">
+								Elige arriba sobre qué tipo de expediente virtual corre el proceso: sus tipos documentales son las entradas que se ofrecen.
+							</p>
 						{:else if activos.length === 0}
 							<p class="px-2 py-3 text-xs text-muted-foreground" data-testid="paleta-vacia">
-								No hay tipos documentales activos. Se activan en el Módulo de configuración.
+								{#if esquema !== null}
+									Ninguno de los tipos documentales de «{nombreDelTipo}» está activo. Se activan en el Módulo de configuración.
+								{:else}
+									No hay tipos documentales activos. Se activan en el Módulo de configuración.
+								{/if}
 							</p>
 						{:else}
 							<ul class="flex flex-col gap-1.5">

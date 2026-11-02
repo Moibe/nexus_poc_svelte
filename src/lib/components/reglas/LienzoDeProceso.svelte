@@ -53,6 +53,7 @@
 	import PaletaDeTipos from '$lib/components/reglas/PaletaDeTipos.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
+		CLAVE_ESQUEMA,
 		CLAVE_VEREDICTOS,
 		MIME_CONSTANTE,
 		MIME_OPERADOR,
@@ -283,6 +284,57 @@
 	let activo = $state(true);
 	/** El tipo de expediente virtual sobre el que corre (2026-10-29), o `null`. Se elige en la barra y se guarda con el proceso. */
 	let tipoVirtual = $state<string | null>(null);
+
+	// ── El esquema del tipo elegido (2026-11-03) ─────────────────────────────
+	// El tipo de expediente virtual es OBLIGATORIO para guardar y de él salen los tipos documentales que se ofrecen: el virtual solo recibe
+	// documentos de los tipos de su esquema, así que una regla sobre otro daría «sin valores» siempre. Un tipo anterior a la regla del esquema
+	// (sin tipos documentales) no filtra. Un nodo cuyo tipo documental queda FUERA del esquema (porque el esquema se editó después de armar el
+	// proceso, o porque el proceso es anterior) se marca en ámbar en vez de quitarse: describe, no restringe.
+	const tiposVirtualesLista = $derived<{ id: string; nombre: string; tiposDocumentales: string[] }[]>(page.data.tiposVirtuales ?? []);
+	const tipoElegido = $derived(tiposVirtualesLista.find((t) => t.id === tipoVirtual) ?? null);
+	const esquema = $derived<ReadonlySet<string> | null>(tipoElegido && tipoElegido.tiposDocumentales.length > 0 ? new Set(tipoElegido.tiposDocumentales) : null);
+	setContext(CLAVE_ESQUEMA, {
+		get fuera() {
+			const ids = esquema;
+			return (tipoId: string) => ids !== null && !ids.has(tipoId);
+		},
+		get nombre() {
+			return tipoElegido?.nombre ?? null;
+		}
+	});
+
+	const nombreDeTipoDocumental = (tipoId: string) => tiposDocumentales.find((t) => t.id === tipoId)?.nombre ?? 'Tipo documental no disponible';
+
+	/**
+	 * Se eligió otro tipo de expediente virtual. Si el lienzo tiene nodos de tipos documentales que el esquema nuevo NO lleva, se pregunta antes
+	 * de quitarlos (con sus conexiones); si no hay ninguno, se cambia de una vez.
+	 */
+	function cambiarTipo(nuevo: string) {
+		if (nuevo === tipoVirtual) return;
+		const destino = tiposVirtualesLista.find((t) => t.id === nuevo);
+		const ids = destino && destino.tiposDocumentales.length > 0 ? new Set(destino.tiposDocumentales) : null;
+		const fuera =
+			ids === null
+				? []
+				: nodes.flatMap((n) => {
+						if (n.type !== NODO_TIPO) return [];
+						const tipoId = (n.data as DatosNodoTipo).tipoId;
+						return ids.has(tipoId) ? [] : [{ id: n.id, nombre: nombreDeTipoDocumental(tipoId) }];
+					});
+		if (fuera.length === 0) {
+			tipoVirtual = nuevo;
+			return;
+		}
+		dialogo = { tipo: 'tipo', nuevo, nombreNuevo: destino?.nombre ?? 'el tipo elegido', fuera };
+	}
+
+	/** Lo que la persona confirmó: se quitan los nodos que el esquema nuevo no lleva, con los cables que los tocaban, y se cambia el tipo. */
+	function aplicarCambioDeTipo(nuevo: string, fuera: { id: string }[]) {
+		const quitar = new Set(fuera.map((f) => f.id));
+		nodes = nodes.filter((n) => !quitar.has(n.id));
+		edges = edges.filter((e) => !quitar.has(e.source) && !quitar.has(e.target));
+		tipoVirtual = nuevo;
+	}
 	/** Lo último que se guardó (o se abrió): con esto se compara para saber si hay cambios. */
 	let guardado = $state<{ huella: string; nombre: string; tipo: string | null }>({ huella: HUELLA_VACIA, nombre: '', tipo: null });
 	let guardando = $state(false);
@@ -299,7 +351,8 @@
 			: nodes.length > 0 || edges.length > 0 || nombre.trim() !== '' || tipoVirtual !== null
 	);
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '');
+	// El tipo de expediente virtual es obligatorio (2026-11-03): sin él el proceso no corre sobre nada y Ejecuciones no lo ofrece nunca.
+	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null);
 
 	/** Pone un proceso del servidor en el lienzo. */
 	async function abrir(p: ProcesoGuardado) {
@@ -330,10 +383,12 @@
 		| null
 		| { tipo: 'cambios'; despues: () => void }
 		| { tipo: 'borrar' }
+		| { tipo: 'tipo'; nuevo: string; nombreNuevo: string; fuera: { id: string; nombre: string }[] }
 		| { tipo: 'conflicto' }
 		| { tipo: 'error'; titulo: string; mensaje: string };
 	let dialogo = $state<Dialogo>(null);
 	const dialogoDeError = $derived(dialogo?.tipo === 'error' ? dialogo : null);
+	const dialogoDeTipo = $derived(dialogo?.tipo === 'tipo' ? dialogo : null);
 
 	/** La dirección ya dice el id del proceso (después de su primer guardado), no `nuevo`. */
 	let direccionAlDia = false;
@@ -452,8 +507,9 @@
 
 <BarraDeProceso
 	bind:nombre
-	bind:tipoVirtual
-	tiposVirtuales={page.data.tiposVirtuales ?? []}
+	{tipoVirtual}
+	tiposVirtuales={tiposVirtualesLista}
+	alCambiarTipo={cambiarTipo}
 	estado={estadoDeProceso}
 	{guardando}
 	{puedeGuardar}
@@ -466,7 +522,12 @@
 	data-testid="lienzo-reglas"
 	class="lienzo relative mt-4 flex h-[calc(100vh-22rem)] min-h-120 overflow-hidden rounded-xl border border-border bg-card"
 >
-	<PaletaDeTipos {enLienzo} alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} alAgregarConstante={agregarConstanteAlCentro} />
+	<PaletaDeTipos
+		{enLienzo}
+		tipoElegido={tipoVirtual !== null}
+		{esquema}
+		nombreDelTipo={tipoElegido?.nombre ?? null}
+		alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} alAgregarConstante={agregarConstanteAlCentro} />
 
 	<!-- Mientras se lee el proceso, o si no se pudo abrir, una cubierta tapa la paleta y el canvas: un lienzo en blanco se leería como un
 	     proceso perdido, y soltar nodos encima de lo que está por llegar se perdería al abrirlo. -->
@@ -535,6 +596,24 @@
 	}}
 	onCerrar={() => {
 		if (dialogo?.tipo === 'cambios') dialogo = null;
+	}}
+/>
+
+<ConfirmarAccion
+	abierto={dialogoDeTipo !== null}
+	titulo="Cambiar el tipo del proceso"
+	mensaje={dialogoDeTipo
+		? `«${dialogoDeTipo.nombreNuevo}» no lleva ${dialogoDeTipo.fuera.length === 1 ? 'este tipo documental' : 'estos tipos documentales'} del lienzo: ${dialogoDeTipo.fuera.map((f) => `«${f.nombre}»`).join(', ')}. Si cambias el tipo, se quitan del lienzo con sus conexiones.`
+		: ''}
+	etiquetaConfirmar="Cambiar y quitar"
+	etiquetaCancelar="Conservar el tipo actual"
+	onConfirmar={() => {
+		const d = dialogoDeTipo;
+		dialogo = null;
+		if (d) aplicarCambioDeTipo(d.nuevo, d.fuera);
+	}}
+	onCerrar={() => {
+		if (dialogo?.tipo === 'tipo') dialogo = null;
 	}}
 />
 
