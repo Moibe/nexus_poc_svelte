@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * Elegir documentos de un expediente con casillas (2026-10-29): lo comparten el alta de un expediente virtual (con qué documentos nace)
-	 * y «Agregar documentos» de un expediente virtual ya creado. Arriba «Seleccionar todos» y cuántos van; abajo una casilla por documento,
+	 * Elegir documentos de un expediente con casillas (2026-10-29): lo usa el alta de un expediente virtual (con qué documentos nace); el
+	 * «Agregar documentos» de un virtual ya creado dejó de existir el 2026-11-02 (entran solos con el clasificador). Arriba «Seleccionar todos» y cuántos van; abajo una casilla por documento,
 	 * con su formato y su peso. Es el mismo lenguaje de la lista de tipos documentales del esquema (`TipoExpedienteModal`).
 	 *
 	 * Solo ofrece lo que le pasan (los documentos DEL expediente): un expediente virtual no puede tener otros, y la base tampoco lo deja.

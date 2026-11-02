@@ -4,29 +4,26 @@
 	 * tipo («la solicitud de crédito de Juan Pérez»). Con el mismo lenguaje del expediente abierto: «Atrás» (a su expediente), el nombre con
 	 * su tipo, el ESQUEMA del tipo (qué tipos documentales lleva: describe, no restringe) y una tarjeta por documento.
 	 *
+	 * **Los documentos entran SOLOS (2026-11-02, Moibe: «el botón de agregar documentos no debería existir, los documentos se agregan
+	 * automáticamente al expediente virtual si son del tipo que pide»).** Aquí no se agrega nada a mano: el clasificador mete a todos los
+	 * expedientes virtuales que lo esperan el documento que reconoce como de alguno de los tipos del esquema, con la confianza mínima que fija
+	 * nexus_back («el mínimo sea 75% y sea mencionado por ahí»). La tarjeta lo dice («Agregado por el clasificador») y la nota bajo el esquema
+	 * cuenta la regla con su mínimo. Un virtual no recibe archivos propios: si el expediente no tiene documentos, la pantalla manda a subirlos
+	 * al expediente.
+	 *
 	 * Quien organiza puede:
-	 *   · «Agregar documentos»: elegir con casillas entre los documentos DEL EXPEDIENTE que todavía no están (no hay otros: un virtual es
-	 *     subconjunto de su expediente, y la base no deja meter otros). Un virtual no recibe archivos propios: si el expediente no tiene
-	 *     ninguno, el botón sale apagado y la pantalla manda a subirlos al expediente (se distingue de «ya están todos», 2026-11-02);
-	 *   · «Quitar» uno: sale del grupito, NO del expediente;
+	 *   · «Quitar» uno: sale del grupito, NO del expediente (y no vuelve a entrar solo);
 	 *   · «Borrar expediente virtual»: con la confirmación de la casa (`ConfirmarAccion`); no borra documentos, y regresa al expediente.
-	 * Los documentos se eligen a mano O los mete solo el clasificador (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado
-	 * por ahí»): el que reconoce un documento del expediente como de alguno de los tipos del esquema, con la confianza mínima que fija nexus_back,
-	 * lo agrega a todos los expedientes virtuales que lo esperan. La tarjeta lo dice («Agregado por el clasificador») y se quita como cualquier
-	 * otro; la nota bajo el esquema cuenta la regla con su mínimo. No hay diseño para esta pantalla en el Figma.
+	 * No hay diseño para esta pantalla en el Figma.
 	 */
 	import { goto, invalidateAll } from '$app/navigation';
-	import { Dialog as DialogPrimitive } from 'bits-ui';
-	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
-	import ElegirDocumentos from '$lib/components/expedientes/ElegirDocumentos.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
-	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import { notaDeVirtual } from '$lib/expedientes/clasificador';
@@ -37,29 +34,15 @@
 
 	const v = $derived(data.virtual);
 	const base = $derived(`/api/expedientes/${encodeURIComponent(v.expediente.id)}/virtuales/${encodeURIComponent(v.id)}`);
-	/** Los documentos del expediente que todavía no están en el virtual: lo único que se le puede agregar. */
-	const disponibles = $derived(data.documentosDelExpediente.filter((d) => !v.documentos.some((x) => x.id === d.id)));
 	/**
-	 * El expediente no tiene NINGÚN documento (2026-11-02): «Agregar documentos» sale apagado porque no hay de dónde escoger, y no porque ya estén
-	 * todos. Se distingue para decirlo bien: un virtual no recibe archivos propios, se arma con los del expediente, así que lo que hace falta es
-	 * subirlos al expediente primero.
+	 * El expediente no tiene NINGÚN documento: un virtual no recibe archivos propios, se llena con los del expediente, así que lo que hace falta
+	 * es subirlos al expediente primero (la pantalla lo dice y manda allá).
 	 */
 	const expedienteVacio = $derived(data.documentosDelExpediente.length === 0);
-	const porQueApagado = $derived(
-		disponibles.length > 0
-			? undefined
-			: expedienteVacio
-				? `«${v.expediente.nombre}» todavía no tiene documentos: súbele archivos primero`
-				: 'Ya están todos los documentos del expediente'
-	);
 
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 	let error = $state('');
 	let quitando = $state<string | null>(null);
-	let agregarAbierto = $state(false);
-	let elegidos = $state<string[]>([]);
-	let agregando = $state(false);
-	let errorAgregar = $state('');
 	let confirmarBorrado = $state(false);
 
 	async function quitar(documentoId: string, nombre: string) {
@@ -80,38 +63,6 @@
 			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
 		} finally {
 			quitando = null;
-		}
-	}
-
-	async function agregar() {
-		if (agregando || elegidos.length === 0) return;
-		agregando = true;
-		errorAgregar = '';
-		let hechos = 0;
-		try {
-			// En el orden del expediente, no en el que se fueron marcando.
-			for (const d of disponibles.filter((x) => elegidos.includes(x.id))) {
-				const r = await fetch(`${base}/documentos/${encodeURIComponent(d.id)}`, { method: 'PUT' });
-				const datos = await r.json().catch(() => null);
-				if (!r.ok) {
-					// Lo que ya entró, entró: se dice cuántos y qué falló, y la pantalla se refresca igual.
-					errorAgregar = `${hechos ? `Se agregaron ${hechos}. ` : ''}No se pudo agregar «${d.nombreOriginal}»: ${mensajeDeFallo(datos, r.status, 'al agregar')}`;
-					if (hechos) await invalidateAll();
-					return;
-				}
-				hechos += 1;
-			}
-			agregarAbierto = false;
-			aviso = {
-				testid: 'documentos-agregados-al-virtual',
-				titulo: 'Documentos agregados',
-				cuerpo: `${hechos === 1 ? 'Se agregó 1 documento' : `Se agregaron ${hechos} documentos`} a «${v.nombre}».`
-			};
-			await invalidateAll();
-		} catch {
-			errorAgregar = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
-		} finally {
-			agregando = false;
 		}
 	}
 
@@ -167,20 +118,6 @@
 
 		{#if data.puedeOrganizar}
 			<div class="flex flex-wrap items-center gap-2">
-				<Button
-					data-testid="agregar-documentos-al-virtual"
-					disabled={disponibles.length === 0}
-					title={porQueApagado}
-					onclick={() => {
-						aviso = null;
-						elegidos = [];
-						errorAgregar = '';
-						agregarAbierto = true;
-					}}
-				>
-					<FilePlus class="size-4" />
-					Agregar documentos
-				</Button>
 				<Button variant="ghost" class="text-destructive hover:bg-destructive/10 hover:text-destructive" data-testid="borrar-expediente-virtual" onclick={() => (confirmarBorrado = true)}>
 					<Trash2 class="size-4" />
 					Borrar
@@ -241,20 +178,17 @@
 		<div class="flex flex-col items-center gap-2 py-20 text-center" data-testid="virtual-sin-documentos">
 			<h3 class="text-xl font-semibold text-foreground">Este expediente virtual todavía no tiene documentos</h3>
 			<p class="max-w-xl text-sm text-muted-foreground">
-				{#if data.puedeOrganizar}
-					{#if expedienteVacio}
-						«{v.expediente.nombre}» todavía no tiene documentos que agregar. Primero
-						<a
-							href={`/expediente/${encodeURIComponent(v.expediente.id)}`}
-							class="text-primary underline-offset-2 hover:underline"
-							data-testid="ir-al-expediente-para-subir">súbele archivos desde el expediente</a
-						>
-						y luego agrégalos aquí.
-					{:else}
-						Usa «Agregar documentos» para elegir cuáles de «{v.expediente.nombre}» forman parte de él.
-					{/if}
+				<!-- Nada se agrega a mano: los documentos entran solos cuando el clasificador los reconoce. Solo quien organiza recibe `documentosDelExpediente`, así que
+				     «el expediente está vacío» solo se afirma para esa persona. -->
+				{#if data.puedeOrganizar && expedienteVacio}
+					«{v.expediente.nombre}» todavía no tiene documentos. Primero
+					<a
+						href={`/expediente/${encodeURIComponent(v.expediente.id)}`}
+						class="text-primary underline-offset-2 hover:underline"
+						data-testid="ir-al-expediente-para-subir">súbele archivos desde el expediente</a
+					>: los que el clasificador reconozca como de alguno de los tipos de este expediente virtual entrarán solos.
 				{:else}
-					Cuando se le agreguen documentos de «{v.expediente.nombre}», aparecerán aquí.
+					Los documentos de «{v.expediente.nombre}» que el clasificador reconozca como de alguno de los tipos de este expediente virtual entrarán solos.
 				{/if}
 			</p>
 		</div>
@@ -272,46 +206,6 @@
 		</ul>
 	{/if}
 </div>
-
-<DialogPrimitive.Root bind:open={agregarAbierto}>
-	<DialogPrimitive.Portal>
-		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
-		<DialogPrimitive.Content
-			data-testid="modal-agregar-al-virtual"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
-		>
-			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{v.expediente.nombre} / {v.nombre}</p>
-				<button type="button" class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground" onclick={() => (agregarAbierto = false)}>
-					<CancelSquareIcon />
-					<span class="sr-only">Cerrar</span>
-				</button>
-			</div>
-			<div class="flex h-16 shrink-0 items-center gap-3">
-				<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"><FilePlus class="size-4" /></span>
-				<div class="min-w-0">
-					<DialogPrimitive.Title class="text-lg leading-relaxed font-medium text-foreground">Agregar documentos</DialogPrimitive.Title>
-					<DialogPrimitive.Description class="text-xs leading-relaxed text-muted-foreground">
-						Los documentos de «{v.expediente.nombre}» que todavía no están en «{v.nombre}».
-					</DialogPrimitive.Description>
-				</div>
-			</div>
-			<div class="flex flex-col gap-3 px-4 py-4">
-				<span id="etiqueta-agregar-al-virtual" class="sr-only">Documentos del expediente</span>
-				<ElegirDocumentos documentos={disponibles} bind:elegidos etiquetaId="etiqueta-agregar-al-virtual" />
-				{#if errorAgregar}
-					<p class="text-xs text-destructive" role="alert" data-testid="error-agregar-al-virtual">{errorAgregar}</p>
-				{/if}
-			</div>
-			<div class="flex items-center justify-end gap-4 border-t border-border p-2.5">
-				<Button type="button" variant="link" class="h-9.5 px-4 text-destructive" onclick={() => (agregarAbierto = false)}>Cancelar</Button>
-				<Button type="button" class="h-9.5 px-4" data-testid="confirmar-agregar-al-virtual" disabled={elegidos.length === 0 || agregando} onclick={agregar}>
-					{agregando ? 'Agregando…' : elegidos.length > 1 ? `Agregar ${elegidos.length} documentos` : 'Agregar documento'}
-				</Button>
-			</div>
-		</DialogPrimitive.Content>
-	</DialogPrimitive.Portal>
-</DialogPrimitive.Root>
 
 <ConfirmarAccion
 	abierto={confirmarBorrado}
