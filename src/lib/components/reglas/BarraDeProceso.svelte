@@ -10,13 +10,21 @@
 	 * Desde el 2026-10-29 trae también el TIPO DE EXPEDIENTE VIRTUAL sobre el que corre el proceso («Corre sobre: Solicitud de crédito»):
 	 * un selector con los tipos de la organización. Cambiarlo es un cambio del proceso, como el nombre: se guarda con «Guardar».
 	 *
+	 * Si la organización NO tiene ningún tipo de expediente virtual (2026-11-03, Moibe: «que aparezca ahí una instrucción de lo que son los
+	 * expedientes virtuales, en un pequeño cuadrito modal, y un link para que te lleve a donde se crean»), el selector no tiene nada que
+	 * ofrecer: se vuelve un botón con el mismo aspecto que abre un cuadrito que explica qué son y lleva a Configuración › Tipos de expediente
+	 * virtual. Si los tipos no se pudieron LEER (`tiposVirtualesFallo`), el cuadrito lo dice en vez de afirmar que no hay.
+	 *
 	 * Desde el 2026-11-03 el tipo es OBLIGATORIO para guardar (ya no hay «Sin tipo»; Moibe: «me gustan, haz todas tus recomendaciones»): de él
 	 * salen los tipos documentales que el lienzo ofrece. Elegir uno NO lo asigna aquí: avisa a `alCambiarTipo`, porque cambiarlo con nodos
 	 * puestos puede quitar algunos y el lienzo pregunta antes.
 	 *
 	 * Es solo presentación: quien decide qué pasa con cada botón es `LienzoDeProceso`, que es dueño del dibujo.
 	 */
+	import { Dialog as DialogPrimitive } from 'bits-ui';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import Info from '@lucide/svelte/icons/info';
 	import Save from '@lucide/svelte/icons/save';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 
@@ -32,6 +40,7 @@
 		nombre = $bindable(),
 		tipoVirtual,
 		tiposVirtuales,
+		tiposVirtualesFallo = false,
 		estado,
 		guardando,
 		puedeGuardar,
@@ -45,6 +54,8 @@
 		tipoVirtual: string | null;
 		/** Los tipos de expediente virtual de la organización. */
 		tiposVirtuales: { id: string; nombre: string }[];
+		/** Los tipos no se pudieron leer: «no hay ninguno» no sería verdad. */
+		tiposVirtualesFallo?: boolean;
 		estado: EstadoDeProceso;
 		guardando: boolean;
 		puedeGuardar: boolean;
@@ -63,6 +74,8 @@
 	};
 
 	const elegido = $derived(tiposVirtuales.find((t) => t.id === tipoVirtual) ?? null);
+	/** El cuadrito que explica qué son los expedientes virtuales (solo cuando no hay tipos que elegir). */
+	let ayudaAbierta = $state(false);
 </script>
 
 <div class="mt-6 flex flex-wrap items-center gap-3" data-testid="barra-proceso">
@@ -76,30 +89,44 @@
 	</div>
 	<div class="flex items-center gap-2">
 		<label class="shrink-0 text-xs text-muted-foreground" for="tipo-virtual-del-proceso">Corre sobre</label>
-		<!-- Controlado de verdad (binding con función): si el lienzo no aplica el cambio (la persona canceló), el selector se queda en el tipo de
-		     siempre y volver a elegir la otra opción vuelve a preguntar. Con `value` suelto se quedaba con lo último que se pulsó. -->
-		<Select.Root
-			type="single"
-			bind:value={() => tipoVirtual ?? SIN_TIPO, (v) => v !== SIN_TIPO && alCambiarTipo(v)}
-		>
-			<Select.Trigger
+		{#if tiposVirtuales.length === 0}
+			<button
+				type="button"
 				id="tipo-virtual-del-proceso"
-				class="h-9 w-64 {tipoVirtual ? '' : 'border-primary'}"
-				data-testid="proceso-tipo-virtual"
-				title="El tipo de expediente virtual sobre cuyas instancias corre este proceso"
+				data-testid="proceso-sin-tipos-virtuales"
+				class="flex h-9 w-64 items-center justify-between gap-1.5 rounded-lg border border-primary bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors hover:bg-muted"
+				title="Todavía no hay tipos de expediente virtual: pulsa para ver qué son y dónde se crean"
+				onclick={() => (ayudaAbierta = true)}
 			>
-				<!-- Un id que no está en la lista (un tipo que se borró mientras el lienzo estaba abierto) se dice, en vez de esconderlo. -->
-				<!-- `truncate` en un span propio: el texto largo se corta con «…» dentro del selector y no se sale de él (2026-11-03). -->
-				<span class="min-w-0 flex-1 truncate text-left" title={elegido?.nombre}>
-					{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Elige un tipo')}
-				</span>
-			</Select.Trigger>
-			<Select.Content>
-				{#each tiposVirtuales as t (t.id)}
-					<Select.Item value={t.id} label={t.nombre} data-testid="opcion-tipo-virtual" />
-				{/each}
-			</Select.Content>
-		</Select.Root>
+				<span class="min-w-0 flex-1 truncate text-left">{tiposVirtualesFallo ? 'No se pudieron leer los tipos' : 'Aún no hay tipos'}</span>
+				<ChevronDown class="pointer-events-none size-4 text-muted-foreground" />
+			</button>
+		{:else}
+			<!-- Controlado de verdad (binding con función): si el lienzo no aplica el cambio (la persona canceló), el selector se queda en el tipo de
+			     siempre y volver a elegir la otra opción vuelve a preguntar. Con `value` suelto se quedaba con lo último que se pulsó. -->
+			<Select.Root
+				type="single"
+				bind:value={() => tipoVirtual ?? SIN_TIPO, (v) => v !== SIN_TIPO && alCambiarTipo(v)}
+			>
+				<Select.Trigger
+					id="tipo-virtual-del-proceso"
+					class="h-9 w-64 {tipoVirtual ? '' : 'border-primary'}"
+					data-testid="proceso-tipo-virtual"
+					title="El tipo de expediente virtual sobre cuyas instancias corre este proceso"
+				>
+					<!-- Un id que no está en la lista (un tipo que se borró mientras el lienzo estaba abierto) se dice, en vez de esconderlo. -->
+					<!-- `truncate` en un span propio: el texto largo se corta con «…» dentro del selector y no se sale de él (2026-11-03). -->
+					<span class="min-w-0 flex-1 truncate text-left" title={elegido?.nombre}>
+						{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Elige un tipo')}
+					</span>
+				</Select.Trigger>
+				<Select.Content>
+					{#each tiposVirtuales as t (t.id)}
+						<Select.Item value={t.id} label={t.nombre} data-testid="opcion-tipo-virtual" />
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		{/if}
 	</div>
 	<span
 		data-testid="proceso-estado"
@@ -134,3 +161,41 @@
 		</Button>
 	</div>
 </div>
+
+<!-- El cuadrito de ayuda: qué es un expediente virtual y a dónde ir a crear su tipo. -->
+<DialogPrimitive.Root bind:open={ayudaAbierta}>
+	<DialogPrimitive.Portal>
+		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
+		<DialogPrimitive.Content
+			data-testid="modal-sin-tipos-virtuales"
+			class="fixed top-1/2 left-1/2 z-60 flex w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-3 rounded-xl border border-border bg-white p-6 shadow-lg"
+		>
+			<div class="flex items-start gap-3">
+				<span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"><Info class="size-4" /></span>
+				<div class="min-w-0">
+					<DialogPrimitive.Title class="text-base font-medium text-foreground">
+						{tiposVirtualesFallo ? 'No se pudieron leer los tipos de expediente virtual' : 'Todavía no hay expedientes virtuales'}
+					</DialogPrimitive.Title>
+					<DialogPrimitive.Description class="mt-1.5 space-y-2 text-sm text-muted-foreground">
+						{#if tiposVirtualesFallo}
+							<span class="block">Recarga la página para intentarlo de nuevo.</span>
+						{:else}
+							<span class="block">
+								Un <strong class="font-medium text-foreground">expediente virtual</strong> es un grupo de documentos de un expediente —por ejemplo, los de la solicitud de
+								crédito de Juan Pérez— que se arma según un <strong class="font-medium text-foreground">tipo de expediente virtual</strong>, que dice qué tipos
+								documentales lleva.
+							</span>
+							<span class="block">Un proceso corre sobre los expedientes virtuales de un tipo, así que primero hay que crear ese tipo.</span>
+						{/if}
+					</DialogPrimitive.Description>
+				</div>
+			</div>
+			<div class="flex items-center justify-end gap-3 pt-1">
+				<Button type="button" variant="link" class="h-9 px-3" data-testid="cerrar-sin-tipos-virtuales" onclick={() => (ayudaAbierta = false)}>Cerrar</Button>
+				{#if !tiposVirtualesFallo}
+					<Button href="/configuracion/tipos-expediente" class="h-9 px-4" data-testid="ir-a-crear-tipos-virtuales">Crear un tipo de expediente virtual</Button>
+				{/if}
+			</div>
+		</DialogPrimitive.Content>
+	</DialogPrimitive.Portal>
+</DialogPrimitive.Root>

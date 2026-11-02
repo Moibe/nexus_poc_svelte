@@ -509,6 +509,7 @@
 	bind:nombre
 	{tipoVirtual}
 	tiposVirtuales={tiposVirtualesLista}
+	tiposVirtualesFallo={Boolean(page.data.tiposVirtualesFallo)}
 	alCambiarTipo={cambiarTipo}
 	estado={estadoDeProceso}
 	{guardando}
