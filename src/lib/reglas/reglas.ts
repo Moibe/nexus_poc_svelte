@@ -860,7 +860,19 @@ export function evaluarLista(clave: ClaveOperador, familia: Familia, elementos: 
  * Lo que entrega un nodo «Valor final» con los valores de ejemplo: `listo` (ya tiene su valor), `sin_valores` (está conectado pero falta el
  * ejemplo de un campo, o la regla de la que viene no lo tiene) o `sin_conexion` (no tiene nada conectado, o lo conectado ya no sirve).
  */
-export type EvaluacionDeValorFinal = { estado: 'listo' | 'sin_valores' | 'sin_conexion'; valor?: string };
+export type EvaluacionDeValorFinal = {
+	estado: 'listo' | 'sin_valores' | 'sin_conexion';
+	valor?: string;
+	/**
+	 * Qué entrega (2026-11-03, para guardarlo en el historial de Ejecuciones): `valor` (un dato), `lista` (varios, en `elementos`) o `veredicto` (el pasa /
+	 * no pasa de una regla, que se entrega como «Pasa» o «No pasa»). Con `sin_conexion` no se sabe: no está.
+	 */
+	forma?: 'valor' | 'lista' | 'veredicto';
+	/** De qué clase es el dato (`null` para un veredicto); ausente con `sin_conexion`. */
+	familia?: Familia | null;
+	/** Los elementos de una lista que ya tiene valor. */
+	elementos?: string[];
+};
 
 /**
  * Con qué palabra terminaría el proceso con los valores de ejemplo. `condicion` es el veredicto de la regla conectada (`sin_conexion` si no hay
@@ -977,12 +989,20 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 		const origen = nodos.find((o) => o.id === cable.source);
 		if (origen?.type === NODO_OPERADOR) {
 			const estado = estados[origen.id] ?? 'sin_conexion';
-			if (estado === 'sin_conexion' || estado === 'sin_valores') return { estado };
-			return { estado: 'listo', valor: estado === 'listo' ? (valores[origen.id] ?? '') : estado === 'pasa' ? 'Pasa' : 'No pasa' };
+			if (estado === 'sin_conexion') return { estado };
+			// Lo que una regla entrega es un veredicto (pasa / no pasa) o, Cantidad y Suma, un número.
+			const forma = fuente.forma === 'veredicto' ? 'veredicto' : 'valor';
+			const familia = forma === 'veredicto' ? null : fuente.familia;
+			if (estado === 'sin_valores') return { estado, forma, familia };
+			return { estado: 'listo', valor: estado === 'listo' ? (valores[origen.id] ?? '') : estado === 'pasa' ? 'Pasa' : 'No pasa', forma, familia };
 		}
 		const muestra = origen?.type === NODO_CONSTANTE ? String((origen.data as DatosNodoConstante).valor ?? '') : String((n.data as DatosNodoValorFinal).a ?? '');
-		const texto = fuente.forma === 'lista' ? lineasDeEjemplo(muestra).join(', ') : muestra.trim();
-		return texto ? { estado: 'listo', valor: texto } : { estado: 'sin_valores' };
+		const forma = fuente.forma === 'lista' ? 'lista' : 'valor';
+		const elementos = forma === 'lista' ? lineasDeEjemplo(muestra) : [];
+		const texto = forma === 'lista' ? elementos.join(', ') : muestra.trim();
+		return texto
+			? { estado: 'listo', valor: texto, forma, familia: fuente.familia, ...(forma === 'lista' ? { elementos } : {}) }
+			: { estado: 'sin_valores', forma, familia: fuente.familia };
 	};
 	const finales: Record<string, EvaluacionDeValorFinal> = {};
 	for (const n of nodos) if (n.type === NODO_VALOR_FINAL) finales[n.id] = valorFinal(n);

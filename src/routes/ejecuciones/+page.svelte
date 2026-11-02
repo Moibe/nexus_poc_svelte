@@ -1,24 +1,43 @@
 <script lang="ts">
 	/**
 	 * Ejecuciones · correr un expediente virtual contra un proceso del motor de reglas (2026-10-30, pedido de Moibe; 2026-11-03: «es la
-	 * combinación de ambas lo que se ejecuta», así que se elige también el proceso).
+	 * combinación de ambas lo que se ejecuta», así que se elige también el proceso; y «adelante, házlo»: ya se ejecuta de verdad).
 	 *
-	 * Tercera sección del módulo de uso. Por ahora las ejecuciones son MANUALES, y la pantalla tiene dos partes:
+	 * Tercera sección del módulo de uso. Las ejecuciones son MANUALES, y la pantalla tiene dos partes:
 	 *   · Arriba, «Ejecutar»: se elige el EXPEDIENTE, luego el PROCESO (los activos que corren sobre el tipo de alguno de sus expedientes
 	 *     virtuales) y, solo si el expediente tiene más de un expediente virtual de ese tipo, cuál. Con todo elegido, un resumen dice qué se va a
-	 *     ejecutar sobre qué.
-	 *   · Abajo, el historial: una fila por ejecución, con Fecha de ejecución, Expediente, Expediente virtual, Proceso y Resultado.
+	 *     ejecutar sobre qué y el botón corre el proceso con los datos REALES de los documentos (`POST /api/ejecuciones`). Lo que sale se enseña
+	 *     enseguida: la palabra con la que terminó el proceso y, aparte, el detalle.
+	 *   · Abajo, el historial: una fila por ejecución, con Fecha de ejecución, Expediente, Expediente virtual, Proceso y Resultado; picar una
+	 *     fila la abre (la lista de valores finales, cómo salió cada regla y de qué documento se tomó cada dato). De la más reciente a la más
+	 *     antigua, de 50 en 50.
 	 *
-	 * El botón «Ejecutar» está apagado y el historial vacío a propósito: todavía no hay motor que corra un proceso sobre los datos de un
-	 * expediente virtual ni dónde guardar el resultado. Lo que ya es real es la elección (sale de los datos de la organización).
+	 * Si el expediente virtual trae DOS O MÁS documentos de un tipo que el proceso usa, el proceso NO se ejecuta: no se sabe cuál es «el INE»
+	 * (Moibe). La pantalla lo avisa, dice cuáles son y lleva al expediente virtual, donde esos documentos quedan marcados «Duplicado».
 	 *
-	 * No decide permisos todavía (como el resto del módulo de uso, la ven todos los roles): cuando se pueda ejecutar habrá que decidir
-	 * quién puede hacerlo.
+	 * Un proceso se ofrece aunque no se pueda ejecutar todavía (los de antes de que el Resultado fuera obligatorio no lo traen), con su razón y
+	 * el botón apagado. Ejecutar es de quien organiza (Administrador, Supervisor, Analista y Operador); los demás roles ven el historial y no el
+	 * botón, y nexus_back es quien manda: contesta 403 a cualquier otro rol.
 	 */
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { untrack } from 'svelte';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+
+	import EjecucionModal from '$lib/components/ejecuciones/EjecucionModal.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select/index.js';
+	import {
+		CLASE_DEL_CASO,
+		ETIQUETA_DE_ESTADO,
+		TEXTO_DEL_CASO,
+		fechaYHora,
+		rutaDelVirtual,
+		type EjecucionCompleta,
+		type EjecucionResumen,
+		type NoSeEjecuto
+	} from '$lib/ejecuciones/ejecuciones';
 
 	let { data } = $props();
 
@@ -46,6 +65,124 @@
 
 	/** Hay un expediente con expedientes virtuales y procesos que ofrecerle. */
 	const hayProcesos = $derived(Boolean(data.elegido) && data.virtuales > 0 && data.procesos.length > 0);
+
+	// ── Ejecutar ─────────────────────────────────────────────────────────────
+
+	let ejecutando = $state(false);
+	/** Lo que acaba de salir de ejecutar (con su detalle), para enseñarlo enseguida. */
+	let ultima = $state<EjecucionCompleta | null>(null);
+	/** Por qué NO se ejecutó, con sus palabras (y, con duplicados, cuáles). */
+	let noSeEjecuto = $state<NoSeEjecuto | null>(null);
+
+	// Lo que salió (o por qué no) es de ESA elección: al cambiarla se quita. La llave es un texto (`$derived` solo avisa si CAMBIA): después de
+	// ejecutar, la carga vuelve a traer `data` entero con la misma elección, y eso no debe borrar lo que acaba de salir.
+	const eleccion = $derived(`${data.elegido?.id ?? ''}|${data.procesoElegido?.id ?? ''}|${data.virtualElegido?.id ?? ''}`);
+	$effect(() => {
+		void eleccion;
+		untrack(() => {
+			ultima = null;
+			noSeEjecuto = null;
+		});
+	});
+
+	/** Por qué el botón está apagado, si lo está. */
+	const motivoApagado = $derived(
+		!data.puedeEjecutar
+			? 'Tu rol puede consultar las ejecuciones, pero no ejecutar procesos'
+			: data.procesoElegido && !data.procesoElegido.ejecutable
+				? 'Este proceso todavía no se puede ejecutar: le falta su Resultado'
+				: null
+	);
+
+	async function ejecutar() {
+		if (!data.elegido || !data.procesoElegido || !data.virtualElegido || ejecutando || motivoApagado) return;
+		ejecutando = true;
+		ultima = null;
+		noSeEjecuto = null;
+		try {
+			const respuesta = await fetch('/api/ejecuciones', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ expedienteId: data.elegido.id, virtualId: data.virtualElegido.id, procesoId: data.procesoElegido.id })
+			});
+			const cuerpo = await respuesta.json().catch(() => null);
+			if (respuesta.ok) {
+				ultima = cuerpo as EjecucionCompleta;
+				await invalidateAll();
+			} else {
+				noSeEjecuto = { mensaje: cuerpo?.mensaje ?? 'No se pudo ejecutar el proceso.', codigo: cuerpo?.codigo, duplicados: cuerpo?.duplicados };
+			}
+		} catch {
+			noSeEjecuto = { mensaje: 'No se pudo contactar al servidor. Intenta de nuevo.' };
+		} finally {
+			ejecutando = false;
+		}
+	}
+
+	// ── El historial ─────────────────────────────────────────────────────────
+
+	/** Las páginas siguientes que se pidieron con «Ver más»; las primeras vienen de la carga. */
+	let extra = $state<EjecucionResumen[]>([]);
+	let hayMasExtra = $state<boolean | null>(null);
+	let cargandoMas = $state(false);
+	let falloMas = $state('');
+	const filas = $derived([...data.historial.ejecuciones, ...extra]);
+	const hayMas = $derived(hayMasExtra ?? data.historial.hayMas);
+
+	// Una carga nueva del historial (después de ejecutar) trae las primeras otra vez: lo de «Ver más» ya no vale.
+	$effect(() => {
+		void data.historial;
+		untrack(() => {
+			extra = [];
+			hayMasExtra = null;
+			falloMas = '';
+		});
+	});
+
+	async function verMas() {
+		const ultimaVista = filas.at(-1);
+		if (!ultimaVista || cargandoMas) return;
+		cargandoMas = true;
+		falloMas = '';
+		try {
+			const respuesta = await fetch(`/api/ejecuciones?antes=${encodeURIComponent(ultimaVista.id)}&limite=50`);
+			const cuerpo = await respuesta.json().catch(() => null);
+			if (!respuesta.ok) throw new Error(cuerpo?.mensaje ?? 'No se pudieron cargar más ejecuciones.');
+			extra = [...extra, ...((cuerpo?.ejecuciones ?? []) as EjecucionResumen[])];
+			hayMasExtra = cuerpo?.hayMas === true;
+		} catch (e) {
+			falloMas = e instanceof Error ? e.message : 'No se pudieron cargar más ejecuciones.';
+		} finally {
+			cargandoMas = false;
+		}
+	}
+
+	// ── Abrir una ejecución ──────────────────────────────────────────────────
+
+	let modalAbierto = $state(false);
+	let modalEjecucion = $state<EjecucionCompleta | null>(null);
+	let modalError = $state('');
+
+	/** Un renglón del historial no trae la foto pesada: se pide al abrirlo. */
+	async function abrir(id: string) {
+		modalEjecucion = null;
+		modalError = '';
+		modalAbierto = true;
+		try {
+			const respuesta = await fetch(`/api/ejecuciones/${encodeURIComponent(id)}`);
+			const cuerpo = await respuesta.json().catch(() => null);
+			if (!respuesta.ok) throw new Error(cuerpo?.mensaje ?? 'No se pudo abrir la ejecución.');
+			modalEjecucion = cuerpo as EjecucionCompleta;
+		} catch (e) {
+			modalError = e instanceof Error ? e.message : 'No se pudo abrir la ejecución.';
+		}
+	}
+	function abrirLaUltima() {
+		if (!ultima) return;
+		modalEjecucion = ultima;
+		modalError = '';
+		modalAbierto = true;
+	}
 </script>
 
 <svelte:head><title>Biblioratum — Ejecuciones</title></svelte:head>
@@ -87,7 +224,7 @@
 				</Select.Trigger>
 				<Select.Content>
 					{#each data.procesos as pr (pr.id)}
-						<Select.Item value={pr.id} label={pr.nombre} data-testid="opcion-proceso" />
+						<Select.Item value={pr.id} label={pr.ejecutable ? pr.nombre : `${pr.nombre} (sin Resultado)`} data-testid="opcion-proceso" />
 					{/each}
 				</Select.Content>
 			</Select.Root>
@@ -140,8 +277,76 @@
 						Se ejecutará <span class="font-medium">«{data.procesoElegido.nombre}»</span> sobre el expediente virtual
 						<span class="font-medium">«{data.virtualElegido.nombre}»</span> ({data.virtualElegido.tipoNombre}) de «{data.elegido.nombre}».
 					</p>
-					<Button size="sm" class="h-9.5 shrink-0 px-4" disabled data-testid="ejecutar" title="Todavía no se pueden ejecutar procesos">Ejecutar</Button>
+					<Button
+						size="sm"
+						class="h-9.5 shrink-0 px-4 {motivoApagado ? 'cursor-not-allowed opacity-50' : ''}"
+						disabled={ejecutando}
+						aria-disabled={Boolean(motivoApagado) || ejecutando}
+						data-testid="ejecutar"
+						title={motivoApagado ?? 'Ejecutar el proceso con los datos de los documentos'}
+						onclick={ejecutar}
+					>
+						{#if ejecutando}
+							<LoaderCircle class="animate-spin" />
+							Ejecutando…
+						{:else}
+							Ejecutar
+						{/if}
+					</Button>
 				</div>
+
+				{#if motivoApagado}
+					<p class="mt-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400" data-testid="no-se-puede-ejecutar" data-motivo={data.puedeEjecutar ? 'sin_resultado' : 'rol'}>
+						<TriangleAlert class="mt-0.5 size-4 shrink-0" />
+						<span>
+							{#if !data.puedeEjecutar}
+								Tu rol puede consultar las ejecuciones, pero no ejecutar procesos.
+							{:else}
+								«{data.procesoElegido.nombre}» todavía no se puede ejecutar: no tiene su nodo de Resultado, o su Resultado no tiene ninguna regla conectada. Ábrelo en el motor de reglas
+								(Configuración › Motor de reglas) y agrégalo para poder ejecutarlo.
+							{/if}
+						</span>
+					</p>
+				{/if}
+
+				<!-- Por qué NO se ejecutó. Con duplicados, cuáles son y a dónde ir a verlos. -->
+				{#if noSeEjecuto}
+					<div
+						class="mt-4 rounded-xl border px-4 py-3 text-sm {noSeEjecuto.codigo === 'duplicados' ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'border-red-200 bg-red-50 text-red-800'}"
+						role="alert"
+						data-testid={noSeEjecuto.codigo === 'duplicados' ? 'aviso-duplicados' : 'no-se-ejecuto'}
+						data-codigo={noSeEjecuto.codigo ?? ''}
+					>
+						<p class="font-medium">{noSeEjecuto.codigo === 'duplicados' ? 'No se ejecutó: hay documentos duplicados' : 'No se pudo ejecutar'}</p>
+						<p class="mt-1">{noSeEjecuto.mensaje}</p>
+						{#if noSeEjecuto.duplicados?.length}
+							<ul class="mt-2 list-disc pl-5">
+								{#each noSeEjecuto.duplicados as d (d.tipoId)}
+									<li data-testid="duplicado-de-ejecucion" data-tipo={d.tipoId}>
+										<span class="font-medium">{d.tipoNombre}</span>: {d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')}
+									</li>
+								{/each}
+							</ul>
+							<p class="mt-2">
+								<a href={rutaDelVirtual(data.elegido.id, data.virtualElegido.id)} class="font-medium underline underline-offset-2" data-testid="ir-al-virtual">Abrir el expediente virtual</a>
+								para dejar uno de cada tipo: los duplicados están marcados.
+							</p>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Lo que acaba de salir. -->
+				{#if ultima}
+					<div class="mt-4 rounded-xl border border-border bg-card px-4 py-3" data-testid="ejecucion-terminada" data-caso={ultima.resultado.caso} data-estado={ultima.estado} role="status">
+						<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Resultado de esta ejecución</p>
+						<div class="mt-1.5 flex flex-wrap items-center gap-3">
+							<span class="rounded-md px-3 py-1 text-base font-semibold {CLASE_DEL_CASO[ultima.resultado.caso]}" data-testid="ejecucion-terminada-palabra">{ultima.resultado.texto}</span>
+							<span class="text-sm text-muted-foreground">{TEXTO_DEL_CASO[ultima.resultado.caso]}</span>
+							<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{ETIQUETA_DE_ESTADO[ultima.estado]}</span>
+							<Button variant="outline" size="sm" class="ml-auto" data-testid="ver-detalle" onclick={abrirLaUltima}>Ver el detalle</Button>
+						</div>
+					</div>
+				{/if}
 			{/if}
 			{#if data.sinLeer.length > 0}
 				<p class="mt-3 text-sm text-destructive" data-testid="ejecutables-sin-leer">
@@ -153,7 +358,12 @@
 </section>
 
 <section class="mt-6 rounded-xl border border-border bg-background p-6" data-testid="seccion-historial" aria-labelledby="titulo-historial">
-	<h2 id="titulo-historial" class="text-base font-medium text-foreground">Historial de ejecuciones</h2>
+	<div class="flex items-baseline gap-3">
+		<h2 id="titulo-historial" class="text-base font-medium text-foreground">Historial de ejecuciones</h2>
+		{#if data.historial.total > 0}
+			<span class="text-xs text-muted-foreground" data-testid="historial-total">{data.historial.total} {data.historial.total === 1 ? 'ejecución' : 'ejecuciones'}</span>
+		{/if}
+	</div>
 	<div class="mt-3 overflow-x-auto">
 		<table class="w-full min-w-3xl table-fixed text-left text-sm" data-testid="historial">
 			<caption class="sr-only">Ejecuciones de procesos sobre expedientes virtuales</caption>
@@ -165,12 +375,61 @@
 				</tr>
 			</thead>
 			<tbody>
-				<tr>
-					<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-muted-foreground" data-testid="historial-vacio">
-						Todavía no hay ejecuciones.
-					</td>
-				</tr>
+				{#if data.historialFallo}
+					<tr>
+						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-destructive" data-testid="historial-fallo">
+							<span role="alert">No se pudo cargar el historial de ejecuciones. Recarga la página para intentarlo otra vez.</span>
+						</td>
+					</tr>
+				{:else if filas.length === 0}
+					<tr>
+						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-muted-foreground" data-testid="historial-vacio">
+							Todavía no hay ejecuciones.
+						</td>
+					</tr>
+				{:else}
+					{#each filas as e (e.id)}
+						<tr
+							class="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/50"
+							data-testid="fila-ejecucion"
+							data-ejecucion-id={e.id}
+							data-caso={e.resultado.caso}
+							data-estado={e.estado}
+							onclick={() => abrir(e.id)}
+						>
+							<td class="py-3 pr-4 pl-2">
+								<button
+									type="button"
+									class="text-left text-foreground underline-offset-2 hover:text-primary hover:underline"
+									data-testid="abrir-ejecucion"
+									onclick={(ev) => {
+										ev.stopPropagation();
+										abrir(e.id);
+									}}>{fechaYHora(e.ejecutadaEn)}</button
+								>
+							</td>
+							<td class="truncate py-3 pr-4" title={e.expediente.nombre} data-testid="celda-expediente">{e.expediente.nombre}</td>
+							<td class="truncate py-3 pr-4" title={e.virtual.nombre} data-testid="celda-virtual">{e.virtual.nombre}</td>
+							<td class="truncate py-3 pr-4" title={e.proceso.nombre} data-testid="celda-proceso">{e.proceso.nombre}</td>
+							<td class="py-3 pr-4" data-testid="celda-resultado">
+								<span class="inline-block max-w-full truncate rounded-md px-2 py-0.5 text-xs font-medium align-middle {CLASE_DEL_CASO[e.resultado.caso]}" title={e.resultado.texto}>{e.resultado.texto}</span>
+								{#if e.estado === 'incompleta'}<span class="ml-1.5 text-xs text-muted-foreground">Incompleta</span>{/if}
+							</td>
+						</tr>
+					{/each}
+				{/if}
 			</tbody>
 		</table>
 	</div>
+	{#if hayMas && !data.historialFallo}
+		<div class="mt-3 flex items-center gap-3">
+			<Button variant="outline" size="sm" data-testid="ver-mas" disabled={cargandoMas} onclick={verMas}>
+				{#if cargandoMas}<LoaderCircle class="animate-spin" />{/if}
+				Ver más ejecuciones
+			</Button>
+			{#if falloMas}<span class="text-sm text-destructive" role="alert" data-testid="ver-mas-fallo">{falloMas}</span>{/if}
+		</div>
+	{/if}
 </section>
+
+<EjecucionModal bind:abierto={modalAbierto} ejecucion={modalEjecucion} error={modalError} />

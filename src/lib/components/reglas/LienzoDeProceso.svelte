@@ -424,8 +424,13 @@
 			: nodes.length > 0 || edges.length > 0 || nombre.trim() !== '' || tipoVirtual !== null
 	);
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
-	// El tipo de expediente virtual es obligatorio (2026-11-03): sin él el proceso no corre sobre nada y Ejecuciones no lo ofrece nunca.
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null);
+	// El tipo de expediente virtual es obligatorio (2026-11-03): sin él el proceso no corre sobre nada y Ejecuciones no lo ofrece nunca. El
+	// RESULTADO también (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»): sin la palabra con la que termina no hay con qué contestar.
+	// Solo se exige que el nodo exista; el back NO lo exige (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los
+	// de antes), y la ejecución se niega a correr uno sin Resultado conectado.
+	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayResultado);
+	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
+	let paleta = $state<ReturnType<typeof PaletaDeTipos>>();
 
 	/** Pone un proceso del servidor en el lienzo. */
 	async function abrir(p: ProcesoGuardado) {
@@ -589,8 +594,10 @@
 	{guardando}
 	{puedeGuardar}
 	puedeBorrar={existe}
+	tieneResultado={hayResultado}
 	alGuardar={guardar}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
+	alFaltaResultado={() => void paleta?.mostrarResultado()}
 />
 
 <div
@@ -598,6 +605,7 @@
 	class="lienzo relative mt-4 flex h-[calc(100vh-22rem)] min-h-120 overflow-hidden rounded-xl border border-border bg-card"
 >
 	<PaletaDeTipos
+		bind:this={paleta}
 		{enLienzo}
 		tipoElegido={tipoVirtual !== null}
 		{esquema}

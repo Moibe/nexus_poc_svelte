@@ -34,7 +34,17 @@ export type DocumentoDeExpediente = {
 	tipoDocumental?: TipoDeDocumento | null;
 	/** Solo dentro de un expediente virtual (2026-11-02): lo metió el clasificador y no una persona. Se saca como cualquier otro. */
 	agregadoPorClasificador?: boolean;
+	/**
+	 * Solo dentro de un expediente virtual (2026-11-03): hay otro documento del MISMO tipo documental en él, así que no se sabe cuál es «el INE» y un
+	 * proceso que usa ese tipo no se puede ejecutar sobre ese virtual (Moibe). Se calcula al leer: sacar uno quita la marca de los dos.
+	 */
+	duplicado?: boolean;
+	/** Solo al ver el EXPEDIENTE (2026-11-03): en qué expedientes virtuales de él este documento está duplicado, y de qué tipo. */
+	duplicadoEn?: { id: string; nombre: string; tipoNombre: string | null }[];
 };
+
+/** Un tipo documental del que un expediente virtual trae DOS O MÁS documentos, con esos documentos. */
+export type DuplicadoDeVirtual = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
 
 export type TipoDeDocumento = {
 	id: string;
@@ -57,6 +67,8 @@ export type ExpedienteVirtualResumen = {
 	creadoEn: string | null;
 	documentos: string[];
 	totalDocumentos: number;
+	/** Los tipos de los que trae documentos duplicados (2026-11-03); vacío si ninguno. Puede faltar si el servidor es anterior a esto. */
+	duplicados?: DuplicadoDeVirtual[];
 };
 
 /**
@@ -85,8 +97,10 @@ export type ExpedienteVirtual = {
 	creadoEn: string | null;
 	totalDocumentos: number;
 	documentos: DocumentoDeExpediente[];
-	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. Todavía no hay motor que los corra sobre él. */
-	procesos?: { id: string; nombre: string; activo: boolean }[];
+	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. `ejecutable`: trae su Resultado con una regla conectada (2026-11-03). */
+	procesos?: { id: string; nombre: string; activo: boolean; ejecutable?: boolean }[];
+	/** Los tipos de los que este virtual trae documentos duplicados (2026-11-03). Con alguno, un proceso que usa ese tipo no se ejecuta sobre él. */
+	duplicados?: DuplicadoDeVirtual[];
 };
 
 /** El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y sus expedientes virtuales. */

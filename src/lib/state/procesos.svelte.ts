@@ -11,7 +11,7 @@
  * Cada proceso trae una `revision`. Si otra persona lo guardó antes, el servidor responde 409 con la `revisionActual`: aquí se
  * devuelve como `conflicto: true` y NO se pisa nada; la pantalla decide qué hacer.
  */
-import { NODO_TIPO } from '$lib/reglas/reglas';
+import { NODO_RESULTADO, NODO_TIPO } from '$lib/reglas/reglas';
 import { hexAleatorio } from '$lib/state/configuracion.svelte';
 
 export type DatosProceso = {
@@ -54,6 +54,13 @@ export const estadoProcesos = $state<{
 
 /** ¿Está activo? Todo lo que no diga `false` expreso lo está (los procesos de antes del campo, y un valor que no sea booleano). */
 export const procesoActivo = (p: ProcesoGuardado): boolean => p.datos.activo !== false;
+
+/**
+ * ¿Tiene su nodo de «Resultado»? (2026-11-03, Moibe: «sí, que sea obligatorio el Resultado»). Desde entonces un proceso no se guarda sin él, pero
+ * los guardados ANTES pueden no tenerlo: se siguen abriendo y se pueden activar o desactivar desde la lista, pero no se pueden ejecutar hasta que
+ * se les agregue (sin la palabra con la que termina, no hay con qué contestar).
+ */
+export const tieneResultado = (p: ProcesoGuardado): boolean => p.datos.nodos.some((n) => (n as { type?: unknown } | null)?.type === NODO_RESULTADO);
 
 /** Cuántos tipos documentales componen el proceso: los nodos de tipo documental de su dibujo («Documentos configurados | 3»). */
 export function tiposDelProceso(p: ProcesoGuardado): number {

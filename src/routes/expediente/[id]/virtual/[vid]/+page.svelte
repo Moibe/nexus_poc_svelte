@@ -20,6 +20,7 @@
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
@@ -148,8 +149,8 @@
 		</p>
 	{/if}
 
-	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Los documentos ya guardan su tipo documental y
-	     sus datos extraídos (migración 0007), que es lo que las reglas comparan; falta el motor que los corra sobre él. -->
+	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Los documentos guardan su tipo documental y sus datos
+	     extraídos (migración 0007), que es lo que las reglas comparan; desde el 2026-11-03 se ejecutan desde «Ejecuciones». -->
 	<div class="mt-1 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground" data-testid="virtual-procesos">
 		{#if (v.procesos ?? []).length === 0}
 			Ningún proceso del motor de reglas corre todavía sobre el tipo «{v.tipo.nombre}».
@@ -166,9 +167,31 @@
 					<span class="rounded-sm border border-border bg-secondary px-2 py-0.5 text-foreground" data-testid="virtual-proceso">{pr.nombre}{pr.activo ? '' : ' (inactivo)'}</span>
 				{/if}
 			{/each}
-			<span>· todavía no se corren sobre sus documentos.</span>
+			<span>
+				· se ejecutan desde
+				<a href={`/ejecuciones?expediente=${encodeURIComponent(v.expediente.id)}`} class="text-primary underline-offset-2 hover:underline" data-testid="ir-a-ejecuciones">Ejecuciones</a>.
+			</span>
 		{/if}
 	</div>
+
+	<!-- Duplicados (Moibe, 2026-11-03): dos o más documentos del mismo tipo. No se sabe cuál es «el INE», así que un proceso que usa ese tipo NO se ejecuta
+	     sobre este virtual; las tarjetas de esos documentos llevan «Duplicado». Se calcula al leer: al quitar uno desaparece el aviso. -->
+	{#if (v.duplicados ?? []).length > 0}
+		<div class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="status" data-testid="duplicados-del-virtual">
+			<TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+			<div>
+				<p class="font-medium">Este expediente virtual trae documentos duplicados</p>
+				<ul class="mt-0.5 list-disc pl-4">
+					{#each v.duplicados ?? [] as d (d.tipoId)}
+						<li data-testid="duplicado-del-virtual" data-tipo={d.tipoId}><span class="font-medium">{d.tipoNombre ?? 'Tipo documental eliminado'}</span>: {d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')}</li>
+					{/each}
+				</ul>
+				<p class="mt-1">
+					No se sabe cuál usar, así que un proceso que use alguno de esos tipos no se ejecuta sobre este expediente virtual. Quita los que sobren y deja uno de cada tipo.
+				</p>
+			</div>
+		</div>
+	{/if}
 
 	{#if error}
 		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-virtual">{error}</p>

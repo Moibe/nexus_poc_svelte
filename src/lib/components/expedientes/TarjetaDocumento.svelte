@@ -11,11 +11,16 @@
 	 * clasificador. Un documento sin tipo no lleva nada. Dentro de un expediente virtual, si lo metió el clasificador y no una persona,
 	 * lo dice (`agregadoPorClasificador`): se quita como cualquier otro.
 	 *
+	 * **Duplicado (2026-11-03, Moibe).** Si el expediente virtual trae otro documento del MISMO tipo (`duplicado`, o al ver el expediente `duplicadoEn`,
+	 * con los virtuales en que pasa), la tarjeta lo marca en ámbar: no se sabe cuál es «el INE», y un proceso que usa ese tipo no se ejecuta sobre ese
+	 * virtual hasta que quede uno. La marca se calcula al leer; al sacar uno desaparece de los dos.
+	 *
 	 * Desde el 2026-10-29, dentro de un expediente VIRTUAL la tarjeta puede llevar «Quitar» (`alQuitar`): saca el documento del grupito, no
 	 * del expediente. Sin `alQuitar` (el expediente, o quien no organiza) no hay nada que hacer con ella.
 	 */
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	import ArchivoIlustracion from '$lib/components/icons/ArchivoIlustracion.svelte';
 	import { fechaCorta, formatearTamano, formatoDe, type DocumentoDeExpediente } from '$lib/expedientes/expedientes';
@@ -34,13 +39,26 @@
 	} = $props();
 
 	const tipo = $derived(documento.tipoDocumental ?? null);
+	/** ¿Está duplicado? Dentro de un expediente virtual lo dice `duplicado`; al ver el expediente, `duplicadoEn` dice en cuáles virtuales. */
+	const duplicadoEn = $derived(documento.duplicadoEn ?? []);
+	const duplicado = $derived(Boolean(documento.duplicado) || duplicadoEn.length > 0);
+	const ayudaDelDuplicado = $derived(
+		duplicadoEn.length > 0
+			? `Hay otro documento de este tipo en ${duplicadoEn.map((d) => `«${d.nombre}»`).join(', ')}: los procesos que usan este tipo no se ejecutan sobre ese expediente virtual hasta que quede uno.`
+			: 'Hay otro documento de este tipo en este expediente virtual: los procesos que usan este tipo no se ejecutan sobre él hasta que quede uno.'
+	);
 	/** Al pasar el cursor: cómo se supo el tipo y, si lo reconoció el clasificador, con cuánta confianza. */
 	const ayudaDelTipo = $derived(
 		!tipo ? undefined : tipo.origen === 'clasificacion' && tipo.confianza !== null ? `Clasificado como «${tipo.nombre}» con ${porcentaje(tipo.confianza)}` : `Tipo documental: ${tipo.nombre}`
 	);
 </script>
 
-<div data-testid="tarjeta-documento" data-documento-id={documento.id} class="w-52.5 overflow-hidden rounded-xl border-2 border-border bg-card">
+<div
+	data-testid="tarjeta-documento"
+	data-documento-id={documento.id}
+	data-duplicado={duplicado}
+	class="w-52.5 overflow-hidden rounded-xl border-2 bg-card {duplicado ? 'border-amber-300 dark:border-amber-700' : 'border-border'}"
+>
 	<div class="p-3">
 		<div class="flex items-center justify-center rounded-md border border-border bg-background p-6">
 			<span class="flex size-12 items-center justify-center"><ArchivoIlustracion /></span>
@@ -52,6 +70,12 @@
 		{#if tipo}
 			<p class="flex min-w-0" title={ayudaDelTipo}>
 				<span class="max-w-full truncate rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary" data-testid="documento-tipo">{tipo.nombre}</span>
+			</p>
+		{/if}
+		{#if duplicado}
+			<p class="flex items-start gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400" data-testid="documento-duplicado" title={ayudaDelDuplicado}>
+				<TriangleAlert class="mt-px size-3 shrink-0" />
+				<span>{tipo ? `Duplicado de «${tipo.nombre}»` : 'Duplicado'}</span>
 			</p>
 		{/if}
 		{#if documento.agregadoPorClasificador}

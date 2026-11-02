@@ -1,0 +1,276 @@
+/**
+ * Ejecutar un proceso del motor de reglas con DATOS REALES (2026-11-03, Moibe: «adelante, házlo»), sin nada de pantalla ni de red.
+ *
+ * El lienzo ya sabe correr un proceso con valores de EJEMPLO escritos en cada regla (`evaluar`, en `reglas.ts`); una ejecución es lo mismo pero con
+ * lo que dijeron los documentos del expediente virtual. En vez de escribir otra implementación de qué significa «igual» (texto sin mayúsculas, números
+ * con símbolo de moneda, fechas escritas de tres maneras, las tres posibilidades de «Y»…), aquí se reemplazan los valores de ejemplo por los reales y
+ * se llama a la MISMA `evaluar`: lo que el lienzo enseña probando y lo que una ejecución decide no pueden discrepar. Es lo que corre el servidor del
+ * front (el BFF `/api/ejecuciones`); nexus_back prepara los datos (`GET /ejecuciones/preparar`) y guarda lo que sale (`POST /ejecuciones`).
+ *
+ * Vive aparte de `reglas.ts` para no engordarlo, y por la misma razón que él NO importa nada que necesite el navegador o SvelteKit: se prueba sola con
+ * `verificar-ejecutar.mjs`.
+ *
+ * ## Qué hace
+ *
+ *  1. Si el expediente virtual trae DOS O MÁS documentos de un tipo que el proceso usa (`duplicados`), NO corre: no se sabe cuál es «el INE» (Moibe).
+ *  2. Reemplaza el ejemplo de cada entrada que viene de un campo por su valor real: un campo suelto es su valor; uno «1 a N» o la columna de un grupo que
+ *     se repite, sus elementos (un renglón cada uno); las filas de un grupo, un renglón por fila; el punto «Documento» de un tipo es «sí» si el
+ *     expediente virtual lo trae. Un campo que el documento no trae (o un tipo sin documento) deja el ejemplo vacío: la regla dirá «sin valores».
+ *  3. Evalúa. El Resultado dice con qué palabra termina: la de «se cumple», la de «no se cumple» o la de «faltan datos» (la corrida queda INCOMPLETA).
+ *  4. Arma lo que se guarda: la palabra, la lista de valores finales (nombre, valor y de dónde salió) y la foto de cómo salió cada regla y de qué
+ *     documento y campo se tomó cada dato (la evidencia), con lo que faltó.
+ */
+import {
+	HANDLE_DOCUMENTO,
+	NODO_CONSTANTE,
+	NODO_OPERADOR,
+	NODO_RESULTADO,
+	NODO_TIPO,
+	NODO_VALOR_FINAL,
+	evaluar,
+	hidratarDibujo,
+	nombreDeValorFinal,
+	numeroDeOperador,
+	operadorDe,
+	salidaDeCampo,
+	type CasoDelResultado,
+	type ClaveOperador,
+	type DatosNodoOperador,
+	type DatosNodoTipo,
+	type Estado,
+	type Familia,
+	type Veredicto
+} from './reglas';
+import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
+
+// ── Lo que entrega `GET /ejecuciones/preparar` ───────────────────────────────
+
+/** Los valores de un campo de un documento: un valor, una lista (en el orden del documento) o las filas de un grupo que se repite (solo cuántas). */
+export type ValoresDeCampo = { forma: 'valor' | 'lista' | 'filas'; valores: string[]; confianza: number | null; pagina: number | null };
+
+/** Un tipo documental del proceso y lo que el expediente virtual trae de él. `valores` solo hay si es UN documento; por el nombre de cada punto del lienzo. */
+export type DocumentoDeTipo = {
+	tipoId: string;
+	tipoNombre: string;
+	encontrados: { id: string; nombre: string | null; origenTipo: string | null }[];
+	valores: Record<string, ValoresDeCampo> | null;
+};
+
+export type Duplicado = { tipoId: string; tipoNombre: string; documentos: { id: string; nombre: string | null }[] };
+
+export type Preparacion = {
+	expediente: { id: string; nombre: string };
+	virtual: { id: string; nombre: string; tipo: { id: string; nombre: string } };
+	proceso: { id: string; revision: number; nombre: string; datos: { nodos?: unknown; aristas?: unknown } };
+	/** Los tipos documentales que el proceso usa, con sus campos como están en la biblioteca. */
+	tipos: { id: string; nombre: string; campos: unknown[] }[];
+	documentos: DocumentoDeTipo[];
+	duplicados: Duplicado[];
+};
+
+// ── Lo que sale ──────────────────────────────────────────────────────────────
+
+/** Un valor final de la corrida: lo que `POST /ejecuciones` guarda como renglón. */
+export type ValorFinalDeCorrida = {
+	nodoId: string;
+	nombre: string;
+	forma: 'valor' | 'lista' | 'veredicto';
+	familia: Familia | null;
+	estado: 'listo' | 'sin_valores' | 'sin_conexion';
+	valor: string | null;
+	lista: string[] | null;
+	origen: string | null;
+};
+
+/** Cómo salió una regla. */
+export type ReglaDeCorrida = { id: string; etiqueta: string; operador: ClaveOperador; estado: Estado; valor: string | null; texto: string };
+
+/** De qué documento se tomó lo de un tipo documental y qué campos del proceso se leyeron. */
+export type EvidenciaDeCorrida = {
+	tipoId: string;
+	tipoNombre: string;
+	documentoId: string | null;
+	documentoNombre: string | null;
+	/** De dónde se supo el tipo del documento: `extraccion` (ya se extrajo) o `clasificacion` (solo se clasificó, todavía sin datos). */
+	origenTipo: string | null;
+	campos: { campo: string; forma: ValoresDeCampo['forma']; valores: string[]; confianza: number | null; pagina: number | null }[];
+};
+
+export type DetalleDeCorrida = {
+	reglas: ReglaDeCorrida[];
+	evidencia: EvidenciaDeCorrida[];
+	/** El veredicto de la regla conectada al Resultado, del que sale la palabra. */
+	condicion: Veredicto;
+	/** Lo que faltó, en palabras: un documento que el expediente virtual no trae o un campo que el documento no tiene. */
+	faltantes: string[];
+};
+
+export type Corrida = {
+	resultado: { caso: CasoDelResultado; texto: string };
+	valoresFinales: ValorFinalDeCorrida[];
+	detalle: DetalleDeCorrida;
+};
+
+/** Por qué no se corrió. */
+export type NoCorre =
+	| { codigo: 'duplicados'; mensaje: string; duplicados: Duplicado[] }
+	| { codigo: 'sin_resultado' | 'regla_incompleta'; mensaje: string };
+
+export type Salida = { corre: true; corrida: Corrida } | { corre: false; motivo: NoCorre };
+
+// ── Cómo se escribe lo que se avisa ──────────────────────────────────────────
+
+/** El aviso de duplicados: cuáles son y qué hacer. Lo usa quien ejecuta y la pantalla. */
+export function avisoDeDuplicados(duplicados: readonly Duplicado[]): string {
+	const partes = duplicados.map((d) => `«${d.tipoNombre}» (${d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')})`);
+	return `El expediente virtual trae documentos duplicados de ${partes.join('; ')}: no se sabe cuál usar, así que el proceso no se ejecutó. Deja uno de cada tipo en el expediente virtual y vuelve a ejecutar.`;
+}
+
+// ── Valores reales en lugar de los de ejemplo ────────────────────────────────
+
+/** Una línea por elemento: un salto de línea dentro de un valor lo partiría en dos elementos. */
+const comoRenglon = (texto: string) => texto.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+
+/** El «ejemplo» que reemplaza lo real en una entrada: lo que `evaluar` leerá como si lo hubiera escrito una persona. */
+export function muestraDeCampo(punto: string, doc: DocumentoDeTipo | undefined): string {
+	if (punto === HANDLE_DOCUMENTO) return doc && doc.encontrados.length >= 1 ? 'si' : 'no';
+	const v = doc?.valores?.[punto];
+	if (!v) return '';
+	if (v.forma === 'valor') return comoRenglon(v.valores[0] ?? '');
+	return v.valores.map(comoRenglon).filter(Boolean).join('\n');
+}
+
+type NodoDeLienzo = { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> };
+type CableDeLienzo = { id: string; source: string; sourceHandle: string | null; target: string; targetHandle: string | null };
+
+/** El dibujo del proceso con los valores reales puestos donde el lienzo pone los de ejemplo. Devuelve copias: el proceso guardado no se toca. */
+export function conValoresReales(nodos: readonly NodoDeLienzo[], cables: readonly CableDeLienzo[], documentos: readonly DocumentoDeTipo[]): NodoDeLienzo[] {
+	const copia = nodos.map((n) => ({ ...n, data: { ...n.data } }));
+	for (const cable of cables) {
+		const origen = copia.find((n) => n.id === cable.source);
+		const destino = copia.find((n) => n.id === cable.target);
+		if (origen?.type !== NODO_TIPO || !destino || !cable.targetHandle || !cable.sourceHandle) continue;
+		const doc = documentos.find((d) => d.tipoId === (origen.data as DatosNodoTipo).tipoId);
+		destino.data[cable.targetHandle] = muestraDeCampo(cable.sourceHandle, doc);
+	}
+	return copia;
+}
+
+// ── De dónde sale cada cosa, en palabras ─────────────────────────────────────
+
+/** «rfc · INE», «Igual a #1» o «Valor fijo #2»: de dónde viene lo que le llega a un punto de entrada. */
+function origenDe(cable: CableDeLienzo | undefined, nodos: readonly NodoDeLienzo[], tipos: readonly TipoDocumentalGuardado[]): string | null {
+	const origen = cable && nodos.find((n) => n.id === cable.source);
+	if (!cable || !origen) return null;
+	if (origen.type === NODO_TIPO) {
+		const salida = salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, cable.sourceHandle ?? '');
+		return salida ? `${salida.campo} · ${salida.tipo}` : null;
+	}
+	if (origen.type === NODO_CONSTANTE) return `Valor fijo #${numeroDeOperador(origen.id)}`;
+	if (origen.type === NODO_OPERADOR) {
+		const def = operadorDe(String((origen.data as DatosNodoOperador).operador));
+		return def ? `${def.etiqueta} #${numeroDeOperador(origen.id)}` : null;
+	}
+	return null;
+}
+
+const TEXTO_SIN_VALORES = 'Faltan valores para decidirla';
+const TEXTO_INCOMPLETA = 'Le falta algo conectado';
+
+// ── Correr ───────────────────────────────────────────────────────────────────
+
+/**
+ * Corre el proceso con los datos de `prep` y arma lo que se guarda. Si no hay con qué decidir (duplicados, sin Resultado, una regla incompleta) NO
+ * corre y dice por qué: eso no es una corrida y no se guarda.
+ */
+export function correr(prep: Preparacion): Salida {
+	if (prep.duplicados.length > 0) return { corre: false, motivo: { codigo: 'duplicados', mensaje: avisoDeDuplicados(prep.duplicados), duplicados: prep.duplicados } };
+
+	const dibujo = hidratarDibujo(prep.proceso.datos);
+	const aristas = dibujo.edges;
+	const nodos = conValoresReales(dibujo.nodes, aristas, prep.documentos);
+	// Los tipos llegan como `{id, nombre, campos}`: es lo único que `evaluar` lee de ellos.
+	const tipos = prep.tipos as unknown as TipoDocumentalGuardado[];
+	const ev = evaluar(nodos, aristas, tipos);
+
+	const nodoResultado = nodos.find((n) => n.type === NODO_RESULTADO);
+	if (!nodoResultado || !ev.resultado) {
+		return { corre: false, motivo: { codigo: 'sin_resultado', mensaje: 'El proceso no tiene su nodo de Resultado: ábrelo en el motor de reglas y agrégalo.' } };
+	}
+	if (ev.resultado.caso === null || ev.resultado.texto === null) {
+		return {
+			corre: false,
+			motivo: { codigo: 'regla_incompleta', mensaje: 'Una regla del proceso está incompleta (le falta algo conectado): ábrelo en el motor de reglas y complétala.' }
+		};
+	}
+
+	const cableDe = (id: string) => aristas.find((a) => a.target === id && a.targetHandle === 'a');
+
+	// Los valores finales, en el orden de los nodos del proceso.
+	const valoresFinales: ValorFinalDeCorrida[] = nodos
+		.filter((n) => n.type === NODO_VALOR_FINAL)
+		.map((n): ValorFinalDeCorrida => {
+			const f = ev.finales[n.id] ?? { estado: 'sin_conexion' as const };
+			return {
+				nodoId: n.id,
+				nombre: nombreDeValorFinal(n.id, n.data),
+				forma: f.forma ?? 'valor',
+				familia: f.familia ?? null,
+				estado: f.estado,
+				valor: f.estado === 'listo' ? (f.valor ?? '') : null,
+				lista: f.estado === 'listo' && f.forma === 'lista' ? (f.elementos ?? []) : null,
+				origen: origenDe(cableDe(n.id), nodos, tipos)
+			};
+		});
+
+	// Cómo salió cada regla, en el orden de los nodos.
+	const reglas: ReglaDeCorrida[] = [];
+	for (const n of nodos) {
+		if (n.type !== NODO_OPERADOR) continue;
+		const def = operadorDe(String((n.data as DatosNodoOperador).operador));
+		if (!def) continue;
+		const estado = ev.estados[n.id] ?? 'sin_conexion';
+		const valor = ev.valores[n.id] ?? null;
+		reglas.push({
+			id: n.id,
+			etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`,
+			operador: def.clave,
+			estado,
+			valor,
+			texto:
+				estado === 'pasa' ? def.textoPasa : estado === 'no_pasa' ? def.textoNoPasa : estado === 'listo' ? `Resultado: ${valor ?? ''}` : estado === 'sin_valores' ? TEXTO_SIN_VALORES : TEXTO_INCOMPLETA
+		});
+	}
+
+	// La evidencia: por cada tipo del proceso, de qué documento se tomó y qué campos se leyeron (los que tienen cable).
+	const faltantes: string[] = [];
+	const evidencia: EvidenciaDeCorrida[] = [];
+	for (const n of nodos) {
+		if (n.type !== NODO_TIPO) continue;
+		const tipoId = (n.data as DatosNodoTipo).tipoId;
+		const tipo = prep.tipos.find((t) => t.id === tipoId);
+		const doc = prep.documentos.find((d) => d.tipoId === tipoId);
+		if (!tipo || evidencia.some((e) => e.tipoId === tipoId)) continue;
+		const encontrado = doc?.encontrados[0] ?? null;
+		const usados = [...new Set(aristas.filter((a) => a.source === n.id && a.sourceHandle && a.sourceHandle !== HANDLE_DOCUMENTO).map((a) => a.sourceHandle as string))];
+		const usaDocumento = aristas.some((a) => a.source === n.id && a.sourceHandle === HANDLE_DOCUMENTO);
+		if (!encontrado && (usados.length > 0 || usaDocumento)) faltantes.push(`${tipo.nombre}: el expediente virtual no trae el documento`);
+		const campos = usados.map((punto) => {
+			const v = doc?.valores?.[punto];
+			if (encontrado && v && v.valores.length === 0) faltantes.push(`${tipo.nombre} · ${punto}: el documento no trae el dato`);
+			else if (encontrado && !v) faltantes.push(`${tipo.nombre} · ${punto}: el documento no trae el dato`);
+			return { campo: punto, forma: v?.forma ?? 'valor', valores: v?.valores ?? [], confianza: v?.confianza ?? null, pagina: v?.pagina ?? null };
+		});
+		evidencia.push({ tipoId, tipoNombre: tipo.nombre, documentoId: encontrado?.id ?? null, documentoNombre: encontrado?.nombre ?? null, origenTipo: encontrado?.origenTipo ?? null, campos });
+	}
+
+	return {
+		corre: true,
+		corrida: {
+			resultado: { caso: ev.resultado.caso, texto: ev.resultado.texto },
+			valoresFinales,
+			detalle: { reglas, evidencia, condicion: ev.resultado.condicion, faltantes }
+		}
+	};
+}
+

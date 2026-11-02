@@ -24,6 +24,11 @@
 	 * salen los tipos documentales que el lienzo ofrece. Elegir uno NO lo asigna aquí: avisa a `alCambiarTipo`, porque cambiarlo con nodos
 	 * puestos puede quitar algunos y el lienzo pregunta antes.
 	 *
+	 * Desde el 2026-11-03 el RESULTADO también es obligatorio (Moibe: «sí, que sea obligatorio el Resultado»): sin su nodo no se guarda, porque un
+	 * proceso sin la palabra con la que termina no tiene con qué contestar cuando se ejecute. Con nombre y tipo pero sin Resultado, «Guardar» lo dice
+	 * bajo el botón y le pide a la paleta (`alFaltaResultado`) que abra «Salidas del proceso» y señale el botón del Resultado. Basta con que el nodo
+	 * exista: conectarlo a una regla no se exige para guardar (se puede dejar a medias), pero un proceso sin regla en su Resultado no se ejecuta.
+	 *
 	 * Es solo presentación: quien decide qué pasa con cada botón es `LienzoDeProceso`, que es dueño del dibujo.
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
@@ -50,9 +55,11 @@
 		guardando,
 		puedeGuardar,
 		puedeBorrar,
+		tieneResultado,
 		alGuardar,
 		alBorrar,
-		alCambiarTipo
+		alCambiarTipo,
+		alFaltaResultado
 	}: {
 		nombre: string;
 		/** El id del tipo de expediente virtual elegido, o `null`. */
@@ -65,10 +72,14 @@
 		guardando: boolean;
 		puedeGuardar: boolean;
 		puedeBorrar: boolean;
+		/** El lienzo ya trae su nodo de «Resultado» (obligatorio para guardar). */
+		tieneResultado: boolean;
 		alGuardar: () => void;
 		alBorrar: () => void;
 		/** Se eligió otro tipo: el lienzo decide si lo aplica (puede preguntar antes). */
 		alCambiarTipo: (id: string) => void;
+		/** Se pulsó «Guardar» sin Resultado: que la paleta lo señale. */
+		alFaltaResultado: () => void;
 	} = $props();
 
 	const TEXTO_DE_ESTADO: Record<EstadoDeProceso, string> = {
@@ -80,10 +91,11 @@
 
 	const elegido = $derived(tiposVirtuales.find((t) => t.id === tipoVirtual) ?? null);
 	/** Qué le falta al proceso para guardarse, si la persona pulsó «Guardar» sin eso: se dice bajo el campo y se quita al llenarlo. */
-	let falta = $state<'nombre' | 'tipo' | null>(null);
+	let falta = $state<'nombre' | 'tipo' | 'resultado' | null>(null);
 	$effect(() => {
 		if (falta === 'nombre' && nombre.trim() !== '') falta = null;
 		if (falta === 'tipo' && tipoVirtual) falta = null;
+		if (falta === 'resultado' && tieneResultado) falta = null;
 	});
 
 	function pulsarGuardar() {
@@ -97,6 +109,9 @@
 		} else if (!tipoVirtual) {
 			falta = 'tipo';
 			document.getElementById('tipo-virtual-del-proceso')?.focus();
+		} else if (!tieneResultado) {
+			falta = 'resultado';
+			alFaltaResultado();
 		}
 		// Sin cambios que guardar: no hay nada que decir; el título del botón ya lo explica.
 	}
@@ -189,23 +204,32 @@
 				Eliminar
 			</Button>
 		{/if}
-		<Button
-			data-testid="guardar-proceso"
-			disabled={guardando}
-			aria-disabled={!puedeGuardar || guardando}
-			class={!puedeGuardar && !guardando ? 'cursor-not-allowed opacity-50' : ''}
-			title={!nombre.trim()
-				? 'Ponle un nombre al proceso para guardarlo'
-				: !tipoVirtual
-					? 'Elige sobre qué tipo de expediente virtual corre el proceso para guardarlo'
-					: !puedeGuardar
-						? 'No hay cambios que guardar'
-						: 'Guardar (Ctrl+S)'}
-			onclick={pulsarGuardar}
-		>
-			<Save />
-			{guardando ? 'Guardando…' : 'Guardar'}
-		</Button>
+		<div class="relative">
+			<Button
+				data-testid="guardar-proceso"
+				disabled={guardando}
+				aria-disabled={!puedeGuardar || guardando}
+				class={!puedeGuardar && !guardando ? 'cursor-not-allowed opacity-50' : ''}
+				title={!nombre.trim()
+					? 'Ponle un nombre al proceso para guardarlo'
+					: !tipoVirtual
+						? 'Elige sobre qué tipo de expediente virtual corre el proceso para guardarlo'
+						: !tieneResultado
+							? 'Agrega el nodo «Resultado» para guardarlo'
+							: !puedeGuardar
+								? 'No hay cambios que guardar'
+								: 'Guardar (Ctrl+S)'}
+				onclick={pulsarGuardar}
+			>
+				<Save />
+				{guardando ? 'Guardando…' : 'Guardar'}
+			</Button>
+			{#if falta === 'resultado'}
+				<p role="alert" data-testid="falta-resultado" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
+					Agrega el nodo «Resultado» para guardar: es la palabra con la que termina el proceso. Lo encuentras en «Salidas del proceso».
+				</p>
+			{/if}
+		</div>
 	</div>
 </div>
 

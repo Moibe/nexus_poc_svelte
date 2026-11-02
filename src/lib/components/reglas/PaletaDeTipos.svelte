@@ -25,6 +25,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Flag from '@lucide/svelte/icons/flag';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import { tick } from 'svelte';
 
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import {
@@ -76,6 +77,26 @@
 
 	/** Los menús que están abiertos (por su `value`). Vacío = todos retraídos, que es como arranca la paleta. */
 	let abiertos = $state<string[]>([]);
+
+	/** El botón del Resultado y si se está señalando (2026-11-03: «Guardar» sin Resultado manda a la persona aquí). */
+	let botonResultado = $state<HTMLButtonElement>();
+	let resaltado = $state(false);
+	let relojResalte: ReturnType<typeof setTimeout> | undefined;
+
+	/**
+	 * Abre «Salidas del proceso» y señala el botón del Resultado (le da el foco y lo resalta unos segundos). Lo pide el lienzo cuando se pulsa
+	 * «Guardar» y al proceso le falta su Resultado, que es obligatorio: decirlo no basta si la persona tiene que buscar dónde está.
+	 */
+	export async function mostrarResultado() {
+		if (!abiertos.includes('salidas')) abiertos = [...abiertos, 'salidas'];
+		await tick();
+		await new Promise((resolver) => requestAnimationFrame(() => resolver(null)));
+		botonResultado?.scrollIntoView({ block: 'nearest' });
+		botonResultado?.focus();
+		resaltado = true;
+		clearTimeout(relojResalte);
+		relojResalte = setTimeout(() => (resaltado = false), 3000);
+	}
 
 	/** Lo que dice el encabezado de los tipos a la derecha: cuántos hay, o por qué todavía no se sabe. */
 	const cuentaDeTipos = $derived(
@@ -265,12 +286,14 @@
 							<button
 								type="button"
 								draggable="true"
+								bind:this={botonResultado}
 								data-testid="resultado-de-paleta"
 								data-en-lienzo={hayResultado}
+								data-resaltado={resaltado}
 								title={hayResultado ? 'Ya está en el lienzo: pulsa para ir a él' : 'Arrástralo al lienzo o pulsa para agregarlo'}
-								class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors active:cursor-grabbing {hayResultado
-									? 'border-primary/40 bg-primary/5'
-									: 'border-border bg-card hover:bg-muted'}"
+								class="flex w-full cursor-grab items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors active:cursor-grabbing {resaltado
+									? 'border-destructive ring-2 ring-destructive/40'
+									: ''} {hayResultado ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:bg-muted'}"
 								ondragstart={(e) => alArrastrar(e, MIME_RESULTADO, 'resultado-final')}
 								onclick={alAgregarResultado}
 							>

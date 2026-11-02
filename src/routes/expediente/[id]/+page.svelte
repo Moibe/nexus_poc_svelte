@@ -30,6 +30,7 @@
 	import Folder from '@lucide/svelte/icons/folder';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Plus from '@lucide/svelte/icons/plus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Upload from '@lucide/svelte/icons/upload';
 
@@ -227,6 +228,17 @@
 							</td>
 							<td class="py-3 pr-2 text-foreground tabular-nums" data-testid="virtual-documentos">
 								{documentosDelVirtual(v.totalDocumentos, expediente.documentos.length)}
+								<!-- Duplicados (2026-11-03): documentos de un mismo tipo dentro de este virtual; los procesos que usan ese tipo no se ejecutan sobre él. -->
+								{#if (v.duplicados ?? []).length > 0}
+									<span
+										class="ml-2 inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-400"
+										data-testid="virtual-con-duplicados"
+										title="Trae documentos duplicados de: {(v.duplicados ?? []).map((d) => d.tipoNombre ?? 'un tipo eliminado').join(', ')}"
+									>
+										<TriangleAlert class="size-3" />
+										Duplicados
+									</span>
+								{/if}
 							</td>
 						</tr>
 					{/each}

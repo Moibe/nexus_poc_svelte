@@ -46,6 +46,7 @@
 		guardarProceso,
 		procesoActivo,
 		reiniciarProcesos,
+		tieneResultado,
 		tiposDelProceso,
 		type ProcesoGuardado
 	} from '$lib/state/procesos.svelte';
@@ -241,6 +242,12 @@
 											Sin tipo de expediente virtual
 										{/if}
 									</span>
+									<!-- Desde el 2026-11-03 el Resultado es obligatorio: los procesos de antes que no lo traen se siguen abriendo, pero no se pueden ejecutar. -->
+									{#if !tieneResultado(p)}
+										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-sin-resultado" title="Ábrelo y agrega el nodo «Resultado» para poder ejecutarlo">
+											Sin Resultado: ábrelo y agrégalo para poder ejecutarlo
+										</span>
+									{/if}
 								</span>
 							</div>
 
