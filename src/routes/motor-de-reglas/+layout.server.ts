@@ -23,6 +23,11 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, cookies, url }) => {
 	if (!puedeAdministrar(locals.usuario)) redirect(303, '/');
+	// Leer `url.pathname` hace que SvelteKit vuelva a ejecutar esto en CADA navegación dentro del motor (de la lista al lienzo, de un proceso
+	// a otro). Sin esa dependencia, un layout que ya está en pantalla se reutiliza tal cual y los tipos de expediente virtual que se
+	// borraron (o crearon) desde Configuración, o desde otra pestaña, seguían saliendo (o faltaban) en «Corre sobre» hasta recargar la
+	// página (2026-11-03, Moibe: «aunque ya borré el tipo, me sigue apareciendo en el motor de reglas»).
+	void url.pathname;
 	const cuerpo = await leerDeNexus(`/tipos-expediente/?tenant=${encodeURIComponent(tenantDe(locals))}`, { cookies, url }, 'No se pudieron cargar los tipos.').catch((e) => {
 		if (isRedirect(e)) throw e;
 		return null;
