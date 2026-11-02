@@ -12,6 +12,13 @@
 	 * Mientras se sube no se puede cerrar ni quitar nada (cerrar a medias dejaría la pantalla sin enterarse de lo que ya entró). Al cerrar
 	 * con al menos un archivo subido se llama `alTerminar` para que la página se ponga al día y diga cuántos entraron.
 	 *
+	 * **Duplicados (2026-11-02, Moibe: «avísame de duplicados»).** Al elegir cada archivo se calcula su huella (SHA-256, en el navegador) y se
+	 * compara con la de los documentos que YA están en este expediente y con la de lo demás que se eligió o se subió en esta ventana: se compara
+	 * el contenido, no el nombre. Un duplicado se marca en ámbar diciendo de cuál es y NO se sube, a menos que la persona lo decida con
+	 * «Subir de todos modos» (una segunda copia a propósito es posible, por eso no se prohíbe). Solo se compara contra este expediente: el mismo
+	 * documento en otro expediente es legítimo. La comparación es contra lo que la página cargó; si otra persona acaba de subir lo mismo, no
+	 * se entera.
+	 *
 	 * Mismo molde que «Nuevo expediente virtual» (`ExpedienteVirtualModal`): modal centrado de 684 px con cabecera, título con su ícono,
 	 * cuerpo y pie con «Cancelar» y el botón principal.
 	 */
@@ -28,21 +35,38 @@
 	import ImageIcon from '$lib/components/icons/ImageIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { formatearTamano } from '$lib/expedientes/expedientes';
-	import { ACEPTAR_ATRIBUTO, MAX_MB_SUBIDA, cuantosArchivos, motivoDeRechazo } from '$lib/expedientes/subida';
+	import { huellaDe } from '$lib/expedientes/huella';
+	import { ACEPTAR_ATRIBUTO, MAX_MB_SUBIDA, cuantosArchivos, duplicadoDe, motivoDeRechazo, textoDeDuplicado, type Huella } from '$lib/expedientes/subida';
 
-	type Estado = 'espera' | 'subiendo' | 'listo' | 'error' | 'rechazado';
-	type Fila = { id: number; archivo: File; estado: Estado; mensaje: string };
+	/** `duplicado`: se marcó como repetido y NO se sube (a menos que la persona lo permita). */
+	type Estado = 'espera' | 'subiendo' | 'listo' | 'error' | 'rechazado' | 'duplicado';
+	type Fila = {
+		id: number;
+		archivo: File;
+		estado: Estado;
+		/** Por qué no sirve (rechazado) o por qué falló (error): sale en rojo. */
+		mensaje: string;
+		/** Su huella SHA-256, cuando ya se calculó (o `null` si no se pudo). */
+		huella: string | null;
+		/** De cuál es duplicado, si lo es: sale en ámbar. */
+		duplicado: string;
+		/** La persona decidió subirlo aunque sea duplicado. */
+		permitirDuplicado: boolean;
+	};
 
 	let {
 		open = $bindable(false),
 		expediente,
+		existentes = [],
 		alTerminar
 	}: {
 		open?: boolean;
 		/** El expediente al que se sube. */
 		expediente: { id: string; nombre: string };
-		/** Se cierra la ventana y entró al menos un archivo: la página se pone al día y avisa. */
-		alTerminar: (resultado: { subidos: number; fallidos: number }) => Promise<void> | void;
+		/** Los documentos que YA están en el expediente (nombre y huella), para avisar de duplicados. */
+		existentes?: { nombre: string; sha256?: string }[];
+		/** Se cierra la ventana y entró al menos un archivo: la página se pone al día y avisa. `omitidos` son los duplicados que no se subieron. */
+		alTerminar: (resultado: { subidos: number; fallidos: number; omitidos: number }) => Promise<void> | void;
 	} = $props();
 
 	let filas = $state<Fila[]>([]);
@@ -50,6 +74,9 @@
 	let arrastrando = $state(false);
 	let entrada = $state<HTMLInputElement | null>(null);
 	let contador = 0;
+	/** Cuántas huellas se están calculando (para decirlo, y para no subir antes de saber qué es duplicado). */
+	let revisando = $state(0);
+	let huellasEnCurso: Promise<unknown>[] = [];
 
 	/** Lo que todavía hay que mandar: lo nuevo y lo que falló. */
 	const porSubir = $derived(filas.filter((f) => f.estado === 'espera' || f.estado === 'error'));
@@ -57,6 +84,9 @@
 	const subidos = $derived(filas.filter((f) => f.estado === 'listo').length);
 	const conError = $derived(filas.filter((f) => f.estado === 'error').length);
 	const rechazados = $derived(filas.filter((f) => f.estado === 'rechazado').length);
+	const duplicados = $derived(filas.filter((f) => f.estado === 'duplicado').length);
+	/** La huella y el nombre de lo que ya estaba en el expediente. */
+	const huellasExistentes = $derived(existentes.filter((e): e is { nombre: string; sha256: string } => typeof e.sha256 === 'string' && e.sha256 !== '').map((e) => ({ nombre: e.nombre, sha256: e.sha256 })));
 	/** Cuántos van, para «Subiendo 2 de 5…». */
 	const enTanda = $derived(filas.filter((f) => f.estado === 'subiendo' || f.estado === 'listo' || f.estado === 'error').length);
 	const terminado = $derived(!subiendo && porSubir.length === 0 && subidos > 0);
@@ -68,15 +98,47 @@
 			filas = [];
 			subiendo = false;
 			arrastrando = false;
+			revisando = 0;
+			huellasEnCurso = [];
 			if (entrada) entrada.value = '';
 		});
 	});
+
+	/**
+	 * Marca (o desmarca) los duplicados de lo que todavía no se sube, en el orden de la lista: contra lo que ya estaba en el expediente y contra
+	 * lo que quedó antes en la lista (elegido o ya subido). Se vuelve a correr cada vez que algo cambia: quitar el primero de dos iguales deja
+	 * al segundo de nuevo como un archivo normal. Un archivo que la persona permitió se queda como «en espera», con su aviso.
+	 */
+	function reevaluar() {
+		const vistos: Huella[] = [];
+		for (const fila of filas) {
+			if (fila.estado === 'rechazado') continue;
+			if ((fila.estado === 'espera' || fila.estado === 'duplicado') && fila.huella) {
+				const d = duplicadoDe(fila.huella, huellasExistentes, vistos);
+				fila.duplicado = d ? textoDeDuplicado(d) : '';
+				fila.estado = d && !fila.permitirDuplicado ? 'duplicado' : 'espera';
+			}
+			if (fila.huella) vistos.push({ nombre: fila.archivo.name, sha256: fila.huella, subido: fila.estado === 'listo' });
+		}
+	}
 
 	function agregar(archivos: FileList | File[] | null | undefined) {
 		if (!archivos || subiendo) return;
 		for (const archivo of Array.from(archivos)) {
 			const motivo = motivoDeRechazo(archivo);
-			filas.push({ id: ++contador, archivo, estado: motivo ? 'rechazado' : 'espera', mensaje: motivo ?? '' });
+			filas.push({ id: ++contador, archivo, estado: motivo ? 'rechazado' : 'espera', mensaje: motivo ?? '', huella: null, duplicado: '', permitirDuplicado: false });
+			if (motivo) continue;
+			// La fila reactiva (la que quedó en la lista), no el objeto suelto: es la que hay que mutar cuando termine la huella.
+			const fila = filas[filas.length - 1];
+			revisando++;
+			huellasEnCurso.push(
+				huellaDe(archivo)
+					.then((huella) => {
+						fila.huella = huella;
+						reevaluar();
+					})
+					.finally(() => revisando--)
+			);
 		}
 		// Sin esto, volver a elegir el mismo archivo no dispara nada: el input sigue "viendo" el anterior.
 		if (entrada) entrada.value = '';
@@ -92,12 +154,25 @@
 		if (subiendo) return;
 		const i = filas.findIndex((f) => f.id === id);
 		if (i >= 0) filas.splice(i, 1);
+		reevaluar();
+	}
+
+	/** «Subir de todos modos»: la persona decidió que ese duplicado sí se sube (una segunda copia a propósito). */
+	function permitir(id: number) {
+		if (subiendo) return;
+		const fila = filas.find((f) => f.id === id);
+		if (!fila) return;
+		fila.permitirDuplicado = true;
+		reevaluar();
 	}
 
 	async function subir() {
 		if (subiendo || porSubir.length === 0) return;
 		subiendo = true;
 		try {
+			// Antes de mandar nada se sabe qué es duplicado: si se pica «Subir» con una huella todavía en cuenta, se espera a que termine.
+			await Promise.all(huellasEnCurso);
+			reevaluar();
 			// Una por una: un lote grande no satura al servidor y cada fila dice su propio resultado.
 			for (const fila of filas.filter((f) => f.estado === 'espera' || f.estado === 'error')) {
 				fila.estado = 'subiendo';
@@ -125,7 +200,7 @@
 
 	async function cerrar() {
 		if (subiendo) return;
-		const resultado = { subidos, fallidos: conError };
+		const resultado = { subidos, fallidos: conError, omitidos: duplicados };
 		open = false;
 		if (resultado.subidos > 0) await alTerminar(resultado);
 	}
@@ -141,7 +216,9 @@
 		if (conError > 0) partes.push(`${cuantosArchivos(conError)} sin subir`);
 		const pendientes = filas.filter((f) => f.estado === 'espera').length;
 		if (pendientes > 0) partes.push(`${cuantosArchivos(pendientes)} por subir`);
+		if (duplicados > 0) partes.push(`${cuantosArchivos(duplicados)} ${duplicados === 1 ? 'duplicado' : 'duplicados'}`);
 		if (rechazados > 0) partes.push(`${cuantosArchivos(rechazados)} no ${rechazados === 1 ? 'válido' : 'válidos'}`);
+		if (revisando > 0) partes.push('revisando duplicados…');
 		return partes.join(' · ');
 	});
 </script>
@@ -226,8 +303,12 @@
 								data-nombre={fila.archivo.name}
 								data-estado={fila.estado}
 								class={[
-									'flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5',
-									fila.estado === 'error' || fila.estado === 'rechazado' ? 'border-destructive/40' : 'border-border'
+									'flex items-center gap-3 rounded-lg border px-3 py-2.5',
+									fila.estado === 'error' || fila.estado === 'rechazado'
+										? 'border-destructive/40 bg-background'
+										: fila.duplicado
+											? 'border-amber-300 bg-amber-50'
+											: 'border-border bg-background'
 								]}
 							>
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
@@ -238,6 +319,22 @@
 									<p class="text-xs text-muted-foreground">{extension(fila.archivo.name)} · {formatearTamano(fila.archivo.size)}</p>
 									{#if fila.mensaje}
 										<p class="mt-0.5 text-xs text-destructive" data-testid="archivo-subida-mensaje">{fila.mensaje}</p>
+									{/if}
+									<!-- Un duplicado se dice en ámbar (no es un error: el archivo está bien, solo que ya está) y, si no se permitió, ofrece subirlo igual. -->
+									{#if fila.duplicado && fila.estado !== 'listo'}
+										<p class="mt-0.5 text-xs text-amber-700" data-testid="archivo-subida-duplicado">
+											{fila.duplicado}{fila.permitirDuplicado ? ' Se subirá de todos modos.' : ''}
+										</p>
+										{#if fila.estado === 'duplicado' && !subiendo}
+											<button
+												type="button"
+												class="mt-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+												data-testid="subir-de-todos-modos"
+												onclick={() => permitir(fila.id)}
+											>
+												Subir de todos modos
+											</button>
+										{/if}
 									{/if}
 								</div>
 								<span class="flex shrink-0 items-center gap-1.5 text-xs" data-testid="archivo-subida-estado">
@@ -251,6 +348,8 @@
 										<span class="font-medium text-destructive">No se subió</span>
 									{:else if fila.estado === 'rechazado'}
 										<span class="font-medium text-destructive">No válido</span>
+									{:else if fila.estado === 'duplicado'}
+										<span class="font-medium text-amber-700">Duplicado</span>
 									{:else}
 										<span class="text-muted-foreground">En espera</span>
 									{/if}
@@ -287,6 +386,8 @@
 							Subiendo…
 						{:else if !hayNuevos && conError > 0}
 							Reintentar {cuantosArchivos(conError)}
+						{:else if porSubir.length === 0}
+							Subir archivos
 						{:else}
 							Subir {cuantosArchivos(porSubir.length)}
 						{/if}

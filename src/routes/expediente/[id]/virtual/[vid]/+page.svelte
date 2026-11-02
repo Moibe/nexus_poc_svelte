@@ -6,7 +6,8 @@
 	 *
 	 * Quien organiza puede:
 	 *   · «Agregar documentos»: elegir con casillas entre los documentos DEL EXPEDIENTE que todavía no están (no hay otros: un virtual es
-	 *     subconjunto de su expediente, y la base no deja meter otros);
+	 *     subconjunto de su expediente, y la base no deja meter otros). Un virtual no recibe archivos propios: si el expediente no tiene
+	 *     ninguno, el botón sale apagado y la pantalla manda a subirlos al expediente (se distingue de «ya están todos», 2026-11-02);
 	 *   · «Quitar» uno: sale del grupito, NO del expediente;
 	 *   · «Borrar expediente virtual»: con la confirmación de la casa (`ConfirmarAccion`); no borra documentos, y regresa al expediente.
 	 * Los documentos se eligen a mano porque todavía no guardan su tipo documental. No hay diseño para esta pantalla en el Figma.
@@ -33,6 +34,19 @@
 	const base = $derived(`/api/expedientes/${encodeURIComponent(v.expediente.id)}/virtuales/${encodeURIComponent(v.id)}`);
 	/** Los documentos del expediente que todavía no están en el virtual: lo único que se le puede agregar. */
 	const disponibles = $derived(data.documentosDelExpediente.filter((d) => !v.documentos.some((x) => x.id === d.id)));
+	/**
+	 * El expediente no tiene NINGÚN documento (2026-11-02): «Agregar documentos» sale apagado porque no hay de dónde escoger, y no porque ya estén
+	 * todos. Se distingue para decirlo bien: un virtual no recibe archivos propios, se arma con los del expediente, así que lo que hace falta es
+	 * subirlos al expediente primero.
+	 */
+	const expedienteVacio = $derived(data.documentosDelExpediente.length === 0);
+	const porQueApagado = $derived(
+		disponibles.length > 0
+			? undefined
+			: expedienteVacio
+				? `«${v.expediente.nombre}» todavía no tiene documentos: súbele archivos primero`
+				: 'Ya están todos los documentos del expediente'
+	);
 
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 	let error = $state('');
@@ -151,7 +165,7 @@
 				<Button
 					data-testid="agregar-documentos-al-virtual"
 					disabled={disponibles.length === 0}
-					title={disponibles.length === 0 ? 'Ya están todos los documentos del expediente' : undefined}
+					title={porQueApagado}
 					onclick={() => {
 						aviso = null;
 						elegidos = [];
@@ -215,7 +229,17 @@
 			<h3 class="text-xl font-semibold text-foreground">Este expediente virtual todavía no tiene documentos</h3>
 			<p class="max-w-xl text-sm text-muted-foreground">
 				{#if data.puedeOrganizar}
-					Usa «Agregar documentos» para elegir cuáles de «{v.expediente.nombre}» forman parte de él.
+					{#if expedienteVacio}
+						«{v.expediente.nombre}» todavía no tiene documentos que agregar. Primero
+						<a
+							href={`/expediente/${encodeURIComponent(v.expediente.id)}`}
+							class="text-primary underline-offset-2 hover:underline"
+							data-testid="ir-al-expediente-para-subir">súbele archivos desde el expediente</a
+						>
+						y luego agrégalos aquí.
+					{:else}
+						Usa «Agregar documentos» para elegir cuáles de «{v.expediente.nombre}» forman parte de él.
+					{/if}
 				{:else}
 					Cuando se le agreguen documentos de «{v.expediente.nombre}», aparecerán aquí.
 				{/if}

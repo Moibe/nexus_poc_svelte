@@ -18,7 +18,9 @@
 	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
 	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
 	 * archivos y se suben a ESTE expediente como documentos de la organización (carga manual, salen también en «Archivos procesados»). Quedan sin
-	 * tipo documental hasta que pasen por el pipeline. Al cerrar la ventana, la página se pone al día y dice cuántos entraron.
+	 * tipo documental hasta que pasen por el pipeline (no se clasifican al subir). Al cerrar la ventana, la página se pone al día y dice cuántos
+	 * entraron. Los DUPLICADOS (mismo contenido que algo que ya está en el expediente o que otro archivo de la misma tanda) se avisan en la
+	 * ventana y no se suben salvo que la persona lo decida (2026-11-02).
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
@@ -251,9 +253,10 @@
 <SubirArchivosModal
 	bind:open={subida}
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
-	alTerminar={async ({ subidos, fallidos }) => {
+	existentes={expediente.documentos.map((d) => ({ nombre: d.nombreOriginal, sha256: d.sha256 }))}
+	alTerminar={async ({ subidos, fallidos, omitidos }) => {
 		// Los archivos YA entraron: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos);
+		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos);
 		if (dicho) aviso = { testid: 'archivos-subidos-aviso', ...dicho };
 		await invalidateAll();
 	}}

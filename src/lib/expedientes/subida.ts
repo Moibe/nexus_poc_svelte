@@ -33,11 +33,45 @@ export const cuantosArchivos = (n: number): string => `${n} ${n === 1 ? 'archivo
 
 /**
  * El aviso verde de la página cuando se cierra la subida. `null` si no se subió ninguno (no hay nada bueno que avisar: los errores ya
- * se vieron en la ventana). Si algunos fallaron, lo dice sin esconderlo.
+ * se vieron en la ventana). Si algunos fallaron, o se dejaron sin subir por estar duplicados, lo dice sin esconderlo.
  */
-export function avisoDeSubida(expediente: string, subidos: number, fallidos: number): { titulo: string; cuerpo: string } | null {
+export function avisoDeSubida(expediente: string, subidos: number, fallidos: number, omitidos = 0): { titulo: string; cuerpo: string } | null {
 	if (subidos <= 0) return null;
 	const hecho = `Se ${subidos === 1 ? 'subió' : 'subieron'} ${cuantosArchivos(subidos)} a «${expediente}».`;
 	const resto = fallidos > 0 ? ` ${cuantosArchivos(fallidos)} no se ${fallidos === 1 ? 'pudo' : 'pudieron'} subir.` : '';
-	return { titulo: subidos === 1 ? 'Archivo subido' : 'Archivos subidos', cuerpo: hecho + resto };
+	const duplicados = omitidos > 0 ? ` ${cuantosArchivos(omitidos)} ${omitidos === 1 ? 'duplicado no se subió' : 'duplicados no se subieron'}.` : '';
+	return { titulo: subidos === 1 ? 'Archivo subido' : 'Archivos subidos', cuerpo: hecho + resto + duplicados };
+}
+
+// ── Duplicados (Moibe, 2026-11-02: «avísame de duplicados») ──────────────────
+
+/** Lo que se sabe del contenido de un archivo para compararlo: su nombre y su huella SHA-256 (hexadecimal, en minúsculas). */
+export type Huella = {
+	nombre: string;
+	sha256: string;
+	/** Ya se subió en esta ventana (no solo se eligió). */
+	subido?: boolean;
+};
+
+/** De dónde viene un duplicado: ya estaba en el expediente, ya se subió en esta ventana, o se repite dentro de lo que se eligió. */
+export type Duplicado = { origen: 'expediente' | 'subido' | 'seleccion'; nombre: string };
+
+/**
+ * ¿Este contenido ya está? Se compara el CONTENIDO (SHA-256), no el nombre: «acta.pdf» y «copia.pdf» con los mismos bytes son duplicados, y dos
+ * archivos con el mismo nombre y distinto contenido no. Primero se mira lo que YA estaba en el expediente (la causa de fondo: si además se
+ * repite dentro de la selección, el aviso dice lo primero), luego lo que se eligió o se subió antes en esta misma ventana.
+ */
+export function duplicadoDe(sha256: string, existentes: readonly Huella[], anteriores: readonly Huella[]): Duplicado | null {
+	const enExpediente = existentes.find((h) => h.sha256 === sha256);
+	if (enExpediente) return { origen: 'expediente', nombre: enExpediente.nombre };
+	const antes = anteriores.find((h) => h.sha256 === sha256);
+	if (antes) return { origen: antes.subido ? 'subido' : 'seleccion', nombre: antes.nombre };
+	return null;
+}
+
+/** Lo que se le dice a la persona de un duplicado. */
+export function textoDeDuplicado(d: Duplicado): string {
+	if (d.origen === 'expediente') return `Ya está en este expediente como «${d.nombre}».`;
+	if (d.origen === 'subido') return `Es igual a «${d.nombre}», que ya se subió en esta ventana.`;
+	return `Es igual a «${d.nombre}», que también elegiste.`;
 }
