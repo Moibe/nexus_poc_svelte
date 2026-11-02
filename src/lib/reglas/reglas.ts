@@ -24,8 +24,12 @@ import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 
 // ── Los nodos del lienzo ─────────────────────────────────────────────────────
 
-/** Lo que lleva un nodo de tipo documental: solo cuál es. Sus campos se leen en vivo de la biblioteca. */
-export type DatosNodoTipo = { tipoId: string };
+/**
+ * Lo que lleva un nodo de tipo documental: cuál es y, SOLO mientras está en pantalla, qué campos se ven (`campos`: los puntos de salida
+ * `campo` o `grupo.subcampo`, 2026-11-03). Los campos se leen en vivo de la biblioteca. `campos` NO se guarda: `serializarDibujo` solo
+ * escribe `tipoId`, y `hidratarDibujo` lo reconstruye con los campos que tienen cable.
+ */
+export type DatosNodoTipo = { tipoId: string; campos?: string[] };
 
 /**
  * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
@@ -937,6 +941,12 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 			target: a.target,
 			targetHandle: typeof a.targetHandle === 'string' ? a.targetHandle : null
 		});
+	}
+	// Un nodo de tipo muestra los campos que tienen cable (lo único que un proceso guardado usa); los demás se eligen del menú del nodo.
+	for (const n of nodes) {
+		if (n.type !== NODO_TIPO) continue;
+		const usados = edges.flatMap((e) => (e.source === n.id && e.sourceHandle && e.sourceHandle !== HANDLE_DOCUMENTO ? [e.sourceHandle] : []));
+		n.data = { ...n.data, campos: [...new Set(usados)] };
 	}
 	let operadoresPuestos = 0;
 	let constantesPuestas = 0;

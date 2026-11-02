@@ -3,9 +3,16 @@
 	 * Un TIPO DOCUMENTAL en el lienzo del motor de reglas (piloto 1, 2026-10-20).
 	 *
 	 * Representa «el documento de este tipo del expediente»: un proceso corre sobre un expediente, o sea un conjunto de documentos,
-	 * y por eso cada tipo aparece UNA vez en el lienzo. Muestra los campos del tipo tal como están en la biblioteca (se lee en vivo:
-	 * si el tipo se edita, el nodo lo refleja) y cada campo trae su propio punto de salida, porque las reglas hablan de campos
+	 * y por eso cada tipo aparece UNA vez en el lienzo. Cada campo trae su propio punto de salida, porque las reglas hablan de campos
 	 * («el RFC del acta debe ser igual al RFC de la constancia»), no de documentos enteros.
+	 *
+	 * **Solo se ven los campos que se van a usar (2026-11-03, Moibe: «mostrar todos los campos disponibles lo hace muy largo, prefiero que
+	 * residan en un dropdown y que de ahí se pueda seleccionar»).** El nodo nace con el punto del DOCUMENTO y un menú «Agregar campo» que
+	 * lista los demás (se lee en vivo de la biblioteca: si el tipo se edita, el menú lo refleja); cada campo elegido sale como un renglón con
+	 * su punto de salida y su «x» para volver a esconderlo. Un campo con un cable NO se puede esconder (su punto tiene que existir para que el
+	 * cable llegue): hay que desconectarlo antes. Qué campos se ven vive en `data.campos` y NO se guarda: al abrir un proceso, el nodo muestra
+	 * justo los campos que tienen cable (`hidratarDibujo`), que es lo único que un proceso guardado usa; un campo agregado y sin cable no
+	 * significa nada.
 	 *
 	 * Los puntos de salida se identifican con el nombre del campo, y con `grupo.subcampo` los de dentro de un grupo. Un grupo tiene
 	 * además el suyo propio: contar cuántas filas trae («cuántos socios») es una regla tan válida como sumar una de sus columnas.
@@ -18,11 +25,14 @@
 	 * Arriba de los campos va el punto del DOCUMENTO entero (un rombo): no es ningún dato, solo sirve para preguntarle al expediente si
 	 * lo trae («Existe documento»). Su id es `HANDLE_DOCUMENTO`, con arroba para no chocar con el nombre de un campo.
 	 */
-	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
+	import { Handle, Position, useNodeConnections, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
 	import { getContext } from 'svelte';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
 
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import {
 		TIPOS_DE_DATO,
 		etiquetaVersion,
@@ -34,16 +44,43 @@
 
 	let { id, data, selected }: NodeProps<Node<DatosNodoTipo>> = $props();
 
-	const { deleteElements } = useSvelteFlow();
+	const { deleteElements, updateNodeData } = useSvelteFlow();
+	// Los cables que salen de este nodo: un campo con cable no se puede esconder.
+	const conexiones = useNodeConnections({ handleType: 'source' });
 
 	const tipo = $derived(tiposDocumentales.find((t) => t.id === data.tipoId));
+	const version = $derived(tipo ? etiquetaVersion(tipo.version) : '');
+
 	// ¿Su tipo documental está FUERA del esquema del tipo de expediente virtual del proceso? Se marca en ámbar (no se quita): ver `LienzoDeProceso`.
 	const esquema = getContext<{ readonly fuera: (tipoId: string) => boolean; readonly nombre: string | null } | undefined>(CLAVE_ESQUEMA);
 	const fueraDelEsquema = $derived(esquema?.fuera(data.tipoId) ?? false);
-	const version = $derived(tipo ? etiquetaVersion(tipo.version) : '');
 
 	const etiquetaDeDato = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label ?? valor;
 	const seRepite = (c: Pick<CampoBorrador, 'cardinalidad'>) => c.cardinalidad === 'multiple';
+
+	/** Los puntos de salida que se ven (nombre del campo, o `grupo.subcampo`). */
+	const visibles = $derived(new Set(data.campos ?? []));
+	const conCable = (punto: string) => conexiones.current.some((c) => c.sourceHandle === punto);
+
+	/** Lo que el menú ofrece: cada campo y cada columna de grupo que todavía no se ve, en el orden del tipo. */
+	const porAgregar = $derived(
+		(tipo?.campos ?? []).flatMap((campo) => [
+			...(visibles.has(campo.nombre) ? [] : [{ punto: campo.nombre, etiqueta: campo.nombre, dato: etiquetaDeDato(campo.tipoDato) }]),
+			...(campo.tipoDato === 'grupo'
+				? campo.subcampos
+						.filter((s) => !visibles.has(`${campo.nombre}.${s.nombre}`))
+						.map((s) => ({ punto: `${campo.nombre}.${s.nombre}`, etiqueta: `${campo.nombre} › ${s.nombre}`, dato: etiquetaDeDato(s.tipoDato) }))
+				: [])
+		])
+	);
+
+	function agregarCampo(punto: string) {
+		if (!visibles.has(punto)) updateNodeData(id, { campos: [...(data.campos ?? []), punto] });
+	}
+	function esconderCampo(punto: string) {
+		if (conCable(punto)) return;
+		updateNodeData(id, { campos: (data.campos ?? []).filter((c) => c !== punto) });
+	}
 
 	/** Lo que dice el punto de salida: si se puede conectar, qué entrega (para que se vea y se lea) y, si no, por qué. */
 	const salidaDelPunto = (s: Salida) => {
@@ -54,6 +91,22 @@
 		return { conectable: true, clase: '', titulo: `Conectar «${s.campo}» a un operador` };
 	};
 </script>
+
+<!-- La «x» de un campo: lo esconde (apagada si tiene cable, y lo dice). -->
+{#snippet esconder(punto: string, etiqueta: string)}
+	{@const cableado = conCable(punto)}
+	<button
+		type="button"
+		data-testid="esconder-campo"
+		aria-label={`Quitar «${etiqueta}» del nodo`}
+		title={cableado ? 'Está conectado: desconéctalo para quitarlo del nodo' : 'Quitar este campo del nodo'}
+		disabled={cableado}
+		class="nodrag -ml-1 flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+		onclick={() => esconderCampo(punto)}
+	>
+		<X class="size-3" />
+	</button>
+{/snippet}
 
 <div
 	data-testid="nodo-tipo"
@@ -113,55 +166,94 @@
 		</div>
 		<ul class="py-1" data-testid="nodo-tipo-campos">
 			{#each tipo.campos as campo (campo.id)}
-				{@const punto = salidaDelPunto(salidaDe(tipo.nombre, campo))}
-				<li class="relative flex h-8 items-center gap-2 px-3 text-xs" data-testid="campo-nodo" data-campo={campo.nombre}>
-					<span class="min-w-0 flex-1 truncate font-medium" title={campo.nombre}>
-						{campo.nombre}{#if campo.obligatorio}<span class="text-destructive" title="Obligatorio"> *</span>{/if}
-					</span>
-					{#if seRepite(campo)}
-						<span
-							class="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-							title="Se repite: puede traer varios valores"
-							data-testid="campo-se-repite">1 a N</span
-						>
-					{/if}
-					<span class="shrink-0 text-[11px] text-muted-foreground">{etiquetaDeDato(campo.tipoDato)}</span>
-					<Handle
-						type="source"
-						position={Position.Right}
-						id={campo.nombre}
-						isConnectable={punto.conectable}
-						title={punto.titulo}
-						class={punto.clase}
-					/>
-				</li>
+				{#if visibles.has(campo.nombre)}
+					{@const punto = salidaDelPunto(salidaDe(tipo.nombre, campo))}
+					<li class="relative flex h-8 items-center gap-2 px-3 text-xs" data-testid="campo-nodo" data-campo={campo.nombre}>
+						{@render esconder(campo.nombre, campo.nombre)}
+						<span class="min-w-0 flex-1 truncate font-medium" title={campo.nombre}>
+							{campo.nombre}{#if campo.obligatorio}<span class="text-destructive" title="Obligatorio"> *</span>{/if}
+						</span>
+						{#if seRepite(campo)}
+							<span
+								class="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+								title="Se repite: puede traer varios valores"
+								data-testid="campo-se-repite">1 a N</span
+							>
+						{/if}
+						<span class="shrink-0 text-[11px] text-muted-foreground">{etiquetaDeDato(campo.tipoDato)}</span>
+						<Handle
+							type="source"
+							position={Position.Right}
+							id={campo.nombre}
+							isConnectable={punto.conectable}
+							title={punto.titulo}
+							class={punto.clase}
+						/>
+					</li>
+				{/if}
 				{#if campo.tipoDato === 'grupo'}
 					{#each campo.subcampos as sub (sub.id)}
-						{@const puntoSub = salidaDelPunto(salidaDe(tipo.nombre, campo, sub))}
-						<li
-							class="relative flex h-7 items-center gap-2 pr-3 pl-7 text-xs"
-							data-testid="subcampo-nodo"
-							data-campo={`${campo.nombre}.${sub.nombre}`}
-						>
-							<span class="min-w-0 flex-1 truncate text-muted-foreground" title={sub.nombre}>
-								{sub.nombre}{#if sub.obligatorio}<span class="text-destructive"> *</span>{/if}
-							</span>
-							<span class="shrink-0 text-[11px] text-muted-foreground">{etiquetaDeDato(sub.tipoDato)}</span>
-							<Handle
-								type="source"
-								position={Position.Right}
-								id={`${campo.nombre}.${sub.nombre}`}
-								isConnectable={puntoSub.conectable}
-								title={puntoSub.titulo}
-								class={puntoSub.clase}
-							/>
-						</li>
+						{@const idSub = `${campo.nombre}.${sub.nombre}`}
+						{#if visibles.has(idSub)}
+							{@const puntoSub = salidaDelPunto(salidaDe(tipo.nombre, campo, sub))}
+							<li
+								class="relative flex h-7 items-center gap-2 pr-3 pl-3 text-xs"
+								data-testid="subcampo-nodo"
+								data-campo={idSub}
+							>
+								{@render esconder(idSub, `${campo.nombre} › ${sub.nombre}`)}
+								<!-- Si el grupo mismo no se ve, la columna dice de cuál grupo es. -->
+								<span class="min-w-0 flex-1 truncate text-muted-foreground {visibles.has(campo.nombre) ? 'pl-4' : ''}" title={visibles.has(campo.nombre) ? sub.nombre : `${campo.nombre} › ${sub.nombre}`}>
+									{visibles.has(campo.nombre) ? sub.nombre : `${campo.nombre} › ${sub.nombre}`}{#if sub.obligatorio}<span class="text-destructive"> *</span>{/if}
+								</span>
+								<span class="shrink-0 text-[11px] text-muted-foreground">{etiquetaDeDato(sub.tipoDato)}</span>
+								<Handle
+									type="source"
+									position={Position.Right}
+									id={idSub}
+									isConnectable={puntoSub.conectable}
+									title={puntoSub.titulo}
+									class={puntoSub.clase}
+								/>
+							</li>
+						{/if}
 					{/each}
 				{/if}
 			{:else}
 				<li class="px-3 py-2 text-xs text-muted-foreground">Este tipo todavía no tiene campos.</li>
 			{/each}
+			{#if tipo.campos.length > 0 && visibles.size === 0}
+				<li class="px-3 py-1.5 text-xs text-muted-foreground" data-testid="nodo-sin-campos">Agrega los campos que vas a usar en las reglas.</li>
+			{/if}
 		</ul>
+
+		<!-- El menú con los campos que todavía no se ven: ahí se eligen (en vez de mostrarlos todos y alargar el nodo). -->
+		{#if tipo.campos.length > 0}
+			<div class="border-t border-border p-2">
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger
+						disabled={porAgregar.length === 0}
+						data-testid="agregar-campo"
+						class="nodrag flex h-8 w-full items-center gap-1.5 rounded-lg border border-dashed border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent"
+					>
+						<Plus class="size-3.5" />
+						<span class="min-w-0 flex-1 truncate text-left">{porAgregar.length === 0 ? 'Ya están todos los campos' : 'Agregar campo'}</span>
+						{#if porAgregar.length > 0}
+							<span class="text-[11px] font-normal" data-testid="agregar-campo-cuenta">{porAgregar.length}</span>
+						{/if}
+						<ChevronDown class="size-3.5" />
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="start" class="nowheel max-h-64 w-64 overflow-y-auto" data-testid="menu-agregar-campo">
+						{#each porAgregar as c (c.punto)}
+							<DropdownMenu.Item class="gap-2 text-xs" data-testid="opcion-agregar-campo" data-punto={c.punto} onSelect={() => agregarCampo(c.punto)}>
+								<span class="min-w-0 flex-1 truncate">{c.etiqueta}</span>
+								<span class="shrink-0 text-[11px] text-muted-foreground">{c.dato}</span>
+							</DropdownMenu.Item>
+						{/each}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			</div>
+		{/if}
 	{/if}
 </div>
 

@@ -128,7 +128,7 @@
 			fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 });
 			return;
 		}
-		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: posicion, data: { tipoId } };
+		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: posicion, data: { tipoId, campos: [] } };
 		nodes = [...nodes, nuevo];
 	}
 
