@@ -84,12 +84,15 @@
 		>
 			<Select.Trigger
 				id="tipo-virtual-del-proceso"
-				class="h-9 w-56 {tipoVirtual ? '' : 'border-primary'}"
+				class="h-9 w-64 {tipoVirtual ? '' : 'border-primary'}"
 				data-testid="proceso-tipo-virtual"
 				title="El tipo de expediente virtual sobre cuyas instancias corre este proceso"
 			>
 				<!-- Un id que no está en la lista (un tipo que se borró mientras el lienzo estaba abierto) se dice, en vez de esconderlo. -->
-				{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Elige un tipo de expediente virtual')}
+				<!-- `truncate` en un span propio: el texto largo se corta con «…» dentro del selector y no se sale de él (2026-11-03). -->
+				<span class="min-w-0 flex-1 truncate text-left" title={elegido?.nombre}>
+					{elegido?.nombre ?? (tipoVirtual ? 'Tipo que ya no existe' : 'Elige un tipo')}
+				</span>
 			</Select.Trigger>
 			<Select.Content>
 				{#each tiposVirtuales as t (t.id)}
