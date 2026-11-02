@@ -6,6 +6,8 @@
  * Todos los roles pueden VERLA, igual que la lista de tipos: nexus_back la da a cualquiera que opere en la organización. Un tipo que no es
  * de esta organización contesta 404 igual que uno que no existe (HU11).
  *
+ * Quien organiza (`puedeOrganizar`) ve en cada tarjeta el botón de borrar el expediente virtual.
+ *
  * El administrador de plataforma, que no pertenece a ninguna organización, opera en su espacio de plataforma (`tenantDe`).
  */
 
@@ -14,6 +16,7 @@ import { error } from '@sveltejs/kit';
 import type { ExpedienteVirtualDeTipo } from '$lib/expedientes/expedientes';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
 import { tenantDe } from '$lib/server/nexus';
+import { puedeOrganizar } from '$lib/usuarios/permisos';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ cookies, locals, params, url }) => {
@@ -25,5 +28,10 @@ export const load: PageServerLoad = async ({ cookies, locals, params, url }) => 
 	);
 	const tipo = cuerpo?.tipo as { id?: unknown; nombre?: unknown } | undefined;
 	if (typeof tipo?.id !== 'string' || typeof tipo?.nombre !== 'string') error(502, 'La respuesta del servidor no es válida.');
-	return { tipo: { id: tipo.id, nombre: tipo.nombre }, virtuales: listaDe<ExpedienteVirtualDeTipo>(cuerpo, 'expedientesVirtuales') };
+	return {
+		tipo: { id: tipo.id, nombre: tipo.nombre },
+		virtuales: listaDe<ExpedienteVirtualDeTipo>(cuerpo, 'expedientesVirtuales'),
+		// Quien organiza (Administrador, Supervisor, Analista y Operador) puede borrar un virtual desde aquí (2026-11-02).
+		puedeOrganizar: puedeOrganizar(locals.usuario)
+	};
 };
