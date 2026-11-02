@@ -6,8 +6,8 @@
 	 * Un expediente vacío se dice como tal. El diseño no trae ese estado; se hizo con el mismo lenguaje del estado vacío del listado y
 	 * con el botón «Subir archivos» para quien organiza (hasta el 2026-10-30 no prometía una forma de agregar documentos, porque no existía).
 	 *
-	 * Lo que se aparta del diseño: el encabezado lleva el NOMBRE del expediente y no un folio. Los documentos no traen páginas ni tipo
-	 * documental (el servidor aún no los guarda); ver `TarjetaDocumento`.
+	 * Lo que se aparta del diseño: el encabezado lleva el NOMBRE del expediente y no un folio. Los documentos no traen páginas; el tipo
+	 * documental sí lo traen desde la migración 0007 (ver `TarjetaDocumento`).
 	 *
 	 * **Expedientes virtuales (2026-10-29, decisión de Moibe).** El expediente dejó de tener tipo: es el receptáculo. Debajo de sus
 	 * documentos van sus expedientes virtuales, grupitos de esos documentos que son instancia de un tipo («la solicitud de crédito de
@@ -17,10 +17,14 @@
 	 *
 	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
 	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
-	 * archivos y se suben a ESTE expediente como documentos de la organización (carga manual, salen también en «Archivos procesados»). Quedan sin
-	 * tipo documental hasta que pasen por el pipeline (no se clasifican al subir). Al cerrar la ventana, la página se pone al día y dice cuántos
-	 * entraron. Los DUPLICADOS (mismo contenido que algo que ya está en el expediente o que otro archivo de la misma tanda) se avisan en la
-	 * ventana y no se suben salvo que la persona lo decida (2026-11-02).
+	 * archivos y se suben a ESTE expediente como documentos de la organización (carga manual, salen también en «Archivos procesados»). Al cerrar
+	 * la ventana, la página se pone al día y dice cuántos entraron. Los DUPLICADOS (mismo contenido que algo que ya está en el expediente o que
+	 * otro archivo de la misma tanda) se avisan en la ventana y no se suben salvo que la persona lo decida (2026-11-02).
+	 *
+	 * **El clasificador (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado por ahí»).** Cada archivo se CLASIFICA al
+	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo y, si el clasificador lo reconoce con la confianza mínima (que fija nexus_back y
+	 * llega en `clasificacionAutomatica`), entra solo a los expedientes virtuales de este expediente que esperan ese tipo, a todos los que haya.
+	 * La ventana de subir dice la regla con su mínimo, y el aviso de la página cuenta cuántos archivos metió el clasificador.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
@@ -237,14 +241,18 @@
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
 	documentos={expediente.documentos}
 	tipos={data.tiposVirtuales}
+	confianzaMinima={expediente.clasificacionAutomatica?.confianzaMinima}
 	puedeCrearTipo={data.puedeAdministrar}
 	alCrear={async (v) => {
 		// El virtual YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
 		const n = v.totalDocumentos;
+		// Los que nacieron adentro porque el clasificador ya los había reconocido (no los marcó la persona).
+		const solos = (v.documentos ?? []).filter((d) => d.agregadoPorClasificador).length;
+		const delClasificador = solos > 0 ? ` ${solos} ${solos === 1 ? 'documento fue agregado' : 'documentos fueron agregados'} por el clasificador.` : '';
 		aviso = {
 			testid: 'expediente-virtual-creado-aviso',
 			titulo: 'Expediente virtual creado',
-			cuerpo: `«${v.nombre}» (${v.tipo.nombre}) quedó en «${expediente.nombre}» con ${n} ${n === 1 ? 'documento' : 'documentos'}.`
+			cuerpo: `«${v.nombre}» (${v.tipo.nombre}) quedó en «${expediente.nombre}» con ${n} ${n === 1 ? 'documento' : 'documentos'}.${delClasificador}`
 		};
 		await invalidateAll();
 	}}
@@ -254,9 +262,10 @@
 	bind:open={subida}
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
 	existentes={expediente.documentos.map((d) => ({ nombre: d.nombreOriginal, sha256: d.sha256 }))}
-	alTerminar={async ({ subidos, fallidos, omitidos }) => {
+	confianzaMinima={expediente.clasificacionAutomatica?.confianzaMinima}
+	alTerminar={async ({ subidos, fallidos, omitidos, colocados }) => {
 		// Los archivos YA entraron: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos);
+		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos, colocados);
 		if (dicho) aviso = { testid: 'archivos-subidos-aviso', ...dicho };
 		await invalidateAll();
 	}}

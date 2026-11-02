@@ -33,14 +33,16 @@ export const cuantosArchivos = (n: number): string => `${n} ${n === 1 ? 'archivo
 
 /**
  * El aviso verde de la página cuando se cierra la subida. `null` si no se subió ninguno (no hay nada bueno que avisar: los errores ya
- * se vieron en la ventana). Si algunos fallaron, o se dejaron sin subir por estar duplicados, lo dice sin esconderlo.
+ * se vieron en la ventana). Si algunos fallaron, o se dejaron sin subir por estar duplicados, lo dice sin esconderlo; y si el clasificador
+ * metió archivos a expedientes virtuales (`colocados`, cuántos archivos), también.
  */
-export function avisoDeSubida(expediente: string, subidos: number, fallidos: number, omitidos = 0): { titulo: string; cuerpo: string } | null {
+export function avisoDeSubida(expediente: string, subidos: number, fallidos: number, omitidos = 0, colocados = 0): { titulo: string; cuerpo: string } | null {
 	if (subidos <= 0) return null;
 	const hecho = `Se ${subidos === 1 ? 'subió' : 'subieron'} ${cuantosArchivos(subidos)} a «${expediente}».`;
 	const resto = fallidos > 0 ? ` ${cuantosArchivos(fallidos)} no se ${fallidos === 1 ? 'pudo' : 'pudieron'} subir.` : '';
 	const duplicados = omitidos > 0 ? ` ${cuantosArchivos(omitidos)} ${omitidos === 1 ? 'duplicado no se subió' : 'duplicados no se subieron'}.` : '';
-	return { titulo: subidos === 1 ? 'Archivo subido' : 'Archivos subidos', cuerpo: hecho + resto + duplicados };
+	const clasificados = colocados > 0 ? ` El clasificador metió ${cuantosArchivos(colocados)} en expedientes virtuales.` : '';
+	return { titulo: subidos === 1 ? 'Archivo subido' : 'Archivos subidos', cuerpo: hecho + resto + duplicados + clasificados };
 }
 
 // ── Duplicados (Moibe, 2026-11-02: «avísame de duplicados») ──────────────────

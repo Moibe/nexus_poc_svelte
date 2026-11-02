@@ -4,6 +4,12 @@
  * manual: sale en «Archivos procesados») y lo mete a ESE expediente, todo en una llamada. Un archivo por petición: la pantalla sube los de
  * un lote uno por uno y dice cómo le fue a cada uno.
  *
+ * Desde el 2026-11-02 la misma llamada CLASIFICA el archivo (Moibe: «los dos clasifican… el mínimo sea 75%»): la respuesta trae, además del
+ * documento, `clasificacion` (estado, tipo, confianza y el mínimo con que el clasificador puede meterlo solo a un expediente virtual) y
+ * `expedientesVirtuales` (a cuáles entró). Se devuelve tal cual: ni clasificar ni meterlo a un virtual tumban la subida, así que un 201 puede
+ * traer `clasificacion.estado: "no_clasificado"` y el archivo ya está subido. Tarda lo que tarde Document AI, por eso el tiempo de espera de
+ * abajo es el largo y no el de una subida a secas.
+ *
  * Mismo patrón que `/api/documentos` (la carga manual del Pipeline): el `tenant` NO lo manda el navegador, lo fija el servidor desde la
  * sesión (`tenantDe`), y se reenvía el JWT de la persona para que nexus_back compruebe que puede organizar ahí (HU11). El `sha256`, si el
  * navegador lo calculó, viaja solo para VERIFICAR la transferencia.

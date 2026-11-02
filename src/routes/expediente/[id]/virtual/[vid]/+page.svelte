@@ -10,12 +10,16 @@
 	 *     ninguno, el botón sale apagado y la pantalla manda a subirlos al expediente (se distingue de «ya están todos», 2026-11-02);
 	 *   · «Quitar» uno: sale del grupito, NO del expediente;
 	 *   · «Borrar expediente virtual»: con la confirmación de la casa (`ConfirmarAccion`); no borra documentos, y regresa al expediente.
-	 * Los documentos se eligen a mano porque todavía no guardan su tipo documental. No hay diseño para esta pantalla en el Figma.
+	 * Los documentos se eligen a mano O los mete solo el clasificador (2026-11-02, Moibe: «los dos clasifican… el mínimo sea 75% y sea mencionado
+	 * por ahí»): el que reconoce un documento del expediente como de alguno de los tipos del esquema, con la confianza mínima que fija nexus_back,
+	 * lo agrega a todos los expedientes virtuales que lo esperan. La tarjeta lo dice («Agregado por el clasificador») y se quita como cualquier
+	 * otro; la nota bajo el esquema cuenta la regla con su mínimo. No hay diseño para esta pantalla en el Figma.
 	 */
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 
@@ -25,6 +29,7 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { notaDeVirtual } from '$lib/expedientes/clasificador';
 	import { documentosDelVirtual } from '$lib/expedientes/expedientes';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 
@@ -197,6 +202,14 @@
 			{/each}
 		{/if}
 	</p>
+
+	<!-- Lo que el clasificador hace solo con este virtual, dicho con su mínimo (2026-11-02): el número llega de la API, no se copia aquí. -->
+	{#if v.tipo.tiposDocumentales.length > 0}
+		<p class="mt-1 flex items-start gap-1.5 px-1 text-xs text-muted-foreground" data-testid="virtual-nota-clasificador">
+			<Sparkles class="mt-0.5 size-3.5 shrink-0 text-primary" />
+			<span>{notaDeVirtual(v.clasificacionAutomatica?.confianzaMinima)}</span>
+		</p>
+	{/if}
 
 	<!-- Los procesos del motor de reglas ligados a su tipo (2026-10-29): los que le aplican. Los documentos ya guardan su tipo documental y
 	     sus datos extraídos (migración 0007), que es lo que las reglas comparan; falta el motor que los corra sobre él. -->

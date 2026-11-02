@@ -24,6 +24,7 @@
 	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
 	import BarraAccionesPanel from '$lib/components/home/BarraAccionesPanel.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import { avisoDeColocados } from '$lib/expedientes/clasificador';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import TablaExpedientes from '$lib/components/expedientes/TablaExpedientes.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -82,10 +83,12 @@
 			else elegidos.delete(d.id);
 		}
 	}
-	async function alAgregar({ expediente, agregados, yaEstaban }: ResultadoAgregar) {
+	async function alAgregar({ expediente, agregados, yaEstaban, colocados }: ResultadoAgregar) {
 		const partes = [];
 		if (agregados) partes.push(`${agregados === 1 ? 'Se agregó 1 documento' : `Se agregaron ${agregados} documentos`} a «${expediente.nombre}».`);
 		if (yaEstaban) partes.push(yaEstaban === 1 ? '1 ya estaba en ese expediente.' : `${yaEstaban} ya estaban en ese expediente.`);
+		// Los que ya venían clasificados con la confianza mínima entran solos a los expedientes virtuales de ese expediente que los esperan.
+		if (colocados) partes.push(avisoDeColocados(colocados));
 		aviso = partes.join(' ');
 		panelAbierto = false;
 		elegidos.clear();

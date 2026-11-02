@@ -22,7 +22,8 @@
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 
 	type Documento = DocumentoDeExpediente & { expedientes: { id: string; nombre: string }[] };
-	export type ResultadoAgregar = { expediente: Expediente; agregados: number; yaEstaban: number };
+	/** `colocados`: de los agregados, cuántos el clasificador metió además, solo, a algún expediente virtual (ya venían clasificados). */
+	export type ResultadoAgregar = { expediente: Expediente; agregados: number; yaEstaban: number; colocados: number };
 
 	let {
 		documentos,
@@ -54,6 +55,7 @@
 		error = '';
 		let agregados = 0;
 		let yaEstaban = 0;
+		let colocados = 0;
 		try {
 			for (const d of documentos) {
 				const r = await fetch(`/api/expedientes/${encodeURIComponent(e.id)}/documentos/${encodeURIComponent(d.id)}`, { method: 'PUT' });
@@ -62,13 +64,16 @@
 					// Lo que ya entró, entró: se dice cuántos y qué falló, y la pantalla se refresca igual.
 					const hechos = agregados + yaEstaban;
 					error = `${hechos ? `Se agregaron ${hechos} de ${documentos.length}. ` : ''}No se pudo agregar «${d.nombreOriginal}»: ${mensajeDeFallo(datos, r.status, 'al agregar')}`;
-					if (hechos) onAgregado({ expediente: e, agregados, yaEstaban });
+					if (hechos) onAgregado({ expediente: e, agregados, yaEstaban, colocados });
 					return;
 				}
-				if (datos?.agregado) agregados += 1;
-				else yaEstaban += 1;
+				if (datos?.agregado) {
+					agregados += 1;
+					// Si ya venía clasificado con la confianza mínima, nexus_back lo metió solo a los virtuales de este expediente que lo esperan.
+					if (Array.isArray(datos.expedientesVirtuales) && datos.expedientesVirtuales.length > 0) colocados += 1;
+				} else yaEstaban += 1;
 			}
-			onAgregado({ expediente: e, agregados, yaEstaban });
+			onAgregado({ expediente: e, agregados, yaEstaban, colocados });
 		} catch {
 			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
 		} finally {
