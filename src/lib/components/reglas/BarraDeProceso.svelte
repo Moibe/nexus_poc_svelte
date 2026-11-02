@@ -15,6 +15,11 @@
 	 * ofrecer: se vuelve un botón con el mismo aspecto que abre un cuadrito que explica qué son y lleva a Configuración › Tipos de expediente
 	 * virtual. Si los tipos no se pudieron LEER (`tiposVirtualesFallo`), el cuadrito lo dice en vez de afirmar que no hay.
 	 *
+	 * «Guardar» NO se apaga de verdad cuando falta algo (2026-11-03, Moibe: «si el botón está greyado y lo pican, que le avise que hay que ponerle
+	 * nombre al proceso y focusee el cursor ahí»): un botón con `disabled` no recibe clics, así que se ve apagado (`aria-disabled`, mismo gris) y
+	 * al pulsarlo dice qué falta, bajo el campo que corresponde: sin nombre, el cursor va al nombre; con nombre pero sin tipo, al selector del
+	 * tipo. Sin cambios que guardar no dice nada (su título ya lo explica). Solo se apaga con `disabled` mientras guarda.
+	 *
 	 * Desde el 2026-11-03 el tipo es OBLIGATORIO para guardar (ya no hay «Sin tipo»; Moibe: «me gustan, haz todas tus recomendaciones»): de él
 	 * salen los tipos documentales que el lienzo ofrece. Elegir uno NO lo asigna aquí: avisa a `alCambiarTipo`, porque cambiarlo con nodos
 	 * puestos puede quitar algunos y el lienzo pregunta antes.
@@ -74,6 +79,28 @@
 	};
 
 	const elegido = $derived(tiposVirtuales.find((t) => t.id === tipoVirtual) ?? null);
+	/** Qué le falta al proceso para guardarse, si la persona pulsó «Guardar» sin eso: se dice bajo el campo y se quita al llenarlo. */
+	let falta = $state<'nombre' | 'tipo' | null>(null);
+	$effect(() => {
+		if (falta === 'nombre' && nombre.trim() !== '') falta = null;
+		if (falta === 'tipo' && tipoVirtual) falta = null;
+	});
+
+	function pulsarGuardar() {
+		if (guardando) return;
+		if (puedeGuardar) {
+			falta = null;
+			alGuardar();
+		} else if (!nombre.trim()) {
+			falta = 'nombre';
+			document.getElementById('nombre-del-proceso')?.focus();
+		} else if (!tipoVirtual) {
+			falta = 'tipo';
+			document.getElementById('tipo-virtual-del-proceso')?.focus();
+		}
+		// Sin cambios que guardar: no hay nada que decir; el título del botón ya lo explica.
+	}
+
 	/** El cuadrito que explica qué son los expedientes virtuales (solo cuando no hay tipos que elegir). */
 	let ayudaAbierta = $state(false);
 </script>
@@ -83,12 +110,30 @@
 		<ChevronLeft />
 		Procesos
 	</Button>
-	<div class="w-full max-w-sm min-w-56 flex-1">
+	<div class="relative w-full max-w-sm min-w-56 flex-1">
 		<label class="sr-only" for="nombre-del-proceso">Nombre del proceso</label>
-		<Input id="nombre-del-proceso" data-testid="proceso-nombre" bind:value={nombre} maxlength={200} placeholder="Nombre del proceso" autocomplete="off" />
+		<Input
+			id="nombre-del-proceso"
+			data-testid="proceso-nombre"
+			bind:value={nombre}
+			maxlength={200}
+			placeholder="Nombre del proceso"
+			autocomplete="off"
+			aria-invalid={falta === 'nombre' ? true : undefined}
+		/>
+		{#if falta === 'nombre'}
+			<p role="alert" data-testid="falta-nombre" class="absolute top-full left-0 z-10 mt-1.5 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
+				Ponle un nombre al proceso para guardarlo.
+			</p>
+		{/if}
 	</div>
-	<div class="flex items-center gap-2">
+	<div class="relative flex items-center gap-2">
 		<label class="shrink-0 text-xs text-muted-foreground" for="tipo-virtual-del-proceso">Corre sobre</label>
+		{#if falta === 'tipo'}
+			<p role="alert" data-testid="falta-tipo" class="absolute top-full left-0 z-10 mt-1.5 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
+				Elige sobre qué tipo de expediente virtual corre el proceso para guardarlo.
+			</p>
+		{/if}
 		{#if tiposVirtuales.length === 0}
 			<button
 				type="button"
@@ -146,7 +191,9 @@
 		{/if}
 		<Button
 			data-testid="guardar-proceso"
-			disabled={!puedeGuardar || guardando}
+			disabled={guardando}
+			aria-disabled={!puedeGuardar || guardando}
+			class={!puedeGuardar && !guardando ? 'cursor-not-allowed opacity-50' : ''}
 			title={!nombre.trim()
 				? 'Ponle un nombre al proceso para guardarlo'
 				: !tipoVirtual
@@ -154,7 +201,7 @@
 					: !puedeGuardar
 						? 'No hay cambios que guardar'
 						: 'Guardar (Ctrl+S)'}
-			onclick={alGuardar}
+			onclick={pulsarGuardar}
 		>
 			<Save />
 			{guardando ? 'Guardando…' : 'Guardar'}
