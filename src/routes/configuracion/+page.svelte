@@ -4,8 +4,8 @@
 	 *
 	 * Hasta hoy el engrane abría directo la biblioteca de tipos documentales, en un panel lateral. Ahora en el módulo se configura
 	 * más de una cosa, así que el engrane trae aquí: una página con un cuadro por sección, y cada cuadro lleva a su pantalla.
-	 * Son cuatro —tipos documentales, tipos de expediente, desde el 2026-10-29 procesos y reglas (lleva al mismo
-	 * `/motor-de-reglas` que la opción «Motor de reglas» del engrane) y, desde el 2026-11-03, grupos (el nivel de arriba de los
+	 * Son cuatro —tipos documentales, tipos de expediente, desde el 2026-10-29 procesos y reglas (lleva a `/motor-de-reglas`; desde el
+	 * 2026-11-03 es la ÚNICA entrada al motor: el engrane ya no tiene «Motor de reglas») y, desde el 2026-11-03, grupos (el nivel de arriba de los
 	 * expedientes: áreas, departamentos, trimestres… como los llame cada organización)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
 	 *
 	 * Los expedientes NO viven aquí: se trabajan en el módulo de uso (`/uso`, la opción «Módulo de uso» del engrane, que sustituyó a
@@ -45,7 +45,7 @@
 			id: 'procesos-y-reglas',
 			nombre: 'Procesos y reglas',
 			href: '/motor-de-reglas',
-			// El mismo ícono que «Motor de reglas» en el menú del engrane: es el mismo lugar.
+			// El ícono que tuvo «Motor de reglas» en el menú del engrane, de donde se quitó el 2026-11-03: ahora se entra por aquí.
 			icono: Cog,
 			descripcion:
 				'Los procesos de tu organización: las reglas que comparan los datos de los documentos de un expediente y el resultado que dan.'

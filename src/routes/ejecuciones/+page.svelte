@@ -365,7 +365,7 @@
 								Tu rol puede consultar las ejecuciones, pero no ejecutar procesos.
 							{:else}
 								«{data.procesoElegido.nombre}» todavía no se puede ejecutar: no tiene su nodo de Resultado, o su Resultado no tiene ninguna regla conectada. Ábrelo en el motor de reglas
-								(Configuración › Motor de reglas) y agrégalo para poder ejecutarlo.
+								(Configuración › Procesos y reglas) y agrégalo para poder ejecutarlo.
 							{/if}
 						</span>
 					</p>
