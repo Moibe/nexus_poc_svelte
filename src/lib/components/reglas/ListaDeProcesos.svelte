@@ -25,7 +25,7 @@
 	 *     expedientes y lo respete. El aviso es el del diseño.
 	 *
 	 * La tarjeta no se abre picando en su espacio vacío (misma regla que la biblioteca: se pidió así porque un clic en el vacío abría
-	 * cosas por accidente): se abre con su nombre, que es un enlace, o con «Editar» del menú ⋮.
+	 * cosas por accidente): se abre con su nombre, que es un enlace, o con el lápiz de su tarjeta (ya no hay menú ⋮, 2026-11-03).
 	 *
 	 * Solo lo ve quien administra: el candado está en `+layout.server.ts`.
 	 */
@@ -33,16 +33,14 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 
-	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Power from '@lucide/svelte/icons/power';
+	import Settings from '@lucide/svelte/icons/settings';
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
-	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import {
 		cargarProcesos,
@@ -115,7 +113,7 @@
 
 	<div class="flex items-center gap-3 px-6 py-4">
 		<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-			<FolderPlus class="size-4" />
+			<Settings class="size-4" />
 		</span>
 		<div class="min-w-0 flex-1">
 			<h2 class="text-lg font-medium text-foreground">Configura tus procesos documentales</h2>
@@ -148,7 +146,7 @@
 			{:else if procesos.length === 0}
 				<div class="flex h-full flex-col items-center justify-center gap-6 text-center" data-testid="procesos-vacio">
 					<span class="flex size-12.5 items-center justify-center rounded-xl border-2 border-muted bg-card text-primary">
-						<FolderPlus class="size-6" />
+						<Settings class="size-6" />
 					</span>
 					<div>
 						<p class="text-sm font-medium text-foreground">Crea tu proceso</p>
@@ -168,7 +166,7 @@
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
-									<FolderPlus class="size-4" />
+									<Settings class="size-4" />
 								</span>
 								<span class="min-w-0 flex-1">
 									<a
@@ -219,38 +217,30 @@
 								</span>
 							{/if}
 
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<button
-											{...props}
-											type="button"
-											data-testid="menu-proceso"
-											aria-label="Más opciones de {p.datos.nombre}"
-											disabled={cambiandoId === p.id}
-											class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted disabled:pointer-events-none disabled:opacity-50"
-										>
-											<MoreVerticalIcon />
-										</button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<!-- El menú del frame 5503:107474: «Editar», una raya punteada y «Desactivar» (o «Activar») en azul con su ícono de encendido. -->
-								<DropdownMenu.Content align="end" class="w-44 p-3">
-									<DropdownMenu.Item class="h-11.5 gap-3 px-2 whitespace-nowrap" data-testid="proceso-editar" onSelect={() => void goto(rutaDe(p.id))}>
-										<Pencil class="size-4 text-muted-foreground" />
-										<span>Editar</span>
-									</DropdownMenu.Item>
-									<div class="my-1 border-t border-dashed border-border" aria-hidden="true"></div>
-									<DropdownMenu.Item
-										class="h-11.5 gap-3 px-2 whitespace-nowrap text-primary"
-										data-testid="proceso-alternar-activo"
-										onSelect={() => (activo ? (porDesactivar = p) : void cambiarActivo(p, true))}
-									>
-										<Power class="size-4" />
-										<span>{activo ? 'Desactivar' : 'Activar'}</span>
-									</DropdownMenu.Item>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
+							<!-- Dos íconos directos en vez del menú ⋮ (2026-11-03, Moibe: «no usemos puntitos aquí»): el lápiz abre el proceso y el de encendido lo activa o desactiva.
+							     Cada uno dice lo que hace en su `title` y en su `aria-label`; el de encendido no pide confirmación al activar, y al desactivar sí (abajo). -->
+							<div class="flex shrink-0 items-center gap-1">
+								<a
+									href={rutaDe(p.id)}
+									data-testid="proceso-editar"
+									title="Editar"
+									aria-label="Editar {p.datos.nombre}"
+									class="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+								>
+									<Pencil class="size-4" />
+								</a>
+								<button
+									type="button"
+									data-testid="proceso-alternar-activo"
+									title={activo ? 'Desactivar' : 'Activar'}
+									aria-label="{activo ? 'Desactivar' : 'Activar'} {p.datos.nombre}"
+									disabled={cambiandoId === p.id}
+									onclick={() => (activo ? (porDesactivar = p) : void cambiarActivo(p, true))}
+									class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {activo ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}"
+								>
+									<Power class="size-4" />
+								</button>
+							</div>
 						</div>
 					{/each}
 				</div>
