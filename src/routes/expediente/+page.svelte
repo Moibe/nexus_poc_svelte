@@ -21,9 +21,16 @@
 	 * La vista se recuerda en una cookie que lee `+page.server.ts` (así no hay destello de la otra al cargar); el orden y los filtros
 	 * se quedan en la pantalla, no se recuerdan.
 	 *
+	 * **Grupos (2026-11-03, decisión de Moibe).** Cada expediente vive en un grupo (áreas, departamentos, trimestres… como lo llame cada
+	 * organización): el listado trae su columna «Grupo» (ordenable, con «Sin grupo» siempre al final) y un filtro por grupo, y el alta pide
+	 * elegirlo. Entrar con `?grupo=<id>` —el enlace de la cuenta de expedientes en Configuración › Grupos— abre el listado ya filtrado por él.
+	 * Los expedientes de antes de los grupos salen como «Sin grupo» y se asignan desde su detalle.
+	 *
 	 * Quién puede crear lo decide nexus_back; aquí `puedeOrganizar` solo decide qué se OFRECE. Todos los roles ven la lista.
 	 */
+	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/state';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import List from '@lucide/svelte/icons/list';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -39,6 +46,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		COOKIE_VISTA_EXPEDIENTES,
+		FILTRO_SIN_GRUPO,
 		filtrarExpedientes,
 		hayFiltros,
 		mensajeSinResultados,
@@ -57,9 +65,22 @@
 	const expedientes = $derived(data.expedientes);
 
 	/** Siempre un objeto nuevo, con sus listas propias: `SIN_FILTROS` es la constante y no se debe tocar. */
-	const sinFiltros = (): FiltrosExpedientes => ({ ...SIN_FILTROS, documentos: [] });
+	const sinFiltros = (): FiltrosExpedientes => ({ ...SIN_FILTROS, grupos: [], documentos: [] });
 
-	let filtros = $state<FiltrosExpedientes>(sinFiltros());
+	// Con `?grupo=<id>` el listado arranca filtrado por ese grupo (el enlace de la cuenta de Configuración › Grupos). Un id que no es de un
+	// grupo de la organización no filtra nada: dejaría la lista vacía sin que nadie pueda quitar un filtro que no ve.
+	// Solo cuenta lo que dice al ENTRAR: después manda lo que la persona elija en el filtro (de ahí el `untrack`).
+	let filtros = $state<FiltrosExpedientes>(
+		untrack(() => {
+			const deLaDireccion = page.url.searchParams.get('grupo');
+			return { ...sinFiltros(), grupos: deLaDireccion && data.grupos.some((g) => g.id === deLaDireccion) ? [deLaDireccion] : [] };
+		})
+	);
+	/** Lo que ofrece el filtro de grupos: los de la organización y, si hay expedientes de antes de los grupos, «Sin grupo». */
+	const opcionesDeGrupo = $derived([
+		...data.grupos.map((g) => ({ valor: g.id, etiqueta: g.nombre })),
+		...(expedientes.some((e) => !e.grupo) ? [{ valor: FILTRO_SIN_GRUPO, etiqueta: 'Sin grupo' }] : [])
+	]);
 	let orden = $state<OrdenExpedientes>('recientes');
 	/** La vista que eligió quien mira en esta visita; mientras no elija, manda la cookie que leyó el servidor. */
 	let vistaElegida = $state<VistaExpedientes | null>(null);
@@ -80,6 +101,8 @@
 	}
 
 	let expedienteAbierto = $state(false);
+	/** El grupo con que ya abre el alta: el del filtro, si el listado está filtrado por UN solo grupo. */
+	const grupoInicial = $derived(filtros.grupos.length === 1 && filtros.grupos[0] !== FILTRO_SIN_GRUPO ? filtros.grupos[0] : null);
 	/** El último alta que salió bien, para el aviso verde. Se apaga al abrir otra: a partir de ahí hablaría de la anterior. */
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 
@@ -181,6 +204,7 @@
 		<BarraFiltrosExpedientes
 			bind:filtros
 			{filtrando}
+			grupos={opcionesDeGrupo}
 			mostrados={visibles.length}
 			total={expedientes.length}
 			alLimpiar={() => (filtros = sinFiltros())}
@@ -202,9 +226,13 @@
 
 <ExpedienteModal
 	bind:open={expedienteAbierto}
-	alCrear={async (nombre) => {
+	grupos={data.grupos}
+	gruposFallo={data.gruposFallo}
+	puedeCrearGrupo={data.puedeAdministrar}
+	{grupoInicial}
+	alCrear={async (nombre, grupo) => {
 		// El expediente YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		aviso = { testid: 'expediente-creado-aviso', titulo: 'Expediente creado', cuerpo: `«${nombre}» quedó registrado en tu organización.` };
+		aviso = { testid: 'expediente-creado-aviso', titulo: 'Expediente creado', cuerpo: `«${nombre}» quedó registrado en el grupo «${grupo}».` };
 		await invalidateAll();
 	}}
 />

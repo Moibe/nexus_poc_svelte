@@ -1,9 +1,10 @@
 <script lang="ts">
 	/**
 	 * Los filtros del listado de expedientes (2026-10-25, pedido de Moibe), en una barra bajo el encabezado y NO en un modal con
-	 * «Aplicar»: filtrar un listado es ir viendo qué queda, así que cada cambio se aplica al instante. Son dos, con los mismos
+	 * «Aplicar»: filtrar un listado es ir viendo qué queda, así que cada cambio se aplica al instante. Son tres, con los mismos
 	 * controles de «Filtrar documentos» de la Bandeja (`DesplegableMultiple` y `SelectorRangoFechas`) en su variante compacta (hasta el
-	 * 2026-10-29 había uno más, el del TIPO de expediente; el expediente dejó de tener tipo):
+	 * 2026-10-29 había uno más, el del TIPO de expediente; el expediente dejó de tener tipo, y desde el 2026-11-03 se filtra por GRUPO):
+	 *   · el grupo (uno o varios; «Sin grupo» son los de antes de los grupos);
 	 *   · con documentos / sin documentos (los dos juntos no filtran);
 	 *   · la fecha de creación, por rango (solo cuenta con los dos extremos).
 	 * El texto del buscador también es un filtro y vive en el encabezado, pero «Limpiar filtros» lo quita junto con los demás. A la
@@ -21,9 +22,12 @@
 		filtrando,
 		mostrados,
 		total,
+		grupos = [],
 		alLimpiar
 	}: {
 		filtros: FiltrosExpedientes;
+		/** Lo que ofrece el filtro de grupos. Sin opciones (la organización no tiene grupos), el filtro no sale. */
+		grupos?: { valor: string; etiqueta: string }[];
 		/** ¿Hay algo filtrando (texto incluido)? Solo entonces salen «Limpiar filtros» y la cuenta. */
 		filtrando: boolean;
 		/** Cuántos expedientes quedan con los filtros puestos, de `total`. */
@@ -38,6 +42,18 @@
 		<SlidersHorizontal class="size-3.5" aria-hidden="true" />
 		Filtrar por
 	</span>
+	{#if grupos.length > 0}
+		<div class="w-44">
+			<DesplegableMultiple
+				compacto
+				id="filtro-grupo-expediente-campo"
+				testid="filtro-grupo-expediente"
+				marcador="Grupo"
+				opciones={grupos}
+				bind:valor={filtros.grupos}
+			/>
+		</div>
+	{/if}
 	<div class="w-44">
 		<DesplegableMultiple
 			compacto

@@ -25,16 +25,23 @@
 	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo y, si el clasificador lo reconoce como de un tipo, entra solo a los expedientes
 	 * virtuales de este expediente que esperan ese tipo, a todos los que haya. La ventana de subir dice la regla, y el aviso de la página cuenta
 	 * cuántos archivos metió el clasificador.
+	 *
+	 * **Grupo (2026-11-03, decisión de Moibe).** El expediente vive en un grupo (áreas, departamentos, trimestres… como lo llame cada
+	 * organización): el encabezado lo dice, o dice «Sin grupo» si es de antes de los grupos. Quien organiza lo asigna o lo cambia con el botón de
+	 * al lado (`AsignarGrupoModal`): un expediente se puede pasar de un grupo a otro, pero no dejar sin grupo.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
+	import Layers from '@lucide/svelte/icons/layers';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Upload from '@lucide/svelte/icons/upload';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
+	import AsignarGrupoModal from '$lib/components/expedientes/AsignarGrupoModal.svelte';
 	import ExpedienteVirtualModal from '$lib/components/expedientes/ExpedienteVirtualModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
@@ -59,6 +66,7 @@
 	let orden = $state<OrdenDocumentos>('recientes');
 	let altaVirtual = $state(false);
 	let subida = $state(false);
+	let asignandoGrupo = $state(false);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 
 	const visibles = $derived.by(() => {
@@ -101,6 +109,27 @@
 						data-testid="total-documentos">{expediente.documentos.length}</span
 					>
 					<span class="shrink-0">Total de archivos</span>
+					<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
+					<!-- El grupo en que vive. Los de antes de los grupos no tienen: se dice, y quien organiza puede asignárselo desde aquí. -->
+					<span class="flex min-w-0 items-center gap-1" data-testid="expediente-detalle-grupo" data-con-grupo={expediente.grupo ? 'si' : 'no'}>
+						<Layers class="size-3 shrink-0" aria-hidden="true" />
+						<span class="truncate" title={expediente.grupo?.nombre ?? 'Sin grupo'}>{expediente.grupo?.nombre ?? 'Sin grupo'}</span>
+						{#if data.puedeOrganizar}
+							<button
+								type="button"
+								class="-my-1 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-primary transition-colors outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50"
+								data-testid="cambiar-grupo-expediente"
+								aria-label={expediente.grupo ? `Cambiar el grupo de «${expediente.nombre}»` : `Asignar un grupo a «${expediente.nombre}»`}
+								onclick={() => {
+									aviso = null;
+									asignandoGrupo = true;
+								}}
+							>
+								<Pencil class="size-3" aria-hidden="true" />
+								{expediente.grupo ? 'Cambiar' : 'Asignar grupo'}
+							</button>
+						{/if}
+					</span>
 				</div>
 			</div>
 		</div>
@@ -265,6 +294,20 @@
 			titulo: 'Expediente virtual creado',
 			cuerpo: `«${v.nombre}» (${v.tipo.nombre}) quedó en «${expediente.nombre}» con ${n} ${n === 1 ? 'documento' : 'documentos'}.${delClasificador}`
 		};
+		await invalidateAll();
+	}}
+/>
+
+<AsignarGrupoModal
+	bind:open={asignandoGrupo}
+	expediente={{ id: expediente.id, nombre: expediente.nombre, grupo: expediente.grupo }}
+	grupos={data.grupos}
+	gruposFallo={data.gruposFallo}
+	puedeCrearGrupo={data.puedeAdministrar}
+	alAsignar={async (grupo, cambiado) => {
+		// El expediente YA está en ese grupo: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad. Si ya estaba ahí no hay
+		// de qué avisar.
+		if (cambiado) aviso = { testid: 'grupo-asignado-aviso', titulo: 'Grupo asignado', cuerpo: `«${expediente.nombre}» ahora está en el grupo «${grupo}».` };
 		await invalidateAll();
 	}}
 />
