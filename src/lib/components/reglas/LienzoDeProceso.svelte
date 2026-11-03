@@ -685,7 +685,8 @@
 		>
 			<Background variant={BackgroundVariant.Dots} gap={20} />
 			<Controls showLock={false} />
-			<MiniMap pannable zoomable />
+			<!-- El mapa más chico y translúcido (2026-11-03, Moibe: «se encima»): con el tamaño de fábrica tapaba la esquina de lo que hubiera ahí y se leía como otro nodo. -->
+			<MiniMap pannable zoomable width={150} height={96} bgColor="color-mix(in oklab, var(--card) 75%, transparent)" class="overflow-hidden rounded-lg border border-border opacity-90" />
 			{#if aviso}
 				<Panel position="top-center">
 					<p
