@@ -5,15 +5,15 @@
 	 *
 	 * Sale del Figma Sprint 5, HUN5 «Crear proceso» (frames `5480:105161` el estado vacío, `5503:107128` la lista, `5503:107474` el menú
 	 * de una tarjeta y `5503:108095` el aviso de desactivar). Lo visual es el del diseño, y el esqueleto es el mismo de la biblioteca de
-	 * tipos documentales (`ModuloConfiguracion.svelte`): una tarjeta grande con su encabezado y su X, una barra lateral y, a la derecha,
-	 * las tarjetas.
+	 * tipos documentales (`ModuloConfiguracion.svelte`): una tarjeta grande con su encabezado y su X, y las tarjetas (en el diseño, con una barra lateral
+	 * a la izquierda, que aquí ya no existe: ver abajo).
 	 *
 	 * SIN ramas en la barra lateral (2026-11-03, Moibe: «ver el proceso en el árbol de la izquierda y en el panel de la derecha no me hace
 	 * mucho sentido»). El Figma dibuja cada proceso como una rama del árbol, y aquí se copió junto con el gesto de la biblioteca (picar una
 	 * rama dejaba solo su tarjeta), pero en la biblioteca el árbol además reordena y navega la calibración; aquí solo repetía las tarjetas.
 	 * Tampoco queda la tarjeta de la sección «Procesos configurados» (con su flecha), que seguía leyéndose como una entrada de menú cuyo
-	 * contenido era el panel de la derecha (Moibe, mismo día: «también quítala»). La barra trae solo su rótulo y «Nuevo proceso»; las
-	 * tarjetas SON la lista.
+	 * contenido era el panel de la derecha (Moibe, mismo día: «también quítala»), y con eso la barra quedó con un rótulo y un botón: se quitó
+	 * ENTERA («ya no tiene propósito»). «Nuevo proceso» pasó a la banda del título, a la derecha; las tarjetas ocupan todo el ancho y SON la lista.
 	 *
 	 * Lo que se aparta del diseño, porque el diseño es de antes del lienzo:
 	 *   · Los textos hablan de «campos requeridos de cada documento»; un proceso de hoy es un conjunto de REGLAS sobre un expediente, y
@@ -124,17 +124,15 @@
 				para validarlos.
 			</p>
 		</div>
+		<!-- Sin barra lateral (2026-11-03): sin ramas ni sección ya no tenía propósito, y «Nuevo proceso» pasó aquí, a la derecha del título (como «Agregar
+		     nuevo tipo documental» en la Biblioteca). Sin procesos, el acceso es «Crear proceso» del centro. -->
+		{#if estadoProcesos.cargada && procesos.length > 0}
+			<Button class="shrink-0" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
+		{/if}
 	</div>
 
 	<div class="flex min-h-0 flex-1">
-		<aside class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6">
-			<p class="text-xs text-foreground">Procesos</p>
-			<div class="mt-auto pt-6">
-				<Button class="w-full" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
-			</div>
-		</aside>
-
-		<div class="flex-1 overflow-y-auto p-8">
+		<div class="flex-1 overflow-y-auto border-t-2 border-muted p-8">
 			{#if !estadoProcesos.cargada}
 				<!-- La lista vive en el servidor (por organización) y todavía no llega: un «Crea tu proceso» ahora se leería como «no tienes
 				     ninguno». Con un error, la salida es reintentar. -->

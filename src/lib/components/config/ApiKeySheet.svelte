@@ -347,33 +347,14 @@
 					solicitudes a los servicios de Biblioratum.
 				</Sheet.Description>
 			</div>
+			<!-- Sin barra lateral (2026-11-03): sin ramas ni sección ya no tenía propósito, y «Nueva API Key» pasó aquí, a la derecha del título. Solo con llaves ya
+			     emitidas: en el estado vacío el acceso es el botón del centro, y dos botones para lo mismo se leen como dos cosas distintas. -->
+			{#if vista === 'lista' && apiKeys.length > 0}
+				<Button class="shrink-0" data-testid="nueva-api-key-sidebar" onclick={irANueva}>Nueva API Key</Button>
+			{/if}
 		</div>
 
 		<div class="flex min-h-0 flex-1">
-			<!-- statusbar: 330px, fondo y bordes de 2px, igual que el del módulo de
-			     configuración. Es el mismo en las tres vistas: así lo dibujan las tres
-			     capturas. -->
-			<aside
-				class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
-			>
-				<p class="text-xs text-foreground">Configuración</p>
-				<!-- Sin ramas debajo (2026-11-03, Moibe: «sí, api keys y procesos», tras decir que ver lo mismo en el árbol de la izquierda y en el panel de la derecha «no me hace mucho
-				     sentido»): el árbol repetía las tarjetas y solo servía de filtro, un gesto que yo había deducido de la rama resaltada de la captura. Las
-				     tarjetas son la lista completa. Igual que Webhooks y Expedientes, que tampoco tienen ramas; en la Biblioteca de tipos documentales el árbol
-				     se queda, porque ahí también reordena y navega la calibración. Tampoco queda la tarjeta de la sección «API Keys» (con su flecha), que se leía como una entrada de menú cuyo contenido era el panel (Moibe, mismo día: «también quítala»). Ver `docs/pendientes-ux.md`. -->
-				{#if apiKeys.length > 0}
-					<!-- Al PIE del sidebar, como en la captura. Solo con llaves ya
-					     emitidas: en el estado vacío el acceso es el botón del centro, que
-					     es lo que dibuja su propia captura, y dos botones para lo mismo en
-					     la misma pantalla se leen como dos cosas distintas. -->
-					{#if vista === 'lista'}
-						<Button class="mt-auto w-full" data-testid="nueva-api-key-sidebar" onclick={irANueva}>
-							Nueva API Key
-						</Button>
-					{/if}
-				{/if}
-			</aside>
-
 			<!-- El pie vive DENTRO de esta columna, no debajo del modal entero: en las
 			     capturas su línea divisoria arranca donde termina el sidebar. -->
 			<!-- `min-w-0` es obligatorio: esta columna es un hijo flexible del renglón con
@@ -381,7 +362,7 @@
 			     Con un texto largo sin espacios —una URL de 800 caracteres, o un
 			     nombre de 100 sin cortes— la tarjeta medía miles de píxeles y se
 			     salía de la ventana, por más `truncate` que llevara adentro. -->
-			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col border-t-2 border-muted">
 				<div class="flex-1 overflow-y-auto p-8">
 					<!-- Los avisos del módulo. Son dos y comparten bloque (ver el snippet
 					     `AvisoVerde`): "API creada" en la vista del secret, y "API Key
