@@ -87,12 +87,19 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	return json(cuerpo, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 };
 
-/** Más renglones del historial: `?antes=<id de la última que ya se vio>&limite=`. Los filtros por expediente, virtual y proceso se reenvían tal cual. */
+/**
+ * El historial: más renglones (`?antes=<id de la última que ya se vio>&limite=`) y, con filtros, el historial filtrado (2026-11-03, Moibe: «agrega dichos
+ * filtros»). Los filtros se reenvían tal cual a nexus_back, que es quien los aplica: `expediente`, `virtual`, `desde` y `hasta` van una vez; `proceso`,
+ * `persona` y `caso` (el estado) pueden repetirse y se reenvían todos. Lo demás que traiga la dirección se descarta, y el tenant es el de la sesión.
+ */
 export const GET: RequestHandler = async ({ cookies, locals, url }) => {
 	const consulta = new URLSearchParams({ tenant: tenantDe(locals) });
-	for (const clave of ['expediente', 'virtual', 'proceso', 'limite', 'antes']) {
+	for (const clave of ['expediente', 'virtual', 'desde', 'hasta', 'limite', 'antes']) {
 		const valor = url.searchParams.get(clave);
 		if (valor) consulta.set(clave, valor);
+	}
+	for (const clave of ['proceso', 'persona', 'caso']) {
+		for (const valor of url.searchParams.getAll(clave)) if (valor) consulta.append(clave, valor);
 	}
 	let respuesta: Response;
 	try {

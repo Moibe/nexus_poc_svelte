@@ -10,7 +10,8 @@
 	 *     enseguida: la palabra con la que terminó el proceso y, aparte, el detalle.
 	 *   · Abajo, el historial: una fila por ejecución, con Fecha de ejecución, Expediente, Expediente virtual, Proceso y Resultado; picar una
 	 *     fila la abre (la lista de valores finales, cómo salió cada regla y de qué documento se tomó cada dato). De la más reciente a la más
-	 *     antigua, de 50 en 50.
+	 *     antigua, de 50 en 50. Se puede filtrar por fecha, proceso, estado y persona (2026-11-03, Moibe: «agrega dichos filtros»): una barra bajo
+	 *     el título, con los controles del listado de expedientes, y es el servidor quien filtra (ver `$lib/ejecuciones/filtros`).
 	 *
 	 * Si el expediente virtual trae DOS O MÁS documentos de un tipo que el proceso usa, el proceso NO se ejecuta: no se sabe cuál es «el INE»
 	 * (Moibe). La pantalla lo avisa, dice cuáles son y lleva al expediente virtual, donde esos documentos quedan marcados «Duplicado».
@@ -24,6 +25,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
+	import BarraFiltrosEjecuciones from '$lib/components/ejecuciones/BarraFiltrosEjecuciones.svelte';
 	import EjecucionModal from '$lib/components/ejecuciones/EjecucionModal.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
@@ -36,8 +38,17 @@
 		rutaDelVirtual,
 		type EjecucionCompleta,
 		type EjecucionResumen,
+		type Historial,
 		type NoSeEjecuto
 	} from '$lib/ejecuciones/ejecuciones';
+	import {
+		MENSAJE_SIN_RESULTADOS,
+		consultaDeFiltros,
+		cuentaDeFiltrado,
+		hayFiltrosHistorial,
+		sinFiltrosHistorial,
+		type FiltrosHistorial
+	} from '$lib/ejecuciones/filtros';
 
 	let { data } = $props();
 
@@ -121,17 +132,62 @@
 
 	// ── El historial ─────────────────────────────────────────────────────────
 
-	/** Las páginas siguientes que se pidieron con «Ver más»; las primeras vienen de la carga. */
+	// Los filtros los aplica el servidor: el historial va de 50 en 50, y filtrar lo que ya se ve dejaría fuera lo que todavía no se ha pedido (y el total no
+	// sería el de lo que cumple). Viven en la página y no en la dirección, a diferencia de lo que se elige para ejecutar: filtrar no cambia lo que se ofrece
+	// arriba, y no vale la pena volver a leer expedientes y procesos con cada clic.
+	let filtros = $state<FiltrosHistorial>(sinFiltrosHistorial());
+	const filtrando = $derived(hayFiltrosHistorial(filtros));
+	/** La primera página con los filtros puestos; `null` mientras nada filtra, o hasta que llega la primera respuesta. */
+	let filtrado = $state<Historial | null>(null);
+	let buscando = $state(false);
+	let falloFiltro = $state('');
+	/** Cuenta cada vez que cambia lo que se pregunta (los filtros, o que haya más ejecuciones): una respuesta que llega con una cuenta vieja ya no es de lo que se mira. */
+	let pedido = 0;
+	/** Cuántas ejecuciones hay en total: si cambia (se ejecutó algo), lo filtrado se pregunta otra vez. Es un `$derived` para no volver a preguntar cada vez que `data` se recarga igual. */
+	const totalVisto = $derived(data.historial.total);
+
+	$effect(() => {
+		const consulta = filtrando ? consultaDeFiltros(filtros).toString() : '';
+		void totalVisto;
+		untrack(() => {
+			const mio = ++pedido;
+			falloFiltro = '';
+			if (!consulta) {
+				filtrado = null;
+				buscando = false;
+				return;
+			}
+			buscando = true;
+			fetch(`/api/ejecuciones?${consulta}&limite=50`)
+				.then(async (respuesta) => {
+					const cuerpo = await respuesta.json().catch(() => null);
+					if (!respuesta.ok) throw new Error(cuerpo?.mensaje ?? 'No se pudieron aplicar los filtros.');
+					if (mio !== pedido) return;
+					filtrado = { ejecuciones: (cuerpo?.ejecuciones ?? []) as EjecucionResumen[], total: typeof cuerpo?.total === 'number' ? cuerpo.total : 0, hayMas: cuerpo?.hayMas === true };
+				})
+				.catch((e) => {
+					if (mio === pedido) falloFiltro = e instanceof Error ? e.message : 'No se pudieron aplicar los filtros.';
+				})
+				.finally(() => {
+					if (mio === pedido) buscando = false;
+				});
+		});
+	});
+
+	/** Las páginas siguientes que se pidieron con «Ver más»; las primeras vienen de la carga, o de los filtros. */
 	let extra = $state<EjecucionResumen[]>([]);
 	let hayMasExtra = $state<boolean | null>(null);
 	let cargandoMas = $state(false);
 	let falloMas = $state('');
-	const filas = $derived([...data.historial.ejecuciones, ...extra]);
-	const hayMas = $derived(hayMasExtra ?? data.historial.hayMas);
+	const fuente = $derived(filtrando && filtrado ? filtrado : data.historial);
+	const filas = $derived([...fuente.ejecuciones, ...extra]);
+	const hayMas = $derived(hayMasExtra ?? fuente.hayMas);
+	const cuenta = $derived(!filtrando ? '' : buscando ? 'Buscando…' : filtrado ? cuentaDeFiltrado(filtrado.total, data.historial.total) : '');
 
-	// Una carga nueva del historial (después de ejecutar) trae las primeras otra vez: lo de «Ver más» ya no vale.
+	// Una carga nueva del historial (después de ejecutar), o una respuesta nueva de los filtros, trae las primeras otra vez: lo de «Ver más» ya no vale.
 	$effect(() => {
 		void data.historial;
+		void filtrado;
 		untrack(() => {
 			extra = [];
 			hayMasExtra = null;
@@ -141,13 +197,19 @@
 
 	async function verMas() {
 		const ultimaVista = filas.at(-1);
-		if (!ultimaVista || cargandoMas) return;
+		if (!ultimaVista || cargandoMas || buscando) return;
+		const mio = pedido;
 		cargandoMas = true;
 		falloMas = '';
 		try {
-			const respuesta = await fetch(`/api/ejecuciones?antes=${encodeURIComponent(ultimaVista.id)}&limite=50`);
+			const consulta = filtrando ? consultaDeFiltros(filtros) : new URLSearchParams();
+			consulta.set('antes', ultimaVista.id);
+			consulta.set('limite', '50');
+			const respuesta = await fetch(`/api/ejecuciones?${consulta}`);
 			const cuerpo = await respuesta.json().catch(() => null);
 			if (!respuesta.ok) throw new Error(cuerpo?.mensaje ?? 'No se pudieron cargar más ejecuciones.');
+			// Si mientras tanto cambiaron los filtros, esto es de los de antes: no se suma a lo que ahora se mira.
+			if (mio !== pedido) return;
 			extra = [...extra, ...((cuerpo?.ejecuciones ?? []) as EjecucionResumen[])];
 			hayMasExtra = cuerpo?.hayMas === true;
 		} catch (e) {
@@ -364,8 +426,12 @@
 			<span class="text-xs text-muted-foreground" data-testid="historial-total">{data.historial.total} {data.historial.total === 1 ? 'ejecución' : 'ejecuciones'}</span>
 		{/if}
 	</div>
+	<!-- Sin ejecuciones (o sin poder leerlas) no hay nada que filtrar. -->
+	{#if data.historial.total > 0 && !data.historialFallo}
+		<BarraFiltrosEjecuciones bind:filtros opciones={data.opciones} {filtrando} {cuenta} alLimpiar={() => (filtros = sinFiltrosHistorial())} />
+	{/if}
 	<div class="mt-3 overflow-x-auto">
-		<table class="w-full min-w-3xl table-fixed text-left text-sm" data-testid="historial">
+		<table class="w-full min-w-3xl table-fixed text-left text-sm" data-testid="historial" aria-busy={buscando}>
 			<caption class="sr-only">Ejecuciones de procesos sobre expedientes virtuales</caption>
 			<thead>
 				<tr class="border-y border-border text-xs text-muted-foreground" data-testid="columnas-historial">
@@ -374,17 +440,23 @@
 					{/each}
 				</tr>
 			</thead>
-			<tbody>
+			<tbody class="transition-opacity {buscando ? 'opacity-60' : ''}">
 				{#if data.historialFallo}
 					<tr>
 						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-destructive" data-testid="historial-fallo">
 							<span role="alert">No se pudo cargar el historial de ejecuciones. Recarga la página para intentarlo otra vez.</span>
 						</td>
 					</tr>
+				{:else if falloFiltro}
+					<tr>
+						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-destructive" data-testid="historial-filtro-fallo">
+							<span role="alert">{falloFiltro}</span>
+						</td>
+					</tr>
 				{:else if filas.length === 0}
 					<tr>
-						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-muted-foreground" data-testid="historial-vacio">
-							Todavía no hay ejecuciones.
+						<td colspan={COLUMNAS_HISTORIAL.length} class="py-10 text-center text-sm text-muted-foreground" data-testid={filtrando ? 'historial-sin-resultados' : 'historial-vacio'}>
+							{filtrando ? MENSAJE_SIN_RESULTADOS : 'Todavía no hay ejecuciones.'}
 						</td>
 					</tr>
 				{:else}
@@ -421,9 +493,9 @@
 			</tbody>
 		</table>
 	</div>
-	{#if hayMas && !data.historialFallo}
+	{#if hayMas && !data.historialFallo && !falloFiltro}
 		<div class="mt-3 flex items-center gap-3">
-			<Button variant="outline" size="sm" data-testid="ver-mas" disabled={cargandoMas} onclick={verMas}>
+			<Button variant="outline" size="sm" data-testid="ver-mas" disabled={cargandoMas || buscando} onclick={verMas}>
 				{#if cargandoMas}<LoaderCircle class="animate-spin" />{/if}
 				Ver más ejecuciones
 			</Button>

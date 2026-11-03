@@ -18,13 +18,18 @@
  * que esta carga lee (`GET /ejecuciones`, de la más reciente a la más antigua, de 50 en 50). Si el historial no se puede leer, la pantalla lo dice y
  * sigue sirviendo para ejecutar. Cada proceso ofrecido dice si es EJECUTABLE (trae su Resultado con una regla conectada): los de antes de que el
  * Resultado fuera obligatorio no lo traen y se ofrecen, pero con su razón y sin poder ejecutarse. Ejecutar es de quien organiza (`puedeEjecutar`);
- * los demás roles ven el historial y no el botón. nexus_back es quien manda: contesta 403 a cualquier otro rol.
+ * los demás roles ven el historial y no el botón. nexus_back es quien manda: contesta 403 a cualquier otro rol (Moibe lo confirmó el 2026-11-03: «así está ok»).
+ *
+ * El historial se puede filtrar por fecha, proceso, estado y persona (2026-11-03, Moibe: «agrega dichos filtros»). Los filtros los aplica nexus_back y los pide la
+ * pantalla por `/api/ejecuciones`; esta carga solo trae la primera página SIN filtros y, aparte, lo que se puede elegir para filtrar (`opciones`: los procesos y las
+ * personas que aparecen en el historial, de `GET /ejecuciones/filtros`).
  */
 
 import { isRedirect } from '@sveltejs/kit';
 
 import type { Expediente, ExpedienteVirtualResumen } from '$lib/expedientes/expedientes';
 import type { Historial } from '$lib/ejecuciones/ejecuciones';
+import { SIN_OPCIONES, type OpcionesDeFiltro } from '$lib/ejecuciones/filtros';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
 import { tenantDe } from '$lib/server/nexus';
 import { puedeOrganizar } from '$lib/usuarios/permisos';
@@ -47,17 +52,31 @@ async function leerHistorial(tenant: string, sesion: Parameters<typeof leerDeNex
 	}
 }
 
+/**
+ * Lo que el historial ofrece para filtrar por proceso y por persona (los que aparecen en él). Si no se puede leer, la pantalla sigue sirviendo: los filtros de
+ * fecha y de estado no dependen de esto, y los otros dos quedan sin opciones.
+ */
+async function leerOpciones(tenant: string, sesion: Parameters<typeof leerDeNexus>[1]): Promise<OpcionesDeFiltro> {
+	try {
+		const cuerpo = await leerDeNexus(`/ejecuciones/filtros?tenant=${tenant}`, sesion, 'No se pudieron cargar las opciones para filtrar el historial.');
+		return { procesos: listaDe<OpcionesDeFiltro['procesos'][number]>(cuerpo, 'procesos'), personas: listaDe<OpcionesDeFiltro['personas'][number]>(cuerpo, 'personas') };
+	} catch (e) {
+		if (isRedirect(e)) throw e;
+		return SIN_OPCIONES;
+	}
+}
+
 export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	const tenant = encodeURIComponent(tenantDe(locals));
 	const sesion = { cookies, url };
-	const { historial, historialFallo } = await leerHistorial(tenant, sesion);
+	const [{ historial, historialFallo }, opciones] = await Promise.all([leerHistorial(tenant, sesion), leerOpciones(tenant, sesion)]);
 	const puedeEjecutar = puedeOrganizar(locals.usuario);
 	const lista = listaDe<Expediente>(await leerDeNexus(`/expedientes/?tenant=${tenant}`, sesion, 'No se pudieron cargar los expedientes.'), 'expedientes');
 	const expedientes = lista.map((e) => ({ id: e.id, nombre: e.nombre }));
 
 	const pedido = url.searchParams.get('expediente');
 	const elegido = pedido ? (expedientes.find((e) => e.id === pedido) ?? null) : null;
-	const base = { expedientes, elegido, expedienteAusente: Boolean(pedido && !elegido), historial, historialFallo, puedeEjecutar };
+	const base = { expedientes, elegido, expedienteAusente: Boolean(pedido && !elegido), historial, historialFallo, opciones, puedeEjecutar };
 	const vacio = { virtuales: 0, procesos: [] as ProcesoOfrecido[], procesoElegido: null as ProcesoOfrecido | null, procesoAusente: false, virtualesDelProceso: [] as VirtualOfrecido[], virtualElegido: null as VirtualOfrecido | null, virtualAusente: false, sinLeer: [] as string[] };
 	if (!elegido) return { ...base, ...vacio };
 

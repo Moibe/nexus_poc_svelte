@@ -6,6 +6,10 @@
 	 *
 	 * Es un `Popover` y no un `Select`: el `Select` de bits-ui pinta la marca de elegido a la derecha y cierra la lista al
 	 * elegir; aquí se eligen varias y la casilla va a la izquierda, como el diseño.
+	 *
+	 * La lista tiene un tope de alto (20 rem) y se desplaza por dentro (2026-11-03): los filtros del historial de ejecuciones
+	 * la alimentan con las personas y los procesos de una organización, que pueden ser decenas; sin tope, la lista salía de la
+	 * pantalla. Con las pocas opciones de los demás filtros no cambia nada.
 	 */
 	import { Popover } from 'bits-ui';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -63,7 +67,7 @@
 			align="start"
 			sideOffset={4}
 			data-testid="{testid}-lista"
-			class="z-70 w-max max-w-80 min-w-[max(13rem,var(--bits-popover-anchor-width))] rounded-xl border border-border bg-popover p-1.5 shadow-lg"
+			class="z-70 max-h-80 w-max max-w-80 min-w-[max(13rem,var(--bits-popover-anchor-width))] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-lg"
 		>
 			{#each opciones as opcion (opcion.valor)}
 				{@const cuantos = conteos[opcion.valor] ?? 0}
