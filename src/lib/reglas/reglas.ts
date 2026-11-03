@@ -219,9 +219,9 @@ export type DefOperador = {
 };
 
 const TODAS: readonly Familia[] = ['texto', 'numero', 'fecha', 'booleano'];
-const LADOS_AB = [
-	{ id: 'a', etiqueta: 'Lado A', acepta: 'valor' },
-	{ id: 'b', etiqueta: 'Lado B', acepta: 'valor' }
+const ENTRADAS_AB = [
+	{ id: 'a', etiqueta: 'Entrada A', acepta: 'valor' },
+	{ id: 'b', etiqueta: 'Entrada B', acepta: 'valor' }
 ] as const;
 const REGLAS_AB = [
 	{ id: 'a', etiqueta: 'Regla A', acepta: 'veredicto' },
@@ -236,8 +236,8 @@ const SI_ENTONCES = [
 
 /** Los operadores que ofrece la paleta, en el orden en que se muestran. */
 export const OPERADORES: readonly DefOperador[] = [
-	{ clave: 'igual', etiqueta: 'Igual a', simbolo: '=', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son iguales.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los dos valores son iguales', textoNoPasa: 'No pasa: los valores son distintos' },
-	{ clave: 'distinto', etiqueta: 'Distinto de', simbolo: '≠', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son distintos.', entradas: LADOS_AB, familias: TODAS, textoPasa: 'Pasa: los valores son distintos', textoNoPasa: 'No pasa: los dos valores son iguales' },
+	{ clave: 'igual', etiqueta: 'Igual a', simbolo: '=', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son iguales.', entradas: ENTRADAS_AB, familias: TODAS, textoPasa: 'Pasa: los dos valores son iguales', textoNoPasa: 'No pasa: los valores son distintos' },
+	{ clave: 'distinto', etiqueta: 'Distinto de', simbolo: '≠', grupo: 'comparacion', salida: 'veredicto', descripcion: 'Pasa si los dos valores son distintos.', entradas: ENTRADAS_AB, familias: TODAS, textoPasa: 'Pasa: los valores son distintos', textoNoPasa: 'No pasa: los dos valores son iguales' },
 	{
 		clave: 'contiene',
 		etiqueta: 'Contiene',
@@ -622,8 +622,8 @@ export function motivoDeRechazo(
 		const suya = fuenteDeConexion(aristaOtra, nodos, tipos);
 		if (typeof suya !== 'string') {
 			if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
-				if (origen.type === NODO_TIPO) return 'Los dos lados serían el mismo campo: no habría nada que comparar.';
-				if (origen.type === NODO_CONSTANTE) return 'Los dos lados serían el mismo valor fijo: no habría nada que comparar.';
+				if (origen.type === NODO_TIPO) return 'Las dos entradas serían el mismo campo: no habría nada que comparar.';
+				if (origen.type === NODO_CONSTANTE) return 'Las dos entradas serían el mismo valor fijo: no habría nada que comparar.';
 				return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
 			}
 			if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
