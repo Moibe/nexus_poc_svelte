@@ -5,9 +5,14 @@
 	 *
 	 * Sale del Figma Sprint 5, HUN5 «Crear proceso» (frames `5480:105161` el estado vacío, `5503:107128` la lista, `5503:107474` el menú
 	 * de una tarjeta y `5503:108095` el aviso de desactivar). Lo visual es el del diseño, y el esqueleto es el mismo de la biblioteca de
-	 * tipos documentales (`ModuloConfiguracion.svelte`): una tarjeta grande con su encabezado y su X, una barra lateral con el árbol y,
-	 * a la derecha, las tarjetas. Como allá, picar una rama del árbol deja visible solo su tarjeta y volver a picarla (o picar
-	 * «Procesos configurados») las muestra todas.
+	 * tipos documentales (`ModuloConfiguracion.svelte`): una tarjeta grande con su encabezado y su X, una barra lateral y, a la derecha,
+	 * las tarjetas.
+	 *
+	 * SIN ramas en la barra lateral (2026-11-03, Moibe: «ver el proceso en el árbol de la izquierda y en el panel de la derecha no me hace
+	 * mucho sentido»). El Figma dibuja cada proceso como una rama del árbol, y aquí se copió junto con el gesto de la biblioteca (picar una
+	 * rama dejaba solo su tarjeta), pero en la biblioteca el árbol además reordena y navega la calibración; aquí solo repetía las tarjetas.
+	 * Quedan la sección «Procesos configurados» (ya no es botón: no hace nada) y «Nuevo proceso»; las tarjetas SON la lista. Igual que
+	 * Webhooks y Expedientes, que tampoco tienen ramas.
 	 *
 	 * Lo que se aparta del diseño, porque el diseño es de antes del lienzo:
 	 *   · Los textos hablan de «campos requeridos de cada documento»; un proceso de hoy es un conjunto de REGLAS sobre un expediente, y
@@ -53,19 +58,6 @@
 
 	/** En el orden en que el servidor los entrega (el de su creación): una tarjeta no debe brincar de lugar al activarla o desactivarla. */
 	const procesos = $derived(estadoProcesos.lista);
-
-	/** La rama del árbol que se está viendo; `null` = todas. */
-	let seleccionadoId = $state<string | null>(null);
-	const visibles = $derived(seleccionadoId ? procesos.filter((p) => p.id === seleccionadoId) : procesos);
-
-	// Si el proceso seleccionado ya no está (lo borró otra persona), se vuelve a ver todo en vez de dejar la lista en blanco.
-	$effect(() => {
-		if (seleccionadoId && !procesos.some((p) => p.id === seleccionadoId)) seleccionadoId = null;
-	});
-
-	function seleccionarRama(id: string) {
-		seleccionadoId = seleccionadoId === id ? null : id;
-	}
 
 	const rutaDe = (id: string) => `/motor-de-reglas/${encodeURIComponent(id)}`;
 	const nuevo = () => void goto('/motor-de-reglas/nuevo');
@@ -138,44 +130,19 @@
 	<div class="flex min-h-0 flex-1">
 		<aside class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6">
 			<p class="text-xs text-foreground">Procesos</p>
-			<button
-				type="button"
-				data-testid="raiz-procesos"
-				class="mt-6 flex w-full items-center gap-3 text-left"
-				onclick={() => (seleccionadoId = null)}
-			>
+			<!-- La sección, con la forma de «Biblioteca» en el módulo hermano (ícono en cuadro redondeado + título + descripción + flecha). Va como <div> y
+			     no como <button> porque no navega a ningún lado: un botón que no hace nada promete algo que no cumple. Sin ramas debajo (2026-11-03): ver el
+			     docstring. -->
+			<div class="mt-6 flex w-full items-center gap-3" data-testid="seccion-procesos">
 				<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
 					<ArchiveIcon />
 				</span>
-				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-medium text-foreground">Procesos configurados</span>
-					<span class="mt-2 block text-xs text-muted-foreground">Localiza tu listado de procesos configurados.</span>
-				</span>
+				<div class="min-w-0 flex-1">
+					<p class="text-sm font-medium text-foreground">Procesos configurados</p>
+					<p class="mt-2 text-xs text-muted-foreground">Localiza tu listado de procesos configurados.</p>
+				</div>
 				<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-			</button>
-
-			{#if procesos.length > 0}
-				<!-- El árbol de la biblioteca: eje a x=44 (pl-11), un tramo vertical y un guion horizontal por renglón. -->
-				<ul class="mt-4">
-					{#each procesos as p (p.id)}
-						<li class="relative flex h-9.5 items-center pl-11">
-							<span class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"></span>
-							<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-							<button
-								type="button"
-								data-testid="rama-proceso"
-								aria-pressed={seleccionadoId === p.id}
-								class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId === p.id
-									? 'text-primary'
-									: 'text-foreground hover:text-primary'}"
-								onclick={() => seleccionarRama(p.id)}
-							>
-								{p.datos.nombre}
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+			</div>
 
 			<div class="mt-auto pt-6">
 				<Button class="w-full" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
@@ -211,7 +178,7 @@
 				</div>
 			{:else}
 				<div class="flex flex-col gap-3">
-					{#each visibles as p (p.id)}
+					{#each procesos as p (p.id)}
 						{@const activo = procesoActivo(p)}
 						{@const tipos = tiposDelProceso(p)}
 						{@const tipoVirtual = p.datos.tipoExpedienteVirtualId}

@@ -209,10 +209,6 @@
 		revocada: { texto: 'Revocada', clase: 'bg-red-50 text-red-700' }
 	};
 
-	/** La rama seleccionada en el árbol del sidebar. Es un FILTRO de la columna
-	 *  derecha, no una navegación: `null` significa "muéstralas todas". */
-	let seleccionadaId = $state<string | null>(null);
-
 	/** Las vivas arriba, las muertas al fondo, y dentro de cada grupo la más
 	 *  reciente primero.
 	 *
@@ -232,12 +228,6 @@
 				PESO_ESTADO[estadoDe(a)] - PESO_ESTADO[estadoDe(b)] ||
 				Date.parse(b.creadaEn) - Date.parse(a.creadaEn)
 		)
-	);
-
-	const llavesVisibles = $derived(
-		seleccionadaId === null
-			? llavesOrdenadas
-			: llavesOrdenadas.filter((k) => k.id === seleccionadaId)
 	);
 
 	/** Se prende al revocar con éxito y se apaga al salir del listado o cerrar,
@@ -388,39 +378,11 @@
 					<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
 				</div>
 
-				<!-- El árbol de llaves, con la misma geometría que el de la Biblioteca en
-				     el módulo hermano: el eje cae en x=44 —que es donde empieza el texto
-				     "API Keys" de arriba (ícono de 32 + gap-3 de 12)—, tramo vertical de
-				     22px centrado en la fila y guion horizontal de 11.5px a media altura.
-				     Picar una rama FILTRA la columna derecha; picarla de nuevo quita el
-				     filtro. Es el mismo gesto que allá, y la captura muestra justamente la
-				     rama resaltada. -->
+				<!-- Sin ramas debajo (2026-11-03, Moibe: «sí, api keys y procesos», tras decir que ver lo mismo en el árbol de la izquierda y en el panel de la derecha «no me hace mucho
+				     sentido»): el árbol repetía las tarjetas y solo servía de filtro, un gesto que yo había deducido de la rama resaltada de la captura. Las
+				     tarjetas son la lista completa. Igual que Webhooks y Expedientes, que tampoco tienen ramas; en la Biblioteca de tipos documentales el árbol
+				     se queda, porque ahí también reordena y navega la calibración. Ver `docs/pendientes-ux.md`. -->
 				{#if apiKeys.length > 0}
-					<ul class="mt-4">
-						<!-- Mismo orden que la columna derecha, a propósito: dos listas de lo
-						     mismo en distinto orden se leen como dos listas distintas. -->
-						{#each llavesOrdenadas as llave (llave.id)}
-							<li class="relative flex h-9.5 items-center pl-11">
-								<span class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
-								></span>
-								<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-								<button
-									type="button"
-									data-testid="rama-api-key"
-									aria-pressed={seleccionadaId === llave.id}
-									class="ml-[19.5px] min-w-0 flex-1 truncate rounded-lg px-3 py-1.5 text-left text-sm font-medium transition-colors {seleccionadaId ===
-									llave.id
-										? 'bg-muted text-foreground'
-										: 'text-foreground hover:text-primary'}"
-									onclick={() =>
-									(seleccionadaId = seleccionadaId === llave.id ? null : llave.id)}
-								>
-									{llave.nombre}
-								</button>
-							</li>
-						{/each}
-					</ul>
-
 					<!-- Al PIE del sidebar, como en la captura. Solo con llaves ya
 					     emitidas: en el estado vacío el acceso es el botón del centro, que
 					     es lo que dibuja su propia captura, y dos botones para lo mismo en
@@ -481,7 +443,7 @@
 							     dice `nxdoc | <creación>` y, tras el ícono de calendario, lo que
 							     corresponda a su estado — ver `leyendaDe`. -->
 							<div class="flex flex-col gap-3">
-								{#each llavesVisibles as llave (llave.id)}
+								{#each llavesOrdenadas as llave (llave.id)}
 									{@const estado = estadoDe(llave)}
 									<div
 										data-testid="tarjeta-api-key"
