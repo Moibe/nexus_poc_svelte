@@ -37,8 +37,6 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
-	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
-	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import EmptyState from '$lib/components/home/EmptyState.svelte';
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import KeyRound from '@lucide/svelte/icons/key-round';
@@ -209,10 +207,6 @@
 		revocada: { texto: 'Revocada', clase: 'bg-red-50 text-red-700' }
 	};
 
-	/** La rama seleccionada en el árbol del sidebar. Es un FILTRO de la columna
-	 *  derecha, no una navegación: `null` significa "muéstralas todas". */
-	let seleccionadaId = $state<string | null>(null);
-
 	/** Las vivas arriba, las muertas al fondo, y dentro de cada grupo la más
 	 *  reciente primero.
 	 *
@@ -232,12 +226,6 @@
 				PESO_ESTADO[estadoDe(a)] - PESO_ESTADO[estadoDe(b)] ||
 				Date.parse(b.creadaEn) - Date.parse(a.creadaEn)
 		)
-	);
-
-	const llavesVisibles = $derived(
-		seleccionadaId === null
-			? llavesOrdenadas
-			: llavesOrdenadas.filter((k) => k.id === seleccionadaId)
 	);
 
 	/** Se prende al revocar con éxito y se apaga al salir del listado o cerrar,
@@ -310,7 +298,7 @@
      Webhooks (ahí está la nota del estilo y del contraste AA).
 
      Los dos textos son literales de las capturas y hablan de "solicitudes
-     autenticadas en NexusDoc". Desde el 2026-09-30 es cierto: una llave emitida
+     autenticadas en Biblioratum". Desde el 2026-09-30 es cierto: una llave emitida
      aquí autentica `POST /bandeja/` en nexus_back. -->
 
 <Sheet.Root bind:open>
@@ -356,83 +344,17 @@
 				<h2 class="text-lg font-medium text-foreground">Claves de acceso API Keys</h2>
 				<Sheet.Description class="text-sm">
 					Configura y administra las credenciales que permiten autenticar integraciones y
-					solicitudes a los servicios de NexusDoc.
+					solicitudes a los servicios de Biblioratum.
 				</Sheet.Description>
 			</div>
+			<!-- Sin barra lateral (2026-11-03): sin ramas ni sección ya no tenía propósito, y «Nueva API Key» pasó aquí, a la derecha del título. Solo con llaves ya
+			     emitidas: en el estado vacío el acceso es el botón del centro, y dos botones para lo mismo se leen como dos cosas distintas. -->
+			{#if vista === 'lista' && apiKeys.length > 0}
+				<Button class="shrink-0" data-testid="nueva-api-key-sidebar" onclick={irANueva}>Nueva API Key</Button>
+			{/if}
 		</div>
 
 		<div class="flex min-h-0 flex-1">
-			<!-- statusbar: 330px, fondo y bordes de 2px, igual que el del módulo de
-			     configuración. Es el mismo en las tres vistas: así lo dibujan las tres
-			     capturas. -->
-			<aside
-				class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
-			>
-				<p class="text-xs text-foreground">Configuración</p>
-				<!-- La tarjeta de la sección, con la misma forma que "Biblioteca" allá
-				     (ícono en cuadro redondeado + título + descripción + flecha). Va como
-				     <div> y no como <button> porque hoy no navega a ningún lado: un botón
-				     que no hace nada promete algo que no cumple. -->
-				<div class="mt-6 flex w-full items-center gap-3" data-testid="seccion-api-keys">
-					<span
-						class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-					>
-						<ArchiveIcon />
-					</span>
-					<div class="min-w-0 flex-1">
-						<p class="text-sm font-medium text-foreground">API Keys</p>
-						<p class="mt-2 text-xs text-muted-foreground">
-							Localiza tu listado de API Keys configuradas
-						</p>
-					</div>
-					<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-				</div>
-
-				<!-- El árbol de llaves, con la misma geometría que el de la Biblioteca en
-				     el módulo hermano: el eje cae en x=44 —que es donde empieza el texto
-				     "API Keys" de arriba (ícono de 32 + gap-3 de 12)—, tramo vertical de
-				     22px centrado en la fila y guion horizontal de 11.5px a media altura.
-				     Picar una rama FILTRA la columna derecha; picarla de nuevo quita el
-				     filtro. Es el mismo gesto que allá, y la captura muestra justamente la
-				     rama resaltada. -->
-				{#if apiKeys.length > 0}
-					<ul class="mt-4">
-						<!-- Mismo orden que la columna derecha, a propósito: dos listas de lo
-						     mismo en distinto orden se leen como dos listas distintas. -->
-						{#each llavesOrdenadas as llave (llave.id)}
-							<li class="relative flex h-9.5 items-center pl-11">
-								<span class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
-								></span>
-								<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-								<button
-									type="button"
-									data-testid="rama-api-key"
-									aria-pressed={seleccionadaId === llave.id}
-									class="ml-[19.5px] min-w-0 flex-1 truncate rounded-lg px-3 py-1.5 text-left text-sm font-medium transition-colors {seleccionadaId ===
-									llave.id
-										? 'bg-muted text-foreground'
-										: 'text-foreground hover:text-primary'}"
-									onclick={() =>
-									(seleccionadaId = seleccionadaId === llave.id ? null : llave.id)}
-								>
-									{llave.nombre}
-								</button>
-							</li>
-						{/each}
-					</ul>
-
-					<!-- Al PIE del sidebar, como en la captura. Solo con llaves ya
-					     emitidas: en el estado vacío el acceso es el botón del centro, que
-					     es lo que dibuja su propia captura, y dos botones para lo mismo en
-					     la misma pantalla se leen como dos cosas distintas. -->
-					{#if vista === 'lista'}
-						<Button class="mt-auto w-full" data-testid="nueva-api-key-sidebar" onclick={irANueva}>
-							Nueva API Key
-						</Button>
-					{/if}
-				{/if}
-			</aside>
-
 			<!-- El pie vive DENTRO de esta columna, no debajo del modal entero: en las
 			     capturas su línea divisoria arranca donde termina el sidebar. -->
 			<!-- `min-w-0` es obligatorio: esta columna es un hijo flexible del renglón con
@@ -440,7 +362,7 @@
 			     Con un texto largo sin espacios —una URL de 800 caracteres, o un
 			     nombre de 100 sin cortes— la tarjeta medía miles de píxeles y se
 			     salía de la ventana, por más `truncate` que llevara adentro. -->
-			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col border-t-2 border-muted">
 				<div class="flex-1 overflow-y-auto p-8">
 					<!-- Los avisos del módulo. Son dos y comparten bloque (ver el snippet
 					     `AvisoVerde`): "API creada" en la vista del secret, y "API Key
@@ -456,9 +378,9 @@
 					     nada, así que no separa nada cuando no hay aviso. -->
 					<div role="status" aria-live="polite">
 						{#if vista === 'creada'}
-							<AvisoVerde testid="aviso-api-creada" titulo="API creada correctamente" cuerpo="La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en NexusDoc." />
+							<AvisoVerde testid="aviso-api-creada" titulo="API creada correctamente" cuerpo="La credencial se generó correctamente y ya está disponible para realizar solicitudes autenticadas en Biblioratum." />
 						{:else if avisoRevocada}
-							<AvisoVerde testid="aviso-api-revocada" titulo="API Key revocada correctamente" cuerpo="La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en NexusDoc." />
+							<AvisoVerde testid="aviso-api-revocada" titulo="API Key revocada correctamente" cuerpo="La credencial fue invalidada de inmediato y ya no podrá utilizarse para realizar nuevas solicitudes autenticadas en Biblioratum." />
 						{/if}
 					</div>
 
@@ -481,7 +403,7 @@
 							     dice `nxdoc | <creación>` y, tras el ícono de calendario, lo que
 							     corresponda a su estado — ver `leyendaDe`. -->
 							<div class="flex flex-col gap-3">
-								{#each llavesVisibles as llave (llave.id)}
+								{#each llavesOrdenadas as llave (llave.id)}
 									{@const estado = estadoDe(llave)}
 									<div
 										data-testid="tarjeta-api-key"

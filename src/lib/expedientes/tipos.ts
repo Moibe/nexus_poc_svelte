@@ -1,10 +1,12 @@
 /**
- * Un tipo de expediente como lo devuelve nexus_back (`/tipos-expediente`): la CLASE de la que salen los expedientes, por ejemplo
- * «Expediente médico» o «Expediente de un choque». Cada expediente es una instancia de un tipo (la carpeta de UN paciente, de UN
- * choque, con sus documentos). Aquí solo viven los campos que la pantalla usa.
+ * Un tipo de expediente VIRTUAL como lo devuelve nexus_back (`/tipos-expediente`): la CLASE de la que salen los expedientes virtuales,
+ * por ejemplo «Solicitud de crédito». Desde el 2026-10-29 el expediente no tiene tipo (es un receptáculo de documentos); lo que es
+ * instancia de un tipo es el expediente virtual, un grupito de los documentos de UN expediente («la solicitud de crédito de Juan Pérez»).
+ * El tipo sigue siendo lo mismo que era —nombre y esquema—, y por eso conserva su ruta y sus ids. Aquí solo viven los campos que la
+ * pantalla usa.
  *
  * El esquema del tipo son los tipos documentales que lo describen (varios; ese conjunto ES el esquema). Se define al crear el tipo, se
- * puede cambiar después y describe, no restringe: los expedientes del tipo reciben cualquier archivo.
+ * puede cambiar después y describe, no restringe.
  */
 export type TipoDeExpediente = {
 	id: string;
@@ -14,8 +16,8 @@ export type TipoDeExpediente = {
 	tiposDocumentales: { id: string; nombre: string | null }[];
 	creadoPor: string | null;
 	creadoEn: string | null;
-	/** Cuántos expedientes son instancia de este tipo. */
-	totalExpedientes: number;
+	/** Cuántos expedientes virtuales son instancia de este tipo. */
+	totalExpedientesVirtuales: number;
 };
 
 /** Un tipo documental de la biblioteca de la organización, como se ofrece para armar el esquema de un tipo de expediente. */
@@ -58,7 +60,7 @@ export function avisoDeEdicionDeTipo(nombreAnterior: string, r: ResultadoEdicion
 			: `«${nombreAnterior}» ahora se llama «${r.nombre}» y su esquema tiene ${esquema}.`;
 	return {
 		testid: r.nombreCambiado ? 'tipo-expediente-renombrado-aviso' : 'tipo-expediente-esquema-aviso',
-		titulo: 'Tipo de expediente actualizado',
+		titulo: 'Tipo de expediente virtual actualizado',
 		cuerpo
 	};
 }

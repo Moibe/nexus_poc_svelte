@@ -7,11 +7,36 @@
  * dice con el texto que cada pantalla pase.
  */
 
-import { error, isRedirect, type Cookies } from '@sveltejs/kit';
+import { error, isRedirect, json, type Cookies } from '@sveltejs/kit';
 
 import { opcionesDeTiposDocumentales, type TipoDocumentalOpcion } from '$lib/expedientes/tipos';
-import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
+import { mensajeDeError, TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion';
+
+const ESPERA_ESCRITURA_MS = 30_000;
+
+/**
+ * Lo que hacen todos los BFF que ESCRIBEN en un expediente (crearlo, sus expedientes virtuales y lo que se mete y se saca de ellos):
+ * reenviar a nexus_back con el JWT de la persona y devolver lo que diga, con su mismo estado. Un error se devuelve como `{ mensaje }`
+ * (el texto que trae nexus_back, o uno genérico), que es lo que leen las pantallas. La ruta ya trae el `?tenant=` cuando va en la URL;
+ * el tenant lo fija siempre quien llama desde la sesión (`tenantDe`), nunca el navegador (HU11).
+ */
+export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 'DELETE', ruta: string, cuerpo?: unknown): Promise<Response> {
+	let respuesta: Response;
+	try {
+		respuesta = await fetch(urlNexus(ruta), {
+			method: metodo,
+			headers: cabecerasConSesion(cookies, cuerpo === undefined ? {} : { 'Content-Type': 'application/json' }),
+			body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+			signal: AbortSignal.timeout(ESPERA_ESCRITURA_MS)
+		});
+	} catch {
+		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
+	}
+	const datos = await respuesta.json().catch(() => null);
+	if (!respuesta.ok) return json({ mensaje: mensajeDeError(datos, respuesta.status) }, { status: respuesta.status });
+	return json(datos, { status: respuesta.status, headers: { 'Cache-Control': 'no-store' } });
+}
 
 export async function leerDeNexus(
 	ruta: string,

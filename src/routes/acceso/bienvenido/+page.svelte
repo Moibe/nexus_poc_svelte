@@ -11,7 +11,7 @@
 	const nombre = $derived(data.usuario?.nombre?.split(' ')[0] || 'bienvenido');
 </script>
 
-<svelte:head><title>NexusDoc AI — Bienvenido</title></svelte:head>
+<svelte:head><title>Biblioratum — Bienvenido</title></svelte:head>
 
 <div class="flex flex-col items-center text-center">
 	<span class="flex size-28 items-center justify-center rounded-2xl bg-primary/10 text-primary">

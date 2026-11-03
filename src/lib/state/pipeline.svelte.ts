@@ -54,9 +54,9 @@ export type DocumentoEnPipeline = {
 	 *  el `id` que recibió el cliente al subirlo. Con él se le avisa al servidor
 	 *  cómo terminó, para sus webhooks (ver `avisosWebhook.ts`). */
 	idEntrada?: string;
-	/** Solo lo que se cargó a mano: el id del documento que el servidor creó para él al empezar a procesarse
-	 *  (`registrarDocumentoManual`). Lo que llega por la API ya nace como documento allá, con su entrada. Sirve para no
-	 *  registrarlo dos veces si se reintenta. */
+	/** El id del documento en el servidor. Lo que llega por la API lo trae desde la bandeja; lo cargado a mano lo recibe al empezar a
+	 *  procesarse (`registrarDocumentoManual`), y así no se registra dos veces si se reintenta. Con él, el servidor guarda la clasificación
+	 *  y los datos extraídos del documento (migración 0007). */
 	documentoId?: string;
 	/** Ya se le avisó al servidor cómo terminó: se avisa UNA vez por documento. */
 	avisado: boolean;
@@ -189,6 +189,7 @@ export async function iniciarPipeline() {
 			tamanioBytes: doc.tamanioBytes,
 			origen: doc.origen,
 			idEntrada: doc.idEntrada,
+			documentoId: doc.documentoId,
 			avisado: false,
 			agregadoEn: doc.agregadoEn,
 			hashSha256: doc.hashSha256,
@@ -445,7 +446,7 @@ async function procesarUno(id: string) {
 	// punto de `estado`, partir `fecha_registro`) dejan de aplicarse porque
 	// viven del lado de `/ia/ine`.
 	pasarA(sigueVivo, 'procesando');
-	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion);
+	await extraerConProcesador(id, archivo, tipo.procesadorId, tipo.procesadorVersion, tipo.id);
 }
 
 /**
@@ -524,6 +525,9 @@ async function registrarDocumentoManual(archivo: File): Promise<Registro> {
 async function clasificar(id: string, archivo: File): Promise<string | null> {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo);
+	// Con el documento, el servidor guarda la clasificación (qué tipo documental es). Sin él clasifica igual, pero sin dejar rastro.
+	const documentoId = documentosEnPipeline.find((d) => d.id === id)?.documentoId;
+	if (documentoId) cuerpo.append('documento', documentoId);
 
 	try {
 		const respuesta = await fetch('/api/pipeline/clasificar', { method: 'POST', body: cuerpo });
@@ -575,11 +579,18 @@ async function extraerConProcesador(
 	id: string,
 	archivo: File,
 	procesador: string,
-	version: string
+	version: string,
+	tipoId: string
 ) {
 	const cuerpo = new FormData();
 	cuerpo.append('archivo', archivo);
 	cuerpo.append('procesador', procesador);
+	// Con el documento y su tipo, el servidor GUARDA la corrida y sus datos extraídos (uno por campo); reprocesar crea otra corrida.
+	const documentoId = documentosEnPipeline.find((d) => d.id === id)?.documentoId;
+	if (documentoId) {
+		cuerpo.append('documento', documentoId);
+		cuerpo.append('tipoDocumental', tipoId);
+	}
 	// La versión viaja solo si el tipo la tiene guardada. Sin ella Google usa
 	// su default, que puede cambiar sin aviso — mismo criterio que
 	// DOCAI_VERSION_INE en el back.
@@ -663,6 +674,45 @@ export function continuarSinConfiguracion(id: string) {
 export function quitarDelPipeline(id: string) {
 	const indice = documentosEnPipeline.findIndex((d) => d.id === id);
 	if (indice !== -1) documentosEnPipeline.splice(indice, 1);
+}
+
+/** Terminaron sin resultado útil y vale la pena volver a mandarlos (2026-10-29, Moibe: «si no se pudo procesar se queda muerto
+ *  ahí»). Fuera quedan `no_soportado` (Document AI no lee ese formato: reintentar sería pagar por el mismo «no»), `procesado`
+ *  (ya tiene resultado) y lo que todavía está en camino. */
+const SE_PUEDE_REINTENTAR: readonly EstadoPipeline[] = ['fallido', 'no_configurado', 'pendiente_revision', 'no_reconocido'];
+export const sePuedeReintentar = (doc: DocumentoEnPipeline) => SE_PUEDE_REINTENTAR.includes(doc.estado);
+
+/** Lo que todavía está en camino no se quita: el worker lo está procesando y lo buscaría después. */
+const EN_CAMINO: readonly EstadoPipeline[] = ['en_cola', 'clasificando', 'clasificado', 'procesando'];
+export const sePuedeQuitar = (doc: DocumentoEnPipeline) => !EN_CAMINO.includes(doc.estado);
+
+/**
+ * «Reintentar pipeline»: los documentos elegidos que terminaron mal vuelven a la cola, con su archivo, y el mismo worker los
+ * procesa de nuevo de a uno (clasificar y extraer otra vez: si ya se configuró o calibró el tipo, ahora sí entra). Se limpia lo
+ * del intento anterior (error, tipo detectado, resultado) y queda en su historia. Lo cargado a mano NO se registra dos veces: ya
+ * trae su `documentoId` (ver `asegurarRegistro`).
+ */
+export async function reintentarPipeline() {
+	const elegidos = documentosEnPipeline.filter((d) => d.seleccionado && sePuedeReintentar(d));
+	if (elegidos.length === 0) return;
+	for (const d of elegidos) {
+		d.seleccionado = false;
+		d.error = null;
+		d.tipoDetectado = null;
+		d.resultado = null;
+		d.terminadoEn = null;
+		d.enviadoEn = new Date();
+		pasarA(d, 'en_cola');
+	}
+	await drenarCola();
+}
+
+/** «Quitar del pipeline»: saca de esta lista los elegidos que ya terminaron. No borra nada en el servidor: lo que se guardó
+ *  como documento sigue en «Archivos procesados». */
+export function quitarSeleccionadosDelPipeline(): number {
+	const ids = documentosEnPipeline.filter((d) => d.seleccionado && sePuedeQuitar(d)).map((d) => d.id);
+	for (const id of ids) quitarDelPipeline(id);
+	return ids.length;
 }
 
 /** Texto y color de cada estado, en un solo lugar, para que la fila y el modal

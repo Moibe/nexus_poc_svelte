@@ -16,6 +16,22 @@ function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
 }
 
+/**
+ * Un 422 de validación de FastAPI trae `detail` como LISTA (`[{ loc: ['body', 'campos', 1, 'nombre'], msg }]`), no como texto.
+ * Hasta el 2026-10-30 eso llegaba a la pantalla como «HTTP 422» a secas (incidencia de QA en staging), sin decir qué revisar.
+ * Aquí se traduce al nombre del campo, que es lo único accionable para quien configura el tipo.
+ */
+function mensajeDeValidacion(errores: unknown[], cuerpo: unknown): string {
+	const campos = (cuerpo as { campos?: { nombre?: unknown }[] } | null)?.campos ?? [];
+	const loc = (errores[0] as { loc?: unknown[] } | undefined)?.loc ?? [];
+	const i = loc[1] === 'campos' && typeof loc[2] === 'number' ? loc[2] : null;
+	if (i === null) return 'La configuración de este modelo tiene un dato inválido. Revísala y vuelve a intentar.';
+	const nombre = typeof campos[i]?.nombre === 'string' && campos[i].nombre ? `«${campos[i].nombre}»` : `número ${i + 1}`;
+	if (loc[3] === 'subcampos') return `El campo ${nombre} tiene un campo de grupo sin nombre. Revísalo y vuelve a intentar.`;
+	if (loc[3] === 'nombre') return `El campo ${nombre} no tiene nombre. Revísalo y vuelve a intentar.`;
+	return `Revisa el campo ${nombre}: tiene un dato inválido.`;
+}
+
 export const POST: RequestHandler = async ({ request }) => {
 	let cuerpo: unknown;
 	try {
@@ -60,7 +76,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (!respuesta.ok) {
 		// FastAPI pone el mensaje en `detail`; el cliente espera `mensaje`.
-		const detalle = typeof datos.detail === 'string' ? datos.detail : `HTTP ${respuesta.status}`;
+		const detalle =
+			typeof datos.detail === 'string'
+				? datos.detail
+				: Array.isArray(datos.detail)
+					? mensajeDeValidacion(datos.detail, cuerpo)
+					: `HTTP ${respuesta.status}`;
 		return fallo(detalle, respuesta.status);
 	}
 

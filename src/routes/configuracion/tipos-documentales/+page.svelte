@@ -22,6 +22,6 @@
 	});
 </script>
 
-<svelte:head><title>NexusDoc AI — Tipos documentales</title></svelte:head>
+<svelte:head><title>Biblioratum — Tipos documentales</title></svelte:head>
 
 <ModuloConfiguracion bind:open={abierto} />

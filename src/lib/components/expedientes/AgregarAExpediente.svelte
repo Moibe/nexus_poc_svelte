@@ -8,7 +8,7 @@
 	 * Lo que se aparta del diseño, a propósito (el Figma es solo el look and feel):
 	 *   · El diseño dice «Mover». En Biblioratum un documento puede estar en VARIOS expedientes, así que esto AGREGA: no lo saca de los
 	 *     que ya tenía. Por eso el botón dice «Agregar».
-	 *   · Los expedientes se identifican por su nombre (no hay folio) y el buscador busca también por tipo.
+	 *   · Los expedientes se identifican por su nombre (no hay folio).
 	 *   · Solo se ofrecen expedientes que existen (los que el servidor listó); si uno se borró mientras tanto, el servidor responde 404 y
 	 *     se dice aquí.
 	 */
@@ -22,7 +22,8 @@
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 
 	type Documento = DocumentoDeExpediente & { expedientes: { id: string; nombre: string }[] };
-	export type ResultadoAgregar = { expediente: Expediente; agregados: number; yaEstaban: number };
+	/** `colocados`: de los agregados, cuántos el clasificador metió además, solo, a algún expediente virtual (ya venían clasificados). */
+	export type ResultadoAgregar = { expediente: Expediente; agregados: number; yaEstaban: number; colocados: number };
 
 	let {
 		documentos,
@@ -42,7 +43,7 @@
 
 	const visibles = $derived.by(() => {
 		const q = normalizar(busqueda);
-		return q ? expedientes.filter((e) => normalizar(`${e.nombre} ${e.tipo?.nombre ?? ''}`).includes(q)) : expedientes;
+		return q ? expedientes.filter((e) => normalizar(e.nombre).includes(q)) : expedientes;
 	});
 	/** ¿Todos los documentos elegidos ya están en este expediente? Entonces no hay nada que agregar. */
 	const yaTieneTodos = (e: Expediente) => documentos.every((d) => d.expedientes.some((x) => x.id === e.id));
@@ -54,6 +55,7 @@
 		error = '';
 		let agregados = 0;
 		let yaEstaban = 0;
+		let colocados = 0;
 		try {
 			for (const d of documentos) {
 				const r = await fetch(`/api/expedientes/${encodeURIComponent(e.id)}/documentos/${encodeURIComponent(d.id)}`, { method: 'PUT' });
@@ -62,13 +64,16 @@
 					// Lo que ya entró, entró: se dice cuántos y qué falló, y la pantalla se refresca igual.
 					const hechos = agregados + yaEstaban;
 					error = `${hechos ? `Se agregaron ${hechos} de ${documentos.length}. ` : ''}No se pudo agregar «${d.nombreOriginal}»: ${mensajeDeFallo(datos, r.status, 'al agregar')}`;
-					if (hechos) onAgregado({ expediente: e, agregados, yaEstaban });
+					if (hechos) onAgregado({ expediente: e, agregados, yaEstaban, colocados });
 					return;
 				}
-				if (datos?.agregado) agregados += 1;
-				else yaEstaban += 1;
+				if (datos?.agregado) {
+					agregados += 1;
+					// Si ya venía clasificado con la confianza mínima, nexus_back lo metió solo a los virtuales de este expediente que lo esperan.
+					if (Array.isArray(datos.expedientesVirtuales) && datos.expedientesVirtuales.length > 0) colocados += 1;
+				} else yaEstaban += 1;
 			}
-			onAgregado({ expediente: e, agregados, yaEstaban });
+			onAgregado({ expediente: e, agregados, yaEstaban, colocados });
 		} catch {
 			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
 		} finally {

@@ -60,10 +60,14 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 
 	const salida = new FormData();
 	salida.append('archivo', archivo, archivo.name);
+	// Con el documento, nexus_back guarda la clasificación (migración 0007); él comprueba que sea de esta organización.
+	const consulta = new URLSearchParams({ tenant });
+	const documento = String(entrada.get('documento') ?? '').trim();
+	if (documento) consulta.set('documento', documento);
 
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/ia/clasificar?tenant=${encodeURIComponent(tenant)}`), {
+		respuesta = await fetch(urlNexus(`/ia/clasificar?${consulta}`), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies),
 			body: salida,

@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * El listado de expedientes COMO LISTA (2026-10-25, pedido de Moibe): una fila por expediente y una columna por cada cosa que se
-	 * quiere ver de él. La que más pesa es el TIPO de expediente, y por eso va justo después del nombre y con su etiqueta resaltada.
+	 * quiere ver de él. (Hasta el 2026-10-29 llevaba también el TIPO de expediente; el expediente dejó de tenerlo ese día.)
 	 *
 	 * Cada encabezado es un botón que ordena por esa columna y, picado otra vez, invierte la dirección: `aria-sort` dice por cuál va
 	 * (para quien no ve la flecha). Qué orden sale de cada clic lo decide `ordenAlPicar`; aquí solo se pinta. La fila entera es un
@@ -34,11 +34,10 @@
 
 	/** Cuánto ocupa cada columna (la tabla es de ancho fijo para que un nombre largo se corte con «…» en vez de ensanchar la lista). */
 	const ANCHO: Record<ColumnaExpedientes, string> = {
-		nombre: 'w-[32%]',
-		tipo: 'w-[26%]',
-		archivos: 'w-[11%]',
-		peso: 'w-[12%]',
-		creado: 'w-[19%]'
+		nombre: 'w-[52%]',
+		archivos: 'w-[14%]',
+		peso: 'w-[14%]',
+		creado: 'w-[20%]'
 	};
 </script>
 
@@ -91,20 +90,6 @@
 								{expediente.nombre}
 							</span>
 						</a>
-					</td>
-					<td class="py-3 pr-4">
-						{#if expediente.tipo?.nombre}
-							<span
-								class="inline-block max-w-full truncate rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 align-middle text-xs font-medium text-primary"
-								data-testid="expediente-tipo"
-								title={expediente.tipo.nombre}
-							>
-								{expediente.tipo.nombre}
-							</span>
-						{:else}
-							<!-- Solo los guardados antes de que el tipo fuera obligatorio, o los de un tipo que ya no está. -->
-							<span class="text-xs text-muted-foreground" data-testid="expediente-sin-tipo">Sin tipo</span>
-						{/if}
 					</td>
 					<td class="py-3 pr-4 text-foreground tabular-nums" data-testid="expediente-archivos">{expediente.totalDocumentos}</td>
 					<!-- Un servidor anterior al peso no lo manda: sin dato se calla, en vez de decir «0 MB» de algo que sí tiene documentos. -->

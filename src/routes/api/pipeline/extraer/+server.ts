@@ -18,7 +18,8 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 /** Cada llamada a Document AI cuesta dinero. Este handler es hoy el único que
  *  puede dispararlas desde el navegador para extraer, así que el guardia de
@@ -39,7 +40,7 @@ function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	let entrada: FormData;
 	try {
 		entrada = await request.formData();
@@ -92,12 +93,20 @@ export const POST: RequestHandler = async ({ request }) => {
 	salida.append('procesador', procesador);
 	const version = String(entrada.get('version') ?? '').trim();
 	if (version) salida.append('version', version);
+	// Con el documento y su tipo, nexus_back GUARDA la corrida y sus datos (migración 0007). La organización la fija la sesión, nunca el
+	// navegador, y nexus_back comprueba que documento y tipo sean de ella antes de pagarle a Google.
+	const documento = String(entrada.get('documento') ?? '').trim();
+	if (documento) {
+		salida.append('documento', documento);
+		salida.append('tipoDocumental', String(entrada.get('tipoDocumental') ?? '').trim());
+		salida.append('tenant', tenantDe(locals));
+	}
 
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/ia/extraer'), {
 			method: 'POST',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			body: salida,
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});

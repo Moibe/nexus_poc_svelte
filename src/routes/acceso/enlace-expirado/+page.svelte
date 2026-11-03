@@ -14,7 +14,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 </script>
 
-<svelte:head><title>NexusDoc AI — Enlace expirado</title></svelte:head>
+<svelte:head><title>Biblioratum — Enlace expirado</title></svelte:head>
 
 <div class="flex flex-col items-center text-center">
 	<span class="flex size-28 items-center justify-center rounded-full bg-primary/10 text-primary">

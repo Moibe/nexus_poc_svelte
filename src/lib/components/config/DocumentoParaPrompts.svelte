@@ -30,7 +30,7 @@
 	 * que Document AI puede procesar. La captura de este modal dice "PDF, DOCX,
 	 * XLSX", pero DOCX/XLSX se quitaron del resto de la app el 2026-09-06
 	 * justamente porque Document AI no los procesa — y este documento existe
-	 * para que NexusDoc lo ANALICE, así que aceptarlos aquí sería volver a
+	 * para que Biblioratum lo ANALICE, así que aceptarlos aquí sería volver a
 	 * ofrecer algo que va a fallar más adelante.
 	 */
 	const EXTENSIONES = ['pdf', 'jpg', 'jpeg', 'png', 'tiff'];
@@ -230,7 +230,7 @@
 
 				<p class="text-sm text-muted-foreground">
 					Selecciona un único documento representativo del tipo documental que deseas configurar.
-					NexusDoc analizará su contenido para generar propuestas de prompts que faciliten la
+					Biblioratum analizará su contenido para generar propuestas de prompts que faciliten la
 					extracción y clasificación de información.
 				</p>
 

@@ -161,7 +161,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Organizaciones</title></svelte:head>
+<svelte:head><title>Biblioratum — Organizaciones</title></svelte:head>
 
 <p class="text-xs text-muted-foreground">Organizaciones / Listado de registros</p>
 <div class="mt-2">
@@ -369,7 +369,7 @@
 						<p class="text-sm font-medium text-foreground">Aquí aparecerán los usuarios registrados</p>
 						<p class="max-w-sm text-xs text-muted-foreground">
 							Aquí podrás visualizar y supervisar los usuarios creados por los administradores de cada
-							organización dentro de NexusDoc.
+							organización dentro de Biblioratum.
 						</p>
 					</div>
 				{:else}

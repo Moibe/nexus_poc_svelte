@@ -115,7 +115,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Recupera tu acceso</title></svelte:head>
+<svelte:head><title>Biblioratum — Recupera tu acceso</title></svelte:head>
 
 {#if paso === 'formulario'}
 	<a

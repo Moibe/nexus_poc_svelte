@@ -112,6 +112,7 @@
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
+		MAX_INSTRUCCIONES,
 		REGLAS_TRANSFORMACION,
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
@@ -949,6 +950,7 @@
 		return JSON.stringify({
 			nombre: borrador.nombre,
 			descripcion: borrador.descripcion,
+			instrucciones: borrador.instrucciones,
 			vertical: borrador.vertical,
 			campos: $state.snapshot(borrador.campos)
 		});
@@ -1288,7 +1290,7 @@
 			{:else}
 				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
 				<p class="text-sm text-muted-foreground">
-					Configura la forma en que NexusDoc comprende tus documentos.
+					Configura la forma en que Biblioratum comprende tus documentos.
 				</p>
 			{/if}
 		</div>
@@ -1623,11 +1625,11 @@
 							     La tarjeta NO es clicable (2026-09-06, a pedido explícito). Antes
 							     el ícono y los textos eran un <button> que abría el modo edición,
 							     pero llevaba `flex-1`: se estiraba por todo el espacio libre hasta
-							     "Activar", así que picar en el área VACÍA de la tarjeta —donde no
+							     "Confirmar configuración", así que picar en el área VACÍA de la tarjeta —donde no
 							     hay nada que sugiera que sea clicable— también entraba a editar.
 							     Ahora la ÚNICA puerta al modo edición es el renglón "Editar" del
 							     menú `⋮` (que ya trae su propio guardia para modelos activos), y
-							     en la tarjeta quedan solo dos controles reales: "Activar" y el
+							     en la tarjeta quedan solo dos controles reales: "Confirmar configuración" y el
 							     menú. Ojo si se reintroduce algo clicable aquí: un <button>
 							     dentro de otro es HTML inválido —el navegador deshace el
 							     anidamiento y los clics dejan de llegar a quien deben—, que es el
@@ -1681,8 +1683,13 @@
 								     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
 								     2026-09-14, cuando se pidió que dijera "Configurado": el
 								     estado interno del tipo SIGUE siendo `activo` —la clave, el
-								     testid y el botón "Activar" no cambiaron—, solo cambia la
+								     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
 								     palabra que ve el usuario.
+								     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
+								     el tipo no queda "activo, listo para usarse"): confirmar los campos
+								     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
+								     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
+								     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
 								     NO se implementó el estado intermedio "Validando configuración..."
 								     que aparece en una de las capturas: no hay nada que validar sin
 								     el back, y una animación de espera sobre trabajo que nadie está
@@ -1755,9 +1762,9 @@
 									<Button
 										size="sm"
 										data-testid="activar-tipo"
-										class="h-9.5 w-20.5 shrink-0"
+										class="h-9.5 shrink-0 px-4"
 										disabled={activandoId !== null}
-										onclick={() => activar(tipo.id)}>Activar</Button
+										onclick={() => activar(tipo.id)}>Confirmar configuración</Button
 									>
 								{/if}
 
@@ -2063,7 +2070,7 @@
 									     id abajo, y se pidió quitar las dos cosas —"me sirve más
 									     éste" (el nombre) "y quítale lo de 'Procesador en Document
 									     AI' para que quepa en una sola línea"—. El nombre se explica
-									     solo: empieza con `nexusdoc--` y es idéntico al que se lee en
+									     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
 									     la consola de GCP.
 									     Viene de Google (`procesadorDisplayName`, lo devuelve
 									     "Activar"), no se arma aquí: si el tipo se renombró después
@@ -2715,6 +2722,27 @@
 								{/each}
 							</Select.Content>
 						</Select.Root>
+					</div>
+
+					<!-- Opcional (2026-10-30), al final a propósito: el panel tiene su propio scroll y puesto antes de la Vertical la
+					     empujaba fuera de la vista. La Descripción de arriba está escrita como una etiqueta (qué documento es) y sirve
+					     para CLASIFICAR; esto es otra cosa: contexto para LEER el documento al extraer, que viaja al extractor como el
+					     `documentPrompt` de su esquema. Medido contra Google: orienta qué dato se toma (titular o beneficiario), y si se le
+					     pide reescribir un valor (otro formato, mayúsculas) ese campo desaparece de la respuesta. De ahí el aviso. -->
+					<div class="space-y-2">
+						<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
+						<Textarea
+							id="instrucciones-tipo"
+							data-testid="instrucciones-tipo"
+							bind:value={borrador.instrucciones}
+							maxlength={MAX_INSTRUCCIONES}
+							rows={3}
+							placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
+						/>
+						<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
+							Opcional. Orienta a Document AI al leer el documento: qué dato tomar cuando hay varios o de qué país es. No le pidas
+							cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no coincide con lo impreso se descarta.
+						</p>
 					</div>
 				</div>
 			{:else if borrador.paso === 2}

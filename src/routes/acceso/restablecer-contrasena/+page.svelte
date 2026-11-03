@@ -79,7 +79,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Restablecer contraseña</title></svelte:head>
+<svelte:head><title>Biblioratum — Restablecer contraseña</title></svelte:head>
 
 <h1 class="text-[28px] leading-tight font-semibold text-foreground">Configura tu nueva contraseña</h1>
 <p class="mt-3 text-sm text-muted-foreground">

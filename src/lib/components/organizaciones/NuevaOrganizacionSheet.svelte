@@ -272,7 +272,7 @@
 				<AvisoVerde
 					testid="organizacion-creada-aviso"
 					titulo="Organización creada correctamente"
-					cuerpo="La organización fue registrada exitosamente y ya cuenta con un entorno habilitado dentro de NexusDoc."
+					cuerpo="La organización fue registrada exitosamente y ya cuenta con un entorno habilitado dentro de Biblioratum."
 				/>
 				{#if creada.correoEnviado}
 					<AvisoVerde

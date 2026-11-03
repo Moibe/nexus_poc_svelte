@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * "Configuración de webhook": el módulo del menú del engrane donde se
-	 * registran los endpoints a los que NexusDoc avisa cuando un documento
+	 * registran los endpoints a los que Biblioratum avisa cuando un documento
 	 * termina de procesarse o es rechazado (capturas del 2026-09-30).
 	 *
 	 * Mismo lenguaje y misma cáscara que el módulo de API Keys: la ventana lateral,
@@ -653,7 +653,7 @@
 									icon={Webhook}
 									iconClass="text-primary"
 									title="Configura tu primer Webhook"
-									description="Registra un endpoint para que NexusDoc te avise cuando un documento termine de procesarse o sea rechazado."
+									description="Registra un endpoint para que Biblioratum te avise cuando un documento termine de procesarse o sea rechazado."
 								/>
 								<Button class="w-60" data-testid="nuevo-webhook" onclick={irANueva}>
 									Nuevo webhook
@@ -675,7 +675,7 @@
 										id="url-webhook"
 										bind:value={url}
 										maxlength={LARGO_MAXIMO_URL}
-										placeholder="https://api.empresa.com/webhooks/nexusdoc"
+										placeholder="https://api.empresa.com/webhooks/Biblioratum"
 										aria-invalid={mensajeUrl !== ''}
 										aria-describedby="error-url-webhook"
 										oninput={() => (errorAlta = '')}
@@ -807,8 +807,8 @@
 						<!-- El secret recién generado (captura del 2026-10-01). El diseño titula
 						     "Key creada correctamente", copiado de la pantalla de las API Keys;
 						     aquí dice "Webhook", que es lo que se creó. Importa: este secret NO
-						     es una API Key. La API Key la usa el cliente para LLAMAR a NexusDoc;
-						     este secret lo usa NexusDoc para FIRMAR lo que le manda al cliente. -->
+						     es una API Key. La API Key la usa el cliente para LLAMAR a Biblioratum;
+						     este secret lo usa Biblioratum para FIRMAR lo que le manda al cliente. -->
 						<p class="text-sm text-muted-foreground">Configuración de nuevo webhook</p>
 						<div class="mt-4 rounded-xl border border-border p-6" data-testid="webhook-creado">
 							<h3 class="text-base font-medium text-foreground">Webhook creado correctamente</h3>

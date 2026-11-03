@@ -1,13 +1,26 @@
 <script lang="ts">
 	/**
-	 * El lienzo de un proceso (motor de reglas, 2026-10-20): arriba la barra con el nombre del proceso y lo que se hace con él
-	 * (abrir otro, empezar uno nuevo, guardar, eliminar); abajo, a la izquierda la paleta (tipos documentales y operadores) y a la
+	 * El lienzo de UN proceso (motor de reglas, 2026-10-20): arriba la barra con el nombre del proceso y lo que se hace con él
+	 * (volver a la lista, guardar, eliminar); abajo, a la izquierda la paleta (tipos documentales y operadores) y a la
 	 * derecha el canvas de Svelte Flow donde se sueltan. Un proceso es un conjunto de reglas y corre sobre un expediente, o sea un
 	 * conjunto de documentos: los tipos documentales son sus ENTRADAS y los operadores son las reglas. A un operador se le conectan
 	 * CAMPOS, y a un operador lógico, el resultado de otras reglas.
 	 *
+	 * ## Qué proceso abre (2026-10-29)
+	 *
+	 * El motor arranca en la lista de procesos (`/motor-de-reglas`) y de ahí se llega aquí con `procesoDeEntrada`: `nuevo` es un proceso en
+	 * blanco y cualquier otro valor es el id de uno guardado, que se lee de la organización (si ya no existe, se dice). Antes abría solo el
+	 * último que se había tocado y la barra traía un selector para cambiar de proceso. Abrir otro o empezar uno nuevo ahora es volver a la
+	 * lista, y de eso se encarga la navegación: la pregunta de «hay cambios sin guardar» ya salta sola al salir de la página.
+	 *
 	 * Qué se acepta conectar lo decide `motivoDeRechazo` (en `reglas.ts`, probado aparte). Cuando se rechaza, el lienzo dice POR QUÉ
 	 * en un aviso sobre el canvas: soltar un cable y que no pase nada es lo peor que le puede pasar a quien está armando una regla.
+	 *
+	 * ## Cómo termina (2026-11-03)
+	 *
+	 * Los nodos FINALES dicen qué entrega el proceso: cada «Valor final» es un dato que entra, con su nombre, a la lista de la corrida, y el
+	 * «Resultado» —uno solo por proceso— es la palabra con la que termina («Aprobado», «Certificado»…) según pase o no la regla que se le conecta.
+	 * No tienen salida. Con los valores de ejemplo, el lienzo dice qué entraría a la lista y con qué palabra terminaría (`evaluar`).
 	 *
 	 * ## Guardar
 	 *
@@ -30,27 +43,43 @@
 		useSvelteFlow,
 		type Edge,
 		type Node,
-		type OnConnectEnd
+		type OnBeforeReconnect,
+		type OnConnectEnd,
+		type OnReconnect,
+		type OnReconnectEnd,
+		type OnReconnectStart
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 
-	import { beforeNavigate, goto } from '$app/navigation';
-	import { onMount, setContext, tick } from 'svelte';
+	import { beforeNavigate, goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onMount, setContext, tick, untrack } from 'svelte';
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import CableDeProceso from '$lib/components/reglas/CableDeProceso.svelte';
 	import NodoConstante from '$lib/components/reglas/NodoConstante.svelte';
 	import NodoOperador from '$lib/components/reglas/NodoOperador.svelte';
+	import NodoResultado from '$lib/components/reglas/NodoResultado.svelte';
 	import NodoTipoDocumental from '$lib/components/reglas/NodoTipoDocumental.svelte';
+	import NodoValorFinal from '$lib/components/reglas/NodoValorFinal.svelte';
 	import PaletaDeTipos from '$lib/components/reglas/PaletaDeTipos.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
+		CLAVE_ESQUEMA,
 		CLAVE_VEREDICTOS,
+		ID_NODO_RESULTADO,
 		MIME_CONSTANTE,
 		MIME_OPERADOR,
+		MIME_RESULTADO,
 		MIME_TIPO_DOCUMENTAL,
+		MIME_VALOR_FINAL,
 		NODO_CONSTANTE,
 		NODO_OPERADOR,
+		NODO_RESULTADO,
 		NODO_TIPO,
+		NODO_VALOR_FINAL,
+		TEXTOS_DEL_RESULTADO,
 		evaluar,
 		hidratarDibujo,
 		huellaDelDibujo,
@@ -63,7 +92,9 @@
 		type Conexion,
 		type DatosNodoConstante,
 		type DatosNodoOperador,
-		type DatosNodoTipo
+		type DatosNodoResultado,
+		type DatosNodoTipo,
+		type DatosNodoValorFinal
 	} from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import { tiposDocumentales } from '$lib/state/configuracion.svelte';
@@ -73,11 +104,16 @@
 		estadoProcesos,
 		guardarProceso,
 		idDeProceso,
+		procesoActivo,
 		reiniciarProcesos,
 		type EstadoDeProceso,
 		type ProcesoGuardado
 	} from '$lib/state/procesos.svelte';
 	import { tema } from '$lib/tema.svelte';
+
+	/** `nuevo` (en blanco) o el id de un proceso guardado: lo que trae la dirección. Una pantalla nueva por cada valor (la página la repone con `key`). */
+	let { procesoDeEntrada = 'nuevo' }: { procesoDeEntrada?: string } = $props();
+	const esNuevo = $derived(procesoDeEntrada === 'nuevo');
 
 	const { screenToFlowPosition, fitView } = useSvelteFlow();
 
@@ -85,10 +121,19 @@
 	let edges = $state.raw<Edge[]>([]);
 	let zona = $state<HTMLDivElement>();
 
-	const nodeTypes = { [NODO_TIPO]: NodoTipoDocumental, [NODO_OPERADOR]: NodoOperador, [NODO_CONSTANTE]: NodoConstante };
+	/** Todos los cables son el de `CableDeProceso`: se arrastran de un extremo y se quitan de un clic. No se guarda (`serializarDibujo` solo lleva extremos). */
+	const edgeTypes = { cable: CableDeProceso };
 
-	// El estado de CADA regla y el valor de las que entregan uno, calculados una vez para todo el grafo: una regla que depende de otra
-	// tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
+	const nodeTypes = {
+		[NODO_TIPO]: NodoTipoDocumental,
+		[NODO_OPERADOR]: NodoOperador,
+		[NODO_CONSTANTE]: NodoConstante,
+		[NODO_VALOR_FINAL]: NodoValorFinal,
+		[NODO_RESULTADO]: NodoResultado
+	};
+
+	// El estado de CADA regla y el valor de las que entregan uno, lo que entrega cada valor final y con qué palabra termina el proceso, calculados
+	// una vez para todo el grafo: una regla que depende de otra tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
 	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales));
 	setContext(CLAVE_VEREDICTOS, {
 		get todos() {
@@ -96,6 +141,12 @@
 		},
 		get valores() {
 			return evaluacion.valores;
+		},
+		get finales() {
+			return evaluacion.finales;
+		},
+		get resultado() {
+			return evaluacion.resultado;
 		}
 	});
 
@@ -103,6 +154,8 @@
 	const enLienzo = $derived(
 		new Set(nodes.flatMap((n) => (n.type === NODO_TIPO ? [(n.data as DatosNodoTipo).tipoId] : [])))
 	);
+	/** El proceso termina con UNA palabra: si ya tiene su nodo de resultado, la paleta no ofrece otro. */
+	const hayResultado = $derived(nodes.some((n) => n.type === NODO_RESULTADO));
 
 	type Posicion = { x: number; y: number };
 
@@ -113,7 +166,7 @@
 			fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 });
 			return;
 		}
-		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: posicion, data: { tipoId } };
+		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: posicion, data: { tipoId, campos: [] } };
 		nodes = [...nodes, nuevo];
 	}
 
@@ -145,6 +198,30 @@
 		nodes = [...nodes, nuevo];
 	}
 
+	/** Un valor final se puede poner las veces que haga falta (cada uno es un dato de la lista de la corrida) y su número no se reutiliza. */
+	let valoresFinalesPuestos = 0;
+	function agregarValorFinal(posicion: Posicion) {
+		valoresFinalesPuestos += 1;
+		const nuevo: Node<DatosNodoValorFinal> = {
+			id: `valor-final-${valoresFinalesPuestos}`,
+			type: NODO_VALOR_FINAL,
+			position: posicion,
+			data: { nombre: '', a: '' }
+		};
+		nodes = [...nodes, nuevo];
+	}
+
+	/** El resultado es UNO por proceso: si ya está, no se duplica, se enfoca (como un tipo documental). */
+	function agregarResultado(posicion: Posicion) {
+		if (nodes.some((n) => n.type === NODO_RESULTADO)) {
+			const existente = nodes.find((n) => n.type === NODO_RESULTADO);
+			if (existente) fitView({ nodes: [{ id: existente.id }], duration: 300, maxZoom: 1 });
+			return;
+		}
+		const nuevo: Node<DatosNodoResultado> = { id: ID_NODO_RESULTADO, type: NODO_RESULTADO, position: posicion, data: { ...TEXTOS_DEL_RESULTADO } };
+		nodes = [...nodes, nuevo];
+	}
+
 	/** Un clic en la paleta: el nodo aparece en el centro de lo que se ve, escalonado para que varios no queden encimados. */
 	function alCentro(): Posicion | null {
 		const caja = zona?.getBoundingClientRect();
@@ -164,10 +241,19 @@
 		const posicion = alCentro();
 		if (posicion) agregarConstante(posicion);
 	}
+	function agregarValorFinalAlCentro() {
+		const posicion = alCentro();
+		if (posicion) agregarValorFinal(posicion);
+	}
+	function agregarResultadoAlCentro() {
+		const posicion = alCentro();
+		if (posicion) agregarResultado(posicion);
+	}
 
 	function alPasarPorEncima(e: DragEvent) {
 		const tipos = e.dataTransfer?.types;
-		if (!tipos?.includes(MIME_TIPO_DOCUMENTAL) && !tipos?.includes(MIME_OPERADOR) && !tipos?.includes(MIME_CONSTANTE)) return;
+		const cosas = [MIME_TIPO_DOCUMENTAL, MIME_OPERADOR, MIME_CONSTANTE, MIME_VALOR_FINAL, MIME_RESULTADO];
+		if (!cosas.some((mime) => tipos?.includes(mime))) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 	}
@@ -189,12 +275,25 @@
 		if (e.dataTransfer?.getData(MIME_CONSTANTE)) {
 			e.preventDefault();
 			agregarConstante(posicion);
+			return;
+		}
+		if (e.dataTransfer?.getData(MIME_VALOR_FINAL)) {
+			e.preventDefault();
+			agregarValorFinal(posicion);
+			return;
+		}
+		if (e.dataTransfer?.getData(MIME_RESULTADO)) {
+			e.preventDefault();
+			agregarResultado(posicion);
 		}
 	}
 
 	// ── Conexiones ───────────────────────────────────────────────────────────
 
-	const rechazo = (c: Conexion) => motivoDeRechazo(c, nodes, edges, tiposDocumentales);
+	/** El cable que se está arrastrando de un extremo (si lo hay): mientras se mueve, no cuenta para decidir si el nuevo lugar le cabe. */
+	let cableEnMovimiento: Edge | null = null;
+	const rechazo = (c: Conexion) =>
+		motivoDeRechazo(c, nodes, cableEnMovimiento ? edges.filter((e) => e.id !== cableEnMovimiento!.id) : edges, tiposDocumentales);
 
 	/** Cada entrada de un operador recibe UN campo: al conectar otro, el anterior se va. */
 	function alConectar() {
@@ -202,6 +301,28 @@
 			(e, i, todas) => todas.findLastIndex((o) => o.target === e.target && o.targetHandle === e.targetHandle) === i
 		);
 	}
+
+	const alEmpezarAMoverCable: OnReconnectStart = (_evento, cable) => {
+		cableEnMovimiento = cable;
+	};
+
+	/** Un cable movido cambia de extremos, así que su id (que lleva los nombres de esos extremos) se rehace: si no, volver a conectar lo de antes repetiría el id. */
+	const alRehacerCable: OnBeforeReconnect = (nuevo) => ({
+		...nuevo,
+		id: `xy-edge__${nuevo.source}${nuevo.sourceHandle ?? ''}-${nuevo.target}${nuevo.targetHandle ?? ''}`
+	});
+
+	/** Cada entrada recibe UN campo, también al mover un cable: el que estaba ahí se va y se queda el que se acaba de poner. */
+	const alMoverCable: OnReconnect = (_viejo, conexion) => {
+		edges = edges.filter((e) => !(e.target === conexion.target && e.targetHandle === conexion.targetHandle && !(e.source === conexion.source && e.sourceHandle === conexion.sourceHandle)));
+	};
+
+	/** Soltar el extremo en el VACÍO desconecta el cable. Soltarlo sobre un punto que no lo acepta lo deja donde estaba (y `alTerminarConexion` dice por qué). */
+	const alSoltarCable: OnReconnectEnd = (_evento, cable, _tipo, estado) => {
+		cableEnMovimiento = null;
+		if (estado.isValid || estado.toHandle) return;
+		edges = edges.filter((e) => e.id !== cable.id);
+	};
 
 	let aviso = $state('');
 	let relojAviso: ReturnType<typeof setTimeout> | undefined;
@@ -264,32 +385,85 @@
 	let existe = $state(false);
 	let nombre = $state('');
 	let descripcion = $state('');
+	/** Si el proceso está activo (se cambia desde la lista de procesos, no aquí). Aquí solo se CONSERVA: al guardar se manda lo mismo que se
+	 *  leyó, porque guardar arma el proceso entero y, sin esto, cada guardado lo dejaría activo otra vez. */
+	let activo = $state(true);
+	/** El tipo de expediente virtual sobre el que corre (2026-10-29), o `null`. Se elige en la barra y se guarda con el proceso. */
+	let tipoVirtual = $state<string | null>(null);
+
+	// ── El esquema del tipo elegido (2026-11-03) ─────────────────────────────
+	// El tipo de expediente virtual es OBLIGATORIO para guardar y de él salen los tipos documentales que se ofrecen: el virtual solo recibe
+	// documentos de los tipos de su esquema, así que una regla sobre otro daría «sin valores» siempre. Un tipo anterior a la regla del esquema
+	// (sin tipos documentales) no filtra. Un nodo cuyo tipo documental queda FUERA del esquema (porque el esquema se editó después de armar el
+	// proceso, o porque el proceso es anterior) se marca en ámbar en vez de quitarse: describe, no restringe.
+	const tiposVirtualesLista = $derived<{ id: string; nombre: string; tiposDocumentales: string[] }[]>(page.data.tiposVirtuales ?? []);
+	const tipoElegido = $derived(tiposVirtualesLista.find((t) => t.id === tipoVirtual) ?? null);
+	const esquema = $derived<ReadonlySet<string> | null>(tipoElegido && tipoElegido.tiposDocumentales.length > 0 ? new Set(tipoElegido.tiposDocumentales) : null);
+	setContext(CLAVE_ESQUEMA, {
+		get fuera() {
+			const ids = esquema;
+			return (tipoId: string) => ids !== null && !ids.has(tipoId);
+		},
+		get nombre() {
+			return tipoElegido?.nombre ?? null;
+		}
+	});
+
+	const nombreDeTipoDocumental = (tipoId: string) => tiposDocumentales.find((t) => t.id === tipoId)?.nombre ?? 'Tipo documental no disponible';
+
+	/**
+	 * Se eligió otro tipo de expediente virtual. Si el lienzo tiene nodos de tipos documentales que el esquema nuevo NO lleva, se pregunta antes
+	 * de quitarlos (con sus conexiones); si no hay ninguno, se cambia de una vez.
+	 */
+	function cambiarTipo(nuevo: string) {
+		if (nuevo === tipoVirtual) return;
+		const destino = tiposVirtualesLista.find((t) => t.id === nuevo);
+		const ids = destino && destino.tiposDocumentales.length > 0 ? new Set(destino.tiposDocumentales) : null;
+		const fuera =
+			ids === null
+				? []
+				: nodes.flatMap((n) => {
+						if (n.type !== NODO_TIPO) return [];
+						const tipoId = (n.data as DatosNodoTipo).tipoId;
+						return ids.has(tipoId) ? [] : [{ id: n.id, nombre: nombreDeTipoDocumental(tipoId) }];
+					});
+		if (fuera.length === 0) {
+			tipoVirtual = nuevo;
+			return;
+		}
+		dialogo = { tipo: 'tipo', nuevo, nombreNuevo: destino?.nombre ?? 'el tipo elegido', fuera };
+	}
+
+	/** Lo que la persona confirmó: se quitan los nodos que el esquema nuevo no lleva, con los cables que los tocaban, y se cambia el tipo. */
+	function aplicarCambioDeTipo(nuevo: string, fuera: { id: string }[]) {
+		const quitar = new Set(fuera.map((f) => f.id));
+		nodes = nodes.filter((n) => !quitar.has(n.id));
+		edges = edges.filter((e) => !quitar.has(e.source) && !quitar.has(e.target));
+		tipoVirtual = nuevo;
+	}
 	/** Lo último que se guardó (o se abrió): con esto se compara para saber si hay cambios. */
-	let guardado = $state({ huella: HUELLA_VACIA, nombre: '' });
+	let guardado = $state<{ huella: string; nombre: string; tipo: string | null }>({ huella: HUELLA_VACIA, nombre: '', tipo: null });
 	let guardando = $state(false);
+
+	/** Se está leyendo el proceso del servidor (solo cuando la dirección trae el id de uno guardado). */
+	let cargandoProceso = $state(untrack(() => procesoDeEntrada !== 'nuevo'));
+	/** Qué impide abrirlo: «no existe» (otra persona lo borró, o es de otra organización: no se distingue) o la lectura falló. */
+	let noSePudoAbrir = $state<{ titulo: string; mensaje: string } | null>(null);
 
 	const huella = $derived(huellaDelDibujo(serializarDibujo(nodes, edges)));
 	const sucio = $derived(
-		existe ? huella !== guardado.huella || nombre.trim() !== guardado.nombre : nodes.length > 0 || edges.length > 0 || nombre.trim() !== ''
+		existe
+			? huella !== guardado.huella || nombre.trim() !== guardado.nombre || tipoVirtual !== guardado.tipo
+			: nodes.length > 0 || edges.length > 0 || nombre.trim() !== '' || tipoVirtual !== null
 	);
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '');
-
-	/** Deja un proceso nuevo y en blanco. */
-	function nuevo() {
-		nodes = [];
-		edges = [];
-		operadoresPuestos = 0;
-		constantesPuestas = 0;
-		clasesVistas.clear();
-		procesoId = idDeProceso();
-		revision = 0;
-		existe = false;
-		nombre = '';
-		descripcion = '';
-		guardado = { huella: HUELLA_VACIA, nombre: '' };
-		aviso = '';
-	}
+	// El tipo de expediente virtual es obligatorio (2026-11-03): sin él el proceso no corre sobre nada y Ejecuciones no lo ofrece nunca. El
+	// RESULTADO también (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»): sin la palabra con la que termina no hay con qué contestar.
+	// Solo se exige que el nodo exista; el back NO lo exige (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los
+	// de antes), y la ejecución se niega a correr uno sin Resultado conectado.
+	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayResultado);
+	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
+	let paleta = $state<ReturnType<typeof PaletaDeTipos>>();
 
 	/** Pone un proceso del servidor en el lienzo. */
 	async function abrir(p: ProcesoGuardado) {
@@ -299,14 +473,17 @@
 		edges = dibujo.edges;
 		operadoresPuestos = dibujo.operadoresPuestos;
 		constantesPuestas = dibujo.constantesPuestas;
+		valoresFinalesPuestos = dibujo.valoresFinalesPuestos;
 		procesoId = p.id;
 		revision = p.revision;
 		existe = true;
 		nombre = p.datos.nombre;
 		descripcion = p.datos.descripcion ?? '';
+		activo = procesoActivo(p);
+		tipoVirtual = p.datos.tipoExpedienteVirtualId ?? null;
 		// La huella se saca de lo que quedó en el lienzo, no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya
 		// no existe) el proceso no debe aparecer con cambios sin que nadie los haya hecho.
-		guardado = { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre: p.datos.nombre.trim() };
+		guardado = { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre: p.datos.nombre.trim(), tipo: tipoVirtual };
 		aviso = '';
 		await tick();
 		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
@@ -318,37 +495,37 @@
 		| null
 		| { tipo: 'cambios'; despues: () => void }
 		| { tipo: 'borrar' }
+		| { tipo: 'tipo'; nuevo: string; nombreNuevo: string; fuera: { id: string; nombre: string }[] }
 		| { tipo: 'conflicto' }
 		| { tipo: 'error'; titulo: string; mensaje: string };
 	let dialogo = $state<Dialogo>(null);
 	const dialogoDeError = $derived(dialogo?.tipo === 'error' ? dialogo : null);
+	const dialogoDeTipo = $derived(dialogo?.tipo === 'tipo' ? dialogo : null);
 
-	/** Hace `accion` ya, o antes pregunta si hay cambios sin guardar que se perderían. */
-	function sinPerderCambios(accion: () => void) {
-		if (sucio) dialogo = { tipo: 'cambios', despues: accion };
-		else accion();
-	}
-
-	const alNuevo = () => sinPerderCambios(nuevo);
-	function alAbrir(id: string) {
-		const p = estadoProcesos.lista.find((x) => x.id === id);
-		if (p && id !== procesoId) sinPerderCambios(() => void abrir(p));
-	}
+	/** La dirección ya dice el id del proceso (después de su primer guardado), no `nuevo`. */
+	let direccionAlDia = false;
 
 	async function guardar() {
 		if (!puedeGuardar || guardando) return;
 		guardando = true;
 		const limpio = nombre.trim();
 		const dibujo = serializarDibujo(nodes, edges);
-		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, ...dibujo });
+		const tipo = tipoVirtual;
+		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, tipoExpedienteVirtualId: tipo, ...dibujo });
 		guardando = false;
 		if (r.ok) {
 			revision = r.proceso.revision;
 			existe = true;
 			nombre = limpio;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
-			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
+			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio, tipo };
 			avisarExito('Proceso guardado', `«${limpio}» quedó guardado.`);
+			// Un proceso que nació en `/motor-de-reglas/nuevo` ya tiene su dirección: se cambia la barra del navegador SIN navegar (recargar o
+			// compartir el enlace abre ESTE proceso, y no un lienzo en blanco).
+			if (esNuevo && !direccionAlDia) {
+				direccionAlDia = true;
+				replaceState(`/motor-de-reglas/${encodeURIComponent(procesoId)}`, {});
+			}
 		} else if (r.conflicto) {
 			dialogo = { tipo: 'conflicto' };
 		} else if (r.status === 404) {
@@ -372,8 +549,10 @@
 		const quitado = nombre.trim();
 		const r = await borrarProceso(procesoId);
 		if (r.ok) {
-			nuevo();
+			// Ya no hay proceso al que volver: se regresa a la lista. Los cambios sin guardar de algo que ya no existe no se preguntan.
+			salidaConfirmada = true;
 			avisarExito('Proceso eliminado', `«${quitado}» se eliminó.`);
+			await goto('/motor-de-reglas');
 		} else {
 			dialogo = { tipo: 'error', titulo: 'No se pudo eliminar el proceso', mensaje: r.mensaje };
 		}
@@ -409,14 +588,29 @@
 		}
 	}
 
-	// Al entrar se lee la lista de la organización y, si la persona todavía no empezó nada, se abre el proceso que se tocó más recientemente.
+	// Un proceso en blanco no necesita nada del servidor. Uno guardado se busca en la lista de la organización: si no está, la dirección
+	// apunta a algo que ya no existe (o que es de otra organización, que desde aquí es lo mismo) y se dice, en vez de enseñar un lienzo
+	// vacío que parecería el proceso perdido.
 	onMount(() => {
 		reiniciarProcesos();
-		void cargarProcesos().then(() => {
-			if (existe || sucio || estadoProcesos.lista.length === 0) return;
-			const reciente = [...estadoProcesos.lista].sort((a, b) => (b.modificadoEn ?? '').localeCompare(a.modificadoEn ?? ''))[0];
-			void abrir(reciente);
-		});
+		if (!esNuevo) {
+			void cargarProcesos().then(async () => {
+				cargandoProceso = false;
+				if (!estadoProcesos.cargada) {
+					noSePudoAbrir = { titulo: 'No se pudo abrir el proceso', mensaje: estadoProcesos.error || 'No se pudo leer la lista de procesos.' };
+					return;
+				}
+				const p = estadoProcesos.lista.find((x) => x.id === procesoDeEntrada);
+				if (!p) {
+					noSePudoAbrir = {
+						titulo: 'Este proceso ya no existe',
+						mensaje: 'Puede que otra persona lo haya eliminado. Regresa a la lista para ver los procesos de tu organización.'
+					};
+					return;
+				}
+				await abrir(p);
+			});
+		}
 		return () => reiniciarProcesos();
 	});
 </script>
@@ -425,39 +619,74 @@
 
 <BarraDeProceso
 	bind:nombre
+	{tipoVirtual}
+	tiposVirtuales={tiposVirtualesLista}
+	tiposVirtualesFallo={Boolean(page.data.tiposVirtualesFallo)}
+	alCambiarTipo={cambiarTipo}
 	estado={estadoDeProceso}
-	actualId={procesoId}
 	{guardando}
 	{puedeGuardar}
 	puedeBorrar={existe}
+	tieneResultado={hayResultado}
 	alGuardar={guardar}
-	alNuevo={alNuevo}
-	{alAbrir}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
+	alFaltaResultado={() => void paleta?.mostrarResultado()}
 />
 
 <div
 	data-testid="lienzo-reglas"
 	class="lienzo relative mt-4 flex h-[calc(100vh-22rem)] min-h-120 overflow-hidden rounded-xl border border-border bg-card"
 >
-	<PaletaDeTipos {enLienzo} alAgregar={agregarAlCentro} alAgregarOperador={agregarOperadorAlCentro} alAgregarConstante={agregarConstanteAlCentro} />
+	<PaletaDeTipos
+		bind:this={paleta}
+		{enLienzo}
+		tipoElegido={tipoVirtual !== null}
+		{esquema}
+		nombreDelTipo={tipoElegido?.nombre ?? null}
+		{hayResultado}
+		alAgregar={agregarAlCentro}
+		alAgregarOperador={agregarOperadorAlCentro}
+		alAgregarConstante={agregarConstanteAlCentro}
+		alAgregarValorFinal={agregarValorFinalAlCentro}
+		alAgregarResultado={agregarResultadoAlCentro} />
+
+	<!-- Mientras se lee el proceso, o si no se pudo abrir, una cubierta tapa la paleta y el canvas: un lienzo en blanco se leería como un
+	     proceso perdido, y soltar nodos encima de lo que está por llegar se perdería al abrirlo. -->
+	{#if cargandoProceso}
+		<div class="absolute inset-0 z-20 flex items-center justify-center bg-card text-sm text-muted-foreground" data-testid="proceso-cargando" role="status">
+			Cargando el proceso…
+		</div>
+	{:else if noSePudoAbrir}
+		<div class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-card px-6 text-center" data-testid="proceso-no-abre" role="alert">
+			<h2 class="text-lg font-semibold text-foreground">{noSePudoAbrir.titulo}</h2>
+			<p class="max-w-md text-sm text-muted-foreground">{noSePudoAbrir.mensaje}</p>
+			<Button href="/motor-de-reglas" data-testid="volver-a-procesos-desde-error">Volver a los procesos</Button>
+		</div>
+	{/if}
 
 	<div bind:this={zona} role="presentation" class="relative min-w-0 flex-1" ondragover={alPasarPorEncima} ondrop={alSoltar}>
 		<SvelteFlow
 			bind:nodes
 			bind:edges
 			{nodeTypes}
+			{edgeTypes}
+			defaultEdgeOptions={{ type: 'cable' }}
 			colorMode={tema.oscuro ? 'dark' : 'light'}
 			deleteKey={['Backspace', 'Delete']}
 			minZoom={0.2}
 			isValidConnection={(c) => rechazo(c) === null}
 			onconnect={alConectar}
 			onconnectend={alTerminarConexion}
+			onreconnectstart={alEmpezarAMoverCable}
+			onbeforereconnect={alRehacerCable}
+			onreconnect={alMoverCable}
+			onreconnectend={alSoltarCable}
 			proOptions={{ hideAttribution: true }}
 		>
 			<Background variant={BackgroundVariant.Dots} gap={20} />
 			<Controls showLock={false} />
-			<MiniMap pannable zoomable />
+			<!-- El mapa más chico y translúcido (2026-11-03, Moibe: «se encima»): con el tamaño de fábrica tapaba la esquina de lo que hubiera ahí y se leía como otro nodo. -->
+			<MiniMap pannable zoomable width={150} height={96} bgColor="color-mix(in oklab, var(--card) 75%, transparent)" class="overflow-hidden rounded-lg border border-border opacity-90" />
 			{#if aviso}
 				<Panel position="top-center">
 					<p
@@ -495,6 +724,24 @@
 	}}
 	onCerrar={() => {
 		if (dialogo?.tipo === 'cambios') dialogo = null;
+	}}
+/>
+
+<ConfirmarAccion
+	abierto={dialogoDeTipo !== null}
+	titulo="Cambiar el tipo del proceso"
+	mensaje={dialogoDeTipo
+		? `«${dialogoDeTipo.nombreNuevo}» no lleva ${dialogoDeTipo.fuera.length === 1 ? 'este tipo documental' : 'estos tipos documentales'} del lienzo: ${dialogoDeTipo.fuera.map((f) => `«${f.nombre}»`).join(', ')}. Si cambias el tipo, se quitan del lienzo con sus conexiones.`
+		: ''}
+	etiquetaConfirmar="Cambiar y quitar"
+	etiquetaCancelar="Conservar el tipo actual"
+	onConfirmar={() => {
+		const d = dialogoDeTipo;
+		dialogo = null;
+		if (d) aplicarCambioDeTipo(d.nuevo, d.fuera);
+	}}
+	onCerrar={() => {
+		if (dialogo?.tipo === 'tipo') dialogo = null;
 	}}
 />
 
@@ -542,7 +789,7 @@
 />
 
 <style>
-	/* El lienzo toma los colores de NexusDoc en vez de los de la librería. */
+	/* El lienzo toma los colores de Biblioratum en vez de los de la librería. */
 	.lienzo :global(.svelte-flow) {
 		--xy-background-color: var(--card);
 		--xy-background-color-default: var(--card);

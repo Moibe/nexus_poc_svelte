@@ -107,7 +107,7 @@
 	}
 </script>
 
-<svelte:head><title>NexusDoc AI — Iniciar sesión</title></svelte:head>
+<svelte:head><title>Biblioratum — Iniciar sesión</title></svelte:head>
 
 <h1 class="text-[28px] leading-tight font-semibold text-foreground">Documentación y operaciones más ágiles</h1>
 <p class="mt-3 text-sm text-muted-foreground">

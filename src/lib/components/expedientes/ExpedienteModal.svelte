@@ -1,74 +1,67 @@
 <script lang="ts">
 	/**
-	 * «Nuevo expediente» (2026-10-24): el alta de un expediente con su nombre y el tipo del que es instancia.
+	 * «Nuevo expediente» (2026-10-24): el alta de un expediente con su nombre.
 	 *
-	 * Un expediente es la carpeta de UN caso (un paciente, un choque) y nace de un tipo de expediente de su organización: el tipo es
-	 * obligatorio, y si la organización solo tiene uno, ya viene elegido. Dos expedientes pueden llamarse igual (un mismo cliente puede
-	 * tener dos solicitudes), así que aquí no hay «ya existe».
+	 * Un expediente es la carpeta de un cliente o de un caso, un receptáculo de documentos. Hasta el 2026-10-29 nacía de un tipo de
+	 * expediente y aquí se elegía; ese día el tipo pasó a los expedientes VIRTUALES (grupitos de documentos dentro de un expediente), así
+	 * que el alta pide solo el nombre. Dos expedientes pueden llamarse igual (un mismo cliente puede tener dos solicitudes), así que aquí
+	 * no hay «ya existe».
 	 *
-	 * Es el mismo molde que «Nuevo tipo de expediente» (`TipoExpedienteModal`, que a su vez salió del «Registro de motivo»): modal
-	 * centrado de 684 px con cabecera, título con su ícono, cuerpo con los campos y pie con «Cancelar» y el botón principal. El selector
-	 * del tipo va en una capa MÁS ALTA que el modal (`z-70`): el contenido del selector sale por defecto en `z-50` y quedaría detrás.
+	 * Es el mismo molde que «Nuevo tipo de expediente virtual» (`TipoExpedienteModal`, que a su vez salió del «Registro de motivo»):
+	 * modal centrado de 684 px con cabecera, título con su ícono, cuerpo con los campos y pie con «Cancelar» y el botón principal.
 	 *
-	 * Nexus_back vuelve a comprobar todo, limpia los espacios de más del nombre, y rechaza un tipo que no sea de la organización (404)
-	 * o a un rol que no organiza (403): lo que diga se muestra aquí mismo, sin cerrar el modal.
+	 * Nexus_back vuelve a comprobar todo, limpia los espacios de más del nombre, y rechaza a un rol que no organiza (403): lo que diga se
+	 * muestra aquí mismo, sin cerrar el modal.
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import * as Select from '$lib/components/ui/select/index.js';
 	import { MAX_NOMBRE_EXPEDIENTE } from '$lib/expedientes/expedientes';
 
 	let {
 		open = $bindable(false),
-		tipos,
 		alCrear
 	}: {
 		open?: boolean;
-		/** Los tipos de expediente de la organización: de ahí se elige el del nuevo expediente. */
-		tipos: { id: string; nombre: string }[];
 		/** El expediente YA se creó y el modal ya se cerró; recibe el nombre con que quedó guardado. */
 		alCrear: (nombre: string) => Promise<void> | void;
 	} = $props();
 
 	let nombre = $state('');
-	let tipoId = $state('');
 	let enviando = $state(false);
 	let error = $state('');
-	/** A qué campo se refiere el error, para pintar SOLO ese: un tipo que no existe no es culpa del nombre. */
-	let campoConError = $state<'nombre' | 'tipo' | null>(null);
+	/** El error es del nombre (un 400): solo entonces se pinta el campo. */
+	let errorEnNombre = $state(false);
 	let campo = $state<HTMLInputElement | null>(null);
 
-	const elegido = $derived(tipos.find((t) => t.id === tipoId) ?? null);
-	const completo = $derived(nombre.trim().length > 0 && elegido !== null);
+	const completo = $derived(nombre.trim().length > 0);
 
-	// Cada vez que se abre, el formulario arranca limpio; con un solo tipo posible, ya viene elegido.
+	// Cada vez que se abre, el formulario arranca limpio.
 	$effect(() => {
 		if (!open) return;
 		nombre = '';
-		tipoId = tipos.length === 1 ? tipos[0].id : '';
 		error = '';
-		campoConError = null;
+		errorEnNombre = false;
 	});
 
 	async function crear() {
 		if (!completo || enviando) return;
 		enviando = true;
 		error = '';
-		campoConError = null;
+		errorEnNombre = false;
 		try {
 			const r = await fetch('/api/expedientes', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ nombre: nombre.trim(), tipoId })
+				body: JSON.stringify({ nombre: nombre.trim() })
 			});
 			const datos = await r.json().catch(() => null);
 			if (!r.ok) {
 				error = datos?.mensaje ?? 'No se pudo crear el expediente. Intenta de nuevo.';
-				// 400: el nombre no sirvió; 404: el tipo no existe (o no es de esta organización). Lo demás no es de un campo.
-				campoConError = r.status === 400 ? 'nombre' : r.status === 404 ? 'tipo' : null;
+				// 400: el nombre no sirvió. Lo demás no es de un campo.
+				errorEnNombre = r.status === 400;
 				return;
 			}
 			open = false;
@@ -137,33 +130,14 @@
 							maxlength={MAX_NOMBRE_EXPEDIENTE}
 							autocomplete="off"
 							data-testid="nombre-expediente"
-							aria-invalid={campoConError === 'nombre' ? 'true' : undefined}
+							aria-invalid={errorEnNombre ? 'true' : undefined}
 							aria-describedby="ayuda-expediente"
 							class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
 						/>
 						<p id="ayuda-expediente" class="text-xs text-muted-foreground">
-							Por ejemplo: «Juan Pérez» o «Choque del 12 de marzo». Dos expedientes pueden llamarse igual.
+							Por ejemplo: «Juan Pérez» o «Choque del 12 de marzo». Dos expedientes pueden llamarse igual. Los grupos de documentos con
+							un tipo (sus expedientes virtuales) se arman después, dentro del expediente.
 						</p>
-					</div>
-
-					<div class="flex flex-col gap-2">
-						<label for="tipo-del-expediente" class="text-base font-medium text-foreground">Tipo de expediente *</label>
-						<Select.Root type="single" bind:value={tipoId}>
-							<Select.Trigger
-								id="tipo-del-expediente"
-								class="h-10 w-full"
-								data-testid="tipo-del-expediente"
-								aria-invalid={campoConError === 'tipo' ? 'true' : undefined}
-							>
-								{elegido?.nombre ?? 'Elige un tipo de expediente'}
-							</Select.Trigger>
-							<Select.Content class="z-70">
-								{#each tipos as tipo (tipo.id)}
-									<Select.Item value={tipo.id} label={tipo.nombre} data-testid="tipo-{tipo.id}" />
-								{/each}
-							</Select.Content>
-						</Select.Root>
-						<p class="text-xs text-muted-foreground">Cada expediente es una instancia de un tipo: el tipo es la clase y el expediente, el caso.</p>
 					</div>
 
 					{#if error}
