@@ -43,7 +43,11 @@
 		useSvelteFlow,
 		type Edge,
 		type Node,
-		type OnConnectEnd
+		type OnBeforeReconnect,
+		type OnConnectEnd,
+		type OnReconnect,
+		type OnReconnectEnd,
+		type OnReconnectStart
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 
@@ -53,6 +57,7 @@
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CableDeProceso from '$lib/components/reglas/CableDeProceso.svelte';
 	import NodoConstante from '$lib/components/reglas/NodoConstante.svelte';
 	import NodoOperador from '$lib/components/reglas/NodoOperador.svelte';
 	import NodoResultado from '$lib/components/reglas/NodoResultado.svelte';
@@ -115,6 +120,9 @@
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);
 	let zona = $state<HTMLDivElement>();
+
+	/** Todos los cables son el de `CableDeProceso`: se arrastran de un extremo y se quitan de un clic. No se guarda (`serializarDibujo` solo lleva extremos). */
+	const edgeTypes = { cable: CableDeProceso };
 
 	const nodeTypes = {
 		[NODO_TIPO]: NodoTipoDocumental,
@@ -282,7 +290,10 @@
 
 	// ── Conexiones ───────────────────────────────────────────────────────────
 
-	const rechazo = (c: Conexion) => motivoDeRechazo(c, nodes, edges, tiposDocumentales);
+	/** El cable que se está arrastrando de un extremo (si lo hay): mientras se mueve, no cuenta para decidir si el nuevo lugar le cabe. */
+	let cableEnMovimiento: Edge | null = null;
+	const rechazo = (c: Conexion) =>
+		motivoDeRechazo(c, nodes, cableEnMovimiento ? edges.filter((e) => e.id !== cableEnMovimiento!.id) : edges, tiposDocumentales);
 
 	/** Cada entrada de un operador recibe UN campo: al conectar otro, el anterior se va. */
 	function alConectar() {
@@ -290,6 +301,28 @@
 			(e, i, todas) => todas.findLastIndex((o) => o.target === e.target && o.targetHandle === e.targetHandle) === i
 		);
 	}
+
+	const alEmpezarAMoverCable: OnReconnectStart = (_evento, cable) => {
+		cableEnMovimiento = cable;
+	};
+
+	/** Un cable movido cambia de extremos, así que su id (que lleva los nombres de esos extremos) se rehace: si no, volver a conectar lo de antes repetiría el id. */
+	const alRehacerCable: OnBeforeReconnect = (nuevo) => ({
+		...nuevo,
+		id: `xy-edge__${nuevo.source}${nuevo.sourceHandle ?? ''}-${nuevo.target}${nuevo.targetHandle ?? ''}`
+	});
+
+	/** Cada entrada recibe UN campo, también al mover un cable: el que estaba ahí se va y se queda el que se acaba de poner. */
+	const alMoverCable: OnReconnect = (_viejo, conexion) => {
+		edges = edges.filter((e) => !(e.target === conexion.target && e.targetHandle === conexion.targetHandle && !(e.source === conexion.source && e.sourceHandle === conexion.sourceHandle)));
+	};
+
+	/** Soltar el extremo en el VACÍO desconecta el cable. Soltarlo sobre un punto que no lo acepta lo deja donde estaba (y `alTerminarConexion` dice por qué). */
+	const alSoltarCable: OnReconnectEnd = (_evento, cable, _tipo, estado) => {
+		cableEnMovimiento = null;
+		if (estado.isValid || estado.toHandle) return;
+		edges = edges.filter((e) => e.id !== cable.id);
+	};
 
 	let aviso = $state('');
 	let relojAviso: ReturnType<typeof setTimeout> | undefined;
@@ -636,12 +669,18 @@
 			bind:nodes
 			bind:edges
 			{nodeTypes}
+			{edgeTypes}
+			defaultEdgeOptions={{ type: 'cable' }}
 			colorMode={tema.oscuro ? 'dark' : 'light'}
 			deleteKey={['Backspace', 'Delete']}
 			minZoom={0.2}
 			isValidConnection={(c) => rechazo(c) === null}
 			onconnect={alConectar}
 			onconnectend={alTerminarConexion}
+			onreconnectstart={alEmpezarAMoverCable}
+			onbeforereconnect={alRehacerCable}
+			onreconnect={alMoverCable}
+			onreconnectend={alSoltarCable}
 			proOptions={{ hideAttribution: true }}
 		>
 			<Background variant={BackgroundVariant.Dots} gap={20} />
