@@ -119,12 +119,8 @@
 	//
 	// Quién ve cada una lo decide `puedeVerOpcionDelEngrane` (permisos.ts): el engrane lo ve cualquiera que use el producto y cada opción
 	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña:
-	// los dos módulos (de uso y de configuración) hasta arriba, antes que el motor de reglas (Moibe, 2026-10-30).
+	// los dos módulos hasta arriba, antes que el motor de reglas (Moibe, 2026-10-30), y el de configuración primero, antes que el de uso (Moibe, 2026-11-03).
 	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof Cog; alSeleccionar: (() => void) | undefined }[] = [
-		// Módulo de uso (2026-10-30): sustituyó a «Expediente». Una página con un cuadro por cosa que se USA a diario —el centro operativo
-		// documental (las tres bandejas del inicio) y los expedientes—, como el módulo de configuración lo es de lo que se configura. Es
-		// la única opción que ve TODO rol. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
-		{ id: 'modulo-de-uso', etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
@@ -133,6 +129,10 @@
 			icono: SlidersHorizontal,
 			alSeleccionar: () => goto('/configuracion')
 		},
+		// Módulo de uso (2026-10-30): sustituyó a «Expediente». Una página con un cuadro por cosa que se USA a diario —el centro operativo
+		// documental (las tres bandejas del inicio) y los expedientes—, como el módulo de configuración lo es de lo que se configura. Es
+		// la única opción que ve TODO rol. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
+		{ id: 'modulo-de-uso', etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
 		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
 		{ id: 'motor-de-reglas', etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
 		{ id: 'conectores', etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
