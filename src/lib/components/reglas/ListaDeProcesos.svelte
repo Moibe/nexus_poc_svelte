@@ -11,8 +11,9 @@
 	 * SIN ramas en la barra lateral (2026-11-03, Moibe: «ver el proceso en el árbol de la izquierda y en el panel de la derecha no me hace
 	 * mucho sentido»). El Figma dibuja cada proceso como una rama del árbol, y aquí se copió junto con el gesto de la biblioteca (picar una
 	 * rama dejaba solo su tarjeta), pero en la biblioteca el árbol además reordena y navega la calibración; aquí solo repetía las tarjetas.
-	 * Quedan la sección «Procesos configurados» (ya no es botón: no hace nada) y «Nuevo proceso»; las tarjetas SON la lista. Igual que
-	 * Webhooks y Expedientes, que tampoco tienen ramas.
+	 * Tampoco queda la tarjeta de la sección «Procesos configurados» (con su flecha), que seguía leyéndose como una entrada de menú cuyo
+	 * contenido era el panel de la derecha (Moibe, mismo día: «también quítala»). La barra trae solo su rótulo y «Nuevo proceso»; las
+	 * tarjetas SON la lista.
 	 *
 	 * Lo que se aparta del diseño, porque el diseño es de antes del lienzo:
 	 *   · Los textos hablan de «campos requeridos de cada documento»; un proceso de hoy es un conjunto de REGLAS sobre un expediente, y
@@ -37,8 +38,6 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Power from '@lucide/svelte/icons/power';
 
-	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
-	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import MoreVerticalIcon from '$lib/components/icons/MoreVerticalIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -130,20 +129,6 @@
 	<div class="flex min-h-0 flex-1">
 		<aside class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6">
 			<p class="text-xs text-foreground">Procesos</p>
-			<!-- La sección, con la forma de «Biblioteca» en el módulo hermano (ícono en cuadro redondeado + título + descripción + flecha). Va como <div> y
-			     no como <button> porque no navega a ningún lado: un botón que no hace nada promete algo que no cumple. Sin ramas debajo (2026-11-03): ver el
-			     docstring. -->
-			<div class="mt-6 flex w-full items-center gap-3" data-testid="seccion-procesos">
-				<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
-					<ArchiveIcon />
-				</span>
-				<div class="min-w-0 flex-1">
-					<p class="text-sm font-medium text-foreground">Procesos configurados</p>
-					<p class="mt-2 text-xs text-muted-foreground">Localiza tu listado de procesos configurados.</p>
-				</div>
-				<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-			</div>
-
 			<div class="mt-auto pt-6">
 				<Button class="w-full" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
 			</div>

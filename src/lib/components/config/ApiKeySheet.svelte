@@ -37,8 +37,6 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
-	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
-	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import EmptyState from '$lib/components/home/EmptyState.svelte';
 	import Puzzle from '@lucide/svelte/icons/puzzle';
 	import KeyRound from '@lucide/svelte/icons/key-round';
@@ -359,29 +357,10 @@
 				class="flex w-82.5 shrink-0 flex-col overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
 			>
 				<p class="text-xs text-foreground">Configuración</p>
-				<!-- La tarjeta de la sección, con la misma forma que "Biblioteca" allá
-				     (ícono en cuadro redondeado + título + descripción + flecha). Va como
-				     <div> y no como <button> porque hoy no navega a ningún lado: un botón
-				     que no hace nada promete algo que no cumple. -->
-				<div class="mt-6 flex w-full items-center gap-3" data-testid="seccion-api-keys">
-					<span
-						class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-					>
-						<ArchiveIcon />
-					</span>
-					<div class="min-w-0 flex-1">
-						<p class="text-sm font-medium text-foreground">API Keys</p>
-						<p class="mt-2 text-xs text-muted-foreground">
-							Localiza tu listado de API Keys configuradas
-						</p>
-					</div>
-					<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-				</div>
-
 				<!-- Sin ramas debajo (2026-11-03, Moibe: «sí, api keys y procesos», tras decir que ver lo mismo en el árbol de la izquierda y en el panel de la derecha «no me hace mucho
 				     sentido»): el árbol repetía las tarjetas y solo servía de filtro, un gesto que yo había deducido de la rama resaltada de la captura. Las
 				     tarjetas son la lista completa. Igual que Webhooks y Expedientes, que tampoco tienen ramas; en la Biblioteca de tipos documentales el árbol
-				     se queda, porque ahí también reordena y navega la calibración. Ver `docs/pendientes-ux.md`. -->
+				     se queda, porque ahí también reordena y navega la calibración. Tampoco queda la tarjeta de la sección «API Keys» (con su flecha), que se leía como una entrada de menú cuyo contenido era el panel (Moibe, mismo día: «también quítala»). Ver `docs/pendientes-ux.md`. -->
 				{#if apiKeys.length > 0}
 					<!-- Al PIE del sidebar, como en la captura. Solo con llaves ya
 					     emitidas: en el estado vacío el acceso es el botón del centro, que
