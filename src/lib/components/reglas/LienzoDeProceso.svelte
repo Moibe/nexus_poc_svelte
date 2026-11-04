@@ -43,6 +43,7 @@
 		useSvelteFlow,
 		type Edge,
 		type Node,
+		type OnBeforeDelete,
 		type OnBeforeReconnect,
 		type OnConnectEnd,
 		type OnReconnect,
@@ -87,7 +88,9 @@
 		motivoDeRechazo,
 		numeroDeOperador,
 		operadorDe,
+		posicionLibre,
 		serializarDibujo,
+		usosDeNodo,
 		type ClaveOperador,
 		type Conexion,
 		type DatosNodoConstante,
@@ -156,8 +159,25 @@
 	);
 	/** El proceso termina con UNA palabra: si ya tiene su nodo de resultado, la paleta no ofrece otro. */
 	const hayResultado = $derived(nodes.some((n) => n.type === NODO_RESULTADO));
+	/** El proceso necesita al menos un tipo documental: son sus entradas. Sin ninguno no tiene sobre qué correr (NEX-529 y NEX-532). */
+	const hayTipoDocumental = $derived(nodes.some((n) => n.type === NODO_TIPO));
 
 	type Posicion = { x: number; y: number };
+
+	/**
+	 * Lo que mide un nodo nuevo mientras no se ha pintado: todos son de 288 px de ancho y nacen cortos. Los que ya están usan lo que midió la librería.
+	 * Un nodo nuevo se corre a la derecha de lo que taparía (NEX-540); mover uno que ya está puesto no pasa por aquí.
+	 */
+	const TAMANO_DE_NODO_NUEVO = { ancho: 288, alto: 160 };
+	function libre(posicion: Posicion): Posicion {
+		const ocupadas = nodes.map((n) => ({
+			x: n.position.x,
+			y: n.position.y,
+			ancho: n.measured?.width ?? n.width ?? TAMANO_DE_NODO_NUEVO.ancho,
+			alto: n.measured?.height ?? n.height ?? TAMANO_DE_NODO_NUEVO.alto
+		}));
+		return posicionLibre(posicion, TAMANO_DE_NODO_NUEVO, ocupadas);
+	}
 
 	/** Pone el tipo en el lienzo en `posicion` (coordenadas del lienzo). Si ya está, no lo duplica: lo enfoca. */
 	function agregar(tipoId: string, posicion: Posicion) {
@@ -166,7 +186,9 @@
 			fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 });
 			return;
 		}
-		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: posicion, data: { tipoId, campos: [] } };
+		// Se registra la versión del tipo con la que se arma el proceso (NEX-542); si la biblioteca aún no lo trae, queda sin registrar.
+		const version = tiposDocumentales.find((t) => t.id === tipoId)?.version;
+		const nuevo: Node<DatosNodoTipo> = { id, type: NODO_TIPO, position: libre(posicion), data: { tipoId, campos: [], ...(version === undefined ? {} : { version }) } };
 		nodes = [...nodes, nuevo];
 	}
 
@@ -179,7 +201,7 @@
 		const nuevo: Node<DatosNodoOperador> = {
 			id: `operador-${operadoresPuestos}`,
 			type: NODO_OPERADOR,
-			position: posicion,
+			position: libre(posicion),
 			data: { operador: operador.clave as ClaveOperador, a: '', b: '' }
 		};
 		nodes = [...nodes, nuevo];
@@ -192,7 +214,7 @@
 		const nuevo: Node<DatosNodoConstante> = {
 			id: `constante-${constantesPuestas}`,
 			type: NODO_CONSTANTE,
-			position: posicion,
+			position: libre(posicion),
 			data: { familia: 'texto', valor: '' }
 		};
 		nodes = [...nodes, nuevo];
@@ -205,7 +227,7 @@
 		const nuevo: Node<DatosNodoValorFinal> = {
 			id: `valor-final-${valoresFinalesPuestos}`,
 			type: NODO_VALOR_FINAL,
-			position: posicion,
+			position: libre(posicion),
 			data: { nombre: '', a: '' }
 		};
 		nodes = [...nodes, nuevo];
@@ -218,7 +240,7 @@
 			if (existente) fitView({ nodes: [{ id: existente.id }], duration: 300, maxZoom: 1 });
 			return;
 		}
-		const nuevo: Node<DatosNodoResultado> = { id: ID_NODO_RESULTADO, type: NODO_RESULTADO, position: posicion, data: { ...TEXTOS_DEL_RESULTADO } };
+		const nuevo: Node<DatosNodoResultado> = { id: ID_NODO_RESULTADO, type: NODO_RESULTADO, position: libre(posicion), data: { ...TEXTOS_DEL_RESULTADO } };
 		nodes = [...nodes, nuevo];
 	}
 
@@ -461,7 +483,11 @@
 	// RESULTADO también (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»): sin la palabra con la que termina no hay con qué contestar.
 	// Solo se exige que el nodo exista; el back NO lo exige (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los
 	// de antes), y la ejecución se niega a correr uno sin Resultado conectado.
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayResultado);
+	// Desde el 2026-11-04 también hace falta al menos un tipo documental en el lienzo (NEX-529: sin tipo documental no se guarda); el back tampoco lo exige,
+	// por lo mismo que con el Resultado. Si el tipo de expediente virtual no tiene ningún tipo documental activo, la paleta lo dice y no hay con qué guardar.
+	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayTipoDocumental && hayResultado);
+	/** El nombre que el servidor rechazó por repetido en la organización (409 `ya_existe`): la barra lo dice bajo el campo mientras siga escrito. */
+	let nombreOcupado = $state<string | null>(null);
 	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
 	let paleta = $state<ReturnType<typeof PaletaDeTipos>>();
 
@@ -497,10 +523,47 @@
 		| { tipo: 'borrar' }
 		| { tipo: 'tipo'; nuevo: string; nombreNuevo: string; fuera: { id: string; nombre: string }[] }
 		| { tipo: 'conflicto' }
+		| { tipo: 'quitar'; mensaje: string }
 		| { tipo: 'error'; titulo: string; mensaje: string };
 	let dialogo = $state<Dialogo>(null);
 	const dialogoDeError = $derived(dialogo?.tipo === 'error' ? dialogo : null);
 	const dialogoDeTipo = $derived(dialogo?.tipo === 'tipo' ? dialogo : null);
+	const dialogoDeQuitar = $derived(dialogo?.tipo === 'quitar' ? dialogo : null);
+
+	/** Quien espera la respuesta del aviso de «quitar»: la librería no borra hasta que esto se resuelva con `true`. */
+	let resolverQuitar: ((quitar: boolean) => void) | null = null;
+	const contestarQuitar = (quitar: boolean) => {
+		const r = resolverQuitar;
+		resolverQuitar = null;
+		dialogo = null;
+		r?.(quitar);
+	};
+
+	/**
+	 * Antes de quitar nodos del lienzo (la X del nodo, Suprimir o Retroceso) (NEX-543): un tipo documental que ya está en uso —tiene cables— pide
+	 * confirmación y dice qué reglas se quedan sin esa entrada. Uno suelto, o cualquier otro nodo, se quita de una vez, como siempre.
+	 */
+	const alAntesDeQuitar: OnBeforeDelete = async ({ nodes: porQuitar }) => {
+		const idsPorQuitar = new Set(porQuitar.map((n) => n.id));
+		// Un cable hacia otro nodo que también se va no es una pérdida que haya que avisar.
+		const cablesQueQuedan = edges.filter((e) => !idsPorQuitar.has(e.target));
+		const enUso = porQuitar
+			.filter((n) => n.type === NODO_TIPO)
+			.map((n) => ({ nombre: nombreDeTipoDocumental((n.data as DatosNodoTipo).tipoId), usos: usosDeNodo(n.id, nodes, cablesQueQuedan) }))
+			.filter((x) => x.usos.length > 0);
+		if (enUso.length === 0) return true;
+		const usosEnTexto = (usos: { destino: string; entrada: string | null }[]) =>
+			usos.map((u) => (u.entrada ? `${u.destino} (${u.entrada})` : u.destino)).join(', ');
+		const mensaje =
+			enUso.length === 1
+				? `Vas a quitar «${enUso[0].nombre}», que está conectado a ${usosEnTexto(enUso[0].usos)}. Se borrarán esas conexiones y esas reglas se quedarán sin esa entrada.`
+				: `Vas a quitar ${enUso.map((x) => `«${x.nombre}» (conectado a ${usosEnTexto(x.usos)})`).join(' y ')}. Se borrarán esas conexiones y esas reglas se quedarán sin esas entradas.`;
+		return new Promise<boolean>((resolver) => {
+			resolverQuitar?.(false);
+			resolverQuitar = resolver;
+			dialogo = { tipo: 'quitar', mensaje };
+		});
+	};
 
 	/** La dirección ya dice el id del proceso (después de su primer guardado), no `nuevo`. */
 	let direccionAlDia = false;
@@ -526,6 +589,9 @@
 				direccionAlDia = true;
 				replaceState(`/motor-de-reglas/${encodeURIComponent(procesoId)}`, {});
 			}
+		} else if (r.codigo === 'ya_existe') {
+			nombreOcupado = limpio;
+			document.getElementById('nombre-del-proceso')?.focus();
 		} else if (r.conflicto) {
 			dialogo = { tipo: 'conflicto' };
 		} else if (r.status === 404) {
@@ -628,9 +694,12 @@
 	{puedeGuardar}
 	puedeBorrar={existe}
 	tieneResultado={hayResultado}
+	tieneDocumento={hayTipoDocumental}
+	{nombreOcupado}
 	alGuardar={guardar}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
 	alFaltaResultado={() => void paleta?.mostrarResultado()}
+	alFaltaDocumento={() => void paleta?.mostrarTipos()}
 />
 
 <div
@@ -673,7 +742,9 @@
 			defaultEdgeOptions={{ type: 'cable' }}
 			colorMode={tema.oscuro ? 'dark' : 'light'}
 			deleteKey={['Backspace', 'Delete']}
-			minZoom={0.2}
+			minZoom={0.05}
+			maxZoom={4}
+			onbeforedelete={alAntesDeQuitar}
 			isValidConnection={(c) => rechazo(c) === null}
 			onconnect={alConectar}
 			onconnectend={alTerminarConexion}
@@ -742,6 +813,18 @@
 	}}
 	onCerrar={() => {
 		if (dialogo?.tipo === 'tipo') dialogo = null;
+	}}
+/>
+
+<ConfirmarAccion
+	abierto={dialogoDeQuitar !== null}
+	titulo="Quitar del lienzo"
+	mensaje={dialogoDeQuitar?.mensaje ?? ''}
+	etiquetaConfirmar="Quitar y desconectar"
+	etiquetaCancelar="Cancelar"
+	onConfirmar={() => contestarQuitar(true)}
+	onCerrar={() => {
+		if (dialogo?.tipo === 'quitar') contestarQuitar(false);
 	}}
 />
 

@@ -37,7 +37,7 @@
 		MIME_VALOR_FINAL,
 		OPERADORES
 	} from '$lib/reglas/reglas';
-	import { estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
+	import { estadoBiblioteca, etiquetaVersion, tiposDocumentales } from '$lib/state/configuracion.svelte';
 
 	let {
 		enLienzo,
@@ -98,6 +98,23 @@
 		relojResalte = setTimeout(() => (resaltado = false), 3000);
 	}
 
+	/** La lista de tipos y si se está señalando (2026-11-04: «Guardar» sin ningún tipo documental manda a la persona aquí). */
+	let listaDeTipos = $state<HTMLDivElement>();
+	let resaltadoTipos = $state(false);
+	let relojResalteTipos: ReturnType<typeof setTimeout> | undefined;
+
+	/** Abre «Tipos documentales» y los señala unos segundos: sin al menos uno en el lienzo, el proceso no se guarda. */
+	export async function mostrarTipos() {
+		if (!abiertos.includes('tipos')) abiertos = [...abiertos, 'tipos'];
+		await tick();
+		await new Promise((resolver) => requestAnimationFrame(() => resolver(null)));
+		listaDeTipos?.scrollIntoView({ block: 'nearest' });
+		listaDeTipos?.querySelector<HTMLButtonElement>('[data-testid="tipo-de-paleta"]')?.focus();
+		resaltadoTipos = true;
+		clearTimeout(relojResalteTipos);
+		relojResalteTipos = setTimeout(() => (resaltadoTipos = false), 3000);
+	}
+
 	/** Lo que dice el encabezado de los tipos a la derecha: cuántos hay, o por qué todavía no se sabe. */
 	const cuentaDeTipos = $derived(
 		estadoBiblioteca.errorCarga ? { texto: 'Error', malo: true } : !estadoBiblioteca.cargada ? { texto: '…', malo: false } : !tipoElegido ? { texto: '0', malo: false } : { texto: String(activos.length), malo: false }
@@ -137,7 +154,12 @@
 					<p class="px-4 pb-2 text-xs text-muted-foreground">
 						Las entradas del proceso{esquema !== null ? `: los tipos de «${nombreDelTipo}»` : ''}. Arrástralos al lienzo o pulsa para agregarlos.
 					</p>
-					<div class="px-2">
+					<div
+						bind:this={listaDeTipos}
+						data-testid="lista-de-tipos"
+						data-resaltado={resaltadoTipos}
+						class="mx-2 rounded-lg px-0 transition-shadow {resaltadoTipos ? 'ring-2 ring-primary/60' : ''}"
+					>
 						{#if estadoBiblioteca.errorCarga}
 							<p class="px-2 py-3 text-xs text-destructive" data-testid="paleta-error">
 								No se pudo leer la biblioteca: {estadoBiblioteca.errorCarga}
@@ -180,7 +202,7 @@
 												<span class="block truncate text-sm font-medium text-foreground">{tipo.nombre}</span>
 												<span class="block text-xs text-muted-foreground">
 													{#if puesto}En el lienzo · {/if}{tipo.campos.length}
-													{tipo.campos.length === 1 ? 'campo' : 'campos'}
+													{tipo.campos.length === 1 ? 'campo' : 'campos'}{etiquetaVersion(tipo.version) ? ` · v${etiquetaVersion(tipo.version)}` : ''}
 												</span>
 											</span>
 										</button>

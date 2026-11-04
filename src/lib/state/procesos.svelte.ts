@@ -67,6 +67,20 @@ export function tiposDelProceso(p: ProcesoGuardado): number {
 	return p.datos.nodos.filter((n) => (n as { type?: unknown } | null)?.type === NODO_TIPO).length;
 }
 
+/**
+ * Los procesos de la lista que usan un tipo documental, con cuántos nodos de ese tipo lleva cada uno (2026-11-04, NEX-544: archivar un tipo avisa
+ * a qué procesos afecta). Se lee de la lista que ya se tiene: quien lo llama la refresca antes con `cargarProcesos`.
+ */
+export function procesosQueUsanElTipo(tipoId: string): { nombre: string; nodos: number }[] {
+	return estadoProcesos.lista.flatMap((p) => {
+		const nodos = p.datos.nodos.filter((n) => {
+			const nodo = n as { type?: unknown; data?: { tipoId?: unknown } } | null;
+			return nodo?.type === NODO_TIPO && nodo.data?.tipoId === tipoId;
+		}).length;
+		return nodos > 0 ? [{ nombre: p.datos.nombre, nodos }] : [];
+	});
+}
+
 /** El id de un proceso: `proceso-` y 32 hexadecimales al azar. Único en TODAS las organizaciones (nexus_back lo exige). */
 export function idDeProceso(): string {
 	return `proceso-${hexAleatorio(32)}`;
@@ -116,7 +130,7 @@ export type EstadoDeProceso = 'nuevo' | 'sin_guardar' | 'cambios' | 'guardado';
 /** `status` es el del servidor (0 si ni siquiera se pudo contactar): un 404 aquí significa que otra persona lo borró. */
 export type ResultadoGuardado =
 	| { ok: true; proceso: ProcesoGuardado }
-	| { ok: false; conflicto: boolean; status: number; mensaje: string };
+	| { ok: false; conflicto: boolean; status: number; mensaje: string; codigo?: string };
 
 /** Crea (`revision` 0) o guarda un proceso. Un 409 vuelve como `conflicto: true`. */
 export async function guardarProceso(id: string, revision: number, datos: DatosProceso): Promise<ResultadoGuardado> {
@@ -134,9 +148,11 @@ export async function guardarProceso(id: string, revision: number, datos: DatosP
 	if (!res.ok) {
 		return {
 			ok: false,
-			conflicto: res.status === 409,
+			// Un 409 es un conflicto de revisión (otra persona lo guardó antes) salvo que sea `ya_existe`: el nombre lo tiene otro proceso.
+			conflicto: res.status === 409 && cuerpo?.codigo !== 'ya_existe',
 			status: res.status,
-			mensaje: typeof cuerpo?.mensaje === 'string' ? cuerpo.mensaje : 'No se pudo guardar el proceso.'
+			mensaje: typeof cuerpo?.mensaje === 'string' ? cuerpo.mensaje : 'No se pudo guardar el proceso.',
+			codigo: typeof cuerpo?.codigo === 'string' ? cuerpo.codigo : undefined
 		};
 	}
 	const proceso = cuerpo as unknown as ProcesoGuardado;

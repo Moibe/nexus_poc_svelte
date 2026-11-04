@@ -68,6 +68,7 @@
 	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
+	import { cargarProcesos, estadoProcesos, procesosQueUsanElTipo } from '$lib/state/procesos.svelte';
 	import type { TipoDocumentalGuardado, Recorte, CampoPropuesto } from '$lib/state/configuracion.svelte';
 	import {
 		borradorTipoDocumental,
@@ -546,6 +547,24 @@
 	// eliminar, es instantáneo y local — no hay `archivandoId` porque no hay
 	// nada que esperar.
 	let tipoAArchivar = $state<{ id: string; nombre: string } | null>(null);
+	// Qué procesos usan el tipo que se va a archivar (NEX-544). `null` = no se pudo revisar (el diálogo lo dice). Se lee ANTES de abrir el diálogo,
+	// para no pedir la confirmación a ciegas.
+	let procesosDelTipo = $state<{ nombre: string; nodos: number }[] | null>([]);
+
+	async function pedirArchivarTipo(tipo: { id: string; nombre: string }) {
+		await cargarProcesos();
+		procesosDelTipo = estadoProcesos.error ? null : procesosQueUsanElTipo(tipo.id);
+		tipoAArchivar = tipo;
+	}
+
+	/** Lo que el diálogo de archivar dice de los procesos: a cuáles afecta, o que no se pudo revisar. Vacío si ninguno lo usa. */
+	const avisoDeProcesos = $derived(
+		procesosDelTipo === null
+			? ' No se pudo revisar si algún proceso lo usa.'
+			: procesosDelTipo.length === 0
+				? ''
+				: ` Lo usan ${procesosDelTipo.length === 1 ? 'este proceso' : 'estos procesos'}: ${procesosDelTipo.map((p) => `«${p.nombre}» (${p.nodos} ${p.nodos === 1 ? 'nodo' : 'nodos'})`).join(', ')}. Siguen guardados con su nodo, que se verá marcado como archivado hasta que lo quites.`
+	);
 
 	async function confirmarArchivarTipo() {
 		const objetivo = tipoAArchivar;
@@ -2005,7 +2024,7 @@
 										{#if tipo.estado === 'activo'}
 											<DropdownMenu.Item
 												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() => (tipoAArchivar = { id: tipo.id, nombre: tipo.nombre })}
+												onSelect={() => void pedirArchivarTipo({ id: tipo.id, nombre: tipo.nombre })}
 											>
 												<Archive class="size-4 text-muted-foreground" />
 												<span>Archivar</span>
@@ -3459,7 +3478,7 @@
 	abierto={tipoAArchivar !== null}
 	variante="neutral"
 	titulo="¿Archivar este tipo documental?"
-	mensaje={`"${tipoAArchivar?.nombre ?? ''}" dejará de listarse en la Biblioteca. Su Custom Extractor en Document AI NO se toca: sigue existiendo tal cual.`}
+	mensaje={`"${tipoAArchivar?.nombre ?? ''}" dejará de listarse en la Biblioteca.${avisoDeProcesos} Su Custom Extractor en Document AI NO se toca: sigue existiendo tal cual.`}
 	etiquetaConfirmar="Sí, archivar"
 	onConfirmar={confirmarArchivarTipo}
 	onCerrar={() => (tipoAArchivar = null)}

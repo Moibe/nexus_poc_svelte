@@ -49,7 +49,17 @@
 	const conexiones = useNodeConnections({ handleType: 'source' });
 
 	const tipo = $derived(tiposDocumentales.find((t) => t.id === data.tipoId));
-	const version = $derived(tipo ? etiquetaVersion(tipo.version) : '');
+	// La versión del tipo con la que se armó el proceso (NEX-542): es la que enseña el nodo. Un proceso de antes no la trae (`null`): se enseña la
+	// del tipo y no hay aviso, porque no se sabe con cuál se armó.
+	const registrada = $derived(Number.isInteger(data.version) ? (data.version as number) : null);
+	const version = $derived(tipo ? etiquetaVersion(registrada ?? tipo.version) : '');
+	/** El tipo ya va en otra versión que la registrada: se avisa y se ofrece usar la nueva (cambia el proceso: queda por guardar). */
+	const versionNueva = $derived(tipo && registrada !== null && tipo.version > 0 && tipo.version !== registrada ? etiquetaVersion(tipo.version) : '');
+	function usarVersionNueva() {
+		if (tipo) updateNodeData(id, { version: tipo.version });
+	}
+	/** Un tipo archivado sigue en el proceso (no se quita solo), pero ya no sale de la biblioteca ni de la paleta: se dice (NEX-544). */
+	const archivado = $derived(tipo?.estado === 'archivado');
 
 	// ¿Su tipo documental está FUERA del esquema del tipo de expediente virtual del proceso? Se marca en ámbar (no se quita): ver `LienzoDeProceso`.
 	const esquema = getContext<{ readonly fuera: (tipoId: string) => boolean; readonly nombre: string | null } | undefined>(CLAVE_ESQUEMA);
@@ -144,6 +154,28 @@
 			<X class="size-3.5" />
 		</button>
 	</div>
+
+	{#if archivado}
+		<p class="border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800" data-testid="nodo-archivado">
+			Este tipo documental está archivado: ya no sale de la biblioteca. Quítalo del proceso o pídele a quien administra uno que lo sustituya.
+		</p>
+	{/if}
+
+	{#if versionNueva}
+		<div class="nodrag border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800" data-testid="nodo-version-nueva">
+			<p>
+				El proceso se armó con {version ? `la v${version}` : 'una versión sin activar'}; el tipo ya va en la v{versionNueva}. Revisa que los campos conectados sigan igual antes de usarla.
+			</p>
+			<button
+				type="button"
+				data-testid="usar-version-nueva"
+				class="mt-1 rounded-md border border-amber-400 bg-white px-2 py-0.5 font-medium text-amber-900 transition-colors hover:bg-amber-100"
+				onclick={usarVersionNueva}
+			>
+				Usar la v{versionNueva}
+			</button>
+		</div>
+	{/if}
 
 	{#if fueraDelEsquema}
 		<p class="border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800" data-testid="nodo-fuera-del-esquema">
