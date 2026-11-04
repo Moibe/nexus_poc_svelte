@@ -23,12 +23,14 @@
 
 import type { Cookies } from '@sveltejs/kit';
 
+import { esConexionSegura } from '$lib/server/seguridad';
+
 /** El nombre de la cookie. Es el mismo para el login y la recuperación: es el
  *  mismo navegador. */
 export const COOKIE_NAVEGADOR = 'nx_navegador';
 
 /** Devuelve el identificador de este navegador, creándolo si es la primera vez. */
-export function identificadorDeNavegador(cookies: Cookies, url: URL): string {
+export function identificadorDeNavegador(cookies: Cookies, url: URL, cabeceras?: Headers): string {
 	let navegador = cookies.get(COOKIE_NAVEGADOR);
 	if (!navegador) {
 		navegador = crypto.randomUUID();
@@ -36,7 +38,8 @@ export function identificadorDeNavegador(cookies: Cookies, url: URL): string {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
-			secure: url.protocol === 'https:',
+			// Con la conexión real de la persona, no con la que ve el proceso detrás del proxy (NEX-547): ver `esConexionSegura`.
+			secure: esConexionSegura(url, cabeceras ?? new Headers()),
 			maxAge: 60 * 60 * 24 * 365
 		});
 	}

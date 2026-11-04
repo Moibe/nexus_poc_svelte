@@ -91,7 +91,7 @@ export async function pdfEnBlanco(bytes: ArrayBuffer): Promise<boolean> {
 		).href;
 		// pdf.js se queda con el ArrayBuffer que recibe (lo transfiere al worker y lo deja vacío): se le da una copia, porque
 		// quien llama sigue necesitando los bytes para la huella.
-		const documento = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
+		const documento = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)), isEvalSupported: false }).promise; // isEvalSupported: false (NEX-569): el PDF lo subió una persona y no es de confianza; pdf.js no debe evaluar código de él
 		try {
 			const hasta = Math.min(documento.numPages, MAX_PAGINAS_REVISADAS);
 			for (let n = 1; n <= hasta; n++) {

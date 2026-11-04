@@ -13,11 +13,18 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { leerJsonAcotado } from '$lib/server/seguridad';
 import { identificadorDeNavegador } from '$lib/server/navegador';
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress, url }) => {
-	const datos = await request.json().catch(() => null);
+	// Sin sesión nadie debe poder obligar al servidor a cargar 25 MB (el límite global es por las subidas): estas rutas aceptan unos cuantos cientos de
+	// bytes, y un cuerpo mayor de 4 KB se rechaza con 413 sin leerlo completo (NEX-566).
+	const lectura = await leerJsonAcotado(request, 4096);
+	if (!lectura.ok && lectura.status === 413) {
+		return json({ codigo: 'cuerpo_muy_grande', mensaje: 'La petición es demasiado grande.' }, { status: 413 });
+	}
+	const datos = lectura.ok ? (lectura.datos as Record<string, unknown> | null) : null;
 	const correo = typeof datos?.correo === 'string' ? datos.correo.trim() : '';
 	if (!correo) {
 		return json({ codigo: 'faltan_datos', mensaje: 'Escribe tu correo electrónico.' }, { status: 400 });
@@ -32,7 +39,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress,
 				email: correo,
 				ip: getClientAddress(),
 				userAgent: request.headers.get('user-agent'),
-				origen: identificadorDeNavegador(cookies, url)
+				origen: identificadorDeNavegador(cookies, url, request.headers)
 			}),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});

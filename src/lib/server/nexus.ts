@@ -69,9 +69,16 @@ export function tenantDe(locals: App.Locals): string {
  */
 export function mensajeDeError(cuerpo: unknown, status: number): string {
 	const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
-	if (typeof detalle === 'string') return detalle;
-	const mensaje = (detalle as { mensaje?: unknown } | null)?.mensaje;
-	if (typeof mensaje === 'string') return mensaje;
+	const texto = typeof detalle === 'string' ? detalle : (detalle as { mensaje?: unknown } | null)?.mensaje;
+	// Un error del servidor (5xx) no le enseña a la persona lo que dijo el back (NEX-567, auditoría de seguridad 2026-10-30): puede traer rutas,
+	// estados internos o nombres. Se le da un mensaje genérico con un código y el detalle completo se queda en la bitácora del servidor con ese
+	// mismo código, para que el equipo lo encuentre. Los 4xx son de validación o de permisos y sí se dicen: son lo que la persona puede corregir.
+	if (status >= 500) {
+		const referencia = crypto.randomUUID().slice(0, 8);
+		console.error(`[nexus_back ${status}] ${referencia}: ${typeof texto === 'string' ? texto : JSON.stringify(detalle ?? null)}`);
+		return `El servidor no pudo completar la operación. Intenta de nuevo; si sigue pasando, avisa con este código: ${referencia}.`;
+	}
+	if (typeof texto === 'string') return texto;
 	return `nexus_back respondió ${status}.`;
 }
 

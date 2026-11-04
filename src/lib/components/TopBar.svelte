@@ -53,13 +53,15 @@
 	 *  login. `location` y no `goto`: así se vacía todo el estado en memoria
 	 *  (bandejas, pipeline), que era del usuario que se fue. */
 	async function cerrarSesion() {
+		// Antes de avisar al servidor, para que quede hecho aunque la petición falle (NEX-564): lo que la persona dejó en el navegador se va con ella.
+		limpiarDatosLocalesDeLaPersona();
 		await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
 		window.location.assign('/acceso/iniciar-sesion');
 	}
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
-	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
+	import { limpiarDatosLocalesDeLaPersona, pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';

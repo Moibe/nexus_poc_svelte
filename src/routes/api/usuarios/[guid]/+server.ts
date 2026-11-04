@@ -2,6 +2,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { esTexto, esTextoONulo, soloCampos } from '$lib/server/seguridad';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -16,7 +17,8 @@ export const POST: RequestHandler = async ({ params, request, cookies }) => {
 		respuesta = await fetch(urlNexus(`/usuarios/${encodeURIComponent(params.guid ?? '')}`), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify(datos),
+			// Lista blanca (NEX-551): solo lo que edita la pantalla de usuarios.
+			body: JSON.stringify(soloCampos(datos, { nombre: esTexto, apellidos: esTexto, telefono: esTextoONulo, rol: esTexto })),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

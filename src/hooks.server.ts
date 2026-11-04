@@ -39,8 +39,14 @@
  * 2026-10-01). Esto la cierra.
  */
 
-import { error, json, redirect, type Handle } from '@sveltejs/kit';
+import { error, json, redirect, type Handle, type HandleServerError } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 
+import { ORIGENES_DE_CONFIANZA } from '$lib/seguridad/origenes';
+import { exigenciaDeRuta, esSubida } from '$lib/server/guardia-de-rutas';
+import { frenarPorFrecuencia, topeDeSubidas } from '$lib/server/frecuencia';
+import { esConexionSegura, esPeticionDeOrigenAjeno } from '$lib/server/seguridad';
+import { puedeAdministrar, puedeOrganizar } from '$lib/usuarios/permisos';
 import {
 	COOKIE_ACCESO,
 	COOKIE_REFRESH,
@@ -72,13 +78,45 @@ const CON_O_SIN_SESION = new Set(['/acceso/restablecer-contrasena', '/acceso/enl
 /** Lo único que puede ver quien todavía debe cambiar su contraseña. */
 const PRIMER_ACCESO = new Set(['/acceso/bienvenido', '/acceso/nueva-contrasena']);
 
+/** Los orígenes de los que se aceptan peticiones que cambian algo: los de confianza más los que se agreguen en `ORIGENES_EXTRA` (separados por coma). */
+const ORIGENES_PERMITIDOS: readonly string[] = [
+	...ORIGENES_DE_CONFIANZA,
+	...(env.ORIGENES_EXTRA ?? '')
+		.split(',')
+		.map((o) => o.trim())
+		.filter(Boolean)
+];
+
+const SOLO_LECTURA = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 const puerta: Handle = async ({ event, resolve }) => {
 	const ruta = event.url.pathname.replace(/\/+$/, '') || '/';
+	const esApi = ruta.startsWith('/api/');
 
-	// Los endpoints del acceso no piden sesión: son los que la crean o cierran.
-	if (ruta.startsWith('/api/auth/')) return resolve(event);
+	// Una petición que cambia algo y viene de OTRO sitio no pasa (NEX-562), con o sin sesión: también la del login. SvelteKit solo revisa esto en
+	// los formularios; aquí se cubre el JSON. `Origin` lo pone el navegador y una página ajena no lo puede cambiar.
+	if (esApi && esPeticionDeOrigenAjeno(event.request.method, event.request.headers.get('origin'), event.url.origin, ORIGENES_PERMITIDOS)) {
+		return json({ mensaje: 'La petición viene de un origen no permitido.', codigo: 'origen_no_permitido' }, { status: 403 });
+	}
 
-	const segura = event.url.protocol === 'https:';
+	const ip = (() => {
+		try {
+			return event.getClientAddress();
+		} catch {
+			return 'desconocida';
+		}
+	})();
+
+	// Los endpoints del acceso no piden sesión: son los que la crean o cierran. Los que mandan un correo o prueban contraseñas llevan un tope por IP
+	// (NEX-559 y NEX-548): sin sesión no hay a quién más contarle.
+	if (ruta.startsWith('/api/auth/')) {
+		const frenada = frenarPorFrecuencia(ruta, event.request.method, null, ip);
+		if (frenada) return demasiadasPeticiones(frenada.reintentarEnSeg);
+		return resolve(event);
+	}
+
+	// Detrás del proxy el proceso ve «http:» aunque la persona entre por HTTPS: se mira también `X-Forwarded-Proto` (NEX-547).
+	const segura = esConexionSegura(event.url, event.request.headers);
 	let token = event.cookies.get(COOKIE_ACCESO);
 	let verificado = await verificarToken(token);
 	let recienEmitida = false;
@@ -114,8 +152,10 @@ const puerta: Handle = async ({ event, resolve }) => {
 
 	// ¿Su sesión sigue viva? Una sesión que el back acaba de emitir sí (no se pregunta).
 	let sinSesionPor: 'cerrada' | 'desactivada' | null = null;
+	let sesionSinComprobar = false; // el back no dijo si la sesión sigue viva (NEX-556)
 	if (verificado && token && !recienEmitida) {
 		const estado = await estadoDeSesion(token, verificado.usuario.guid, verificado.sesionGuid);
+		if (estado === 'desconocida') sesionSinComprobar = true;
 		if (estado === 'cerrada' || estado === 'inexistente') sinSesionPor = 'cerrada';
 		else if (estado === 'desactivada') sinSesionPor = 'desactivada';
 		if (sinSesionPor) {
@@ -126,7 +166,6 @@ const puerta: Handle = async ({ event, resolve }) => {
 	}
 	event.locals.usuario = usuario;
 
-	const esApi = ruta.startsWith('/api/');
 	if (!usuario) {
 		if (SIN_SESION.has(ruta)) return resolve(event);
 		if (sinRespuesta) {
@@ -158,14 +197,61 @@ const puerta: Handle = async ({ event, resolve }) => {
 		redirect(303, '/acceso/bienvenido');
 	}
 
+	// Cierre en falso para lo que ESCRIBE (NEX-556): si el back no dijo si la sesión sigue viva, leer se deja pasar (la persona no pierde la pantalla
+	// porque el back tarde), pero una petición que cambia algo no se atiende a ciegas: una sesión cerrada por un administrador o una cuenta
+	// desactivada no pueden seguir escribiendo mientras el back no conteste. Es un 503 que se arregla solo al volver el back; las cookies se conservan.
+	if (esApi && sesionSinComprobar && !SOLO_LECTURA.has(event.request.method)) {
+		return json(
+			{ mensaje: 'No se pudo comprobar tu sesión porque el servidor no responde. Intenta de nuevo en unos segundos.', codigo: 'sin_servidor' },
+			{ status: 503 }
+		);
+	}
+
+	// El rol que exige la ruta (NEX-554): primera red, antes de llamar al back. El back repite la comprobación y es quien manda.
+	const exige = esApi ? exigenciaDeRuta(ruta, event.request.method) : null;
+	if (exige && !(exige === 'administrar' ? puedeAdministrar(usuario) : puedeOrganizar(usuario))) {
+		return json({ mensaje: 'Tu rol no puede hacer esto.', codigo: 'sin_permiso' }, { status: 403 });
+	}
+
+	// Tope de frecuencia por persona y por IP en las rutas costosas o que mandan algo afuera (NEX-559). Después de comprobar el rol: lo que el rol no
+	// puede hacer ni se cuenta.
+	if (esApi) {
+		const frenada = frenarPorFrecuencia(ruta, event.request.method, usuario.guid, ip);
+		if (frenada) return demasiadasPeticiones(frenada.reintentarEnSeg);
+	}
+
 	// Va DESPUÉS del bloque de `debeCambiarContrasena`, a propósito: una cuenta
 	// que todavía no hace su primer acceso se sigue yendo a "Bienvenido".
 	if (CON_O_SIN_SESION.has(ruta)) return resolve(event);
 
 	// Sesión completa: las pantallas de entrada ya no tienen sentido.
 	if (SIN_SESION.has(ruta) || PRIMER_ACCESO.has(ruta)) redirect(303, '/');
+
+	// Las subidas se cargan enteras en memoria (hasta 20 MB cada una): si ya hay las que el proceso aguanta, las demás esperan su turno con un 503 que
+	// dice cuándo reintentar, en vez de arriesgar la memoria de todos (NEX-563).
+	if (esSubida(ruta, event.request.method)) {
+		const soltar = topeDeSubidas.entrar();
+		if (!soltar) {
+			return json(
+				{ mensaje: 'Hay muchas subidas en curso. Intenta de nuevo en unos segundos.', codigo: 'subidas_en_curso' },
+				{ status: 503, headers: { 'Retry-After': '5' } }
+			);
+		}
+		try {
+			return await resolve(event);
+		} finally {
+			soltar();
+		}
+	}
 	return resolve(event);
 };
+
+function demasiadasPeticiones(reintentarEnSeg: number): Response {
+	return json(
+		{ mensaje: 'Demasiadas peticiones seguidas. Espera un momento e intenta de nuevo.', codigo: 'demasiadas_peticiones' },
+		{ status: 429, headers: { 'Retry-After': String(reintentarEnSeg) } }
+	);
+}
 
 /**
  * Lo que sirve la app —páginas y datos— no se guarda en el caché del navegador
@@ -184,9 +270,15 @@ export const handle: Handle = async (entrada) => {
 		for (const [nombre, valor] of Object.entries(CABECERAS_DE_SEGURIDAD)) {
 			if (!respuesta.headers.has(nombre)) respuesta.headers.set(nombre, valor);
 		}
-		// La CSP solo tiene sentido en lo que el navegador RENDERIZA.
-		if (respuesta.headers.get('content-type')?.startsWith('text/html')) {
-			respuesta.headers.set('content-security-policy-report-only', CSP);
+		// La CSP la pone SvelteKit (`kit.csp` en `vite.config.ts`, con nonce). Válvula (NEX-557): con `CSP_SOLO_REPORTE=1` en el `.env` del servidor
+		// la misma política se manda en modo reporte —el navegador anota y no bloquea—, por si una pantalla se rompe en un ambiente y hay que
+		// aflojarla ya, sin reconstruir.
+		if (env.CSP_SOLO_REPORTE === '1') {
+			const csp = respuesta.headers.get('content-security-policy');
+			if (csp) {
+				respuesta.headers.delete('content-security-policy');
+				respuesta.headers.set('content-security-policy-report-only', csp);
+			}
 		}
 	} catch {
 		// Cabeceras inmutables (una respuesta reenviada tal cual): se deja como está.
@@ -212,25 +304,13 @@ const CABECERAS_DE_SEGURIDAD: Record<string, string> = {
 };
 
 /**
- * Content-Security-Policy, por ahora SOLO EN MODO REPORTE (`Content-Security-Policy-Report-Only`): el navegador anota en la consola
- * lo que bloquearía, pero no bloquea nada. Es a propósito: la app carga el worker de pdf.js, pinta vistas previas con `blob:` y
- * `data:` y SvelteKit mete un script en línea, y activarla a ciegas rompería la carga o la vista previa de documentos.
- *
- * Para pasarla a firme (`content-security-policy`): navegar por Inicio, Configuración, API Key, Webhooks, Motor de reglas, Usuarios
- * y Organizaciones, subir un PDF y una imagen, abrir su detalle, y confirmar que la consola no reporta violaciones. Lo ideal
- * entonces es quitar `'unsafe-inline'` de `script-src` con `kit.csp` (nonces o hashes de SvelteKit). `frame-ancestors` no se
- * aplica en modo reporte; lo cubre `X-Frame-Options` y entra en firme con la CSP.
+ * Lo que le llega a la persona cuando algo truena en el servidor sin que nadie lo haya previsto (NEX-567): un mensaje genérico con un código
+ * de referencia, y el detalle completo —con el mismo código— en la bitácora del servidor. Así un error interno no filtra rutas, nombres ni
+ * estados del almacén, pero el equipo puede encontrarlo. Los errores que SvelteKit marca como esperados (404, 403, `error(…)` de una ruta)
+ * conservan su mensaje: no pasan por aquí.
  */
-const CSP = [
-	"default-src 'self'",
-	"script-src 'self' 'unsafe-inline'",
-	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: blob:",
-	"font-src 'self' data:",
-	"connect-src 'self'",
-	"worker-src 'self' blob:",
-	"object-src 'none'",
-	"base-uri 'self'",
-	"form-action 'self'",
-	"frame-ancestors 'none'"
-].join('; ');
+export const handleError: HandleServerError = ({ error, event, status }) => {
+	const referencia = crypto.randomUUID().slice(0, 8);
+	console.error(`[error ${referencia}] ${event.request.method} ${event.url.pathname} (${status})`, error);
+	return { message: `Ocurrió un error inesperado. Si sigue pasando, avisa con este código: ${referencia}.`, referencia };
+};

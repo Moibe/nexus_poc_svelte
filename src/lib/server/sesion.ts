@@ -26,6 +26,7 @@ import { env } from '$env/dynamic/private';
 import { jwtVerify } from 'jose';
 
 import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { esMismoCliente, type Cliente } from '$lib/server/seguridad';
 
 export const COOKIE_ACCESO = 'nx_acceso';
 export const COOKIE_REFRESH = 'nx_refresh';
@@ -210,13 +211,13 @@ export function cabecerasConSesion(cookies: Cookies, extra?: HeadersInit): Heade
 
 /**
  * Borra las dos cookies de sesión. `segura` es la MISMA que se le pasó a
- * `guardarSesion` (`url.protocol === 'https:'`), y no es un detalle.
+ * `guardarSesion` (`esConexionSegura`: HTTPS directo o tras un proxy que lo termina), y no es un detalle.
  *
  * SvelteKit, si no se le dice nada, borra con el atributo `Secure` a todo host
  * que no sea `localhost`. Pero las cookies se CREARON sin `Secure` cuando el
  * sitio va por HTTP, y los navegadores IGNORAN un `Secure` que llega por HTTP
  * plano. Resultado, hasta el 2026-10-12: en el servidor de CSI, al que se entra
- * por `http://172.10.30.15:3400`, "Cerrar sesión" no borraba nada y dejaba la
+ * por una dirección con IP y HTTP plano, "Cerrar sesión" no borraba nada y dejaba la
  * sesión puesta. En `localhost` sí funcionaba, y como TODAS las pruebas corren
  * ahí, nadie lo vio (ver `probar-cookies-http.mjs`).
  *
@@ -300,7 +301,7 @@ const TIMEOUT_RENOVACION_MS = 30_000;
 /** Cuánto se recuerda el resultado de una renovación, contado desde que el back CONTESTA (ver `renovarSesion`). */
 const RETENCION_RENOVACION_MS = 5_000;
 /** `hasta` vale `Infinity` mientras la llamada sigue en curso: una entrada pendiente no vence ni se reemplaza. */
-const renovaciones = new Map<string, { hasta: number; resuelta: boolean; resultado: Promise<ResultadoRenovacion> }>();
+const renovaciones = new Map<string, { hasta: number; resuelta: boolean; resultado: Promise<ResultadoRenovacion>; cliente: Cliente }>();
 
 /**
  * Suelta lo vencido de `renovaciones` (que guarda los tokens de la sesión nueva) y de `comprobadas`.
@@ -366,14 +367,18 @@ async function pedirRenovacion(refresh: string, ip: string, userAgent: string | 
  */
 export function renovarSesion(refresh: string, ip: string, userAgent: string | null): Promise<ResultadoRenovacion> {
 	podarMemoria();
+	const cliente: Cliente = { ip, userAgent };
 	const guardada = renovaciones.get(refresh);
 	if (guardada) {
+		// La gracia es de quien pidió la renovación (NEX-560): otro cliente que presente el MISMO refresh —en curso o ya canjeado— no recibe la sesión
+		// nueva. Se le contesta como a un refresh que ya no sirve (se le tiran sus cookies, que son una copia), sin tocar las de quien sí la pidió.
+		if (!esMismoCliente(guardada.cliente, cliente)) return Promise.resolve({ tipo: 'rechazada' });
 		// En curso: todas esperan LA MISMA llamada.
 		if (!guardada.resuelta) return guardada.resultado;
 		// Ya resuelta y dentro de la gracia (lo vencido lo soltó `podarMemoria`): se entrega, marcada.
 		return guardada.resultado.then((r) => (r.tipo === 'renovada' ? { ...r, reutilizada: true } : r));
 	}
-	const entrada = { hasta: Infinity, resuelta: false, resultado: pedirRenovacion(refresh, ip, userAgent) };
+	const entrada = { hasta: Infinity, resuelta: false, resultado: pedirRenovacion(refresh, ip, userAgent), cliente };
 	renovaciones.set(refresh, entrada);
 	void entrada.resultado.then((r) => {
 		entrada.resuelta = true;

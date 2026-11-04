@@ -296,6 +296,30 @@ function almacen(): Storage | null {
 	}
 }
 
+/**
+ * Las claves de `localStorage` donde esta app guarda, o guardó, datos de configuración de la persona: el borrador del asistente de un tipo
+ * documental y las copias de antes de que la biblioteca, las API Keys y los webhooks pasaran al servidor (esas ya no se leen; solo se borran).
+ * NO incluye el tema claro u oscuro: es una preferencia del navegador, no un dato de la persona.
+ */
+const CLAVES_DE_LA_PERSONA = [LLAVE, 'nexusdoc:tipos-documentales:v1', 'nexusdoc:api-keys:v1', 'Biblioratum:webhooks:v1'];
+
+/**
+ * Borra del navegador lo que dejó la persona que se va (NEX-564, auditoría de seguridad 2026-10-30): en un equipo compartido, quien entre
+ * después no debe encontrar el borrador de configuración de la anterior. Se llama al cerrar sesión. No lanza nunca: un `localStorage` bloqueado
+ * no es un motivo para que el cierre de sesión falle.
+ */
+export function limpiarDatosLocalesDeLaPersona(): void {
+	const store = almacen();
+	if (!store) return;
+	for (const clave of CLAVES_DE_LA_PERSONA) {
+		try {
+			store.removeItem(clave);
+		} catch {
+			/* sin permiso para borrar: no hay nada más que hacer */
+		}
+	}
+}
+
 /** Normaliza un subcampo de un grupo. `null` si no es ni un objeto. */
 function leerSubcampo(c: unknown): SubcampoBorrador | null {
 	if (typeof c !== 'object' || c === null) return null;

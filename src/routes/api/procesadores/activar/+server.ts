@@ -10,7 +10,9 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, tenantDe, urlNexus } from '$lib/server/nexus';
+import { esBooleano, esTexto, soloCampos } from '$lib/server/seguridad';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
@@ -32,19 +34,39 @@ function mensajeDeValidacion(errores: unknown[], cuerpo: unknown): string {
 	return `Revisa el campo ${nombre}: tiene un dato inválido.`;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	let cuerpo: unknown;
+/** Un campo del tipo con solo lo que el back conoce (NEX-551): lo demás que traiga el navegador no se reenvía. Se conserva el ORDEN y la cantidad: el
+ *  mensaje de validación de arriba (`mensajeDeValidacion`) señala el campo por su posición. */
+const esNumero = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+const esListaDeTextos = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === 'string');
+const CAMPOS_DE_SUBCAMPO = { nombre: esTexto, tipoDato: esTexto, descripcion: esTexto, valorEstructura: esTexto, obligatorio: esBooleano, valoresLista: esListaDeTextos };
+const acotarCampo = (c: unknown): Record<string, unknown> => ({
+	...soloCampos(c, { ...CAMPOS_DE_SUBCAMPO, cardinalidad: esTexto }),
+	...(Array.isArray((c as { subcampos?: unknown } | null)?.subcampos) ? { subcampos: (c as { subcampos: unknown[] }).subcampos.map((s) => soloCampos(s, CAMPOS_DE_SUBCAMPO)) } : {})
+});
+
+export const POST: RequestHandler = async ({ request, cookies, locals }) => {
+	// La organización sale de la sesión, nunca del navegador (NEX-550): nexus_back comprueba con el JWT que quien pide administre esa organización.
+	// Se pide ANTES de leer el cuerpo: `tenantDe` lanza el 403 de quien no pertenece a ninguna.
+	const tenant = tenantDe(locals);
+	let entrada: unknown;
 	try {
-		cuerpo = await request.json();
+		entrada = await request.json();
 	} catch {
 		return fallo('La petición no traía JSON válido.', 400);
 	}
+	const crudo = (entrada ?? {}) as Record<string, unknown>;
+	// Lista blanca (NEX-551): solo el tipo y sus campos, con la organización de la sesión (si el navegador mandó otra, se descarta).
+	const cuerpo = {
+		...soloCampos(crudo, { id: esTexto, nombre: esTexto, descripcion: esTexto, instrucciones: esTexto, version: esNumero }),
+		...(Array.isArray(crudo.campos) ? { campos: crudo.campos.map(acotarCampo) } : {}),
+		tenant
+	};
 
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/procesadores/activar'), {
 			method: 'POST',
-			headers: cabecerasNexus({ 'Content-Type': 'application/json' }),
+			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
 			body: JSON.stringify(cuerpo),
 			// La activación son tres llamadas a Google, una de ellas con polling.
 			// Medida anda en segundos; el timeout generoso es para el día malo.

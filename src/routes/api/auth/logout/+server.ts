@@ -5,6 +5,7 @@
 
 import type { RequestHandler } from '@sveltejs/kit';
 
+import { esConexionSegura } from '$lib/server/seguridad';
 import { COOKIE_REFRESH, borrarSesion, cerrarSesionEnBack } from '$lib/server/sesion';
 
 export const POST: RequestHandler = async ({ cookies, request, getClientAddress, url }) => {
@@ -17,6 +18,6 @@ export const POST: RequestHandler = async ({ cookies, request, getClientAddress,
 		console.warn('[sesion] el cierre NO quedó registrado en nexus_back: su sesión sigue viva allá hasta que venza');
 	}
 	// El mismo `secure` con que se crearon: ver `borrarSesion`.
-	borrarSesion(cookies, url.protocol === 'https:');
+	borrarSesion(cookies, esConexionSegura(url, request.headers));
 	return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 };

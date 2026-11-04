@@ -3,6 +3,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { esTexto, esTextoONulo, soloCampos } from '$lib/server/seguridad';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -17,7 +18,18 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		respuesta = await fetch(urlNexus('/usuarios/'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify(datos),
+			// Lista blanca (NEX-551): el rol se pide, sí, pero el back lo valida contra su catálogo; nada de banderas ni de organización escritas por el navegador.
+			body: JSON.stringify(
+				soloCampos(datos, {
+					nombre: esTexto,
+					apellidos: esTexto,
+					apellidoPaterno: esTexto,
+					apellidoMaterno: esTexto,
+					email: esTexto,
+					telefono: esTextoONulo,
+					rol: esTexto
+				})
+			),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

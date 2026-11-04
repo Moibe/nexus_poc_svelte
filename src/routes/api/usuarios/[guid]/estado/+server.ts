@@ -2,6 +2,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { esBooleano, esTexto, soloCampos } from '$lib/server/seguridad';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -13,7 +14,7 @@ export const POST: RequestHandler = async ({ params, request, cookies }) => {
 		respuesta = await fetch(urlNexus(`/usuarios/${encodeURIComponent(params.guid ?? '')}/estado`), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify(datos ?? {}),
+			body: JSON.stringify(soloCampos(datos, { activo: esBooleano, motivo: esTexto })), // lista blanca (NEX-551)
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {
