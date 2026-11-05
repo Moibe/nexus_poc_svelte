@@ -641,6 +641,19 @@
 		};
 	});
 
+	/** «Guardar y salir» (2026-11-04, Moibe): guarda y, solo si quedó guardado, sigue a donde iba. Si falla, el error se ve y la persona se queda. */
+	async function guardarYSalir() {
+		const despues = dialogo?.tipo === 'cambios' ? dialogo.despues : despuesPendiente;
+		dialogo = null;
+		await guardar();
+		if (existe && !sucio) despues?.();
+	}
+	/** Copia de a dónde iba, porque el diálogo se limpia al cerrarse antes de que corra `guardarYSalir`. */
+	let despuesPendiente: (() => void) | null = null;
+	$effect(() => {
+		if (dialogo?.tipo === 'cambios') despuesPendiente = dialogo.despues;
+	});
+
 	function alCerrarPestana(e: BeforeUnloadEvent) {
 		if (!sucio) return;
 		e.preventDefault();
@@ -788,6 +801,12 @@
 	mensaje="Si continúas, se pierden los cambios de «{nombre.trim() || 'este proceso'}» que no guardaste."
 	etiquetaConfirmar="Salir sin guardar"
 	etiquetaCancelar="Seguir editando"
+	accionExtra={{
+		etiqueta: 'Guardar y salir',
+		deshabilitado: !puedeGuardar,
+		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, tipo, un tipo documental o el Resultado): sigue editando para completarlo',
+		alPulsar: guardarYSalir
+	}}
 	onConfirmar={() => {
 		const despues = dialogo?.tipo === 'cambios' ? dialogo.despues : null;
 		dialogo = null;
