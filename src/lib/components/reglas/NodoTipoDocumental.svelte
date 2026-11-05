@@ -35,12 +35,13 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import {
 		TIPOS_DE_DATO,
+		estadoBiblioteca,
 		etiquetaVersion,
 		tiposDocumentales,
 		type CampoBorrador
 	} from '$lib/state/configuracion.svelte';
 
-	import { CLAVE_ESQUEMA, HANDLE_DOCUMENTO, porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
+	import { CLAVE_ESQUEMA, HANDLE_DOCUMENTO, estadoDeTipoEnLienzo, porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
 
 	let { id, data, selected }: NodeProps<Node<DatosNodoTipo>> = $props();
 
@@ -60,6 +61,12 @@
 	}
 	/** Un tipo archivado sigue en el proceso (no se quita solo), pero ya no sale de la biblioteca ni de la paleta: se dice (NEX-544). */
 	const archivado = $derived(tipo?.estado === 'archivado');
+	/**
+	 * Solo un tipo ACTIVO se puede usar en un proceso (2026-11-05): si ya no lo es (borrador, o activo que volvió a borrador con «Crear nueva versión»,
+	 * o borrado) el nodo se marca en rojo y el lienzo no deja conectarlo ni guardar el proceso. Mientras la biblioteca no está leída no se sabe: no se marca.
+	 */
+	const estadoDelTipo = $derived(estadoBiblioteca.cargada ? estadoDeTipoEnLienzo(tiposDocumentales, data.tipoId) : 'activo');
+	const noActivo = $derived(estadoDelTipo !== 'activo');
 
 	// ¿Su tipo documental está FUERA del esquema del tipo de expediente virtual del proceso? Se marca en ámbar (no se quita): ver `LienzoDeProceso`.
 	const esquema = getContext<{ readonly fuera: (tipoId: string) => boolean; readonly nombre: string | null } | undefined>(CLAVE_ESQUEMA);
@@ -122,10 +129,13 @@
 	data-testid="nodo-tipo"
 	data-tipo-id={data.tipoId}
 	data-fuera-del-esquema={fueraDelEsquema}
+	data-estado-del-tipo={estadoDelTipo}
 	class="w-72 rounded-xl border bg-card text-card-foreground shadow-sm {selected
 		? 'border-primary ring-2 ring-primary/30'
-		: fueraDelEsquema
-			? 'border-amber-400'
+		: noActivo
+			? 'border-destructive'
+			: fueraDelEsquema
+				? 'border-amber-400'
 			: 'border-border'}"
 >
 	<div class="flex items-start gap-2 rounded-t-xl border-b border-border bg-muted/50 px-3 py-2.5">
@@ -156,8 +166,16 @@
 	</div>
 
 	{#if archivado}
-		<p class="border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800" data-testid="nodo-archivado">
-			Este tipo documental está archivado: ya no sale de la biblioteca. Quítalo del proceso o pídele a quien administra uno que lo sustituya.
+		<p class="border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive" data-testid="nodo-archivado">
+			Este tipo documental está archivado: ya no sale de la biblioteca ni se puede usar. Sus campos no se conectan y el proceso no se guarda con él. Quítalo del proceso o pídele a quien administra uno que lo sustituya.
+		</p>
+	{:else if noActivo}
+		<p class="border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive" data-testid="nodo-no-activo" data-estado={estadoDelTipo}>
+			{#if estadoDelTipo === 'borrador'}
+				Este tipo documental no está activo (está en borrador o en una nueva versión sin publicar): en un proceso solo se pueden usar tipos activos. Sus campos no se conectan y el proceso no se guarda con él. Quítalo, o actívalo de nuevo en Configuración › Tipos documentales.
+			{:else}
+				Este tipo documental ya no existe. Sus campos no se conectan y el proceso no se guarda con él: quítalo del proceso.
+			{/if}
 		</p>
 	{/if}
 

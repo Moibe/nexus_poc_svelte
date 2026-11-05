@@ -57,12 +57,14 @@
 		puedeBorrar,
 		tieneResultado,
 		tieneDocumento,
+		tiposNoActivos,
 		nombreOcupado,
 		alGuardar,
 		alBorrar,
 		alCambiarTipo,
 		alFaltaResultado,
-		alFaltaDocumento
+		alFaltaDocumento,
+		alFaltaActivo
 	}: {
 		nombre: string;
 		/** El id del tipo de expediente virtual elegido, o `null`. */
@@ -79,6 +81,8 @@
 		tieneResultado: boolean;
 		/** El lienzo trae al menos un tipo documental (obligatorio para guardar: son las entradas del proceso). */
 		tieneDocumento: boolean;
+		/** Los nombres de los tipos documentales del lienzo que NO están activos (borrador, archivados o borrados): con alguno no se guarda. */
+		tiposNoActivos: string[];
 		/** El nombre que el servidor dijo que ya tiene otro proceso de la organización (409 `ya_existe`), o `null`. Se quita al cambiarlo. */
 		nombreOcupado: string | null;
 		alGuardar: () => void;
@@ -89,6 +93,8 @@
 		alFaltaResultado: () => void;
 		/** Se pulsó «Guardar» sin ningún tipo documental: que la paleta los señale. */
 		alFaltaDocumento: () => void;
+		/** Se pulsó «Guardar» con tipos que no están activos: que el lienzo señale el primero. */
+		alFaltaActivo: () => void;
 	} = $props();
 
 	const TEXTO_DE_ESTADO: Record<EstadoDeProceso, string> = {
@@ -100,11 +106,12 @@
 
 	const elegido = $derived(tiposVirtuales.find((t) => t.id === tipoVirtual) ?? null);
 	/** Qué le falta al proceso para guardarse, si la persona pulsó «Guardar» sin eso: se dice bajo el campo y se quita al llenarlo. */
-	let falta = $state<'nombre' | 'tipo' | 'documento' | 'resultado' | null>(null);
+	let falta = $state<'nombre' | 'tipo' | 'documento' | 'inactivos' | 'resultado' | null>(null);
 	$effect(() => {
 		if (falta === 'nombre' && nombre.trim() !== '') falta = null;
 		if (falta === 'tipo' && tipoVirtual) falta = null;
 		if (falta === 'documento' && tieneDocumento) falta = null;
+		if (falta === 'inactivos' && tiposNoActivos.length === 0) falta = null;
 		if (falta === 'resultado' && tieneResultado) falta = null;
 	});
 	/** El nombre que se está escribiendo es justo el que el servidor rechazó por repetido: se dice bajo el campo hasta que se cambie. */
@@ -124,6 +131,9 @@
 		} else if (!tieneDocumento) {
 			falta = 'documento';
 			alFaltaDocumento();
+		} else if (tiposNoActivos.length > 0) {
+			falta = 'inactivos';
+			alFaltaActivo();
 		} else if (!tieneResultado) {
 			falta = 'resultado';
 			alFaltaResultado();
@@ -235,7 +245,9 @@
 						? 'Elige sobre qué tipo de expediente virtual corre el proceso para guardarlo'
 						: !tieneDocumento
 							? 'Agrega al menos un tipo documental para guardarlo'
-							: !tieneResultado
+							: tiposNoActivos.length > 0
+								? 'Quita del proceso los tipos documentales que no están activos (o vuelve a activarlos) para guardarlo'
+								: !tieneResultado
 								? 'Agrega el nodo «Resultado» para guardarlo'
 								: !puedeGuardar
 								? 'No hay cambios que guardar'
@@ -248,6 +260,11 @@
 			{#if falta === 'documento'}
 				<p role="alert" data-testid="falta-documento" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
 					Agrega al menos un tipo documental para guardar: son las entradas del proceso. Los encuentras en «Tipos documentales».
+				</p>
+			{/if}
+			{#if falta === 'inactivos'}
+				<p role="alert" data-testid="falta-activo" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
+					Solo se pueden usar tipos documentales activos y estos ya no lo están: {tiposNoActivos.map((n) => `«${n}»`).join(', ')}. Quítalos del proceso o vuelve a activarlos en Configuración › Tipos documentales.
 				</p>
 			{/if}
 			{#if falta === 'resultado'}

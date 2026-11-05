@@ -41,6 +41,17 @@ import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 export type DatosNodoTipo = { tipoId: string; campos?: string[]; version?: number };
 
 /**
+ * En qué estado está, para el lienzo, el tipo documental de un nodo: `activo` es el único que se puede USAR en un proceso (2026-11-05, Moibe:
+ * «no deberíamos poder usar en el canvas los tipos documentales que no estén activos»). Un `borrador` todavía no se puede procesar (incluye
+ * el activo que está en «Crear nueva versión»: vuelve a `borrador` hasta que se publica), uno `archivado` ya no está en la biblioteca y uno
+ * `ausente` ya no existe (lo borraron).
+ */
+export type EstadoDeTipoEnLienzo = 'activo' | 'borrador' | 'archivado' | 'ausente';
+export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado, 'id' | 'estado'>[], tipoId: string): EstadoDeTipoEnLienzo {
+	return tipos.find((t) => t.id === tipoId)?.estado ?? 'ausente';
+}
+
+/**
  * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
  * prueba la regla (uno por entrada: el lienzo aún no corre sobre un expediente de verdad). Si lo que entra es una LISTA, el ejemplo
  * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`.

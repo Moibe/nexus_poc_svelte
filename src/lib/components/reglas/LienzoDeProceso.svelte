@@ -84,6 +84,7 @@
 		evaluar,
 		hidratarDibujo,
 		huellaDelDibujo,
+		estadoDeTipoEnLienzo,
 		idNodoDeTipo,
 		motivoDeRechazo,
 		numeroDeOperador,
@@ -100,7 +101,7 @@
 		type DatosNodoValorFinal
 	} from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
-	import { tiposDocumentales } from '$lib/state/configuracion.svelte';
+	import { estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
 	import {
 		borrarProceso,
 		cargarProcesos,
@@ -162,6 +163,24 @@
 	/** El proceso necesita al menos un tipo documental: son sus entradas. Sin ninguno no tiene sobre qué correr (NEX-529 y NEX-532). */
 	const hayTipoDocumental = $derived(nodes.some((n) => n.type === NODO_TIPO));
 
+	// ── Solo los tipos documentales ACTIVOS se pueden usar (2026-11-05, Moibe: «no deberíamos poder usar en el canvas los tipos documentales
+	// que no estén activos»). La paleta ya solo ofrece activos; faltaba lo demás: soltar uno que no lo es, conectar desde un nodo cuyo tipo
+	// dejó de estar activo (se archivó, volvió a borrador con «Crear nueva versión» o lo borraron) y guardar un proceso que lo trae. Un nodo
+	// así no se quita solo —describe lo que el proceso tenía—: se marca, no deja conectarlo ni guardar, y se quita o se vuelve a activar el
+	// tipo. Mientras la biblioteca no está leída no se sabe nada de nadie, así que no se marca ni se rechaza nada.
+	const ESTADO_EN_PALABRAS = { borrador: 'está en borrador', archivado: 'está archivado', ausente: 'ya no existe' } as const;
+	/** Los nodos de tipo documental cuyo tipo NO está activo, con su nombre y por qué. */
+	const tiposNoActivos = $derived(
+		!estadoBiblioteca.cargada
+			? []
+			: nodes.flatMap((n) => {
+					if (n.type !== NODO_TIPO) return [];
+					const tipoId = (n.data as DatosNodoTipo).tipoId;
+					const estado = estadoDeTipoEnLienzo(tiposDocumentales, tipoId);
+					return estado === 'activo' ? [] : [{ nodoId: n.id, nombre: nombreDeTipoDocumental(tipoId), estado }];
+				})
+	);
+
 	type Posicion = { x: number; y: number };
 
 	/**
@@ -181,6 +200,12 @@
 
 	/** Pone el tipo en el lienzo en `posicion` (coordenadas del lienzo). Si ya está, no lo duplica: lo enfoca. */
 	function agregar(tipoId: string, posicion: Posicion) {
+		// La paleta solo ofrece activos, pero lo que se suelta llega por el arrastre: se comprueba aquí también.
+		const estado = estadoDeTipoEnLienzo(tiposDocumentales, tipoId);
+		if (estado !== 'activo') {
+			avisar(`«${nombreDeTipoDocumental(tipoId)}» ${ESTADO_EN_PALABRAS[estado]}: en un proceso solo se pueden usar tipos documentales activos. Se activan en Configuración › Tipos documentales.`);
+			return;
+		}
 		const id = idNodoDeTipo(tipoId);
 		if (nodes.some((n) => n.id === id)) {
 			fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 });
@@ -314,8 +339,12 @@
 
 	/** El cable que se está arrastrando de un extremo (si lo hay): mientras se mueve, no cuenta para decidir si el nuevo lugar le cabe. */
 	let cableEnMovimiento: Edge | null = null;
-	const rechazo = (c: Conexion) =>
-		motivoDeRechazo(c, nodes, cableEnMovimiento ? edges.filter((e) => e.id !== cableEnMovimiento!.id) : edges, tiposDocumentales);
+	const rechazo = (c: Conexion) => {
+		// Un campo de un tipo que no está activo no se conecta a nada (ver «Solo los tipos documentales ACTIVOS»). Los cables que ya traía no se tocan.
+		const noActivo = tiposNoActivos.find((t) => t.nodoId === c.source);
+		if (noActivo) return `«${noActivo.nombre}» ${ESTADO_EN_PALABRAS[noActivo.estado]}: sus campos no se pueden conectar. Quítalo del proceso o vuelve a activar el tipo.`;
+		return motivoDeRechazo(c, nodes, cableEnMovimiento ? edges.filter((e) => e.id !== cableEnMovimiento!.id) : edges, tiposDocumentales);
+	};
 
 	/** Cada entrada de un operador recibe UN campo: al conectar otro, el anterior se va. */
 	function alConectar() {
@@ -485,7 +514,8 @@
 	// de antes), y la ejecución se niega a correr uno sin Resultado conectado.
 	// Desde el 2026-11-04 también hace falta al menos un tipo documental en el lienzo (NEX-529: sin tipo documental no se guarda); el back tampoco lo exige,
 	// por lo mismo que con el Resultado. Si el tipo de expediente virtual no tiene ningún tipo documental activo, la paleta lo dice y no hay con qué guardar.
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayTipoDocumental && hayResultado);
+	// Y ningún nodo de un tipo que no esté activo (2026-11-05); el back tampoco lo exige, por lo mismo que con el Resultado.
+	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayTipoDocumental && hayResultado && tiposNoActivos.length === 0);
 	/** El nombre que el servidor rechazó por repetido en la organización (409 `ya_existe`): la barra lo dice bajo el campo mientras siga escrito. */
 	let nombreOcupado = $state<string | null>(null);
 	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
@@ -708,11 +738,16 @@
 	puedeBorrar={existe}
 	tieneResultado={hayResultado}
 	tieneDocumento={hayTipoDocumental}
+	tiposNoActivos={tiposNoActivos.map((t) => t.nombre)}
 	{nombreOcupado}
 	alGuardar={guardar}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
 	alFaltaResultado={() => void paleta?.mostrarResultado()}
 	alFaltaDocumento={() => void paleta?.mostrarTipos()}
+	alFaltaActivo={() => {
+		const primero = tiposNoActivos[0];
+		if (primero) fitView({ nodes: [{ id: primero.nodoId }], duration: 300, maxZoom: 1 });
+	}}
 />
 
 <div
@@ -804,7 +839,7 @@
 	accionExtra={{
 		etiqueta: 'Guardar y salir',
 		deshabilitado: !puedeGuardar,
-		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, tipo, un tipo documental o el Resultado): sigue editando para completarlo',
+		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, tipo, un tipo documental activo o el Resultado): sigue editando para completarlo',
 		alPulsar: guardarYSalir
 	}}
 	onConfirmar={() => {
