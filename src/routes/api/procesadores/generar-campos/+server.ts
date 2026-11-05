@@ -3,6 +3,9 @@
  * `POST /procesadores/generar-campos` de nexus_back, que se lo pasa a Document AI y devuelve los campos que propone (`{ campos }`,
  * ya en la forma del paso 2). No guarda nada: la persona revisa la propuesta y agrega los que quiera.
  *
+ * También reenvía, si vienen, el nombre, la descripción y las instrucciones para la extracción del tipo: contexto para el modelo (las
+ * instrucciones, además, orientan la propuesta; ver `generar_campos` en nexus_back).
+ *
  * Mismo patrón que `/api/documentos`: el `tenant` NO lo manda el navegador, lo fija el servidor desde la sesión (`tenantDe`), y se
  * reenvía el JWT de la persona para que nexus_back compruebe que su rol administra tipos documentales.
  */
@@ -50,10 +53,13 @@ export const POST: RequestHandler = async ({ cookies, locals, request }) => {
 	const salida = new FormData();
 	salida.append('archivo', archivo, archivo.name);
 	salida.append('tenant', tenant);
-	// El nombre y la descripción del paso 1, si ya se capturaron: le dan contexto al modelo.
-	for (const llave of ['nombre', 'descripcion'] as const) {
+	// El nombre y la descripción del paso 1, si ya se capturaron, y las «instrucciones para la extracción» del paso 2, si ya se escribieron: le
+	// dan contexto al modelo. Las instrucciones, además, la orientan (medido contra Google el 2026-11-05: dejan fuera los campos que dicen
+	// ignorar). Los topes son los del back: 200, 2000 y `MAX_INSTRUCCIONES` (1000, igual que en `configuracion.svelte.ts`).
+	const TOPES_DE_TEXTO = { nombre: 200, descripcion: 2000, instrucciones: 1000 } as const;
+	for (const [llave, tope] of Object.entries(TOPES_DE_TEXTO)) {
 		const valor = entrada.get(llave);
-		if (typeof valor === 'string' && valor.trim() !== '') salida.append(llave, valor.trim().slice(0, llave === 'nombre' ? 200 : 2000));
+		if (typeof valor === 'string' && valor.trim() !== '') salida.append(llave, valor.trim().slice(0, tope));
 	}
 
 	let respuesta: Response;

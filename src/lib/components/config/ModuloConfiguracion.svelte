@@ -2835,26 +2835,17 @@
 					Completa la información requerida para agregar un nuevo campo al modelo documental y
 					mejorar la precisión de la extracción automática.
 				</p>
-				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
-				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. -->
-				<Button
-					variant="outline"
-					class="mt-4 gap-2"
-					data-testid="abrir-generar-campos"
-					onclick={() => (generarCamposAbierto = true)}
-				>
-					<Sparkles class="size-4 text-primary" />
-					Generar a partir de un documento
-				</Button>
-
-				<!-- Opcional. Del TIPO entero, no de un campo: contexto para LEER el documento al extraer, que viaja al extractor como el
-				     `documentPrompt` de su esquema. Medido contra Google (2026-10-30): orienta qué dato se toma (titular o beneficiario), y si se
-				     le pide reescribir un valor (otro formato, mayúsculas) ese campo desaparece de la respuesta. De ahí el aviso.
+				<!-- Opcional. Del TIPO entero, no de un campo: contexto para LEER el documento. Viaja al extractor como el `documentPrompt` de su
+				     esquema (medido contra Google el 2026-10-30: orienta qué dato se toma, titular o beneficiario; si se le pide reescribir un valor,
+				     otro formato o mayúsculas, ese campo desaparece de la respuesta, de ahí el aviso) y TAMBIÉN orienta «Generar a partir de un
+				     documento» (medido el 2026-11-05, 3 corridas por condición: con «la persona que interesa es el titular, no el beneficiario» el
+				     generador deja fuera el campo del beneficiario; sin instrucciones lo propone siempre).
 
 				     Historia: nació al final del paso 1; el 2026-11-04 (Moibe: parecía redundante con la Descripción, que sirve para CLASIFICAR) se
 				     plegó en «Opciones avanzadas»; el 2026-11-05 (Moibe: plegada ni se nota que existe) pasó al paso 2, sin plegar. Va ARRIBA, antes
-				     del formulario de campos, a propósito: puesta al final de un paso tan largo quedaba bajo el borde del panel (que tiene su propio
-				     scroll) y pasaba igual de desapercibida. -->
+				     del botón y del formulario de campos, a propósito: (1) puesta al final de un paso tan largo quedaba bajo el borde del panel (que
+				     tiene su propio scroll) y pasaba igual de desapercibida; (2) «Generar» las toma tal como estén al pulsarlo, así que hay que
+				     escribirlas ANTES: el orden de la pantalla es el orden en que se usan. -->
 				<div class="mt-6 max-w-3xl space-y-2" data-testid="instrucciones-extraccion">
 					<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
 					<Textarea
@@ -2866,11 +2857,25 @@
 						placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
 					/>
 					<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
-						Opcional. Orienta a Document AI al leer el documento, solo al extraer (para reconocer el tipo está la descripción): qué
-						dato tomar cuando hay varios o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo
-						que no coincide con lo impreso se descarta.
+						Opcional. Orientan a Document AI al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
+						haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
+						hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
+						coincide con lo impreso se descarta.
 					</p>
 				</div>
+
+				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
+				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. Va después de
+				     las instrucciones porque las usa (2026-11-05). -->
+				<Button
+					variant="outline"
+					class="mt-4 gap-2"
+					data-testid="abrir-generar-campos"
+					onclick={() => (generarCamposAbierto = true)}
+				>
+					<Sparkles class="size-4 text-primary" />
+					Generar a partir de un documento
+				</Button>
 
 				{#if mostrarFormularioCampo}
 					<!-- El formulario de alta. Ya NO queda siempre visible (cambio del
@@ -3638,6 +3643,7 @@
 	abierto={generarCamposAbierto}
 	nombreTipo={borrador.nombre}
 	descripcionTipo={borrador.descripcion}
+	instruccionesTipo={borrador.instrucciones}
 	existentes={borrador.campos.map((c) => c.nombre)}
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
