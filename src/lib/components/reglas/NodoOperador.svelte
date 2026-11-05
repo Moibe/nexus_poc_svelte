@@ -21,9 +21,8 @@
 	 * que ver el estado y el valor actuales de ésa.
 	 */
 	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
-	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
-	import CircleX from '@lucide/svelte/icons/circle-x';
 	import Equal from '@lucide/svelte/icons/equal';
 	import X from '@lucide/svelte/icons/x';
 	import { getContext } from 'svelte';
@@ -136,17 +135,23 @@
 			</div>
 		{/each}
 
-		<div class="relative flex items-center gap-2 px-3 py-3 text-xs font-medium {claseDelEstado}">
-			{#if estado === 'pasa'}
-				<CircleCheck class="size-4 shrink-0" />
-			{:else if estado === 'no_pasa'}
-				<CircleX class="size-4 shrink-0" />
-			{:else if estado === 'listo'}
-				<Equal class="size-4 shrink-0" />
-			{:else}
-				<CircleDashed class="size-4 shrink-0" />
-			{/if}
-			<span data-testid="resultado-operador" data-estado={estado} data-valor={valorDeSalida ?? ''}>{textoDelEstado}</span>
+		<!-- El veredicto de la regla (2026-11-04, Moibe: «el resultado final, ligeramente más grande, y la palomota más prominente»). El texto sube
+		     de 12 a 14 px, y «pasa» y «no pasa» llevan su sello: círculo verde con paloma amarilla, círculo rojo con tache blanco. Todos los estados
+		     comparten la misma caja de 24 px para el ícono, así el nodo no cambia de alto ni se mueve su punto de salida al cambiar el veredicto.
+		     El sello es decorativo: lo que dice el estado es el texto de al lado. -->
+		<div class="relative flex items-center gap-2.5 px-3 py-3 text-sm leading-snug font-medium {claseDelEstado}">
+			<span class="flex size-6 shrink-0 items-center justify-center" data-testid="icono-veredicto" data-estado={estado} aria-hidden="true">
+				{#if estado === 'pasa'}
+					<span class="flex size-6 items-center justify-center rounded-full bg-green-600 text-yellow-300 shadow-sm"><Check class="size-4" strokeWidth={4} /></span>
+				{:else if estado === 'no_pasa'}
+					<span class="flex size-6 items-center justify-center rounded-full bg-red-600 text-white shadow-sm"><X class="size-4" strokeWidth={4} /></span>
+				{:else if estado === 'listo'}
+					<Equal class="size-4" />
+				{:else}
+					<CircleDashed class="size-4" />
+				{/if}
+			</span>
+			<span class="min-w-0" data-testid="resultado-operador" data-estado={estado} data-valor={valorDeSalida ?? ''}>{textoDelEstado}</span>
 			<Handle
 				type="source"
 				position={Position.Right}
