@@ -687,6 +687,18 @@
 		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
 	);
 
+	// «Opciones avanzadas» del paso 1 (donde viven las instrucciones para la extracción). Arranca plegada; en cuanto hay instrucciones
+	// escritas se abre y ya no se cierra sola (ver el comentario de su `<details>`). Si la persona la pliega a mano, se respeta.
+	let opcionesAvanzadasAbiertas = $state(false);
+	$effect(() => {
+		if (borrador.instrucciones.trim() !== '') opcionesAvanzadasAbiertas = true;
+	});
+	// Al cambiar de tipo (uno nuevo en blanco, o abrir otro) vuelve a su estado de partida: abierta solo si ese tipo trae instrucciones.
+	$effect(() => {
+		void borrador.idGuardado;
+		untrack(() => (opcionesAvanzadasAbiertas = borrador.instrucciones.trim() !== ''));
+	});
+
 	// El nombre del TIPO ya lo tiene otro de la organización (2026-11-04, Moibe: el nombre es único; los archivados no cuentan).
 	// Se avisa en el paso 1 y no se deja seguir; el nombre repetido tampoco llega a la biblioteca (`guardarTipoDocumental`). Si se
 	// abre un duplicado de antes de la regla, el aviso sale de entrada: hay que cambiarle el nombre para terminar.
@@ -2698,7 +2710,14 @@
 							bind:value={borrador.descripcion}
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
+							aria-describedby="descripcion-tipo-ayuda"
 						/>
+						<!-- 2026-11-04 (Moibe: la Descripción y las Instrucciones parecían lo mismo): dice para qué sirve. La descripción es la
+						     etiqueta con la que el CLASIFICADOR reconoce este tipo entre los demás; leer el documento al extraer es de las
+						     «Instrucciones para la extracción», de abajo. -->
+						<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
+							Sirve para que el clasificador reconozca este tipo entre los demás: di qué documento es y cómo distinguirlo de otros.
+						</p>
 					</div>
 
 					<div class="space-y-2">
@@ -2719,22 +2738,45 @@
 					     empujaba fuera de la vista. La Descripción de arriba está escrita como una etiqueta (qué documento es) y sirve
 					     para CLASIFICAR; esto es otra cosa: contexto para LEER el documento al extraer, que viaja al extractor como el
 					     `documentPrompt` de su esquema. Medido contra Google: orienta qué dato se toma (titular o beneficiario), y si se le
-					     pide reescribir un valor (otro formato, mayúsculas) ese campo desaparece de la respuesta. De ahí el aviso. -->
-					<div class="space-y-2">
-						<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
-						<Textarea
-							id="instrucciones-tipo"
-							data-testid="instrucciones-tipo"
-							bind:value={borrador.instrucciones}
-							maxlength={MAX_INSTRUCCIONES}
-							rows={3}
-							placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
-						/>
-						<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
-							Opcional. Orienta a Document AI al leer el documento: qué dato tomar cuando hay varios o de qué país es. No le pidas
-							cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no coincide con lo impreso se descarta.
-						</p>
-					</div>
+					     pide reescribir un valor (otro formato, mayúsculas) ese campo desaparece de la respuesta. De ahí el aviso.
+
+					     2026-11-04 (Moibe: parecía redundante con la Descripción, aunque llegan a lugares distintos): va dentro de «Opciones
+					     avanzadas», plegado. Casi siempre queda vacío y así no compite con la Descripción. Se abre solo si el tipo ya trae
+					     instrucciones (un valor escrito no se esconde) y nunca se cierra solo: si se abriera y cerrara según el texto, vaciar la
+					     caja con el cursor adentro plegaría la sección. -->
+					<details class="group" bind:open={opcionesAvanzadasAbiertas} data-testid="opciones-avanzadas">
+						<summary
+							class="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium text-muted-foreground outline-none transition-colors marker:hidden hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden"
+							data-testid="opciones-avanzadas-resumen"
+							onclick={(e) => {
+								// El panel tiene su propio scroll y esta sección queda al borde de abajo: al ABRIRLA con un clic se desplaza
+								// para que la caja se vea (no se hace cuando se abre sola, que movería el panel sin que nadie lo pida). Va con
+								// un respiro porque el navegador cambia `open` DESPUÉS de este manejador.
+								const detalles = e.currentTarget.parentElement;
+								if (opcionesAvanzadasAbiertas || !(detalles instanceof HTMLDetailsElement)) return;
+								setTimeout(() => detalles.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 50);
+							}}
+						>
+							<ChevronDown class="size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+							Opciones avanzadas
+						</summary>
+						<div class="mt-4 space-y-2">
+							<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
+							<Textarea
+								id="instrucciones-tipo"
+								data-testid="instrucciones-tipo"
+								bind:value={borrador.instrucciones}
+								maxlength={MAX_INSTRUCCIONES}
+								rows={3}
+								placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
+							/>
+							<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
+								Opcional. Orienta a Document AI al leer el documento, solo al extraer (para reconocer el tipo está la descripción): qué
+								dato tomar cuando hay varios o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo
+								que no coincide con lo impreso se descarta.
+							</p>
+						</div>
+					</details>
 				</div>
 			{:else if borrador.paso === 2}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo campo de extracción</h3>
