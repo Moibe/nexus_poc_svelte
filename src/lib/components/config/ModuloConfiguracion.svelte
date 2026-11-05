@@ -3436,7 +3436,7 @@
 	abierto={tipoAEliminar !== null}
 	titulo="¿Borrar este tipo documental?"
 	mensaje={tipoAEliminar?.tieneProcesador
-		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca Y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
+		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
 		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.`}
 	etiquetaConfirmar="Sí, borrar"
 	onConfirmar={confirmarEliminarTipo}
