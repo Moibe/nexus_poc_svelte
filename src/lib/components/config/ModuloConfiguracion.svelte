@@ -14,6 +14,7 @@
 	import { tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -686,6 +687,69 @@
 	const nombreDuplicado = $derived(
 		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
 	);
+
+	// «Sugerir descripción» (2026-11-05, pedido de Moibe): le pide a Gemini (vía nexus_back) una descripción para el clasificador, a partir del
+	// nombre del tipo y de los demás tipos de la organización. NUNCA se guarda sola ni pisa lo que la persona escribió:
+	//   · si la caja de Descripción está VACÍA, el texto se pone ahí y una leyenda dice que lo generó la IA y que se revise (se quita en cuanto la
+	//     persona lo toca: ya lo leyó);
+	//   · si ya había texto, la sugerencia sale en un recuadro aparte con «Usar esta sugerencia» y «Descartar».
+	// Si falla o tarda, la caja queda como estaba y se dice por qué.
+	let sugiriendo = $state(false);
+	let sugerencia = $state<string | null>(null);
+	let errorSugerencia = $state('');
+	/** El texto que puso la IA en la caja, mientras la persona no lo haya tocado. */
+	let descripcionSugerida = $state('');
+
+	async function sugerirDescripcion() {
+		if (sugiriendo || borrador.nombre.trim() === '') return;
+		sugiriendo = true;
+		sugerencia = null;
+		errorSugerencia = '';
+		const tipoPedido = borrador.idGuardado;
+		try {
+			const r = await fetch('/api/tipos-documentales/sugerir-descripcion', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ nombre: borrador.nombre, tipoId: borrador.idGuardado ?? undefined })
+			});
+			const datos = await r.json().catch(() => null);
+			// Si mientras tanto se pasó a otro tipo, esta respuesta ya no es de lo que se ve.
+			if (tipoPedido !== borrador.idGuardado) return;
+			if (!r.ok || typeof datos?.descripcion !== 'string') {
+				errorSugerencia = mensajeDeFallo(datos, r.status, 'al sugerir la descripción');
+				return;
+			}
+			if (borrador.descripcion.trim() === '') {
+				borrador.descripcion = datos.descripcion;
+				descripcionSugerida = datos.descripcion;
+			} else {
+				sugerencia = datos.descripcion;
+				// El recuadro sale abajo y el panel tiene su propio scroll: se desplaza para que «Usar» y «Descartar» se vean.
+				void tick().then(() => document.querySelector('[data-testid="sugerencia-panel"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+			}
+		} catch {
+			errorSugerencia = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
+		} finally {
+			sugiriendo = false;
+		}
+	}
+
+	function usarSugerencia() {
+		if (sugerencia === null) return;
+		borrador.descripcion = sugerencia;
+		descripcionSugerida = sugerencia;
+		sugerencia = null;
+	}
+
+	// Al cambiar de tipo (uno nuevo en blanco, o abrir otro) no se arrastra nada de la sugerencia anterior.
+	$effect(() => {
+		void borrador.idGuardado;
+		untrack(() => {
+			sugerencia = null;
+			errorSugerencia = '';
+			descripcionSugerida = '';
+		});
+	});
 
 	// «Opciones avanzadas» del paso 1 (donde viven las instrucciones para la extracción). Arranca plegada; en cuanto hay instrucciones
 	// escritas se abre y ya no se cierra sola (ver el comentario de su `<details>`). Si la persona la pliega a mano, se respeta.
@@ -2718,6 +2782,43 @@
 						<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
 							Sirve para que el clasificador reconozca este tipo entre los demás: di qué documento es y cómo distinguirlo de otros.
 						</p>
+						<!-- «Sugerir descripción» (2026-11-05): ver `sugerirDescripcion`. Necesita el nombre del tipo; nunca guarda ni pisa nada solo. -->
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+							<button
+								type="button"
+								data-testid="sugerir-descripcion"
+								class="-ml-1.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary transition-colors outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+								disabled={sugiriendo || borrador.nombre.trim() === ''}
+								title={borrador.nombre.trim() === '' ? 'Escribe primero el nombre del tipo documental' : undefined}
+								onclick={() => void sugerirDescripcion()}
+							>
+								{#if sugiriendo}
+									<LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
+									Pensando…
+								{:else}
+									<Sparkles class="size-3.5" aria-hidden="true" />
+									Sugerir descripción
+								{/if}
+							</button>
+							<span role="status" aria-live="polite">
+								{#if descripcionSugerida !== '' && borrador.descripcion === descripcionSugerida}
+									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">Sugerencia generada con IA: revísala antes de guardar.</span>
+								{/if}
+							</span>
+						</div>
+						{#if errorSugerencia}
+							<p class="text-xs text-destructive" role="alert" data-testid="sugerencia-error">{errorSugerencia}</p>
+						{/if}
+						{#if sugerencia !== null}
+							<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3" data-testid="sugerencia-panel">
+								<p class="text-xs font-medium text-muted-foreground">Sugerencia generada con IA: revísala antes de usarla.</p>
+								<p class="text-sm text-foreground" data-testid="sugerencia-texto">{sugerencia}</p>
+								<div class="flex flex-wrap gap-2">
+									<Button size="sm" data-testid="usar-sugerencia" onclick={usarSugerencia}>Usar esta sugerencia</Button>
+									<Button size="sm" variant="outline" data-testid="descartar-sugerencia" onclick={() => (sugerencia = null)}>Descartar</Button>
+								</div>
+							</div>
+						{/if}
 					</div>
 
 					<div class="space-y-2">
