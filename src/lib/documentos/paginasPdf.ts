@@ -40,7 +40,7 @@ export async function abrirPdf(bytes: ArrayBuffer): Promise<PdfAbierto> {
 		'pdfjs-dist/build/pdf.worker.min.mjs',
 		import.meta.url
 	).href;
-	const documento = await pdfjsLib.getDocument({ data: bytes }).promise;
+	const documento = await pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise; // isEvalSupported: false (NEX-569): el PDF lo subió una persona y no es de confianza; pdf.js no debe evaluar código de él
 	const pintadas = new Map<string, Promise<Blob>>();
 
 	async function pintar(n: number, anchoPx: number): Promise<Blob> {

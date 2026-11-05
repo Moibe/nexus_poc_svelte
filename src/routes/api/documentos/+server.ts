@@ -12,6 +12,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { rechazarSiNoEsDocumento } from '$lib/server/subidas';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
 // Los mismos tres números alineados que el resto de las subidas: el dropzone, este guardia y MAX_SUBIDA_MB en el .env del back.
@@ -45,6 +46,9 @@ export const POST: RequestHandler = async ({ cookies, locals, request }) => {
 	if (!(archivo instanceof File)) return fallo('Falta el archivo a registrar.', 400);
 	if (archivo.size === 0) return fallo('El archivo llegó vacío.', 400);
 	if (archivo.size > MAX_BYTES) return fallo(`El archivo excede el límite de ${MAX_MB} MB.`, 413);
+	// La firma del archivo, no su nombre ni el tipo que dijo el navegador (NEX-563).
+	const noEsDocumento = await rechazarSiNoEsDocumento(archivo);
+	if (noEsDocumento) return noEsDocumento;
 
 	const salida = new FormData();
 	salida.append('archivo', archivo, archivo.name);

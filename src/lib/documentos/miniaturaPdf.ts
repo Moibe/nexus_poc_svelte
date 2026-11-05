@@ -51,7 +51,7 @@ async function renderizar(archivo: File): Promise<Blob> {
 			'pdfjs-dist/build/pdf.worker.min.mjs',
 			import.meta.url
 		).href;
-		const documento = await pdfjsLib.getDocument({ data: await archivo.arrayBuffer() }).promise;
+		const documento = await pdfjsLib.getDocument({ data: await archivo.arrayBuffer(), isEvalSupported: false }).promise; // isEvalSupported: false (NEX-569): el PDF lo subió una persona y no es de confianza; pdf.js no debe evaluar código de él
 		try {
 			const pagina = await documento.getPage(1);
 			const base = pagina.getViewport({ scale: 1 });

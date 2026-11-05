@@ -3,6 +3,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { esTexto, esTextoONulo, recuperacionDe, soloCampos } from '$lib/server/seguridad';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -17,7 +18,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		respuesta = await fetch(urlNexus('/auth/perfil'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify(datos),
+			// Lista blanca (NEX-551): lo que no sea de la pantalla de perfil no llega al back.
+			body: JSON.stringify({
+				...soloCampos(datos, { nombre: esTexto, apellidoPaterno: esTexto, apellidoMaterno: esTexto, telefono: esTextoONulo }),
+				...(recuperacionDe(datos.recuperacion) ? { recuperacion: recuperacionDe(datos.recuperacion) } : {})
+			}),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

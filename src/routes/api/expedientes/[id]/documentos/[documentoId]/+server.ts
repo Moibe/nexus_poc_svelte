@@ -1,6 +1,9 @@
 /**
- * BFF: meter (PUT) un documento a un expediente de la organización de quien pide. Lo usa «Agregar a expediente» de Archivos procesados
- * (Figma Sprint 5, HUN2; 2026-10-29).
+ * BFF: meter (PUT) o sacar (DELETE) un documento de un expediente de la organización de quien pide. Meter lo usa «Agregar a expediente» de
+ * Archivos procesados (Figma Sprint 5, HUN2; 2026-10-29); sacar, «Quitar» en la tarjeta del documento dentro del expediente (2026-11-04).
+ *
+ * Sacar NO borra el documento: sigue siendo de la organización (en Archivos procesados) y en los demás expedientes donde esté; si era su único
+ * expediente, vuelve al void. nexus_back lo saca también de los expedientes virtuales de ESTE expediente.
  *
  * Idempotente en nexus_back: si el documento ya estaba, responde `agregado: false`. Un documento puede estar en varios expedientes a la
  * vez, así que agregar NO lo saca de los que ya tenía. Quien organiza (Administrador, Supervisor, Analista y Operador) puede; a los
@@ -15,12 +18,13 @@ import { cabecerasConSesion } from '$lib/server/sesion';
 
 const ESPERA_MS = 30_000;
 
-export const PUT: RequestHandler = async ({ cookies, locals, params }) => {
+/** Reenvía a nexus_back con el método que llegó (`PUT` mete, `DELETE` saca) y devuelve su respuesta tal cual, o su error como mensaje. */
+async function reenviar(metodo: 'PUT' | 'DELETE', { cookies, locals, params }: Parameters<RequestHandler>[0]) {
 	const tenant = encodeURIComponent(tenantDe(locals));
 	const ruta = `/expedientes/${encodeURIComponent(params.id ?? '')}/documentos/${encodeURIComponent(params.documentoId ?? '')}?tenant=${tenant}`;
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(ruta), { method: 'PUT', headers: cabecerasConSesion(cookies), signal: AbortSignal.timeout(ESPERA_MS) });
+		respuesta = await fetch(urlNexus(ruta), { method: metodo, headers: cabecerasConSesion(cookies), signal: AbortSignal.timeout(ESPERA_MS) });
 	} catch {
 		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
 	}
@@ -29,4 +33,8 @@ export const PUT: RequestHandler = async ({ cookies, locals, params }) => {
 		return json({ mensaje: mensajeDeError(cuerpo, respuesta.status) }, { status: respuesta.status });
 	}
 	return json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
-};
+}
+
+export const PUT: RequestHandler = (evento) => reenviar('PUT', evento);
+
+export const DELETE: RequestHandler = (evento) => reenviar('DELETE', evento);

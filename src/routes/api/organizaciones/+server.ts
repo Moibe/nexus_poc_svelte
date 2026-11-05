@@ -9,6 +9,7 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
+import { esTexto, esTextoONulo, recuperacionDe, soloCampos } from '$lib/server/seguridad';
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
@@ -23,7 +24,19 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		respuesta = await fetch(urlNexus('/organizaciones/'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify(datos),
+			// Lista blanca (NEX-551): una organización nueva no lleva rol, bandera de administrador de plataforma ni tenant puestos por el navegador.
+			body: JSON.stringify({
+				...soloCampos(datos, {
+					nombre: esTexto,
+					adminNombre: esTexto,
+					adminApellidos: esTexto,
+					adminApellidoPaterno: esTexto,
+					adminApellidoMaterno: esTexto,
+					adminTelefono: esTextoONulo,
+					adminEmail: esTexto
+				}),
+				...(recuperacionDe(datos.recuperacion) ? { recuperacion: recuperacionDe(datos.recuperacion) } : {})
+			}),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch {

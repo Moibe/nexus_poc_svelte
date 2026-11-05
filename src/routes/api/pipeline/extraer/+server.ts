@@ -19,6 +19,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, tenantDe, urlNexus } from '$lib/server/nexus';
+import { rechazarSiNoEsDocumento } from '$lib/server/subidas';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
 /** Cada llamada a Document AI cuesta dinero. Este handler es hoy el único que
@@ -77,6 +78,9 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	if (archivo.size > MAX_BYTES) {
 		return fallo(`El archivo excede el límite de ${MAX_MB} MB.`, 413);
 	}
+	// La firma del archivo, no su nombre ni el tipo que dijo el navegador (NEX-563).
+	const noEsDocumento = await rechazarSiNoEsDocumento(archivo);
+	if (noEsDocumento) return noEsDocumento;
 
 	const procesador = String(entrada.get('procesador') ?? '').trim();
 	if (!procesador) {
@@ -99,8 +103,10 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	if (documento) {
 		salida.append('documento', documento);
 		salida.append('tipoDocumental', String(entrada.get('tipoDocumental') ?? '').trim());
-		salida.append('tenant', tenantDe(locals));
 	}
+	// La organización va SIEMPRE, no solo cuando se guarda (NEX-550): con ella nexus_back comprueba que el procesador sea de esa organización antes de
+	// pagarle a Google, y sin ella (como estaba) cualquiera con sesión podía extraer con el procesador de otra.
+	salida.append('tenant', tenantDe(locals));
 
 	let respuesta: Response;
 	try {

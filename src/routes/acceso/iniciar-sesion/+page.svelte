@@ -16,6 +16,7 @@
 	 */
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
+	import { destinoDeVolver } from '$lib/seguridad/volver';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Info from '@lucide/svelte/icons/info';
@@ -71,7 +72,7 @@
 				const volver = page.url.searchParams.get('volver');
 				await invalidateAll();
 				if (cuerpo?.usuario?.debeCambiarContrasena) await goto('/acceso/bienvenido');
-				else await goto(volver && volver.startsWith('/') && !volver.startsWith('//') ? volver : '/');
+				else await goto(destinoDeVolver(volver, page.url.origin)); // solo una ruta de ESTA app (NEX-553): `/\sitio` y similares caen en «/»
 				return;
 			}
 			const codigo = cuerpo?.codigo;

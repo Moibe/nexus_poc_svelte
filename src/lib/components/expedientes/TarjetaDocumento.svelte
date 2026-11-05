@@ -16,7 +16,9 @@
 	 * virtual hasta que quede uno. La marca se calcula al leer; al sacar uno desaparece de los dos.
 	 *
 	 * Desde el 2026-10-29, dentro de un expediente VIRTUAL la tarjeta puede llevar «Quitar» (`alQuitar`): saca el documento del grupito, no
-	 * del expediente. Sin `alQuitar` (el expediente, o quien no organiza) no hay nada que hacer con ella.
+	 * del expediente. Desde el 2026-11-04 (Moibe: «que un archivo pueda ser borrado de un expediente») también dentro del EXPEDIENTE: ahí lo
+	 * saca del expediente (y de sus virtuales), sin borrar el archivo. Quien la pone dice de dónde con `ayudaQuitar` y `testidQuitar`. Sin
+	 * `alQuitar` (quien no organiza) no hay nada que hacer con ella.
 	 */
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -29,13 +31,18 @@
 	let {
 		documento,
 		alQuitar,
-		quitando = false
+		quitando = false,
+		ayudaQuitar = `Quitar «${documento.nombreOriginal}» de este expediente virtual`,
+		testidQuitar = 'quitar-del-virtual'
 	}: {
 		documento: DocumentoDeExpediente;
-		/** Si viene, la tarjeta ofrece «Quitar» (de un expediente virtual). */
+		/** Si viene, la tarjeta ofrece «Quitar» (del expediente virtual o del expediente, según dónde esté). */
 		alQuitar?: () => void;
 		/** Se está quitando: el botón gira y no se puede volver a picar. */
 		quitando?: boolean;
+		/** Lo que el botón dice a un lector de pantalla: de DÓNDE se quita. */
+		ayudaQuitar?: string;
+		testidQuitar?: string;
 	} = $props();
 
 	const tipo = $derived(documento.tipoDocumental ?? null);
@@ -92,8 +99,8 @@
 					class="flex items-center gap-1 text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
 					disabled={quitando}
 					onclick={alQuitar}
-					aria-label={`Quitar «${documento.nombreOriginal}» de este expediente virtual`}
-					data-testid="quitar-del-virtual"
+					aria-label={ayudaQuitar}
+					data-testid={testidQuitar}
 				>
 					{#if quitando}<LoaderCircle class="size-3 animate-spin" />{/if}
 					Quitar

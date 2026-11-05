@@ -4,7 +4,7 @@
 	 * nombre y «N Archivos · X MB». Mide 210 px de ancho y es TODA un enlace a su detalle.
 	 *
 	 * Se aparta del diseño en que la tarjeta lleva el NOMBRE del expediente y no un folio (`EXP-2026-00011`). (Hasta el 2026-10-29
-	 * llevaba también el tipo del expediente; ese día dejó de tenerlo.) El menú de tres puntos del diseño no está: todavía no hay nada
+	 * llevaba también el tipo del expediente; ese día dejó de tenerlo. Desde el 2026-11-03 lleva su grupo, o «Sin grupo».) El menú de tres puntos del diseño no está: todavía no hay nada
 	 * que hacer desde él (no se renombra ni se borra un expediente).
 	 */
 	import CarpetaIlustracion from '$lib/components/icons/CarpetaIlustracion.svelte';
@@ -32,6 +32,9 @@
 	</div>
 	<div class="flex flex-col gap-1.5 px-3 pb-4">
 		<p class="truncate text-xs font-medium text-foreground" data-testid="expediente-nombre" title={expediente.nombre}>{expediente.nombre}</p>
+		<p class="truncate text-xs text-muted-foreground" data-testid="expediente-grupo" title={expediente.grupo?.nombre ?? 'Sin grupo'}>
+			{expediente.grupo?.nombre ?? 'Sin grupo'}
+		</p>
 		<p class="text-xs font-medium text-muted-foreground" data-testid="expediente-resumen">{resumen}</p>
 	</div>
 </a>

@@ -33,8 +33,23 @@ import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
  * Lo que lleva un nodo de tipo documental: cuál es y, SOLO mientras está en pantalla, qué campos se ven (`campos`: los puntos de salida
  * `campo` o `grupo.subcampo`, 2026-11-03). Los campos se leen en vivo de la biblioteca. `campos` NO se guarda: `serializarDibujo` solo
  * escribe `tipoId`, y `hidratarDibujo` lo reconstruye con los campos que tienen cable.
+ *
+ * `version` (2026-11-04, NEX-542) es la versión del tipo con la que se armó el proceso, o con la que se confirmó por última vez: sí se guarda. El nodo
+ * enseña ESA versión y, si el tipo ya va en otra, avisa y ofrece usar la nueva (lo cual cuenta como un cambio por guardar). Los procesos de antes no la
+ * traen (`undefined`): se enseña la del tipo y no hay aviso, porque no se sabe con cuál se armaron.
  */
-export type DatosNodoTipo = { tipoId: string; campos?: string[] };
+export type DatosNodoTipo = { tipoId: string; campos?: string[]; version?: number };
+
+/**
+ * En qué estado está, para el lienzo, el tipo documental de un nodo: `activo` es el único que se puede USAR en un proceso (2026-11-05, Moibe:
+ * «no deberíamos poder usar en el canvas los tipos documentales que no estén activos»). Un `borrador` todavía no se puede procesar (incluye
+ * el activo que está en «Crear nueva versión»: vuelve a `borrador` hasta que se publica), uno `archivado` ya no está en la biblioteca y uno
+ * `ausente` ya no existe (lo borraron).
+ */
+export type EstadoDeTipoEnLienzo = 'activo' | 'borrador' | 'archivado' | 'ausente';
+export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado, 'id' | 'estado'>[], tipoId: string): EstadoDeTipoEnLienzo {
+	return tipos.find((t) => t.id === tipoId)?.estado ?? 'ausente';
+}
 
 /**
  * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
@@ -134,6 +149,62 @@ export function textosDelResultado(datos: Partial<Record<CasoDelResultado, unkno
 /** El nombre con el que un valor final entra a la lista de la corrida: el que se escribió o, sin nombre, «Valor final #N» (su número). */
 export const nombreDeValorFinal = (nodoId: string, datos: { nombre?: unknown } | null | undefined): string =>
 	(typeof datos?.nombre === 'string' ? datos.nombre.trim() : '') || `Valor final #${numeroDeOperador(nodoId)}`;
+
+// ── Dónde cabe un nodo nuevo ─────────────────────────────────────────────────
+
+/** Un rectángulo del lienzo, en sus coordenadas: esquina de arriba a la izquierda y tamaño. */
+export type Caja = { x: number; y: number; ancho: number; alto: number };
+
+/** El aire que se deja entre dos tarjetas, en píxeles del lienzo. */
+export const MARGEN_ENTRE_NODOS = 24;
+
+const seTocan = (a: Caja, b: Caja, margen: number) =>
+	a.x < b.x + b.ancho + margen && b.x < a.x + a.ancho + margen && a.y < b.y + b.alto + margen && b.y < a.y + a.alto + margen;
+
+/**
+ * Dónde poner un nodo nuevo para que no tape a otro (2026-11-04, NEX-540). Se parte de donde se soltó (o del centro, si se pulsó en la paleta): si ahí
+ * no estorba a nadie, se queda; si no, se corre a la derecha de lo que tapaba, y así hasta que quepa. Solo avanza hacia la derecha, así que siempre
+ * termina. Mover una tarjeta que ya está puesta no pasa por aquí: se puede dejar donde se quiera.
+ */
+export function posicionLibre(deseada: { x: number; y: number }, tamano: { ancho: number; alto: number }, ocupadas: readonly Caja[], margen = MARGEN_ENTRE_NODOS): { x: number; y: number } {
+	let x = deseada.x;
+	for (let vuelta = 0; vuelta <= ocupadas.length; vuelta++) {
+		const mia: Caja = { x, y: deseada.y, ...tamano };
+		const estorba = ocupadas.filter((o) => seTocan(mia, o, margen));
+		if (estorba.length === 0) return { x, y: deseada.y };
+		x = Math.max(...estorba.map((o) => o.x + o.ancho)) + margen;
+	}
+	return { x, y: deseada.y };
+}
+
+/** A qué se conecta un nodo: cada cable que sale de él, con el nombre del nodo de destino y de su entrada («Igual a #1», «Entrada A»). */
+export type UsoDeNodo = { destino: string; entrada: string | null };
+
+/**
+ * Los usos de un nodo: lo que se desconecta si se quita (2026-11-04, NEX-543). Sirve para avisar antes de quitar un tipo documental que ya está
+ * en uso, diciendo qué reglas se quedan sin esa entrada.
+ */
+export function usosDeNodo(nodoId: string, nodes: readonly NodoMinimo[], edges: readonly Conexion[]): UsoDeNodo[] {
+	const nombreDe = (n: NodoMinimo): string => {
+		if (n.type === NODO_OPERADOR) {
+			const def = operadorDelNodo(n);
+			return `${def?.etiqueta ?? 'Regla'} #${numeroDeOperador(n.id)}`;
+		}
+		if (n.type === NODO_CONSTANTE) return `Valor fijo #${numeroDeOperador(n.id)}`;
+		if (n.type === NODO_VALOR_FINAL) return `Valor final «${nombreDeValorFinal(n.id, n.data)}»`;
+		if (n.type === NODO_RESULTADO) return 'Resultado';
+		return n.id;
+	};
+	const usos: UsoDeNodo[] = [];
+	for (const e of edges) {
+		if (e.source !== nodoId) continue;
+		const destino = nodes.find((n) => n.id === e.target);
+		if (!destino) continue;
+		const entrada = operadorDelNodo(destino)?.entradas.find((x) => x.id === e.targetHandle)?.etiqueta ?? null;
+		usos.push({ destino: nombreDe(destino), entrada });
+	}
+	return usos;
+}
 
 // ── Qué es comparable con qué ────────────────────────────────────────────────
 
@@ -1050,7 +1121,13 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 	for (const n of nodes) {
 		const position = { x: entero(n.position.x), y: entero(n.position.y) };
 		if (n.type === NODO_TIPO) {
-			nodos.push({ id: n.id, type: NODO_TIPO, position, data: { tipoId: String((n.data as DatosNodoTipo).tipoId) } });
+			const version = (n.data as DatosNodoTipo).version;
+			nodos.push({
+				id: n.id,
+				type: NODO_TIPO,
+				position,
+				data: { tipoId: String((n.data as DatosNodoTipo).tipoId), ...(Number.isInteger(version) && (version as number) >= 0 ? { version } : {}) }
+			});
 		} else if (n.type === NODO_OPERADOR) {
 			const d = n.data as DatosNodoOperador;
 			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '' } });
@@ -1103,7 +1180,13 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 		if (!esNumeroFinito(n.position.x) || !esNumeroFinito(n.position.y)) continue;
 		const position = { x: n.position.x, y: n.position.y };
 		if (n.type === NODO_TIPO && typeof n.data.tipoId === 'string') {
-			nodes.push({ id: n.id, type: NODO_TIPO, position, data: { tipoId: n.data.tipoId } });
+			const version = n.data.version;
+			nodes.push({
+				id: n.id,
+				type: NODO_TIPO,
+				position,
+				data: { tipoId: n.data.tipoId, ...(Number.isInteger(version) && (version as number) >= 0 ? { version } : {}) }
+			});
 		} else if (n.type === NODO_OPERADOR && typeof n.data.operador === 'string' && operadorDe(n.data.operador)) {
 			nodes.push({
 				id: n.id,

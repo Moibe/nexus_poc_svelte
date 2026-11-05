@@ -16,6 +16,7 @@
 		soloAviso = false,
 		formato = 'compacto',
 		pregunta,
+		accionExtra,
 		children,
 		onConfirmar,
 		onCancelar,
@@ -47,6 +48,8 @@
 		formato?: 'compacto' | 'centrado';
 		/** Solo con `formato="centrado"`: la pregunta final, en negritas y separada del mensaje. */
 		pregunta?: string;
+		/** Un tercer botón, principal, a la derecha (p. ej. «Guardar y salir»). Cierra el diálogo y corre `alPulsar`. */
+		accionExtra?: { etiqueta: string; alPulsar: () => void; deshabilitado?: boolean; titulo?: string };
 		/** Contenido extra bajo el mensaje (p. ej. un campo de motivo). Quien lo pinta guarda su propio estado. */
 		children?: Snippet;
 		onConfirmar: () => void;
@@ -232,6 +235,18 @@
 						{/if}
 					{/snippet}
 				</AlertDialogPrimitive.Action>
+				{#if accionExtra}
+					<Button
+						size="sm"
+						data-testid="confirmar-extra"
+						disabled={accionExtra.deshabilitado}
+						title={accionExtra.titulo}
+						onclick={() => {
+							onCerrar();
+							accionExtra.alPulsar();
+						}}>{accionExtra.etiqueta}</Button
+					>
+				{/if}
 			</div>
 		</AlertDialogPrimitive.Content>
 	</AlertDialogPrimitive.Portal>

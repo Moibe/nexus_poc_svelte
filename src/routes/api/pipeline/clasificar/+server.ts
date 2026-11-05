@@ -13,6 +13,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { rechazarSiNoEsDocumento } from '$lib/server/subidas';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
 // Mismos tres números alineados que `/api/pipeline/extraer` (ver el comentario
@@ -57,6 +58,9 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 	if (archivo.size > MAX_BYTES) {
 		return fallo(`El archivo excede el límite de ${MAX_MB} MB.`, 413);
 	}
+	// La firma del archivo, no su nombre ni el tipo que dijo el navegador (NEX-563).
+	const noEsDocumento = await rechazarSiNoEsDocumento(archivo);
+	if (noEsDocumento) return noEsDocumento;
 
 	const salida = new FormData();
 	salida.append('archivo', archivo, archivo.name);

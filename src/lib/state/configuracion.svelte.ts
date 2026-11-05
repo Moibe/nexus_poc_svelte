@@ -296,6 +296,30 @@ function almacen(): Storage | null {
 	}
 }
 
+/**
+ * Las claves de `localStorage` donde esta app guarda, o guardó, datos de configuración de la persona: el borrador del asistente de un tipo
+ * documental y las copias de antes de que la biblioteca, las API Keys y los webhooks pasaran al servidor (esas ya no se leen; solo se borran).
+ * NO incluye el tema claro u oscuro: es una preferencia del navegador, no un dato de la persona.
+ */
+const CLAVES_DE_LA_PERSONA = [LLAVE, 'nexusdoc:tipos-documentales:v1', 'nexusdoc:api-keys:v1', 'Biblioratum:webhooks:v1'];
+
+/**
+ * Borra del navegador lo que dejó la persona que se va (NEX-564, auditoría de seguridad 2026-10-30): en un equipo compartido, quien entre
+ * después no debe encontrar el borrador de configuración de la anterior. Se llama al cerrar sesión. No lanza nunca: un `localStorage` bloqueado
+ * no es un motivo para que el cierre de sesión falle.
+ */
+export function limpiarDatosLocalesDeLaPersona(): void {
+	const store = almacen();
+	if (!store) return;
+	for (const clave of CLAVES_DE_LA_PERSONA) {
+		try {
+			store.removeItem(clave);
+		} catch {
+			/* sin permiso para borrar: no hay nada más que hacer */
+		}
+	}
+}
+
 /** Normaliza un subcampo de un grupo. `null` si no es ni un objeto. */
 function leerSubcampo(c: unknown): SubcampoBorrador | null {
 	if (typeof c !== 'object' || c === null) return null;
@@ -1313,6 +1337,42 @@ async function adoptarDelServidor(id: string): Promise<boolean> {
 	return true;
 }
 
+/**
+ * El servidor contestó que ese nombre ya es de otro tipo de la organización (409 `ya_existe`, 2026-11-04). Esta pantalla no deja
+ * llevar un nombre repetido a la biblioteca (`guardarTipoDocumental`), así que solo pasa cuando OTRA persona dio de alta ese nombre
+ * después de que aquí se leyó la biblioteca. Se traen de una vez los tipos que esta pantalla no conocía —así el aviso del paso 1 del
+ * asistente ya lo ve— y:
+ *   · si el tipo ya estaba en el servidor, vuelve al nombre que tenía guardado (lo demás que se haya cambiado sigue su camino);
+ *   · si era nuevo, sale de la biblioteca y el asistente regresa a su paso 1 —con todo lo capturado—, donde se ve por qué.
+ */
+async function atenderNombreRepetido(id: string, previo: { json: string; revision: number } | undefined): Promise<void> {
+	const r = await llamar('GET', '/api/tipos-documentales');
+	if (r.ok && Array.isArray(r.cuerpo?.tipos)) {
+		for (const e of r.cuerpo.tipos as { id: string; revision: number; datos: unknown }[]) {
+			// Lo que ya se conoce —o se quitó aquí y su borrado sigue en camino— no se toca.
+			if (sincronizados.has(e.id) || tiposDocumentales.some((t) => t.id === e.id)) continue;
+			const nuevo = leerTipoGuardado(e.datos);
+			if (!nuevo) continue;
+			tiposDocumentales.push(nuevo);
+			const puesto = tiposDocumentales.find((t) => t.id === e.id);
+			if (puesto) sincronizados.set(e.id, { json: serializar(puesto), revision: e.revision });
+			ordenSincronizado.push(e.id);
+		}
+	}
+	const i = tiposDocumentales.findIndex((t) => t.id === id);
+	if (i === -1) return;
+	if (previo) {
+		const guardado = (JSON.parse(previo.json) as { nombre?: unknown }).nombre;
+		if (typeof guardado === 'string') tiposDocumentales[i].nombre = guardado;
+		return;
+	}
+	tiposDocumentales.splice(i, 1);
+	if (borradorTipoDocumental.idGuardado === id) {
+		borradorTipoDocumental.idGuardado = null;
+		borradorTipoDocumental.paso = 1;
+	}
+}
+
 /** Una pasada: manda al servidor lo que cambió desde la última confirmada. Nunca levanta; los fallos van a `estadoBiblioteca`. */
 async function ejecutarPasada(): Promise<void> {
 	if (!browser || !estadoBiblioteca.cargada) return;
@@ -1359,7 +1419,17 @@ async function ejecutarPasada(): Promise<void> {
 			continue;
 		}
 		falla(r);
-		if (r.status === 409 && previo) {
+		if (r.status === 409 && r.cuerpo?.codigo === 'ya_existe') {
+			// Otro tipo de la organización ya se llama así (no es un choque de revisiones: no hay versión de nadie que cargar).
+			await atenderNombreRepetido(id, previo);
+			if (esta !== generacion) return;
+			avisar(
+				'Ya hay un tipo documental con ese nombre',
+				`Otra persona de tu organización acaba de dar de alta un tipo documental llamado «${nombre.trim()}». Ponle a este un nombre distinto.`
+			);
+			// Lo demás que se haya cambiado (ya con el nombre de antes, si el tipo existía) se vuelve a mandar en la siguiente pasada.
+			hayFallo = false;
+		} else if (r.status === 409 && previo) {
 			// Otra persona lo guardó antes: se carga SU versión y lo que se había cambiado aquí se pierde (se avisa).
 			if (await adoptarDelServidor(id)) {
 				if (esta !== generacion) return;
@@ -1562,6 +1632,26 @@ export function etiquetaVersion(version: number): string {
 	return version > 0 ? `0.0.${version}` : '';
 }
 
+/**
+ * Con qué se compara el nombre de un tipo documental para saber si choca con otro: sin espacios de más y sin distinguir
+ * mayúsculas. Es la regla del servidor (`clave_de_nombre` en `tipos_documentales_comun.py`), la misma de procesos, grupos y tipos de
+ * expediente: «Cédula  profesional » y «CÉDULA PROFESIONAL» chocan; «Cedula profesional», sin acento, no.
+ */
+export function claveDeNombreTipo(nombre: string): string {
+	return nombre.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
+}
+
+/**
+ * El OTRO tipo de la biblioteca que ya se llama así, o `null` (2026-11-04, Moibe: el nombre es único en la organización). Los
+ * archivados no cuentan: no se listan ni entran al clasificador, así que su nombre se puede volver a usar. `exceptoId` es el tipo
+ * que se está editando, que no choca consigo mismo (cambiarle solo las mayúsculas a su propio nombre se puede).
+ */
+export function tipoConMismoNombre(nombre: string, exceptoId: string | null): TipoDocumentalGuardado | null {
+	const clave = claveDeNombreTipo(nombre);
+	if (clave === '') return null;
+	return tiposDocumentales.find((t) => t.id !== exceptoId && t.estado !== 'archivado' && claveDeNombreTipo(t.nombre) === clave) ?? null;
+}
+
 export function guardarTipoDocumental(): string | null {
 	const b = borradorTipoDocumental;
 	if (b.nombre.trim() === '') return null;
@@ -1569,18 +1659,26 @@ export function guardarTipoDocumental(): string | null {
 	// ahora crearía un duplicado. (El efecto del asistente lo llama al montarse, con el borrador que haya en el navegador.)
 	if (!estadoBiblioteca.cargada) return b.idGuardado;
 
+	const existente = b.idGuardado
+		? tiposDocumentales.find((tp) => tp.id === b.idGuardado)
+		: undefined;
+
+	// Un nombre que ya tiene OTRO tipo de la organización no llega a la biblioteca (2026-11-04): el asistente lo avisa en el paso 1 y
+	// no deja seguir. Un tipo nuevo no se da de alta con él; a uno que ya existe —el asistente guarda con cada tecla— se le guarda
+	// todo lo demás y se queda con el nombre que tenía. Así no se pierde nada de lo capturado ni se manda al servidor algo que
+	// rechazaría (un 409 a media tecla). Un duplicado de antes de la regla conserva su nombre igual: el servidor lo deja pasar
+	// mientras no se cambie, y el asistente pide cambiarlo antes de terminar.
+	const repetido = tipoConMismoNombre(b.nombre, b.idGuardado) !== null;
+	if (repetido && !existente) return null;
+
 	const datos = {
-		nombre: b.nombre.trim(),
+		nombre: repetido && existente ? existente.nombre : b.nombre.trim(),
 		descripcion: b.descripcion.trim(),
 		instrucciones: b.instrucciones.trim(),
 		vertical: b.vertical,
 		campos: $state.snapshot(b.campos) as CampoBorrador[],
 		pasoMaximo: b.pasoMaximo
 	};
-
-	const existente = b.idGuardado
-		? tiposDocumentales.find((tp) => tp.id === b.idGuardado)
-		: undefined;
 
 	if (existente) {
 		Object.assign(existente, datos);
@@ -2164,25 +2262,27 @@ export async function eliminarTipoDocumental(
 }
 
 /**
- * Mueve `idArrastrado` justo ANTES de `idDestino` en `tiposDocumentales` — el
- * orden real que el árbol de la izquierda dibuja, así que reordenar aquí es
- * lo único que hace falta para que el árbol (y la lista de "Modelos
- * documentales agregados") reflejen el nuevo orden. Sin frame de Figma —
+ * Mueve `idArrastrado` justo ANTES de `idDestino` en `tiposDocumentales` (o
+ * justo DESPUÉS, con `despues`) — el orden real que dibujan las tarjetas de
+ * "Modelos documentales agregados", así que reordenar aquí es lo único que
+ * hace falta para que la lista refleje el nuevo orden. Sin frame de Figma —
  * pedido explícito el 2026-09-05 ("quiero poder arrastrar los tipos
  * documentales... para reordenarlos a gusto").
  *
  * `hacia` se vuelve a buscar DESPUÉS de quitar el arrastrado (no se calcula
  * con aritmética de índices) para no tener que distinguir a mano si el
  * arrastre fue hacia arriba o hacia abajo — el índice post-remoción ya es el
- * correcto en los dos casos.
+ * correcto en los dos casos. `despues` (2026-11-04, cuando el arrastre pasó
+ * del árbol a las tarjetas) existe porque con «solo antes» bajar un tipo un
+ * lugar no hacía nada y al último lugar no se llegaba.
  */
-export function reordenarTipoDocumental(idArrastrado: string, idDestino: string): boolean {
+export function reordenarTipoDocumental(idArrastrado: string, idDestino: string, despues = false): boolean {
 	if (idArrastrado === idDestino) return false;
 	const desde = tiposDocumentales.findIndex((t) => t.id === idArrastrado);
 	if (desde === -1) return false;
 	const [movido] = tiposDocumentales.splice(desde, 1);
 	const hacia = tiposDocumentales.findIndex((t) => t.id === idDestino);
-	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia, 0, movido);
+	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia + (despues ? 1 : 0), 0, movido);
 	guardarBiblioteca();
 	return true;
 }

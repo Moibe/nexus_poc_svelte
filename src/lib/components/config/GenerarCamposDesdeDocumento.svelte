@@ -27,6 +27,7 @@
 		abierto = false,
 		nombreTipo = '',
 		descripcionTipo = '',
+		instruccionesTipo = '',
 		existentes = [],
 		onCerrar,
 		onAgregar
@@ -35,6 +36,12 @@
 		/** Lo capturado en el paso 1: viaja como contexto para el modelo. */
 		nombreTipo?: string;
 		descripcionTipo?: string;
+		/**
+		 * Las «instrucciones para la extracción» del tipo (paso 2), tal como estén al elegir el documento. Además de contexto, ORIENTAN la
+		 * propuesta: medido contra Google el 2026-11-05, con «la persona que interesa es el titular, no el beneficiario» el generador deja
+		 * fuera el campo del beneficiario. Por eso se avisa cuando se usan, y de nuevo en la propuesta (si falta un campo, ahí está el porqué).
+		 */
+		instruccionesTipo?: string;
 		/** Los nombres de los campos que el tipo YA tiene: una propuesta con el mismo nombre no se puede elegir. */
 		existentes?: string[];
 		onCerrar: () => void;
@@ -51,6 +58,10 @@
 	// Cada generación se numera: si se cierra el modal o se elige otro documento mientras Google lee, la respuesta vieja ya es de
 	// nadie y no debe pintarse encima de lo nuevo.
 	let vigente = 0;
+	// ¿La propuesta que se está mostrando se pidió CON instrucciones? Se fija al pedirla: si después se editan las instrucciones, esa
+	// propuesta sigue siendo la de las que había entonces.
+	let propuestaConInstrucciones = $state(false);
+	const hayInstrucciones = $derived(instruccionesTipo.trim() !== '');
 
 	const etiquetaTipo = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label ?? 'Texto';
 	const yaExiste = (nombre: string) => existentes.some((e) => e.trim().toLowerCase() === nombre.trim().toLowerCase());
@@ -70,6 +81,7 @@
 		error = '';
 		propuestos = [];
 		elegidos = [];
+		propuestaConInstrucciones = false;
 	}
 
 	function cerrar() {
@@ -111,6 +123,8 @@
 		cuerpo.append('archivo', archivo, archivo.name);
 		if (nombreTipo.trim()) cuerpo.append('nombre', nombreTipo.trim());
 		if (descripcionTipo.trim()) cuerpo.append('descripcion', descripcionTipo.trim());
+		const conInstrucciones = instruccionesTipo.trim() !== '';
+		if (conInstrucciones) cuerpo.append('instrucciones', instruccionesTipo.trim());
 		try {
 			const r = await fetch('/api/procesadores/generar-campos', { method: 'POST', body: cuerpo });
 			const datos = await r.json().catch(() => null);
@@ -128,6 +142,7 @@
 			}
 			propuestos = campos;
 			elegidos = campos.map((c) => !yaExiste(c.nombre));
+			propuestaConInstrucciones = conInstrucciones;
 			fase = 'propuesta';
 		} catch {
 			if (turno !== vigente) return;
@@ -184,6 +199,12 @@
 				</div>
 
 				{#if fase === 'elegir'}
+					<!-- Solo cuando se van a usar: sin instrucciones no se dice nada (no es un regaño por no escribirlas). -->
+					{#if hayInstrucciones}
+						<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-usa-instrucciones">
+							Se tendrán en cuenta tus instrucciones para la extracción: orientan qué campos se proponen.
+						</p>
+					{/if}
 					<button
 						type="button"
 						data-testid="generar-campos-zona"
@@ -259,6 +280,13 @@
 							Seleccionar todos
 						</label>
 					</div>
+					<!-- Si la propuesta se pidió con instrucciones, se dice: un campo que ellas mandan ignorar (p. ej. el beneficiario) no sale, y
+					     sin esta línea parecería que Document AI no lo encontró. -->
+					{#if propuestaConInstrucciones}
+						<p class="-mt-3 text-xs text-muted-foreground" data-testid="generar-campos-con-instrucciones">
+							Propuesta con tus instrucciones para la extracción: si falta un campo que esperabas, revísalas.
+						</p>
+					{/if}
 
 					<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
 						{#each propuestos as campo, i (i)}

@@ -53,14 +53,15 @@
 	 *  login. `location` y no `goto`: así se vacía todo el estado en memoria
 	 *  (bandejas, pipeline), que era del usuario que se fue. */
 	async function cerrarSesion() {
+		// Antes de avisar al servidor, para que quede hecho aunque la petición falle (NEX-564): lo que la persona dejó en el navegador se va con ella.
+		limpiarDatosLocalesDeLaPersona();
 		await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
 		window.location.assign('/acceso/iniciar-sesion');
 	}
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ApiKeySheet from '$lib/components/config/ApiKeySheet.svelte';
 	import WebhookSheet from '$lib/components/config/WebhookSheet.svelte';
-	import { pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
-	import Cog from '@lucide/svelte/icons/cog';
+	import { limpiarDatosLocalesDeLaPersona, pedidoDeConfiguracion } from '$lib/state/configuracion.svelte';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Plug from '@lucide/svelte/icons/plug';
@@ -119,8 +120,10 @@
 	//
 	// Quién ve cada una lo decide `puedeVerOpcionDelEngrane` (permisos.ts): el engrane lo ve cualquiera que use el producto y cada opción
 	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña:
-	// los dos módulos hasta arriba, antes que el motor de reglas (Moibe, 2026-10-30), y el de configuración primero, antes que el de uso (Moibe, 2026-11-03).
-	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof Cog; alSeleccionar: (() => void) | undefined }[] = [
+	// los dos módulos hasta arriba (Moibe, 2026-10-30), y el de configuración primero, antes que el de uso (Moibe, 2026-11-03).
+	// «Motor de reglas» ya no tiene opción propia (Moibe, 2026-11-03: «solo entraremos vía Módulo de Configuración»): se entra por la tarjeta
+	// «Procesos y reglas» de `/configuracion`. La ruta `/motor-de-reglas` sigue igual.
+	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof SlidersHorizontal; alSeleccionar: (() => void) | undefined }[] = [
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.
 		{
@@ -133,8 +136,6 @@
 		// documental (las tres bandejas del inicio) y los expedientes—, como el módulo de configuración lo es de lo que se configura. Es
 		// la única opción que ve TODO rol. Los TIPOS de expediente se configuran: viven en el módulo de configuración.
 		{ id: 'modulo-de-uso', etiqueta: 'Módulo de uso', icono: LayoutGrid, alSeleccionar: () => goto('/uso') },
-		// Piloto (2026-10-20): por ahora solo abre el lienzo vacío.
-		{ id: 'motor-de-reglas', etiqueta: 'Motor de reglas', icono: Cog, alSeleccionar: () => goto('/motor-de-reglas') },
 		{ id: 'conectores', etiqueta: 'Conectores', icono: Plug, alSeleccionar: undefined },
 		{ id: 'auditoria-y-trazabilidad', etiqueta: 'Auditoria y trazabilidad', icono: Waypoints, alSeleccionar: undefined },
 		// Agregada el 2026-09-23. Va al final del menú, que es donde la pone la

@@ -18,6 +18,7 @@
 import { error, type RequestHandler } from '@sveltejs/kit';
 
 import { TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
+import { TIPOS_PERMITIDOS, tipoDeContenidoSeguro } from '$lib/server/seguridad';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
 /** La única forma de ruta que tiene un objeto del almacén:
@@ -37,9 +38,13 @@ export const GET: RequestHandler = async ({ cookies, params, url }) => {
 
 	// El MIME lo decide quien guardó (el catálogo lo tiene) porque el almacén no
 	// lo persiste: en disco los objetos no tienen extensión. nexus_back lo valida
-	// contra su lista blanca antes de devolverlo, así que no hace falta repetir
-	// esa validación aquí — pero sí pasarlo.
-	const mime = url.searchParams.get('mime') ?? 'application/octet-stream';
+	// contra su lista blanca antes de devolverlo, pero NO se confía en eso solo
+	// (NEX-558, auditoría de seguridad 2026-10-30): lo que pide el navegador
+	// únicamente se reenvía si es PDF, JPEG, PNG o TIFF; cualquier otra cosa
+	// (`text/html`, `image/svg+xml`…) se cambia por el genérico, y la respuesta
+	// se arma más abajo con la misma lista blanca.
+	const pedido = (url.searchParams.get('mime') ?? '').split(';')[0].trim().toLowerCase();
+	const mime = TIPOS_PERMITIDOS.has(pedido) ? pedido : 'application/octet-stream';
 
 	let respuesta: Response;
 	try {
@@ -68,13 +73,24 @@ export const GET: RequestHandler = async ({ cookies, params, url }) => {
 		} catch {
 			/* respuesta no-JSON: se queda el genérico */
 		}
+		// Un 5xx no enseña lo que dijo el back (NEX-567): se anota en el servidor y a la persona se le da un texto genérico.
+		if (respuesta.status >= 500) {
+			console.error(`[archivos] nexus_back respondió ${respuesta.status}: ${motivo}`);
+			error(respuesta.status, 'No se pudo leer el archivo en este momento. Intenta de nuevo en unos minutos.');
+		}
 		error(respuesta.status, motivo);
 	}
 
 	const cuerpo = await respuesta.arrayBuffer();
+	// El tipo de contenido sale de una lista blanca, no de lo que pidió el navegador (NEX-558): un archivo subido NO puede servirse como `text/html`
+	// desde el mismo origen de la app. `nosniff` impide que el navegador lo adivine, y `Content-Disposition` hace que lo desconocido se DESCARGUE
+	// en vez de abrirse.
+	const tipo = tipoDeContenidoSeguro(respuesta.headers.get('content-type'), mime);
 	return new Response(cuerpo, {
 		headers: {
-			'Content-Type': respuesta.headers.get('content-type') ?? mime,
+			'Content-Type': tipo,
+			'X-Content-Type-Options': 'nosniff',
+			'Content-Disposition': `${tipo === 'application/octet-stream' ? 'attachment' : 'inline'}; filename="archivo"`,
 			// Se respeta el cacheo que manda nexus_back: el nombre del objeto ES el
 			// hash de su contenido, así que una ruta nunca cambia de bytes. Es
 			// `private`: el archivo es de una organización, y una caché compartida

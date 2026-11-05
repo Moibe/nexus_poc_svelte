@@ -61,12 +61,16 @@
 	const tipo = $derived(tipos.find((t) => t.id === tipoId) ?? null);
 	const completo = $derived(tipo !== null && nombre.trim().length > 0);
 
-	// Cada vez que se abre, el formulario arranca limpio; con un solo tipo posible, ya viene elegido. Solo depende de `open` (y de la lista de
-	// tipos): todo lo demás va en `untrack`, o elegir un tipo —que cambia el nombre— volvería a correr este efecto y lo borraría todo.
+	// Cada vez que se abre, el formulario arranca limpio; con un solo tipo posible, ya viene elegido.
+	//
+	// Depende SOLO de `open` (2026-11-05, Moibe: «si me tardo en guardar se borra»). Antes también leía `tipos` fuera del `untrack`, y esa lista
+	// viene de `data`, que el layout vuelve a pedir cada 20 s (`invalidateAll`): llegaba como un arreglo nuevo, el efecto corría otra vez y
+	// vaciaba el nombre, el tipo elegido y los documentos marcados. Todo lo que se lee va dentro de `untrack`: con el modal abierto, lo escrito
+	// y lo elegido no se tocan aunque la lista cambie; y elegir un tipo —que cambia el nombre— tampoco debe volver a correrlo.
 	$effect(() => {
 		if (!open) return;
-		const unico = tipos.length === 1 ? tipos[0] : null;
 		untrack(() => {
+			const unico = tipos.length === 1 ? tipos[0] : null;
 			tipoId = unico?.id ?? '';
 			nombre = unico?.nombre ?? '';
 			nombreSugerido = nombre;

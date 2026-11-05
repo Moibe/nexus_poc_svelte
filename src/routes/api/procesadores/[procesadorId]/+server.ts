@@ -17,7 +17,8 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { TIMEOUT_MS, cabecerasNexus, urlNexus } from '$lib/server/nexus';
+import { TIMEOUT_MS, tenantDe, urlNexus } from '$lib/server/nexus';
+import { cabecerasConSesion } from '$lib/server/sesion';
 
 function fallo(mensaje: string, status: number) {
 	return json({ mensaje }, { status });
@@ -50,16 +51,18 @@ async function reenviar(respuesta: Response) {
 	return json(datos);
 }
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, cookies, locals }) => {
 	const { procesadorId } = params;
 	if (!procesadorId) {
 		return fallo('Falta el id del procesador.', 400);
 	}
+	// La organización y la identidad salen de la sesión (NEX-550): nexus_back solo atiende un procesador de un tipo de ESA organización.
+	const tenant = tenantDe(locals);
 
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/procesadores/${encodeURIComponent(procesadorId)}`), {
-			headers: cabecerasNexus(),
+		respuesta = await fetch(urlNexus(`/procesadores/${encodeURIComponent(procesadorId)}?tenant=${encodeURIComponent(tenant)}`), {
+			headers: cabecerasConSesion(cookies),
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch (err) {
@@ -75,17 +78,18 @@ export const GET: RequestHandler = async ({ params }) => {
 	return reenviar(respuesta);
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async ({ params, cookies, locals }) => {
 	const { procesadorId } = params;
 	if (!procesadorId) {
 		return fallo('Falta el id del procesador.', 400);
 	}
+	const tenant = tenantDe(locals);
 
 	let respuesta: Response;
 	try {
-		respuesta = await fetch(urlNexus(`/procesadores/${encodeURIComponent(procesadorId)}`), {
+		respuesta = await fetch(urlNexus(`/procesadores/${encodeURIComponent(procesadorId)}?tenant=${encodeURIComponent(tenant)}`), {
 			method: 'DELETE',
-			headers: cabecerasNexus(),
+			headers: cabecerasConSesion(cookies),
 			// El borrado incluye la misma operación de larga duración que la
 			// activación (borrar el dataset); mismo margen que allá.
 			signal: AbortSignal.timeout(TIMEOUT_MS)

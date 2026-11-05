@@ -18,10 +18,11 @@ const ESPERA_ESCRITURA_MS = 30_000;
 /**
  * Lo que hacen todos los BFF que ESCRIBEN en un expediente (crearlo, sus expedientes virtuales y lo que se mete y se saca de ellos):
  * reenviar a nexus_back con el JWT de la persona y devolver lo que diga, con su mismo estado. Un error se devuelve como `{ mensaje }`
- * (el texto que trae nexus_back, o uno genérico), que es lo que leen las pantallas. La ruta ya trae el `?tenant=` cuando va en la URL;
+ * (el texto que trae nexus_back, o uno genérico), que es lo que leen las pantallas, más su `codigo` si lo trae (`ya_existe`,
+ * `con_expedientes`…: algunas pantallas dicen esos casos con sus palabras). La ruta ya trae el `?tenant=` cuando va en la URL;
  * el tenant lo fija siempre quien llama desde la sesión (`tenantDe`), nunca el navegador (HU11).
  */
-export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 'DELETE', ruta: string, cuerpo?: unknown): Promise<Response> {
+export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 'PATCH' | 'DELETE', ruta: string, cuerpo?: unknown): Promise<Response> {
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(ruta), {
@@ -34,7 +35,7 @@ export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 
 		return json({ mensaje: 'No se pudo contactar a nexus_back.' }, { status: 504 });
 	}
 	const datos = await respuesta.json().catch(() => null);
-	if (!respuesta.ok) return json({ mensaje: mensajeDeError(datos, respuesta.status) }, { status: respuesta.status });
+	if (!respuesta.ok) return json({ mensaje: mensajeDeError(datos, respuesta.status), codigo: codigoDe(datos) }, { status: respuesta.status });
 	return json(datos, { status: respuesta.status, headers: { 'Cache-Control': 'no-store' } });
 }
 
