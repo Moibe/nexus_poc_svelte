@@ -2188,25 +2188,27 @@ export async function eliminarTipoDocumental(
 }
 
 /**
- * Mueve `idArrastrado` justo ANTES de `idDestino` en `tiposDocumentales` — el
- * orden real que el árbol de la izquierda dibuja, así que reordenar aquí es
- * lo único que hace falta para que el árbol (y la lista de "Modelos
- * documentales agregados") reflejen el nuevo orden. Sin frame de Figma —
+ * Mueve `idArrastrado` justo ANTES de `idDestino` en `tiposDocumentales` (o
+ * justo DESPUÉS, con `despues`) — el orden real que dibujan las tarjetas de
+ * "Modelos documentales agregados", así que reordenar aquí es lo único que
+ * hace falta para que la lista refleje el nuevo orden. Sin frame de Figma —
  * pedido explícito el 2026-09-05 ("quiero poder arrastrar los tipos
  * documentales... para reordenarlos a gusto").
  *
  * `hacia` se vuelve a buscar DESPUÉS de quitar el arrastrado (no se calcula
  * con aritmética de índices) para no tener que distinguir a mano si el
  * arrastre fue hacia arriba o hacia abajo — el índice post-remoción ya es el
- * correcto en los dos casos.
+ * correcto en los dos casos. `despues` (2026-11-04, cuando el arrastre pasó
+ * del árbol a las tarjetas) existe porque con «solo antes» bajar un tipo un
+ * lugar no hacía nada y al último lugar no se llegaba.
  */
-export function reordenarTipoDocumental(idArrastrado: string, idDestino: string): boolean {
+export function reordenarTipoDocumental(idArrastrado: string, idDestino: string, despues = false): boolean {
 	if (idArrastrado === idDestino) return false;
 	const desde = tiposDocumentales.findIndex((t) => t.id === idArrastrado);
 	if (desde === -1) return false;
 	const [movido] = tiposDocumentales.splice(desde, 1);
 	const hacia = tiposDocumentales.findIndex((t) => t.id === idDestino);
-	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia, 0, movido);
+	tiposDocumentales.splice(hacia === -1 ? tiposDocumentales.length : hacia + (despues ? 1 : 0), 0, movido);
 	guardarBiblioteca();
 	return true;
 }

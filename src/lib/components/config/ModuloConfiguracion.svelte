@@ -11,7 +11,7 @@
 	 * `open` se conserva tal cual (lo apaga la X desde la Biblioteca, y lo miran los efectos de limpieza): la página que lo
 	 * monta lo observa y, cuando se apaga, regresa al mosaico. Así la salida del módulo sigue siendo una sola.
 	 */
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -20,8 +20,6 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import SetupIcon from '$lib/components/icons/SetupIcon.svelte';
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
-	import ArchiveIcon from '$lib/components/icons/ArchiveIcon.svelte';
-	import ArrowRightIcon from '$lib/components/icons/ArrowRightIcon.svelte';
 	import FileIcon from '$lib/components/icons/FileIcon.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Save from '@lucide/svelte/icons/save';
@@ -583,10 +581,6 @@
 			tituloError = 'El tipo se archivó, pero el clasificador no se pudo actualizar.';
 			errorActivacion = r.avisoClasificador;
 		}
-		// Igual que al eliminar: si era el seleccionado, se limpia la selección
-		// para no dejar la columna derecha apuntando a un modelo que ya no se
-		// lista.
-		if (seleccionadoId === objetivo.id) seleccionadoId = null;
 	}
 
 	async function confirmarEliminarTipo() {
@@ -612,16 +606,7 @@
 			tituloError = 'El tipo se borró, pero el clasificador no se pudo actualizar.';
 			errorActivacion = r.avisoClasificador;
 		}
-		// El tipo ya no existe: si era el seleccionado en el árbol, limpiar la
-		// selección para que la columna derecha vuelva al estado vacío con su
-		// pista, en vez de quedar en blanco sin explicación.
-		if (seleccionadoId === objetivo.id) seleccionadoId = null;
 	}
-
-	// La rama seleccionada en el árbol del sidebar. Es un FILTRO de la vista,
-	// no parte del modelo: por eso vive aquí y no se persiste. null = sin
-	// filtro, se listan todos.
-	let seleccionadoId = $state<string | null>(null);
 
 	// El tipo cuyo "Historial de versiones" está desplegado EN LÍNEA bajo su
 	// tarjeta (null = nada desplegado). Vive en el propio objeto, no en un id:
@@ -632,30 +617,17 @@
 
 	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
 	// (ver `archivarTipoDocumental`) sigue en `localStorage`, pero no debe
-	// listarse en el árbol ni en las tarjetas — es justo lo que "Archivar"
-	// promete. Todo lo que antes leía `tiposDocumentales` para RENDERIZAR usa
-	// esto en su lugar; el estado de verdad sigue siendo `tiposDocumentales`.
+	// listarse en las tarjetas — es justo lo que "Archivar" promete. Todo lo
+	// que antes leía `tiposDocumentales` para RENDERIZAR usa esto en su lugar;
+	// el estado de verdad sigue siendo `tiposDocumentales`.
+	//
+	// Las tarjetas son la lista COMPLETA, siempre (2026-11-04, Moibe: «elimina
+	// el árbol doble de aquí»). Antes había un árbol a la izquierda con una
+	// rama por tipo que repetía las tarjetas y las filtraba: sin rama elegida
+	// la columna derecha quedaba vacía con una pista («Selecciona un modelo en
+	// la Biblioteca…»). Se fue el árbol, y con él el filtro y la barra lateral
+	// entera de esta vista, igual que en Procesos y API Keys el 2026-11-03.
 	const tiposEnBiblioteca = $derived(tiposDocumentales.filter((t) => t.estado !== 'archivado'));
-
-	// Lo que la columna derecha lista. SIN selección no se lista nada: la
-	// lista aparece cuando se elige un modelo en el árbol (cambio pedido el
-	// 2026-08-28; antes el default eran todos). El área no queda muda — abajo
-	// hay una línea que dice qué hacer.
-	const tiposVisibles = $derived(
-		seleccionadoId ? tiposEnBiblioteca.filter((t) => t.id === seleccionadoId) : []
-	);
-
-	// Picar la rama ya seleccionada la des-selecciona y la lista vuelve a
-	// quedar vacía, igual que al entrar.
-	function seleccionarRama(id: string) {
-		seleccionadoId = seleccionadoId === id ? null : id;
-		// Repliega la tarjeta de ese tipo al seleccionarlo desde el árbol
-		// (pedido explícito 2026-09-05): a diferencia del chevron de cada
-		// CAMPO en Calibración (que sí conserva su estado entre selecciones,
-		// a propósito), aquí se pidió lo contrario — siempre arrancar
-		// replegado, sin importar si ya se había desplegado antes.
-		if (seleccionadoId === id) tiposExpandidos.delete(id);
-	}
 
 	async function activar(id: string) {
 		// Un solo vuelo a la vez: activar dos tipos en paralelo funcionaría,
@@ -823,7 +795,6 @@
 			avisoExito = false;
 			tituloError = '';
 			errorActivacion = '';
-			seleccionadoId = null;
 		}
 	});
 
@@ -886,7 +857,6 @@
 		avisoExito = false;
 		tituloError = '';
 		errorActivacion = '';
-		seleccionadoId = null;
 		altaEnCurso = true;
 		// Alta nueva: siempre en blanco, así que siempre hay que mostrar el
 		// formulario del paso 2 — no hay campos que listar todavía.
@@ -933,7 +903,6 @@
 			avisoExito = false;
 			tituloError = '';
 			errorActivacion = '';
-			seleccionadoId = null;
 			altaEnCurso = false;
 			// Ya cargado el borrador: si trae campos, el paso 2 arranca con la
 			// lista a la vista y el formulario oculto, no al revés.
@@ -999,7 +968,6 @@
 			avisoExito = false;
 			tituloError = '';
 			errorActivacion = '';
-			seleccionadoId = null;
 			altaEnCurso = false;
 			// Mismo criterio que `abrirTipoDocumental`: conserva sus campos
 			// (`crearNuevaVersion` los copia), así que el formulario arranca
@@ -1064,19 +1032,40 @@
 		void completarNombreProcesador(idTipo);
 	}
 
-	// Arrastrar-y-soltar para reordenar el árbol de tipos documentales (pedido
-	// explícito 2026-09-05, sin frame de Figma). Solo dos variables efímeras de
-	// PANTALLA — el orden real vive en `tiposDocumentales`, que
-	// `reordenarTipoDocumental` ya persiste solo.
+	// Arrastrar-y-soltar para reordenar los tipos documentales (pedido explícito
+	// 2026-09-05, sin frame de Figma). Vivía en las ramas del árbol de la
+	// izquierda; desde el 2026-11-04, que se quitó el árbol, se arrastra la
+	// TARJETA tomándola de su asa (el ícono de puntos a su izquierda). Solo
+	// variables efímeras de PANTALLA — el orden real vive en
+	// `tiposDocumentales`, que `reordenarTipoDocumental` ya persiste solo.
+	//
+	// `soltarDespues`: si el puntero va por la mitad de ABAJO de la tarjeta
+	// destino, la arrastrada cae después de ella; por la de arriba, antes. En
+	// el árbol solo se podía soltar ANTES, así que bajar un tipo un lugar no
+	// hacía nada y al último lugar no se llegaba nunca.
 	let idArrastrando = $state<string | null>(null);
-	let idSobreRama = $state<string | null>(null);
+	let idSobreTarjeta = $state<string | null>(null);
+	let soltarDespues = $state(false);
 
-	function soltarSobreRama(idDestino: string) {
+	function arrastrarSobreTarjeta(e: DragEvent, idDestino: string) {
+		if (!idArrastrando) return;
+		e.preventDefault();
+		const caja = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		idSobreTarjeta = idDestino;
+		soltarDespues = e.clientY > caja.top + caja.height / 2;
+	}
+
+	function soltarSobreTarjeta(idDestino: string) {
 		if (idArrastrando && idArrastrando !== idDestino) {
-			reordenarTipoDocumental(idArrastrando, idDestino);
+			reordenarTipoDocumental(idArrastrando, idDestino, soltarDespues);
 		}
+		terminarArrastre();
+	}
+
+	function terminarArrastre() {
 		idArrastrando = null;
-		idSobreRama = null;
+		idSobreTarjeta = null;
+		soltarDespues = false;
 	}
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
@@ -1217,10 +1206,15 @@
 			// arranque en blanco. Lo capturado no se pierde — vive en la biblioteca.
 			limpiarBorrador();
 			vista = 'biblioteca';
-			// El recién guardado queda seleccionado en el árbol: el aviso de
-			// éxito debe verse JUNTO a su tarjeta, no sobre un área vacía que
-			// obligaría a ir a buscarlo. Es además lo que muestra el diseño.
-			seleccionadoId = idEnBiblioteca;
+			// El recién guardado se trae a la vista: el aviso de éxito debe verse
+			// junto a su tarjeta, y con muchos tipos podría quedar fuera de la
+			// pantalla (antes el árbol lo dejaba seleccionado y era la única
+			// tarjeta a la vista).
+			void tick().then(() =>
+				document
+					.querySelector(`[data-testid="tarjeta-tipo-contenedor"][data-tipo-id="${CSS.escape(idEnBiblioteca)}"]`)
+					?.scrollIntoView({ block: 'nearest' })
+			);
 			// Solo se anuncia el ALTA. Al actualizar un modelo que ya existía no se
 			// dice nada: el texto del diseño habla de un tipo AGREGADO, y anunciarlo
 			// tras una edición se contradice con la lista de atrás, que sigue
@@ -1316,115 +1310,17 @@
 	</div>
 
 	<div class="flex min-h-0 flex-1">
-		<!-- statusbar: 330px, fondo #fcfcfc y bordes de 2px según Figma -->
+		<!-- statusbar: 330px, fondo #fcfcfc y bordes de 2px según Figma. NO existe en la Biblioteca (2026-11-04, Moibe:
+		     «elimina el árbol doble de aquí»): ahí traía el rótulo «Configuración», la tarjeta «Biblioteca» y un árbol con una
+		     rama por tipo que repetía las tarjetas de la derecha y las filtraba; arrastrar una rama reordenaba. Se quitó la barra
+		     entera, como en Procesos y API Keys (2026-11-03): las tarjetas ocupan todo el ancho, se ven todas y se reordenan
+		     arrastrándolas de su asa. En el asistente, Calibración y Prompts la barra sigue: ahí es su navegación (los pasos, los
+		     campos del tipo, los prompts), no una copia del panel. Para devolver el árbol: `git show b88d625:src/lib/components/config/ModuloConfiguracion.svelte`. -->
+		{#if vista !== 'biblioteca'}
 		<aside
 			class="w-82.5 shrink-0 overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
 		>
-			{#if vista === 'biblioteca'}
-				<p class="text-xs text-foreground">Configuración</p>
-				<!-- Tarjeta "Biblioteca": el padre del árbol. Picarla limpia el filtro
-				     — es el gesto natural de "ver todo lo que cuelga de aquí". Por ser
-				     botón, su contenido va en <span> (contenido de frase), no en <p>. -->
-				<button
-					type="button"
-					data-testid="raiz-biblioteca"
-					class="mt-6 flex w-full items-center gap-3 text-left"
-					onclick={() => (seleccionadoId = null)}
-				>
-					<span
-						class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card"
-					>
-						<ArchiveIcon />
-					</span>
-					<span class="min-w-0 flex-1">
-						<span class="block text-sm font-medium text-foreground">Biblioteca</span>
-						<span class="mt-2 block text-xs text-muted-foreground">
-							Localiza tu listado de documentos configurados.
-						</span>
-					</span>
-					<ArrowRightIcon class="shrink-0 text-[#94a3b8]" />
-				</button>
-
-				<!-- Submenú de la Biblioteca: un renglón por modelo, colgando en árbol.
-				     Es el frame `listado` (1077:65481), que hasta ahora estaba sin
-				     construir por no tener el diseño. Su geometría se respeta al pixel:
-
-				       · fila de 38px de alto (`listado`, 282x38)
-				       · el eje del árbol cae en x=44 — que es exactamente donde empieza
-				         el texto "Biblioteca" de arriba (icono de 32 + gap-3 de 12), así
-				         que el hijo queda alineado con el padre y no con su ícono
-				       · tramo vertical de 22px centrado en la fila (`line`, y=8 h=22)
-				       · guion horizontal de 11.5px a media altura (`line`, y=11 w=11.5)
-				       · la etiqueta arranca en x=19.5 respecto al eje (`text`, x=19.5)
-
-				     El tramo vertical va POR FILA, no corrido de arriba abajo: en el
-				     frame la línea vive dentro del renglón, así que con varios modelos
-				     quedan segmentos separados en vez de un eje continuo. Se deja como
-				     está el diseño; con un solo modelo las dos lecturas son idénticas y
-				     no hay con qué desempatar. Anotado en docs/pendientes-ux.md.
-
-				     El renglón FILTRA la columna derecha: picar una rama deja visible
-				     solo su tarjeta, picarla de nuevo (o picar "Biblioteca") vuelve a
-				     mostrar todas. Retomar el modelo quedó solo en la tarjeta — un
-				     mismo gesto no debe filtrar y navegar a la vez. -->
-				{#if tiposEnBiblioteca.length > 0}
-					<ul class="mt-4">
-						{#each tiposEnBiblioteca as tipo (tipo.id)}
-							<!-- Arrastrar-y-soltar para reordenar (pedido explícito
-							     2026-09-05): drag-and-drop nativo, sin librería nueva —
-							     `reordenarTipoDocumental` en el módulo de estado hace y
-							     persiste el reacomodo real; aquí solo vive qué rama se está
-							     arrastrando y sobre cuál anda encima, para el resalte visual. -->
-							<li
-								class="relative flex h-9.5 items-center pl-11 transition-opacity {idArrastrando ===
-								tipo.id
-									? 'opacity-40'
-									: ''} {idSobreRama === tipo.id && idArrastrando !== null && idArrastrando !== tipo.id
-									? 'border-t-2 border-primary'
-									: ''}"
-								draggable="true"
-								ondragstart={() => (idArrastrando = tipo.id)}
-								ondragover={(e) => {
-									e.preventDefault();
-									idSobreRama = tipo.id;
-								}}
-								ondragleave={() => {
-									if (idSobreRama === tipo.id) idSobreRama = null;
-								}}
-								ondrop={(e) => {
-									e.preventDefault();
-									soltarSobreRama(tipo.id);
-								}}
-								ondragend={() => {
-									idArrastrando = null;
-									idSobreRama = null;
-								}}
-							>
-								<GripVertical
-									class="absolute top-1/2 left-6 size-3.5 -translate-y-1/2 shrink-0 cursor-grab text-muted-foreground/60"
-									aria-hidden="true"
-								/>
-								<span
-									class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
-								></span>
-								<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-								<button
-									type="button"
-									data-testid="rama-tipo"
-									aria-pressed={seleccionadoId === tipo.id}
-									class="ml-[19.5px] min-w-0 truncate text-left text-sm font-medium transition-colors {seleccionadoId ===
-									tipo.id
-										? 'text-primary'
-										: 'text-foreground hover:text-primary'}"
-									onclick={() => seleccionarRama(tipo.id)}
-								>
-									{tipo.nombre}
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{:else if vista === 'calibracion'}
+			{#if vista === 'calibracion'}
 				<!-- Sin frame de Figma (ver el comentario del ícono, arriba): se
 				     construyó desde la captura que se compartió. El pedido concreto de
 				     esta iteración era ÚNICAMENTE esto — poblar el árbol con los campos
@@ -1455,7 +1351,7 @@
 							</button>
 
 							{#if calibracionExpandida}
-								<!-- Mismo lenguaje visual que el árbol de la Biblioteca: eje a
+								<!-- Mismo lenguaje visual que tenía el árbol de la Biblioteca (quitado el 2026-11-04): eje a
 								     x=44 (pl-11), tramo vertical + guion horizontal por renglón. -->
 								<ul class="mt-2">
 									{#each tipoEnCalibracion.campos as campo (campo.id)}
@@ -1596,8 +1492,10 @@
 				</ol>
 			{/if}
 		</aside>
+		{/if}
 
-		<div class="flex-1 overflow-y-auto p-8">
+		<!-- Sin la barra lateral (la Biblioteca), la línea de 2 px que separaba la banda del título la pone el contenido. -->
+		<div class="flex-1 overflow-y-auto p-8 {vista === 'biblioteca' ? 'border-t-2 border-muted' : ''}">
 			{#if vista === 'biblioteca' && !estadoBiblioteca.cargada}
 				<!-- La biblioteca vive en el servidor (por organización) y todavía no llega: un panel vacío con «Agregar
 				     nuevo tipo documental» se leería como «no tienes ninguno», y crear uno encima de eso es justo lo que
@@ -1628,16 +1526,8 @@
 						</Button>
 					</div>
 
-					{#if tiposVisibles.length === 0}
-						<!-- Sin selección la lista es intencionalmente vacía, pero un área
-						     en blanco se lee como falla. Una línea dice qué hacer. -->
-						<p class="mt-4 text-sm text-muted-foreground" data-testid="pista-seleccion">
-							Selecciona un modelo en la Biblioteca para ver su detalle.
-						</p>
-					{/if}
-
-					<div class="mt-4 flex flex-col gap-3">
-						{#each tiposVisibles as tipo (tipo.id)}
+					<div class="mt-4 flex flex-col gap-3" role="list" aria-label="Modelos documentales agregados">
+						{#each tiposEnBiblioteca as tipo (tipo.id)}
 							<!-- Tarjeta del frame 1077:65410 (sección HU038). Sus medidas:
 							     botón de 82x38, caja de menú de 24x24 con el glifo de 12x12.
 
@@ -1652,523 +1542,577 @@
 							     menú. Ojo si se reintroduce algo clicable aquí: un <button>
 							     dentro de otro es HTML inválido —el navegador deshace el
 							     anidamiento y los clics dejan de llegar a quien deben—, que es el
-							     bug que ya mordió dos veces en este archivo. -->
+							     bug que ya mordió dos veces en este archivo.
+
+							     Arrastrar para reordenar (2026-11-04, cuando se quitó el árbol de la
+							     izquierda, que era donde se arrastraba): el destino es el tipo entero
+							     —su tarjeta y, si está desplegado, su detalle—, pero solo el ASA lo
+							     levanta —si la tarjeta completa fuera `draggable`, sus botones y su
+							     texto pelearían con el arrastre—. Una línea arriba o abajo dice dónde
+							     va a caer. -->
+							{@const destino = idArrastrando !== null && idArrastrando !== tipo.id && idSobreTarjeta === tipo.id}
 							<div
-								class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3"
+								role="listitem"
+								data-testid="tarjeta-tipo-contenedor"
+								data-tipo-id={tipo.id}
+								data-soltar={destino ? (soltarDespues ? 'despues' : 'antes') : ''}
+								class="relative flex flex-col gap-3 transition-opacity {idArrastrando === tipo.id ? 'opacity-40' : ''} {destino
+									? soltarDespues
+										? 'after:absolute after:inset-x-2 after:-bottom-1.75 after:h-0.5 after:rounded-full after:bg-primary'
+										: 'before:absolute before:inset-x-2 before:-top-1.75 before:h-0.5 before:rounded-full before:bg-primary'
+									: ''}"
+								ondragenter={(e) => arrastrarSobreTarjeta(e, tipo.id)}
+								ondragover={(e) => arrastrarSobreTarjeta(e, tipo.id)}
+								ondragleave={(e) => {
+									// Pasar de la tarjeta a uno de sus hijos también dispara `dragleave`, y Chromium lo manda sin
+									// `relatedTarget`: solo cuenta si el puntero de verdad quedó fuera de la caja.
+									const caja = e.currentTarget.getBoundingClientRect();
+									const dentro = e.clientX > caja.left && e.clientX < caja.right && e.clientY > caja.top && e.clientY < caja.bottom;
+									if (!dentro && idSobreTarjeta === tipo.id) idSobreTarjeta = null;
+								}}
+								ondrop={(e) => {
+									if (!idArrastrando) return;
+									e.preventDefault();
+									soltarSobreTarjeta(tipo.id);
+								}}
 							>
-								<div
-									data-testid="tarjeta-tipo"
-									class="flex min-w-0 flex-1 items-center gap-4"
-								>
+								<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3">
 									<span
-										class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+										data-testid="asa-tipo"
+										draggable="true"
+										title="Arrastra para reordenar"
+										aria-label="Arrastra para reordenar {tipo.nombre}"
+										role="img"
+										class="-mr-2 -ml-1 flex h-8 w-4 shrink-0 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors hover:text-muted-foreground active:cursor-grabbing"
+										ondragstart={(e) => {
+											idArrastrando = tipo.id;
+											if (e.dataTransfer) {
+												e.dataTransfer.effectAllowed = 'move';
+												// Firefox no empieza el arrastre sin datos.
+												e.dataTransfer.setData('text/plain', tipo.nombre);
+												// Lo que se ve bajo el puntero es la tarjeta entera, no solo el asa.
+												const tarjeta = e.currentTarget.parentElement;
+												if (tarjeta) e.dataTransfer.setDragImage(tarjeta, 16, tarjeta.offsetHeight / 2);
+											}
+										}}
+										ondragend={terminarArrastre}
 									>
-										<SetupIcon class="size-4" />
+										<GripVertical class="size-4" aria-hidden="true" />
 									</span>
-
-									<span class="min-w-0 flex-1">
-										<span class="block truncate text-sm font-medium text-foreground"
-											>{tipo.nombre}</span
-										>
-										<span class="block truncate text-xs text-muted-foreground">
-											<!-- "Sin campos configurados" en vez de "0 campos": un tipo
-											     puede entrar a la lista antes de tener ninguno, y un cero
-											     suelto se lee como que algo salió mal. -->
-											{#if tipo.campos.length === 0}
-												Sin campos configurados
-											{:else}
-												{tipo.campos.length}
-												{tipo.campos.length === 1 ? 'campo' : 'campos'}
-											{/if}
-											{#if etiquetaVertical(tipo.vertical)}
-												· {etiquetaVertical(tipo.vertical)}
-											{/if}
-											<!-- La versión solo aparece cuando hay algo publicado, que es
-											     como lo dibuja el frame: la tarjeta sin activar no la lleva
-											     (`Seguro de Autos | Precisión 0%`) y la activada sí
-											     (`... | v0.0.2`). Antes de publicar no hay versión que
-											     mostrar, y un "versión: 0" se leería como un error. -->
-											{#if etiquetaVersion(tipo.version)}
-												· versión: {etiquetaVersion(tipo.version)}
-											{/if}
-										</span>
-									</span>
-								</div>
-
-								<!-- Los dos estados de la tarjeta están dibujados en el archivo: sin
-								     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
-								     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
-								     se puede leer del volcado —es una instancia de componente— así
-								     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
-								     2026-09-14, cuando se pidió que dijera "Configurado": el
-								     estado interno del tipo SIGUE siendo `activo` —la clave, el
-								     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
-								     palabra que ve el usuario.
-								     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
-								     el tipo no queda "activo, listo para usarse"): confirmar los campos
-								     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
-								     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
-								     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
-								     NO se implementó el estado intermedio "Validando configuración..."
-								     que aparece en una de las capturas: no hay nada que validar sin
-								     el back, y una animación de espera sobre trabajo que nadie está
-								     haciendo es una mentira con spinner. -->
-								{#if eliminandoId === tipo.id}
-									<!-- Va PRIMERO en el if/elseif: mientras se borra no importa si
-									     estaba activo o no, ese estado está a punto de dejar de existir. -->
-									<Button size="sm" disabled data-testid="eliminando-tipo" class="h-9.5 shrink-0 gap-2">
-										<LoaderCircle class="size-4 animate-spin" />
-										Eliminando...
-									</Button>
-								{:else if tipo.estado === 'activo'}
-									<!-- Chip + botón de acción, según la captura compartida el
-									     2026-09-06 (ahí el botón decía "Generar prompt"; el 2026-09-14
-									     se renombró a "Calibrar"). El chip ganó un punto verde y dejó su ancho fijo
-									     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
-									     calculado para solo el texto lo apretaba. -->
-									<span
-										data-testid="insignia-activo"
-										class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
+									<div
+										data-testid="tarjeta-tipo"
+										class="flex min-w-0 flex-1 items-center gap-4"
 									>
-										<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-										Configurado
-									</span>
-
-									{#if tipo.calibradoEn}
-										<!-- Ya se calibró (2026-09-14, a pedido explícito): el botón deja
-										     su lugar a un rótulo. No es un Button deshabilitado porque no
-										     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
-										     nada que picar. Conserva la altura del botón (`h-9.5`) para
-										     que la tarjeta no brinque al cambiar de estado.
-										     Tipografía y punto IDÉNTICOS a los de la insignia "Configurado"
-										     de arriba (`text-xs font-medium`, `gap-1.5`, punto `size-1.5
-										     bg-green-500`), a pedido explícito el mismo día: son dos
-										     rótulos de estado uno al lado del otro, y que uno se viera más
-										     grande los hacía leer como cosas de distinta jerarquía. Lo
-										     único que NO se copió es el fondo en píldora (`bg-green-50
-										     rounded-full px-2.5`): sin él se distinguen sin dejar de
-										     emparejar. -->
 										<span
-											data-testid="tipo-activado"
-											class="flex h-9.5 shrink-0 items-center gap-1.5 text-xs font-medium text-green-700"
+											class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary"
+										>
+											<SetupIcon class="size-4" />
+										</span>
+
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm font-medium text-foreground"
+												>{tipo.nombre}</span
+											>
+											<span class="block truncate text-xs text-muted-foreground">
+												<!-- "Sin campos configurados" en vez de "0 campos": un tipo
+												     puede entrar a la lista antes de tener ninguno, y un cero
+												     suelto se lee como que algo salió mal. -->
+												{#if tipo.campos.length === 0}
+													Sin campos configurados
+												{:else}
+													{tipo.campos.length}
+													{tipo.campos.length === 1 ? 'campo' : 'campos'}
+												{/if}
+												{#if etiquetaVertical(tipo.vertical)}
+													· {etiquetaVertical(tipo.vertical)}
+												{/if}
+												<!-- La versión solo aparece cuando hay algo publicado, que es
+												     como lo dibuja el frame: la tarjeta sin activar no la lleva
+												     (`Seguro de Autos | Precisión 0%`) y la activada sí
+												     (`... | v0.0.2`). Antes de publicar no hay versión que
+												     mostrar, y un "versión: 0" se leería como un error. -->
+												{#if etiquetaVersion(tipo.version)}
+													· versión: {etiquetaVersion(tipo.version)}
+												{/if}
+											</span>
+										</span>
+									</div>
+
+									<!-- Los dos estados de la tarjeta están dibujados en el archivo: sin
+									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
+									     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
+									     se puede leer del volcado —es una instancia de componente— así
+									     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
+									     2026-09-14, cuando se pidió que dijera "Configurado": el
+									     estado interno del tipo SIGUE siendo `activo` —la clave, el
+									     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
+									     palabra que ve el usuario.
+									     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
+									     el tipo no queda "activo, listo para usarse"): confirmar los campos
+									     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
+									     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
+									     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
+									     NO se implementó el estado intermedio "Validando configuración..."
+									     que aparece en una de las capturas: no hay nada que validar sin
+									     el back, y una animación de espera sobre trabajo que nadie está
+									     haciendo es una mentira con spinner. -->
+									{#if eliminandoId === tipo.id}
+										<!-- Va PRIMERO en el if/elseif: mientras se borra no importa si
+										     estaba activo o no, ese estado está a punto de dejar de existir. -->
+										<Button size="sm" disabled data-testid="eliminando-tipo" class="h-9.5 shrink-0 gap-2">
+											<LoaderCircle class="size-4 animate-spin" />
+											Eliminando...
+										</Button>
+									{:else if tipo.estado === 'activo'}
+										<!-- Chip + botón de acción, según la captura compartida el
+										     2026-09-06 (ahí el botón decía "Generar prompt"; el 2026-09-14
+										     se renombró a "Calibrar"). El chip ganó un punto verde y dejó su ancho fijo
+										     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
+										     calculado para solo el texto lo apretaba. -->
+										<span
+											data-testid="insignia-activo"
+											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
 										>
 											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-											Activado
+											Configurado
 										</span>
+
+										{#if tipo.calibradoEn}
+											<!-- Ya se calibró (2026-09-14, a pedido explícito): el botón deja
+											     su lugar a un rótulo. No es un Button deshabilitado porque no
+											     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
+											     nada que picar. Conserva la altura del botón (`h-9.5`) para
+											     que la tarjeta no brinque al cambiar de estado.
+											     Tipografía y punto IDÉNTICOS a los de la insignia "Configurado"
+											     de arriba (`text-xs font-medium`, `gap-1.5`, punto `size-1.5
+											     bg-green-500`), a pedido explícito el mismo día: son dos
+											     rótulos de estado uno al lado del otro, y que uno se viera más
+											     grande los hacía leer como cosas de distinta jerarquía. Lo
+											     único que NO se copió es el fondo en píldora (`bg-green-50
+											     rounded-full px-2.5`): sin él se distinguen sin dejar de
+											     emparejar. -->
+											<span
+												data-testid="tipo-activado"
+												class="flex h-9.5 shrink-0 items-center gap-1.5 text-xs font-medium text-green-700"
+											>
+												<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
+												Activado
+											</span>
+										{:else}
+											<!-- Abre el modal de "Generar prompts de configuración". Lo que
+											     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
+											     (generar prompts no es un concepto del back aún) — ver
+											     `GenerarPrompts.svelte`. -->
+											<Button
+												size="sm"
+												data-testid="generar-prompt"
+												class="h-9.5 shrink-0"
+												onclick={() => (tipoGenerandoPrompts = tipo.id)}
+											>
+												Calibrar
+											</Button>
+										{/if}
+									{:else if activandoId === tipo.id}
+										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
+										     tres llamadas reales a Google (crear el procesador, inicializar
+										     su dataset y subir el esquema), medidas en segundos. -->
+										<Button size="sm" disabled data-testid="activando-tipo" class="h-9.5 shrink-0 gap-2">
+											<LoaderCircle class="size-4 animate-spin" />
+											Validando configuración...
+										</Button>
 									{:else}
-										<!-- Abre el modal de "Generar prompts de configuración". Lo que
-										     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
-										     (generar prompts no es un concepto del back aún) — ver
-										     `GenerarPrompts.svelte`. -->
 										<Button
 											size="sm"
-											data-testid="generar-prompt"
-											class="h-9.5 shrink-0"
-											onclick={() => (tipoGenerandoPrompts = tipo.id)}
+											data-testid="activar-tipo"
+											class="h-9.5 shrink-0 px-4"
+											disabled={activandoId !== null}
+											onclick={() => activar(tipo.id)}>Confirmar configuración</Button
 										>
-											Calibrar
-										</Button>
 									{/if}
-								{:else if activandoId === tipo.id}
-									<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
-									     tres llamadas reales a Google (crear el procesador, inicializar
-									     su dataset y subir el esquema), medidas en segundos. -->
-									<Button size="sm" disabled data-testid="activando-tipo" class="h-9.5 shrink-0 gap-2">
-										<LoaderCircle class="size-4 animate-spin" />
-										Validando configuración...
-									</Button>
-								{:else}
-									<Button
-										size="sm"
-										data-testid="activar-tipo"
-										class="h-9.5 shrink-0 px-4"
-										disabled={activandoId !== null}
-										onclick={() => activar(tipo.id)}>Confirmar configuración</Button
+
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<button
+													{...props}
+													type="button"
+													data-testid="menu-tipo"
+													aria-label="Más opciones de {tipo.nombre}"
+													disabled={eliminandoId === tipo.id}
+													class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted disabled:pointer-events-none disabled:opacity-50"
+												>
+													<MoreVerticalIcon />
+												</button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+
+										<!-- El menú es el frame `settings` (1077:65931): 259x208, con 12px
+										     de padding y cuatro renglones de 235x46 pegados uno tras otro.
+										     Los rótulos no están en el volcado —son instancias de
+										     componente— así que salen de la captura que compartió el
+										     usuario. -->
+										<DropdownMenu.Content align="end" class="w-64.75 p-3">
+											<!-- No está en el frame de Figma (1077:65931 solo trae los cuatro
+											     renglones de abajo): se agregó a petición explícita, para editar un
+											     tipo documental SOLO mientras nunca se ha activado (no existe el
+											     Custom Extractor todavía). Una vez activo, no hay nada que "editar"
+											     desde aquí: picarle a la tarjeta ya es un no-op a propósito (ver
+											     `abrirTipoDocumental`), y esto respeta la misma regla en vez de
+											     abrir una puerta trasera al mismo problema. -->
+											{#if tipo.estado === 'activo'}
+												<!-- El renglón deshabilitado es `pointer-events-none` (ver
+												     dropdown-menu-item.svelte), así que nunca recibiría el hover
+												     que abre el tooltip. El truco de siempre: el trigger real es
+												     el <span> que lo envuelve, no el ítem mismo.
+												     `ignoreNonKeyboardFocus` (2026-09-07, mismo bug y misma
+												     corrección que ya se aplicó al tooltip de "Ejemplo documental"
+												     de abajo): el menú, al abrirse, mueve el foco a su primer
+												     renglón — que es justo este—, y bits-ui abre el tooltip con
+												     CUALQUIER foco, no solo el de teclado. Sin esto, el mensaje
+												     aparecía solo con abrir el menú, antes de que el mouse tocara
+												     nada. -->
+												<Tooltip.Provider>
+													<Tooltip.Root ignoreNonKeyboardFocus>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<span {...props} class="block">
+																	<DropdownMenu.Item
+																		class="h-11.5 gap-3 px-2 whitespace-nowrap"
+																		disabled
+																	>
+																		<Pencil class="size-4 text-muted-foreground" />
+																		<span>Editar</span>
+																	</DropdownMenu.Item>
+																</span>
+															{/snippet}
+														</Tooltip.Trigger>
+														<Tooltip.Content side="left">
+															No puedes editar un modelo que ya está activo.
+														</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											{:else}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() => abrirTipoDocumental(tipo.id)}
+												>
+													<Pencil class="size-4 text-muted-foreground" />
+													<span>Editar</span>
+												</DropdownMenu.Item>
+											{/if}
+
+											<!-- "Crear nueva versión" es el reverso de "Editar": habilitado
+											     SOLO cuando el tipo ya está activo (ver `iniciarNuevaVersion`).
+											     "Eventos" (abajo) sigue deshabilitado: necesita la bitácora que
+											     vive en el back. En el frame se ven activos los cuatro; dejarlos
+											     vivos y sin hacer nada es peor mentira que atenuarlos. Anotado
+											     en docs/pendientes-ux.md. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled={tipo.estado !== 'activo'}
+												onSelect={() => iniciarNuevaVersion(tipo.id)}
+											>
+												<Plus class="size-4 text-muted-foreground" />
+												<span>Crear nueva versión</span>
+											</DropdownMenu.Item>
+
+											<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
+											     (2026-09-02). El switch, en cambio, ya NO es decorativo
+											     (cambio pedido el 2026-09-03): ahora es un interruptor real
+											     de "estoy listo" — un estado local, reversible, SIN ningún
+											     envío detrás todavía. `stopPropagation()` en su propio click
+											     evita que también dispare el `onSelect` del `Item` (que
+											     abriría Calibración además de alternar el switch); verificado
+											     con Playwright que ambos gestos quedan independientes.
+											     Prenderlo (no apagarlo) pasa primero por
+											     `intentarAlternarEjemploDocumental` (2026-09-04): con menos
+											     de `MINIMO_EJEMPLOS_RECOMENDADO` documentos de ejemplo abre
+											     un aviso en vez de activar directo — ver
+											     `RecomendacionEjemplos.svelte`, montado al final del
+											     archivo. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												onSelect={() => abrirCalibracion(tipo.id)}
+											>
+												<Share2 class="size-4 text-muted-foreground" />
+												<span>Ejemplo documental</span>
+												<Tooltip.Provider>
+													<!-- `ignoreNonKeyboardFocus` (2026-09-06, a pedido explícito):
+													     sin él el tooltip aparecía SOLO, ya desplegado, nada más
+													     con abrir el menú `⋮`. Causa medida: al abrir, el foco
+													     aterriza en este switch —los renglones del menú son
+													     `div`s, así que el switch es el único elemento
+													     nativamente enfocable ahí dentro— y el tooltip de bits-ui
+													     abre con foco, no solo con hover (su `#onfocus` llama a
+													     `handleOpen`). Con esta prop ese `#onfocus` solo abre si
+													     el foco es `:focus-visible`, o sea navegación con teclado
+													     de verdad: un foco programático como el del menú ya no lo
+													     dispara. El hover NO se toca (va por otra ruta,
+													     `#onpointermove`) — verificado midiendo antes y después
+													     del cambio: idéntico.
+													     Sobre accesibilidad, lo medido y no supuesto: navegando
+													     el menú con flechas el foco salta entre RENGLONES y el
+													     switch nunca lo recibe, así que por teclado el tooltip no
+													     aparece — ni antes ni ahora. No se pierde información: el
+													     `aria-label` del switch dice exactamente lo mismo que el
+													     tooltip, y eso es lo que lee un lector de pantalla. -->
+													<Tooltip.Root ignoreNonKeyboardFocus>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<button
+																	{...props}
+																	type="button"
+																	role="switch"
+																	aria-checked={tipo.ejemploDocumental}
+																	aria-label={tipo.ejemploDocumental
+																		? `Quitar la marca de listo de ${tipo.nombre}`
+																		: `Marcar ${tipo.nombre} como listo`}
+																	class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tipo.ejemploDocumental
+																		? 'bg-primary'
+																		: 'bg-input'}"
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		intentarAlternarEjemploDocumental(tipo);
+																	}}
+																>
+																	<span
+																		class="size-4 rounded-full bg-background shadow-sm transition-transform {tipo.ejemploDocumental
+																			? 'translate-x-4.5'
+																			: 'translate-x-0.5'}"
+																	></span>
+																</button>
+															{/snippet}
+														</Tooltip.Trigger>
+														<!-- pointer-events-none! (con important -- ver abajo): a
+														     diferencia del tooltip de "Editar" (que envuelve un
+														     renglón YA deshabilitado, sin nada que tapar), este vive
+														     sobre un renglón que SÍ se puede picar. Sin esto, el
+														     tooltip abierto se interponía entre el mouse y el renglón
+														     y se tragaba el clic -- confirmado con Playwright
+														     (`elementFromPoint` sobre el renglón daba el tooltip, no
+														     el `menuitem`). El `!important` es obligatorio y no
+														     cosmético: `TooltipPrimitive.Content` de bits-ui fija
+														     `pointer-events: auto` como ESTILO INLINE (para que el
+														     tooltip mismo se pueda hover, un requisito de
+														     accesibilidad) — un inline style le gana a cualquier clase
+														     normal sin importar el orden, así que una `pointer-events-none`
+														     sin el modificador de Tailwind v4 no hace nada aquí. -->
+														<Tooltip.Content side="bottom" class="pointer-events-none!">
+															{tipo.ejemploDocumental ? 'Quitar la marca de listo' : 'Marcar como listo'}
+														</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											</DropdownMenu.Item>
+
+											<!-- Habilitado SOLO con historial real (mismo criterio que
+											     "Crear nueva versión"): un tipo que nunca se ha re-publicado
+											     no tiene ninguna versión anterior que mostrar. Despliega
+											     `HistorialVersiones` (frame 1077:66342) EN LÍNEA bajo esta
+											     misma tarjeta — reemplaza al link "Listar versiones
+											     anteriores" que se había puesto junto al encabezado de la
+											     Biblioteca (nunca llegó a verse en producción; este menú es
+											     más descubrible). Toggle: volver a picarlo lo oculta.
+											     Deshabilitado, lleva el MISMO tooltip que "Editar" arriba —
+											     mismo truco (el `<span>` que envuelve es el trigger real,
+											     porque el renglón deshabilitado es `pointer-events-none` y
+											     nunca recibiría el hover) y el mismo `ignoreNonKeyboardFocus`
+											     desde el principio: sin él, este tooltip se abriría solo al
+											     abrir el menú en cuanto un tipo SIN historial fuera el primer
+											     renglón deshabilitado que recibe el foco — el mismo bug que ya
+											     se corrigió una vez arriba, en "Editar". -->
+											{#if tipo.historialVersiones.length}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() =>
+														(historialTipo = historialTipo?.id === tipo.id ? null : tipo)}
+												>
+													<Calendar class="size-4 text-muted-foreground" />
+													<span>Historial de versiones</span>
+												</DropdownMenu.Item>
+											{:else}
+												<Tooltip.Provider>
+													<Tooltip.Root ignoreNonKeyboardFocus>
+														<Tooltip.Trigger>
+															{#snippet child({ props })}
+																<span {...props} class="block">
+																	<DropdownMenu.Item
+																		class="h-11.5 gap-3 px-2 whitespace-nowrap"
+																		disabled
+																	>
+																		<Calendar class="size-4 text-muted-foreground" />
+																		<span>Historial de versiones</span>
+																	</DropdownMenu.Item>
+																</span>
+															{/snippet}
+														</Tooltip.Trigger>
+														<Tooltip.Content side="left">Aún no hay nuevas versiones.</Tooltip.Content>
+													</Tooltip.Root>
+												</Tooltip.Provider>
+											{/if}
+
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled
+											>
+												<Clock class="size-4 text-muted-foreground" />
+												<span>Eventos</span>
+											</DropdownMenu.Item>
+
+											<!-- "Borrar" y "Archivar" son el MISMO renglón, nunca los dos a la
+											     vez: cambio pedido para que un modelo ACTIVO ya no se pueda
+											     borrar directamente desde aquí (perdería su Custom Extractor sin
+											     vuelta atrás) — para ese caso el renglón pasa a "Archivar", que
+											     no toca Document AI y solo saca el tipo de la Biblioteca. Solo un
+											     borrador (nunca activado) conserva el "Borrar" real. -->
+											{#if tipo.estado === 'activo'}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() => void pedirArchivarTipo({ id: tipo.id, nombre: tipo.nombre })}
+												>
+													<Archive class="size-4 text-muted-foreground" />
+													<span>Archivar</span>
+												</DropdownMenu.Item>
+											{:else}
+												<DropdownMenu.Item
+													variant="destructive"
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													onSelect={() =>
+														(tipoAEliminar = {
+															id: tipo.id,
+															nombre: tipo.nombre,
+															tieneProcesador: Boolean(tipo.procesadorId)
+														})}
+												>
+													<Trash2 class="size-4" />
+													<span>Borrar</span>
+												</DropdownMenu.Item>
+											{/if}
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+
+									<!-- Chevron para ver descripción + campos sin entrar al modo
+									     edición (pedido 2026-09-05). Mismo patrón que
+									     `camposExpandidos` en Calibración: arranca replegado, un
+									     SvelteSet lleva qué tarjetas están desplegadas. -->
+									<button
+										type="button"
+										aria-label={tiposExpandidos.has(tipo.id)
+											? `Ocultar el detalle de ${tipo.nombre}`
+											: `Mostrar el detalle de ${tipo.nombre}`}
+										aria-expanded={tiposExpandidos.has(tipo.id)}
+										data-testid="chevron-tipo"
+										class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										onclick={() => alternarExpandidoTipo(tipo.id)}
 									>
+										{#if tiposExpandidos.has(tipo.id)}
+											<ChevronUp class="size-4" />
+										{:else}
+											<ChevronDown class="size-4" />
+										{/if}
+									</button>
+								</div>
+
+								{#if tiposExpandidos.has(tipo.id)}
+									<div
+										data-testid="detalle-tipo"
+										class="-mt-1 flex flex-col gap-4 rounded-xl border border-border bg-muted/30 px-4 py-4"
+									>
+										<div>
+											<p class="text-xs font-medium text-muted-foreground">Descripción</p>
+											<p class="mt-1 text-sm text-foreground">
+												{tipo.descripcion || 'Sin descripción.'}
+											</p>
+										</div>
+
+										<!-- El procesador de Document AI, a pedido explícito
+										     (2026-09-08): "quiero el nombre del procesador que tengo en
+										     Document AI, para que yo pueda identificarlo".
+										     UN SOLO RENGLÓN y sin rótulo, corregido el mismo día: la
+										     primera versión traía "Procesador en Document AI" arriba y el
+										     id abajo, y se pidió quitar las dos cosas —"me sirve más
+										     éste" (el nombre) "y quítale lo de 'Procesador en Document
+										     AI' para que quepa en una sola línea"—. El nombre se explica
+										     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
+										     la consola de GCP.
+										     Viene de Google (`procesadorDisplayName`, lo devuelve
+										     "Activar"), no se arma aquí: si el tipo se renombró después
+										     de activarse, Document AI se queda con el nombre VIEJO —no
+										     ofrece renombrar un procesador ya creado— y recalcularlo de
+										     este lado mostraría algo que allá no existe. Por eso puede
+										     venir vacío en tipos activados antes del 2026-09-08: ahí cae
+										     al id, que ocupa el mismo renglón y también lo identifica.
+										     `truncate` + `title` en vez de `break-all`: un nombre largo
+										     (el slug lleva el nombre del tipo) rompería el renglón único
+										     que se pidió, así que se corta con puntos suspensivos y el
+										     completo se lee al pasar el mouse.
+										     Sin botón de "copiar": `navigator.clipboard` es una API de
+										     contexto seguro y el server de CSI es HTTP plano (ver la nota
+										     permanente en la memoria del proyecto). El texto es
+										     seleccionable, que es lo que sí funciona ahí. -->
+										{#if tipo.procesadorId}
+											{@const nombreProcesador =
+												tipo.procesadorDisplayName || tipo.procesadorId}
+											<p
+												data-testid="procesador-tipo"
+												title={nombreProcesador}
+												class="truncate font-mono text-sm text-muted-foreground"
+											>
+												{nombreProcesador}
+											</p>
+										{/if}
+
+										<div>
+											<p class="text-xs font-medium text-muted-foreground">Campos</p>
+											{#if tipo.campos.length === 0}
+												<p class="mt-1 text-sm text-muted-foreground">Sin campos configurados.</p>
+											{:else}
+												<!-- `subgrid` (pedido explícito 2026-09-05, ajustado el mismo
+													     día): la primera versión fijaba las columnas 2-4 en rem
+													     A OJO (6/7/14rem) — a un ancho de panel angosto eso le
+													     dejaba casi nada a la columna del nombre, que es
+													     justamente la que más varía ("numero_poliza" truncado a
+													     "n..."). Con `subgrid`, las columnas 2-4 se miden UNA
+													     SOLA VEZ para todo el grupo (el ancho real del texto más
+													     largo que traiga esa columna en cualquier fila: "Múltiples
+													     valores (Multi Value)", "Obligatorio", etc.) y la del
+													     nombre (`minmax(0,1fr)`) se queda con TODO lo que sobra —
+													     nunca reserva de más. Cada fila sigue siendo su propia
+													     tarjeta (borde, fondo, padding); lo que comparten es
+													     `grid-template-columns` vía `grid-cols-subgrid`. -->
+												<div class="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2">
+													{#each tipo.campos as campo (campo.id)}
+														<div
+															class="col-span-4 grid grid-cols-subgrid items-center rounded-lg border border-border bg-background px-3 py-2 text-sm"
+														>
+															<span class="min-w-0 truncate font-medium text-foreground"
+																>{campo.nombre}</span
+															>
+															<span class="text-muted-foreground whitespace-nowrap"
+																>{etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
+															>
+															<span class="text-muted-foreground whitespace-nowrap"
+																>{campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
+															>
+															<span class="text-muted-foreground whitespace-nowrap"
+																>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
+															>
+														</div>
+														{#if campo.tipoDato === 'grupo' && campo.subcampos?.length}
+															<p class="col-span-4 -mt-1 mb-1 px-3 text-xs text-muted-foreground" data-testid="subcampos-ficha">
+																Campos del grupo: {campo.subcampos.map((sub) => `${sub.nombre} (${etiquetaTipo(sub.tipoDato) ?? sub.tipoDato}${sub.obligatorio ? '' : ', opcional'})`).join(' · ')}
+															</p>
+														{/if}
+													{/each}
+												</div>
+											{/if}
+										</div>
+									</div>
 								{/if}
 
-								<DropdownMenu.Root>
-									<DropdownMenu.Trigger>
-										{#snippet child({ props })}
-											<button
-												{...props}
-												type="button"
-												data-testid="menu-tipo"
-												aria-label="Más opciones de {tipo.nombre}"
-												disabled={eliminandoId === tipo.id}
-												class="flex size-6 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted data-[state=open]:bg-muted disabled:pointer-events-none disabled:opacity-50"
-											>
-												<MoreVerticalIcon />
-											</button>
-										{/snippet}
-									</DropdownMenu.Trigger>
-
-									<!-- El menú es el frame `settings` (1077:65931): 259x208, con 12px
-									     de padding y cuatro renglones de 235x46 pegados uno tras otro.
-									     Los rótulos no están en el volcado —son instancias de
-									     componente— así que salen de la captura que compartió el
-									     usuario. -->
-									<DropdownMenu.Content align="end" class="w-64.75 p-3">
-										<!-- No está en el frame de Figma (1077:65931 solo trae los cuatro
-										     renglones de abajo): se agregó a petición explícita, para editar un
-										     tipo documental SOLO mientras nunca se ha activado (no existe el
-										     Custom Extractor todavía). Una vez activo, no hay nada que "editar"
-										     desde aquí: picarle a la tarjeta ya es un no-op a propósito (ver
-										     `abrirTipoDocumental`), y esto respeta la misma regla en vez de
-										     abrir una puerta trasera al mismo problema. -->
-										{#if tipo.estado === 'activo'}
-											<!-- El renglón deshabilitado es `pointer-events-none` (ver
-											     dropdown-menu-item.svelte), así que nunca recibiría el hover
-											     que abre el tooltip. El truco de siempre: el trigger real es
-											     el <span> que lo envuelve, no el ítem mismo.
-											     `ignoreNonKeyboardFocus` (2026-09-07, mismo bug y misma
-											     corrección que ya se aplicó al tooltip de "Ejemplo documental"
-											     de abajo): el menú, al abrirse, mueve el foco a su primer
-											     renglón — que es justo este—, y bits-ui abre el tooltip con
-											     CUALQUIER foco, no solo el de teclado. Sin esto, el mensaje
-											     aparecía solo con abrir el menú, antes de que el mouse tocara
-											     nada. -->
-											<Tooltip.Provider>
-												<Tooltip.Root ignoreNonKeyboardFocus>
-													<Tooltip.Trigger>
-														{#snippet child({ props })}
-															<span {...props} class="block">
-																<DropdownMenu.Item
-																	class="h-11.5 gap-3 px-2 whitespace-nowrap"
-																	disabled
-																>
-																	<Pencil class="size-4 text-muted-foreground" />
-																	<span>Editar</span>
-																</DropdownMenu.Item>
-															</span>
-														{/snippet}
-													</Tooltip.Trigger>
-													<Tooltip.Content side="left">
-														No puedes editar un modelo que ya está activo.
-													</Tooltip.Content>
-												</Tooltip.Root>
-											</Tooltip.Provider>
-										{:else}
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() => abrirTipoDocumental(tipo.id)}
-											>
-												<Pencil class="size-4 text-muted-foreground" />
-												<span>Editar</span>
-											</DropdownMenu.Item>
-										{/if}
-
-										<!-- "Crear nueva versión" es el reverso de "Editar": habilitado
-										     SOLO cuando el tipo ya está activo (ver `iniciarNuevaVersion`).
-										     "Eventos" (abajo) sigue deshabilitado: necesita la bitácora que
-										     vive en el back. En el frame se ven activos los cuatro; dejarlos
-										     vivos y sin hacer nada es peor mentira que atenuarlos. Anotado
-										     en docs/pendientes-ux.md. -->
-										<DropdownMenu.Item
-											class="h-11.5 gap-3 px-2 whitespace-nowrap"
-											disabled={tipo.estado !== 'activo'}
-											onSelect={() => iniciarNuevaVersion(tipo.id)}
-										>
-											<Plus class="size-4 text-muted-foreground" />
-											<span>Crear nueva versión</span>
-										</DropdownMenu.Item>
-
-										<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
-										     (2026-09-02). El switch, en cambio, ya NO es decorativo
-										     (cambio pedido el 2026-09-03): ahora es un interruptor real
-										     de "estoy listo" — un estado local, reversible, SIN ningún
-										     envío detrás todavía. `stopPropagation()` en su propio click
-										     evita que también dispare el `onSelect` del `Item` (que
-										     abriría Calibración además de alternar el switch); verificado
-										     con Playwright que ambos gestos quedan independientes.
-										     Prenderlo (no apagarlo) pasa primero por
-										     `intentarAlternarEjemploDocumental` (2026-09-04): con menos
-										     de `MINIMO_EJEMPLOS_RECOMENDADO` documentos de ejemplo abre
-										     un aviso en vez de activar directo — ver
-										     `RecomendacionEjemplos.svelte`, montado al final del
-										     archivo. -->
-										<DropdownMenu.Item
-											class="h-11.5 gap-3 px-2 whitespace-nowrap"
-											onSelect={() => abrirCalibracion(tipo.id)}
-										>
-											<Share2 class="size-4 text-muted-foreground" />
-											<span>Ejemplo documental</span>
-											<Tooltip.Provider>
-												<!-- `ignoreNonKeyboardFocus` (2026-09-06, a pedido explícito):
-												     sin él el tooltip aparecía SOLO, ya desplegado, nada más
-												     con abrir el menú `⋮`. Causa medida: al abrir, el foco
-												     aterriza en este switch —los renglones del menú son
-												     `div`s, así que el switch es el único elemento
-												     nativamente enfocable ahí dentro— y el tooltip de bits-ui
-												     abre con foco, no solo con hover (su `#onfocus` llama a
-												     `handleOpen`). Con esta prop ese `#onfocus` solo abre si
-												     el foco es `:focus-visible`, o sea navegación con teclado
-												     de verdad: un foco programático como el del menú ya no lo
-												     dispara. El hover NO se toca (va por otra ruta,
-												     `#onpointermove`) — verificado midiendo antes y después
-												     del cambio: idéntico.
-												     Sobre accesibilidad, lo medido y no supuesto: navegando
-												     el menú con flechas el foco salta entre RENGLONES y el
-												     switch nunca lo recibe, así que por teclado el tooltip no
-												     aparece — ni antes ni ahora. No se pierde información: el
-												     `aria-label` del switch dice exactamente lo mismo que el
-												     tooltip, y eso es lo que lee un lector de pantalla. -->
-												<Tooltip.Root ignoreNonKeyboardFocus>
-													<Tooltip.Trigger>
-														{#snippet child({ props })}
-															<button
-																{...props}
-																type="button"
-																role="switch"
-																aria-checked={tipo.ejemploDocumental}
-																aria-label={tipo.ejemploDocumental
-																	? `Quitar la marca de listo de ${tipo.nombre}`
-																	: `Marcar ${tipo.nombre} como listo`}
-																class="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {tipo.ejemploDocumental
-																	? 'bg-primary'
-																	: 'bg-input'}"
-																onclick={(e) => {
-																	e.stopPropagation();
-																	intentarAlternarEjemploDocumental(tipo);
-																}}
-															>
-																<span
-																	class="size-4 rounded-full bg-background shadow-sm transition-transform {tipo.ejemploDocumental
-																		? 'translate-x-4.5'
-																		: 'translate-x-0.5'}"
-																></span>
-															</button>
-														{/snippet}
-													</Tooltip.Trigger>
-													<!-- pointer-events-none! (con important -- ver abajo): a
-													     diferencia del tooltip de "Editar" (que envuelve un
-													     renglón YA deshabilitado, sin nada que tapar), este vive
-													     sobre un renglón que SÍ se puede picar. Sin esto, el
-													     tooltip abierto se interponía entre el mouse y el renglón
-													     y se tragaba el clic -- confirmado con Playwright
-													     (`elementFromPoint` sobre el renglón daba el tooltip, no
-													     el `menuitem`). El `!important` es obligatorio y no
-													     cosmético: `TooltipPrimitive.Content` de bits-ui fija
-													     `pointer-events: auto` como ESTILO INLINE (para que el
-													     tooltip mismo se pueda hover, un requisito de
-													     accesibilidad) — un inline style le gana a cualquier clase
-													     normal sin importar el orden, así que una `pointer-events-none`
-													     sin el modificador de Tailwind v4 no hace nada aquí. -->
-													<Tooltip.Content side="bottom" class="pointer-events-none!">
-														{tipo.ejemploDocumental ? 'Quitar la marca de listo' : 'Marcar como listo'}
-													</Tooltip.Content>
-												</Tooltip.Root>
-											</Tooltip.Provider>
-										</DropdownMenu.Item>
-
-										<!-- Habilitado SOLO con historial real (mismo criterio que
-										     "Crear nueva versión"): un tipo que nunca se ha re-publicado
-										     no tiene ninguna versión anterior que mostrar. Despliega
-										     `HistorialVersiones` (frame 1077:66342) EN LÍNEA bajo esta
-										     misma tarjeta — reemplaza al link "Listar versiones
-										     anteriores" que se había puesto junto al encabezado de la
-										     Biblioteca (nunca llegó a verse en producción; este menú es
-										     más descubrible). Toggle: volver a picarlo lo oculta.
-										     Deshabilitado, lleva el MISMO tooltip que "Editar" arriba —
-										     mismo truco (el `<span>` que envuelve es el trigger real,
-										     porque el renglón deshabilitado es `pointer-events-none` y
-										     nunca recibiría el hover) y el mismo `ignoreNonKeyboardFocus`
-										     desde el principio: sin él, este tooltip se abriría solo al
-										     abrir el menú en cuanto un tipo SIN historial fuera el primer
-										     renglón deshabilitado que recibe el foco — el mismo bug que ya
-										     se corrigió una vez arriba, en "Editar". -->
-										{#if tipo.historialVersiones.length}
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() =>
-													(historialTipo = historialTipo?.id === tipo.id ? null : tipo)}
-											>
-												<Calendar class="size-4 text-muted-foreground" />
-												<span>Historial de versiones</span>
-											</DropdownMenu.Item>
-										{:else}
-											<Tooltip.Provider>
-												<Tooltip.Root ignoreNonKeyboardFocus>
-													<Tooltip.Trigger>
-														{#snippet child({ props })}
-															<span {...props} class="block">
-																<DropdownMenu.Item
-																	class="h-11.5 gap-3 px-2 whitespace-nowrap"
-																	disabled
-																>
-																	<Calendar class="size-4 text-muted-foreground" />
-																	<span>Historial de versiones</span>
-																</DropdownMenu.Item>
-															</span>
-														{/snippet}
-													</Tooltip.Trigger>
-													<Tooltip.Content side="left">Aún no hay nuevas versiones.</Tooltip.Content>
-												</Tooltip.Root>
-											</Tooltip.Provider>
-										{/if}
-
-										<DropdownMenu.Item
-											class="h-11.5 gap-3 px-2 whitespace-nowrap"
-											disabled
-										>
-											<Clock class="size-4 text-muted-foreground" />
-											<span>Eventos</span>
-										</DropdownMenu.Item>
-
-										<!-- "Borrar" y "Archivar" son el MISMO renglón, nunca los dos a la
-										     vez: cambio pedido para que un modelo ACTIVO ya no se pueda
-										     borrar directamente desde aquí (perdería su Custom Extractor sin
-										     vuelta atrás) — para ese caso el renglón pasa a "Archivar", que
-										     no toca Document AI y solo saca el tipo de la Biblioteca. Solo un
-										     borrador (nunca activado) conserva el "Borrar" real. -->
-										{#if tipo.estado === 'activo'}
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() => void pedirArchivarTipo({ id: tipo.id, nombre: tipo.nombre })}
-											>
-												<Archive class="size-4 text-muted-foreground" />
-												<span>Archivar</span>
-											</DropdownMenu.Item>
-										{:else}
-											<DropdownMenu.Item
-												variant="destructive"
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												onSelect={() =>
-													(tipoAEliminar = {
-														id: tipo.id,
-														nombre: tipo.nombre,
-														tieneProcesador: Boolean(tipo.procesadorId)
-													})}
-											>
-												<Trash2 class="size-4" />
-												<span>Borrar</span>
-											</DropdownMenu.Item>
-										{/if}
-									</DropdownMenu.Content>
-								</DropdownMenu.Root>
-
-								<!-- Chevron para ver descripción + campos sin entrar al modo
-								     edición (pedido 2026-09-05). Mismo patrón que
-								     `camposExpandidos` en Calibración: arranca replegado, un
-								     SvelteSet lleva qué tarjetas están desplegadas. -->
-								<button
-									type="button"
-									aria-label={tiposExpandidos.has(tipo.id)
-										? `Ocultar el detalle de ${tipo.nombre}`
-										: `Mostrar el detalle de ${tipo.nombre}`}
-									aria-expanded={tiposExpandidos.has(tipo.id)}
-									data-testid="chevron-tipo"
-									class="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-									onclick={() => alternarExpandidoTipo(tipo.id)}
-								>
-									{#if tiposExpandidos.has(tipo.id)}
-										<ChevronUp class="size-4" />
-									{:else}
-										<ChevronDown class="size-4" />
-									{/if}
-								</button>
+								{#if historialTipo?.id === tipo.id}
+									<HistorialVersiones {tipo} onCerrar={() => (historialTipo = null)} />
+								{/if}
 							</div>
-
-							{#if tiposExpandidos.has(tipo.id)}
-								<div
-									data-testid="detalle-tipo"
-									class="-mt-1 flex flex-col gap-4 rounded-xl border border-border bg-muted/30 px-4 py-4"
-								>
-									<div>
-										<p class="text-xs font-medium text-muted-foreground">Descripción</p>
-										<p class="mt-1 text-sm text-foreground">
-											{tipo.descripcion || 'Sin descripción.'}
-										</p>
-									</div>
-
-									<!-- El procesador de Document AI, a pedido explícito
-									     (2026-09-08): "quiero el nombre del procesador que tengo en
-									     Document AI, para que yo pueda identificarlo".
-									     UN SOLO RENGLÓN y sin rótulo, corregido el mismo día: la
-									     primera versión traía "Procesador en Document AI" arriba y el
-									     id abajo, y se pidió quitar las dos cosas —"me sirve más
-									     éste" (el nombre) "y quítale lo de 'Procesador en Document
-									     AI' para que quepa en una sola línea"—. El nombre se explica
-									     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
-									     la consola de GCP.
-									     Viene de Google (`procesadorDisplayName`, lo devuelve
-									     "Activar"), no se arma aquí: si el tipo se renombró después
-									     de activarse, Document AI se queda con el nombre VIEJO —no
-									     ofrece renombrar un procesador ya creado— y recalcularlo de
-									     este lado mostraría algo que allá no existe. Por eso puede
-									     venir vacío en tipos activados antes del 2026-09-08: ahí cae
-									     al id, que ocupa el mismo renglón y también lo identifica.
-									     `truncate` + `title` en vez de `break-all`: un nombre largo
-									     (el slug lleva el nombre del tipo) rompería el renglón único
-									     que se pidió, así que se corta con puntos suspensivos y el
-									     completo se lee al pasar el mouse.
-									     Sin botón de "copiar": `navigator.clipboard` es una API de
-									     contexto seguro y el server de CSI es HTTP plano (ver la nota
-									     permanente en la memoria del proyecto). El texto es
-									     seleccionable, que es lo que sí funciona ahí. -->
-									{#if tipo.procesadorId}
-										{@const nombreProcesador =
-											tipo.procesadorDisplayName || tipo.procesadorId}
-										<p
-											data-testid="procesador-tipo"
-											title={nombreProcesador}
-											class="truncate font-mono text-sm text-muted-foreground"
-										>
-											{nombreProcesador}
-										</p>
-									{/if}
-
-									<div>
-										<p class="text-xs font-medium text-muted-foreground">Campos</p>
-										{#if tipo.campos.length === 0}
-											<p class="mt-1 text-sm text-muted-foreground">Sin campos configurados.</p>
-										{:else}
-											<!-- `subgrid` (pedido explícito 2026-09-05, ajustado el mismo
-												     día): la primera versión fijaba las columnas 2-4 en rem
-												     A OJO (6/7/14rem) — a un ancho de panel angosto eso le
-												     dejaba casi nada a la columna del nombre, que es
-												     justamente la que más varía ("numero_poliza" truncado a
-												     "n..."). Con `subgrid`, las columnas 2-4 se miden UNA
-												     SOLA VEZ para todo el grupo (el ancho real del texto más
-												     largo que traiga esa columna en cualquier fila: "Múltiples
-												     valores (Multi Value)", "Obligatorio", etc.) y la del
-												     nombre (`minmax(0,1fr)`) se queda con TODO lo que sobra —
-												     nunca reserva de más. Cada fila sigue siendo su propia
-												     tarjeta (borde, fondo, padding); lo que comparten es
-												     `grid-template-columns` vía `grid-cols-subgrid`. -->
-											<div class="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2">
-												{#each tipo.campos as campo (campo.id)}
-													<div
-														class="col-span-4 grid grid-cols-subgrid items-center rounded-lg border border-border bg-background px-3 py-2 text-sm"
-													>
-														<span class="min-w-0 truncate font-medium text-foreground"
-															>{campo.nombre}</span
-														>
-														<span class="text-muted-foreground whitespace-nowrap"
-															>{etiquetaTipo(campo.tipoDato) ?? 'Sin tipo'}</span
-														>
-														<span class="text-muted-foreground whitespace-nowrap"
-															>{campo.obligatorio ? 'Obligatorio' : 'Opcional'}</span
-														>
-														<span class="text-muted-foreground whitespace-nowrap"
-															>{etiquetaCardinalidad(campo.cardinalidad) ?? campo.cardinalidad}</span
-														>
-													</div>
-													{#if campo.tipoDato === 'grupo' && campo.subcampos?.length}
-														<p class="col-span-4 -mt-1 mb-1 px-3 text-xs text-muted-foreground" data-testid="subcampos-ficha">
-															Campos del grupo: {campo.subcampos.map((sub) => `${sub.nombre} (${etiquetaTipo(sub.tipoDato) ?? sub.tipoDato}${sub.obligatorio ? '' : ', opcional'})`).join(' · ')}
-														</p>
-													{/if}
-												{/each}
-											</div>
-										{/if}
-									</div>
-								</div>
-							{/if}
-
-							{#if historialTipo?.id === tipo.id}
-								<HistorialVersiones {tipo} onCerrar={() => (historialTipo = null)} />
-							{/if}
 						{/each}
 					</div>
 				{:else}
@@ -3287,16 +3231,16 @@
 	     bandera controla la tarjeta de adentro y no este div. Vacío no mide
 	     nada, así que no separa nada.
 
-	     `pl-82.5` es el ancho del sidebar (la misma medida que su `w-82.5`), y
-	     con el `mx-8` de la tarjeta el aviso queda alineado exactamente con el
-	     título "Modelos documentales agregados". Sin ese padding el borde
-	     izquierdo caía en tierra de nadie: ni con el título ni con el sidebar,
-	     cruzando por debajo de la división en dos columnas. En el frame el
+	     Con el `mx-8` de la tarjeta el aviso queda alineado con el título
+	     "Modelos documentales agregados" (el `p-8` del contenido). Hasta el
+	     2026-11-04 llevaba además `pl-82.5`, el ancho de la barra lateral que la
+	     Biblioteca tenía a la izquierda; al quitarse esa barra se fue también ese
+	     padding (los avisos solo salen en la Biblioteca). En el frame el
 	     aviso va debajo del modal entero y ocupa unos dos tercios; aquí el
 	     panel es de altura completa, así que se adapta al pie de la columna de
 	     contenido — que además es donde está el modelo que se acaba de
 	     agregar. Anotado en docs/pendientes-ux.md. -->
-	<div role="status" aria-live="polite" class="pl-82.5">
+	<div role="status" aria-live="polite">
 		{#if avisoExito && vista === 'biblioteca'}
 			<div
 				data-testid="aviso-exito"
