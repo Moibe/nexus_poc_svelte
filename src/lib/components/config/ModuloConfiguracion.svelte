@@ -2763,7 +2763,13 @@
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
 							aria-describedby="descripcion-tipo-ayuda"
+							class="text-justify"
 						/>
+						<!-- Texto justificado (2026-11-05, Moibe: «¿podría salir justificado?»): la descripción suele ser un párrafo largo (la que
+						     sugiere la IA ronda las 70 palabras) y así se lee como tal. Es solo presentación: el valor guardado no cambia, y la última
+						     línea queda a la izquierda (lo normal en `text-align: justify`). El recuadro de la sugerencia, más abajo, va igual para
+						     que lo que se previsualiza se vea como quedará en la caja. Sin guiones automáticos a propósito: la página declara
+						     `lang="en"` y partiría el español con las reglas del inglés. -->
 						<!-- 2026-11-04 (Moibe: la Descripción y las Instrucciones parecían lo mismo): dice para qué sirve. La descripción es la
 						     etiqueta con la que el CLASIFICADOR reconoce este tipo entre los demás; leer el documento al extraer es de las
 						     «Instrucciones para la extracción», del paso 2. -->
@@ -2800,7 +2806,7 @@
 						{#if sugerencia !== null}
 							<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3" data-testid="sugerencia-panel">
 								<p class="text-xs font-medium text-muted-foreground">Sugerencia generada con IA: revísala antes de usarla.</p>
-								<p class="text-sm text-foreground" data-testid="sugerencia-texto">{sugerencia}</p>
+								<p class="text-sm text-justify text-foreground" data-testid="sugerencia-texto">{sugerencia}</p>
 								<div class="flex flex-wrap gap-2">
 									<Button size="sm" data-testid="usar-sugerencia" onclick={usarSugerencia}>Usar esta sugerencia</Button>
 									<Button size="sm" variant="outline" data-testid="descartar-sugerencia" onclick={() => (sugerencia = null)}>Descartar</Button>
