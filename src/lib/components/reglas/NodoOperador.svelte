@@ -21,13 +21,13 @@
 	 * que ver el estado y el valor actuales de ésa.
 	 */
 	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
-	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import Equal from '@lucide/svelte/icons/equal';
 	import X from '@lucide/svelte/icons/x';
 	import { getContext } from 'svelte';
 
 	import OrigenDeEntrada from '$lib/components/reglas/OrigenDeEntrada.svelte';
+	import SelloDeVeredicto from '$lib/components/reglas/SelloDeVeredicto.svelte';
 	import { usarOrigenes } from '$lib/components/reglas/origenes';
 	import {
 		CLAVE_VEREDICTOS,
@@ -142,9 +142,9 @@
 		<div class="relative flex items-center gap-2.5 px-3 py-3 text-sm leading-snug font-medium {claseDelEstado}">
 			<span class="flex size-6 shrink-0 items-center justify-center" data-testid="icono-veredicto" data-estado={estado} aria-hidden="true">
 				{#if estado === 'pasa'}
-					<span class="flex size-6 items-center justify-center rounded-full bg-green-600 text-yellow-300 shadow-sm"><Check class="size-4" strokeWidth={4} /></span>
+					<SelloDeVeredicto tipo="pasa" />
 				{:else if estado === 'no_pasa'}
-					<span class="flex size-6 items-center justify-center rounded-full bg-red-600 text-white shadow-sm"><X class="size-4" strokeWidth={4} /></span>
+					<SelloDeVeredicto tipo="no_pasa" />
 				{:else if estado === 'listo'}
 					<Equal class="size-4" />
 				{:else}

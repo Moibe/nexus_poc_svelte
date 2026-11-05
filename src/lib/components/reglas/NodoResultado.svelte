@@ -17,6 +17,7 @@
 	import { getContext } from 'svelte';
 
 	import OrigenDeEntrada from '$lib/components/reglas/OrigenDeEntrada.svelte';
+	import SelloDeVeredicto from '$lib/components/reglas/SelloDeVeredicto.svelte';
 	import { usarOrigenes } from '$lib/components/reglas/origenes';
 	import {
 		CASOS_DEL_RESULTADO,
@@ -104,14 +105,18 @@
 		{/each}
 	</div>
 
+	<!-- Con el mismo trato que el pie de una regla (2026-11-04, Moibe): texto de 14 px y el sello del caso en el que termina —verde con paloma
+	     amarilla si se cumple, rojo con tache blanco si no, gris con «?» si faltan datos—, en una caja de 24 px que comparten todos los estados. -->
 	<div
-		class="flex items-center gap-2 px-3 py-3 text-xs font-medium {resultado?.caso === 'si' ? 'text-green-700 dark:text-green-400' : resultado?.caso === 'no' ? 'text-destructive' : 'text-muted-foreground'}"
+		class="flex items-center gap-2.5 px-3 py-3 text-sm leading-snug font-medium {resultado?.caso === 'si' ? 'text-green-700 dark:text-green-400' : resultado?.caso === 'no' ? 'text-destructive' : 'text-muted-foreground'}"
 	>
-		{#if resultado?.texto}
-			<BadgeCheck class="size-4 shrink-0" />
-		{:else}
-			<CircleDashed class="size-4 shrink-0" />
-		{/if}
+		<span class="flex size-6 shrink-0 items-center justify-center" data-testid="icono-resultado" data-caso={resultado?.caso ?? ''} aria-hidden="true">
+			{#if resultado?.texto}
+				<SelloDeVeredicto tipo={resultado.caso === 'si' ? 'pasa' : resultado.caso === 'no' ? 'no_pasa' : 'sin_dato'} />
+			{:else}
+				<CircleDashed class="size-4" />
+			{/if}
+		</span>
 		<span class="min-w-0 flex-1" data-testid="resultado-estado" data-caso={resultado?.caso ?? ''} data-texto={resultado?.texto ?? ''}>
 			{#if resultado?.texto}
 				Con los valores de ejemplo termina en «{resultado.texto}»

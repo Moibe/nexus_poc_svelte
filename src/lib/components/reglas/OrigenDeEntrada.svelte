@@ -11,6 +11,7 @@
 	 *
 	 * Lo que se escribe sube con `alEscribir`: el ejemplo vive en el nodo, no en el campo.
 	 */
+	import SelloDeVeredicto from '$lib/components/reglas/SelloDeVeredicto.svelte';
 	import type { Acepta, Estado, OrigenDeEntrada } from '$lib/reglas/reglas';
 
 	let {
@@ -101,15 +102,26 @@
 				title={origen.valor ?? ''}>{origen.valor !== undefined ? `= ${origen.valor}` : 'Sin valor'}</span
 			>
 		{:else}
+			<!-- La insignia del veredicto de la regla conectada (2026-11-04, Moibe: el mismo trato que el pie de la regla): texto de 12 px (antes 10) y,
+			     cuando pasa o no pasa, el sello chico —círculo verde con paloma amarilla, círculo rojo con tache blanco— al principio. -->
 			<span
-				class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium {origen.estado === 'pasa'
+				class="inline-flex shrink-0 items-center gap-1 rounded-full py-0.5 text-xs font-semibold {origen.estado === 'pasa' || origen.estado === 'no_pasa'
+					? 'pr-2 pl-0.5'
+					: 'px-2'} {origen.estado === 'pasa'
 					? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
 					: origen.estado === 'no_pasa'
 						? 'bg-destructive/10 text-destructive'
 						: 'bg-muted text-muted-foreground'}"
 				data-testid="veredicto-de-origen"
-				data-estado={origen.estado}>{ESTADO_CORTO[origen.estado]}</span
+				data-estado={origen.estado}
 			>
+				{#if origen.estado === 'pasa'}
+					<SelloDeVeredicto tipo="pasa" chico />
+				{:else if origen.estado === 'no_pasa'}
+					<SelloDeVeredicto tipo="no_pasa" chico />
+				{/if}
+				{ESTADO_CORTO[origen.estado]}
+			</span>
 		{/if}
 	</p>
 {:else}
