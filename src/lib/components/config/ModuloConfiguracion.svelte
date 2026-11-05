@@ -1970,12 +1970,10 @@
 												<span>Eventos</span>
 											</DropdownMenu.Item>
 
-											<!-- "Borrar" y "Archivar" son el MISMO renglón, nunca los dos a la
-											     vez: cambio pedido para que un modelo ACTIVO ya no se pueda
-											     borrar directamente desde aquí (perdería su Custom Extractor sin
-											     vuelta atrás) — para ese caso el renglón pasa a "Archivar", que
-											     no toca Document AI y solo saca el tipo de la Biblioteca. Solo un
-											     borrador (nunca activado) conserva el "Borrar" real. -->
+											<!-- Un modelo ACTIVO ofrece "Archivar" (no toca Document AI, solo lo saca de la Biblioteca y del
+											     clasificador) Y, desde el 2026-11-04 (Moibe: «si quiero ese feature de que se pueda borrar»),
+											     también "Borrar": lo quita junto con su Custom Extractor en Document AI, sin vuelta atrás; la
+											     confirmación lo dice. Antes un activo solo se podía archivar. Un borrador solo tiene "Borrar". -->
 											{#if tipo.estado === 'activo'}
 												<DropdownMenu.Item
 													class="h-11.5 gap-3 px-2 whitespace-nowrap"
@@ -1984,7 +1982,8 @@
 													<Archive class="size-4 text-muted-foreground" />
 													<span>Archivar</span>
 												</DropdownMenu.Item>
-											{:else}
+											{/if}
+											{#if eliminandoId !== tipo.id}
 												<DropdownMenu.Item
 													variant="destructive"
 													class="h-11.5 gap-3 px-2 whitespace-nowrap"
