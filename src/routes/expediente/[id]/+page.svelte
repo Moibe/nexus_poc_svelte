@@ -29,6 +29,11 @@
 	 * **Grupo (2026-11-03, decisión de Moibe).** El expediente vive en un grupo (áreas, departamentos, trimestres… como lo llame cada
 	 * organización): el encabezado lo dice, o dice «Sin grupo» si es de antes de los grupos. Quien organiza lo asigna o lo cambia con el botón de
 	 * al lado (`AsignarGrupoModal`): un expediente se puede pasar de un grupo a otro, pero no dejar sin grupo.
+	 *
+	 * **Quitar un documento (2026-11-04, Moibe: «que un archivo pueda ser borrado de un expediente»).** Quien organiza tiene «Quitar» en cada
+	 * tarjeta. Pregunta antes con la confirmación de la casa (`ConfirmarAccion`), que nombra los expedientes virtuales de los que también saldría.
+	 * Sacarlo NO borra el archivo: sigue siendo de la organización (en Archivos procesados) y en otros expedientes donde esté; si era el único,
+	 * vuelve al void. Lo saca también de los virtuales de este expediente (lo hace nexus_back). El historial de Ejecuciones no cambia.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
@@ -48,11 +53,14 @@
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import {
 		documentosDelVirtual,
 		normalizar,
 		OPCIONES_ORDEN_DOCUMENTOS,
 		ordenarDocumentos,
+		type DocumentoDeExpediente,
 		type OrdenDocumentos
 	} from '$lib/expedientes/expedientes';
 	import { avisoDeSubida } from '$lib/expedientes/subida';
@@ -68,6 +76,58 @@
 	let subida = $state(false);
 	let asignandoGrupo = $state(false);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
+	let error = $state('');
+	/** El documento que se va a quitar, mientras la confirmación está abierta. */
+	let aQuitar = $state<DocumentoDeExpediente | null>(null);
+	/** El que se está quitando (su botón gira). */
+	let quitando = $state<string | null>(null);
+
+	/** Los expedientes virtuales de ESTE expediente que tienen ese documento: al sacarlo del expediente, sale también de ellos. */
+	const virtualesCon = (documentoId: string) => virtuales.filter((v) => v.documentos.includes(documentoId));
+
+	/** «A», «A» y «B», «A», «B» y «C». */
+	const enLista = (nombres: string[]) => {
+		const citados = nombres.map((n) => `«${n}»`);
+		return citados.length < 2 ? (citados[0] ?? '') : `${citados.slice(0, -1).join(', ')} y ${citados.at(-1)}`;
+	};
+
+	/** Lo que se dice de los virtuales: «del expediente virtual «A»», «de los expedientes virtuales «A» y «B»». */
+	const deLosVirtuales = (nombres: string[]) =>
+		nombres.length === 1 ? `del expediente virtual ${enLista(nombres)}` : `de los expedientes virtuales ${enLista(nombres)}`;
+
+	async function quitar(documento: DocumentoDeExpediente) {
+		if (quitando) return;
+		quitando = documento.id;
+		aviso = null;
+		error = '';
+		// Se leen ANTES de quitarlo: después de recargar ya no estará en ninguno.
+		const enVirtuales = virtualesCon(documento.id).map((v) => v.nombre);
+		try {
+			const r = await fetch(
+				`/api/expedientes/${encodeURIComponent(expediente.id)}/documentos/${encodeURIComponent(documento.id)}`,
+				{ method: 'DELETE' }
+			);
+			const datos = await r.json().catch(() => null);
+			if (!r.ok) {
+				error = `No se pudo quitar «${documento.nombreOriginal}»: ${mensajeDeFallo(datos, r.status, 'al quitar')}`;
+				// Si ya no estaba (otra persona lo quitó), la página se pone al día para que deje de mostrarlo.
+				if (r.status === 404) await invalidateAll();
+				return;
+			}
+			// El documento YA salió: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
+			const tambien = enVirtuales.length > 0 ? ` También salió ${deLosVirtuales(enVirtuales)}.` : '';
+			aviso = {
+				testid: 'documento-quitado-del-expediente',
+				titulo: 'Documento quitado',
+				cuerpo: `«${documento.nombreOriginal}» ya no está en «${expediente.nombre}».${tambien} El archivo no se borró: sigue en Archivos procesados.`
+			};
+			await invalidateAll();
+		} catch {
+			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
+		} finally {
+			quitando = null;
+		}
+	}
 
 	const visibles = $derived.by(() => {
 		const q = normalizar(busqueda);
@@ -170,6 +230,10 @@
 		</div>
 	</div>
 
+	{#if error}
+		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-expediente">{error}</p>
+	{/if}
+
 	{#if expediente.documentos.length === 0}
 		<div class="flex flex-col items-center gap-2 py-24 text-center" data-testid="expediente-sin-documentos">
 			<h3 class="text-2xl font-semibold text-foreground">Este expediente todavía no tiene documentos</h3>
@@ -186,7 +250,21 @@
 	{:else}
 		<ul class="mt-3 flex flex-wrap gap-3" data-testid="lista-documentos">
 			{#each visibles as documento (documento.id)}
-				<li><TarjetaDocumento {documento} /></li>
+				<li>
+					<TarjetaDocumento
+						{documento}
+						alQuitar={data.puedeOrganizar
+							? () => {
+									aviso = null;
+									error = '';
+									aQuitar = documento;
+								}
+							: undefined}
+						quitando={quitando === documento.id}
+						ayudaQuitar={`Quitar «${documento.nombreOriginal}» de este expediente`}
+						testidQuitar="quitar-del-expediente"
+					/>
+				</li>
 			{/each}
 		</ul>
 	{/if}
@@ -310,6 +388,21 @@
 		if (cambiado) aviso = { testid: 'grupo-asignado-aviso', titulo: 'Grupo asignado', cuerpo: `«${expediente.nombre}» ahora está en el grupo «${grupo}».` };
 		await invalidateAll();
 	}}
+/>
+
+<!-- Antes de sacar un documento del expediente: dice de cuáles virtuales sale también y que el archivo NO se borra. -->
+<ConfirmarAccion
+	abierto={aQuitar !== null}
+	titulo="Quitar el documento del expediente"
+	mensaje={aQuitar
+		? `«${aQuitar.nombreOriginal}» saldrá de «${expediente.nombre}»${virtualesCon(aQuitar.id).length > 0 ? ` y ${deLosVirtuales(virtualesCon(aQuitar.id).map((v) => v.nombre))}` : ''}. El archivo no se borra: sigue en Archivos procesados.`
+		: ''}
+	etiquetaConfirmar="Quitar"
+	onConfirmar={() => {
+		const documento = aQuitar;
+		if (documento) void quitar(documento);
+	}}
+	onCerrar={() => (aQuitar = null)}
 />
 
 <SubirArchivosModal
