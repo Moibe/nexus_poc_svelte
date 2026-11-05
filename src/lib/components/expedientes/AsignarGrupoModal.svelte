@@ -10,6 +10,7 @@
 	 * camino a Configuración para quien administra. Mismo molde que «Nuevo expediente» (`ExpedienteModal`); el selector va en `z-70` para quedar
 	 * sobre el modal. Nexus_back vuelve a comprobar todo (un grupo que ya no existe, un rol que no organiza): lo que diga se muestra aquí mismo.
 	 */
+	import { untrack } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import Layers from '@lucide/svelte/icons/layers';
 
@@ -49,10 +50,15 @@
 	const completo = $derived(elegido !== null && elegido.id !== actual?.id);
 
 	// Cada vez que se abre, arranca con el grupo actual elegido (o ninguno, si todavía no tiene).
+	//
+	// Depende SOLO de `open` (2026-11-05): `grupos` y `expediente` vienen de `data`, que el layout vuelve a pedir cada 20 s, y leerlos fuera
+	// de `untrack` hacía que el grupo ya elegido se perdiera a media decisión (ver `ExpedienteModal`, donde se llevaba el nombre).
 	$effect(() => {
 		if (!open) return;
-		grupoId = grupos.some((g) => g.id === expediente.grupo?.id) ? (expediente.grupo?.id ?? '') : '';
-		error = '';
+		untrack(() => {
+			grupoId = grupos.some((g) => g.id === expediente.grupo?.id) ? (expediente.grupo?.id ?? '') : '';
+			error = '';
+		});
 	});
 
 	async function guardar() {

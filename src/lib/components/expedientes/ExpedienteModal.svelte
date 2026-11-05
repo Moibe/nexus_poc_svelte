@@ -19,6 +19,7 @@
 	 * Nexus_back vuelve a comprobar todo, limpia los espacios de más del nombre, y rechaza a un rol que no organiza (403) o un grupo que ya no
 	 * existe (404): lo que diga se muestra aquí mismo, sin cerrar el modal.
 	 */
+	import { untrack } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 
@@ -61,12 +62,19 @@
 	const completo = $derived(nombre.trim().length > 0 && grupo !== null);
 
 	// Cada vez que se abre, el formulario arranca limpio. Con un solo grupo, o con el que filtra el listado, ya viene elegido.
+	//
+	// Depende SOLO de `open` (2026-11-05, Moibe: «si me tardo en guardar se borra»). Antes leía `grupos` aquí mismo, y esa lista viene de
+	// `data`, que el layout vuelve a pedir cada 20 s (`invalidateAll`): llegaba como un arreglo nuevo, el efecto corría otra vez y vaciaba
+	// el nombre a media escritura. Todo lo que se lee va dentro de `untrack`: con el modal abierto, lo escrito y lo elegido no se tocan
+	// aunque la lista cambie.
 	$effect(() => {
 		if (!open) return;
-		nombre = '';
-		grupoId = grupos.length === 1 ? grupos[0].id : (grupos.find((g) => g.id === grupoInicial)?.id ?? '');
-		error = '';
-		errorEnNombre = false;
+		untrack(() => {
+			nombre = '';
+			grupoId = grupos.length === 1 ? grupos[0].id : (grupos.find((g) => g.id === grupoInicial)?.id ?? '');
+			error = '';
+			errorEnNombre = false;
+		});
 	});
 
 	async function crear() {
