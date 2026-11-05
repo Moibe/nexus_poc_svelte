@@ -105,6 +105,7 @@
 		guardarBorrador,
 		limpiarBorrador,
 		nombreCampoDuplicado,
+		tipoConMismoNombre,
 		quitarCampo,
 		quitarValorLista,
 		completarNombreProcesador,
@@ -686,6 +687,11 @@
 		nombreCampoDuplicado(borrador.campoEnCaptura.nombre, borrador.campos)
 	);
 
+	// El nombre del TIPO ya lo tiene otro de la organización (2026-11-04, Moibe: el nombre es único; los archivados no cuentan).
+	// Se avisa en el paso 1 y no se deja seguir; el nombre repetido tampoco llega a la biblioteca (`guardarTipoDocumental`). Si se
+	// abre un duplicado de antes de la regla, el aviso sale de entrada: hay que cambiarle el nombre para terminar.
+	const nombreTipoRepetido = $derived(tipoConMismoNombre(borrador.nombre, borrador.idGuardado) !== null);
+
 	// El formulario se puede "Agregar" cuando está completo Y su nombre no choca
 	// con uno ya agregado.
 	const puedeAgregar = $derived(campoCompleto(borrador.campoEnCaptura) && !nombreDuplicado);
@@ -704,7 +710,7 @@
 	// mapear, así que se revirtió esa decisión).
 	const canContinue = $derived(
 		borrador.paso === 1
-			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== ''
+			? borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== '' && !nombreTipoRepetido
 			: borrador.paso === 2
 				// Dos condiciones independientes: (a) el formulario de captura no
 				// debe estar a medias ni con el nombre repetido — dejarlo pasar
@@ -1142,6 +1148,12 @@
 
 	function continuar() {
 		if (!canContinue) return;
+		// Con un nombre que ya tiene otro tipo no se guarda (2026-11-04). En el paso 1 el botón ya está apagado; a los pasos 2 y 3 se
+		// puede llegar por el costado sin pasar por él, así que desde ahí se regresa al 1, que es donde están el campo y el aviso.
+		if (nombreTipoRepetido) {
+			borrador.paso = 1;
+			return;
+		}
 		// Si quedó un campo completo sin "Agregar", se agrega en vez de perderlo.
 		if (borrador.paso === 2) agregarCampoEnCaptura();
 
@@ -2656,11 +2668,28 @@
 				<div class="mt-8 max-w-2xl space-y-6">
 					<div class="space-y-2">
 						<Label for="nombre-tipo">Nombre de tipo documental *</Label>
-						<Input
-							id="nombre-tipo"
-							bind:value={borrador.nombre}
-							placeholder="Ingresa el nombre del tipo documental a configurar"
-						/>
+						<!-- Nombre único en la organización (2026-11-04): mismo trato visual que el nombre de campo repetido del
+						     paso 2 (borde rojo por aria-invalid, ícono y una línea abajo). -->
+						<div class="relative">
+							<Input
+								id="nombre-tipo"
+								bind:value={borrador.nombre}
+								placeholder="Ingresa el nombre del tipo documental a configurar"
+								aria-invalid={nombreTipoRepetido}
+								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : undefined}
+								class={nombreTipoRepetido ? 'pr-9' : undefined}
+							/>
+							{#if nombreTipoRepetido}
+								<AlertCircle
+									class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+								/>
+							{/if}
+						</div>
+						{#if nombreTipoRepetido}
+							<p id="nombre-tipo-error" class="text-xs text-destructive" data-testid="nombre-tipo-repetido">
+								Ya existe un tipo documental con este nombre. Utiliza uno diferente.
+							</p>
+						{/if}
 					</div>
 
 					<div class="space-y-2">
