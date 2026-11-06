@@ -35,8 +35,8 @@
 	//
 	// OJO con lo que esto implica para los formularios (2026-11-05, Moibe: «si me tardo en guardar se borra»): cada 20 s TODO `data` llega con
 	// objetos nuevos, aunque no haya cambiado nada. Un `$effect` que «arranca limpio al abrir» y además LEE un prop que viene de `data` (una
-	// lista de grupos, de tipos…) vuelve a correr con cada renovación y vacía lo que se está escribiendo. Esos efectos dependen SOLO de `open`;
-	// todo lo demás se lee dentro de `untrack` (ver `ExpedienteModal`).
+	// lista que se ofrece para elegir, por ejemplo) vuelve a correr con cada renovación y vacía lo que se está escribiendo. Esos efectos
+	// dependen SOLO de `open`; lo que necesiten leer se lee dentro de `untrack` (ver el comentario del efecto en `ExpedienteModal`).
 	const REVISION_SESION_MS = 20_000;
 	$effect(() => {
 		if (enAcceso || !data.usuario) return;

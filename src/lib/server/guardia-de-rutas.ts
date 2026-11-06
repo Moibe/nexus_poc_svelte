@@ -8,8 +8,9 @@
  *
  * Es el espejo de lo que ya exige nexus_back, ruta por ruta; no inventa permisos:
  *   · `administrar` — `roles.PUEDEN_ADMINISTRAR` (Administrador y Supervisor, y el administrador de plataforma): API Keys, webhooks, procesos,
- *     la biblioteca de tipos documentales, los grupos y todo lo de los procesadores de Document AI. (Los tipos de expediente virtual tenían
- *     aquí su regla; se quitaron con los expedientes virtuales el 2026-11-05 y `/api/tipos-expediente` ya no existe.)
+ *     la biblioteca de tipos documentales y todo lo de los procesadores de Document AI. (Los tipos de expediente virtual tenían aquí su
+ *     regla; se quitaron con los expedientes virtuales el 2026-11-05 y `/api/tipos-expediente` ya no existe. Igual los grupos de
+ *     expedientes: se quitaron el 2026-11-06 y `/api/grupos` ya no existe.)
  *   · `organizar` — `roles.PUEDEN_ORGANIZAR` (además, Analista y Operador): crear expedientes, meter y sacar documentos, ejecutar procesos.
  *
  * LEER (GET) sigue abierto a todo el que opera en la organización, salvo en las rutas donde nexus_back también lo pide a quien administra
@@ -37,7 +38,6 @@ const REGLAS: readonly Regla[] = [
 	// Administrar — solo al escribir (leer lo abre el back a quien opera en la organización: el pipeline y las pantallas de uso lo necesitan).
 	{ patron: /^\/api\/procesos(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
 	{ patron: /^\/api\/tipos-documentales(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
-	{ patron: /^\/api\/grupos(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
 	// Organizar — solo al escribir.
 	{ patron: /^\/api\/expedientes(\/.*)?$/, metodos: 'escritura', exige: 'organizar' },
 	{ patron: /^\/api\/ejecuciones(\/.*)?$/, metodos: 'escritura', exige: 'organizar' }

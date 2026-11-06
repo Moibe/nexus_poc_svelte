@@ -1,6 +1,6 @@
 /**
- * Expediente · lectura de nexus_back desde los `load` de `/expediente`, de Configuración › Grupos y de Archivos procesados (2026-10-24): el
- * listado de expedientes, el de grupos y el expediente abierto piden lo mismo y fallan igual, así que lo hacen aquí en vez de repetirlo.
+ * Expediente · lectura de nexus_back desde los `load` de `/expediente` y de Archivos procesados (2026-10-24): el listado de expedientes y
+ * el expediente abierto piden lo mismo y fallan igual, así que lo hacen aquí en vez de repetirlo.
  *
  * Corre en el servidor, que es quien tiene el JWT en la cookie. La sesión que se cerró desde otro lado (HU05) manda al inicio de
  * sesión y no a una página de error; un id que no es de esta organización responde 404 igual que uno que no existe (HU11), y se
@@ -15,13 +15,12 @@ import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion
 const ESPERA_ESCRITURA_MS = 30_000;
 
 /**
- * Lo que hacen los BFF que ESCRIBEN en un expediente o en un grupo (crear un expediente, asignarle grupo, los grupos mismos): reenviar a
- * nexus_back con el JWT de la persona y devolver lo que diga, con su mismo estado. Un error se devuelve como `{ mensaje }`
- * (el texto que trae nexus_back, o uno genérico), que es lo que leen las pantallas, más su `codigo` si lo trae (`ya_existe`,
- * `con_expedientes`…: algunas pantallas dicen esos casos con sus palabras). La ruta ya trae el `?tenant=` cuando va en la URL;
- * el tenant lo fija siempre quien llama desde la sesión (`tenantDe`), nunca el navegador (HU11).
+ * Lo que hacen los BFF que ESCRIBEN en un expediente (crearlo): reenviar a nexus_back con el JWT de la persona y devolver lo que diga, con
+ * su mismo estado. Un error se devuelve como `{ mensaje }` (el texto que trae nexus_back, o uno genérico), que es lo que leen las
+ * pantallas, más su `codigo` si lo trae (`ya_existe`, `sin_permiso`…: algunas pantallas dicen esos casos con sus palabras). La ruta ya
+ * trae el `?tenant=` cuando va en la URL; el tenant lo fija siempre quien llama desde la sesión (`tenantDe`), nunca el navegador (HU11).
  */
-export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 'PATCH' | 'DELETE', ruta: string, cuerpo?: unknown): Promise<Response> {
+export async function reenviarANexus(cookies: Cookies, metodo: 'POST' | 'PUT' | 'DELETE', ruta: string, cuerpo?: unknown): Promise<Response> {
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus(ruta), {
@@ -58,7 +57,7 @@ export async function leerDeNexus(
 	return cuerpo as Record<string, unknown> | null;
 }
 
-/** El código con que nexus_back distingue un error (`detail.codigo`: `ya_existe`, `con_expedientes`, `sin_permiso`…), si lo trae. */
+/** El código con que nexus_back distingue un error (`detail.codigo`: `ya_existe`, `sin_permiso`…), si lo trae. */
 export function codigoDe(cuerpo: unknown): string | undefined {
 	const detalle = (cuerpo as { detail?: { codigo?: unknown } } | null)?.detail;
 	return typeof detalle?.codigo === 'string' ? detalle.codigo : undefined;

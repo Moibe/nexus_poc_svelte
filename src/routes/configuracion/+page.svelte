@@ -4,11 +4,11 @@
 	 *
 	 * Hasta hoy el engrane abría directo la biblioteca de tipos documentales, en un panel lateral. Ahora en el módulo se configura
 	 * más de una cosa, así que el engrane trae aquí: una página con un cuadro por sección, y cada cuadro lleva a su pantalla.
-	 * Son tres —tipos documentales, procesos y reglas (desde el 2026-10-29; lleva a `/motor-de-reglas` y desde el 2026-11-03 es la ÚNICA
-	 * entrada al motor: el engrane ya no tiene «Motor de reglas») y, desde el 2026-11-03, grupos (el nivel de arriba de los expedientes:
-	 * áreas, departamentos, trimestres… como los llame cada organización)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
+	 * Son dos —tipos documentales y procesos y reglas (desde el 2026-10-29; lleva a `/motor-de-reglas` y desde el 2026-11-03 es la ÚNICA
+	 * entrada al motor: el engrane ya no tiene «Motor de reglas»)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
 	 * Eran cuatro: «Tipos de expediente virtual» se quitó el 2026-11-05 con los expedientes virtuales (decisión de Moibe), y con ella su
-	 * pantalla `/configuracion/tipos-expediente`.
+	 * pantalla `/configuracion/tipos-expediente`; y «Grupos» (el nivel de arriba de los expedientes, del 2026-11-03) se quitó el 2026-11-06
+	 * («en aras de la simplicidad»), con su pantalla `/configuracion/grupos`.
 	 *
 	 * Los expedientes NO viven aquí: se trabajan en el módulo de uso (`/uso`, la opción «Módulo de uso» del engrane, que sustituyó a
 	 * «Expediente» el 2026-10-30). Aquí se configura de qué están hechos; allá se trabaja con ellos.
@@ -17,7 +17,6 @@
 	 * esta parte es de quien administra, en vez de enseñar cuadros que llevan a pantallas que no va a poder usar.
 	 */
 	import Cog from '@lucide/svelte/icons/cog';
-	import Layers from '@lucide/svelte/icons/layers';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Lock from '@lucide/svelte/icons/lock';
 
@@ -42,14 +41,6 @@
 			icono: Cog,
 			descripcion:
 				'Los procesos de tu organización: las reglas que comparan los datos de los documentos de un expediente y el resultado que dan.'
-		},
-		{
-			id: 'grupos',
-			nombre: 'Grupos',
-			href: '/configuracion/grupos',
-			icono: Layers,
-			descripcion:
-				'Los grupos en que viven los expedientes de tu organización: áreas, departamentos, trimestres… como los llames tú. Se crean aquí y al crear cada expediente eliges a cuál pertenece.'
 		}
 	];
 </script>
@@ -95,8 +86,7 @@
 		<div>
 			<p class="text-lg font-medium text-foreground">Esta parte la configura quien administra</p>
 			<p class="mt-1 max-w-lg text-sm text-muted-foreground">
-				Los tipos documentales, los procesos y los grupos los define quien administra tu organización. Si necesitas un cambio aquí,
-				pídeselo.
+				Los tipos documentales y los procesos los define quien administra tu organización. Si necesitas un cambio aquí, pídeselo.
 			</p>
 		</div>
 	</div>

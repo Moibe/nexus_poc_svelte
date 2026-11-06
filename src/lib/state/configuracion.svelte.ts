@@ -1634,8 +1634,8 @@ export function etiquetaVersion(version: number): string {
 
 /**
  * Con qué se compara el nombre de un tipo documental para saber si choca con otro: sin espacios de más y sin distinguir
- * mayúsculas. Es la regla del servidor (`clave_de_nombre` en `tipos_documentales_comun.py`), la misma de procesos, grupos y tipos de
- * expediente: «Cédula  profesional » y «CÉDULA PROFESIONAL» chocan; «Cedula profesional», sin acento, no.
+ * mayúsculas. Es la regla del servidor (`clave_de_nombre` en `tipos_documentales_comun.py`), la misma de los procesos: «Cédula
+ * profesional » y «CÉDULA PROFESIONAL» chocan; «Cedula profesional», sin acento, no.
  */
 export function claveDeNombreTipo(nombre: string): string {
 	return nombre.split(/\s+/).filter(Boolean).join(' ').toLowerCase();

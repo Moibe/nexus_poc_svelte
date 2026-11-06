@@ -2,19 +2,16 @@
  * Un expediente como lo devuelve nexus_back (`/expedientes`): la carpeta de un cliente o de un caso, un RECEPTÁCULO de documentos. No tiene
  * tipo (desde el 2026-10-29) ni nada que lo subdivida: el 2026-11-05 Moibe quitó los expedientes virtuales («ahora podremos meter el
  * expediente completo a la ejecución de un proceso»), así que el motor de reglas corre sobre el expediente entero y encuentra cada documento
- * por su tipo documental. Se llama por su `nombre`; no tiene folio. Aquí solo viven los campos que las pantallas usan, más los
+ * por su tipo documental. Tampoco lo agrupa nada: los grupos de expedientes (2026-11-03) se quitaron el 2026-11-06 «en aras de la
+ * simplicidad». Se llama por su `nombre`; no tiene folio. Aquí solo viven los campos que las pantallas usan, más los
  * formateadores de lo que se muestra de ellos (peso, fecha, formato del archivo): sin dependencias, para poder probarlos sueltos
  * (`node --experimental-strip-types`).
  */
-
-import type { GrupoDeExpediente } from './grupos';
 
 /** Lo que dice la lista de cada expediente. */
 export type Expediente = {
 	id: string;
 	nombre: string;
-	/** El grupo en que vive (2026-11-03). `null`: es de antes de los grupos y todavía no se le asigna uno. Puede faltar si el servidor es anterior. */
-	grupo?: GrupoDeExpediente | null;
 	creadoPor: string | null;
 	creadoEn: string | null;
 	/** Cuántos documentos tiene. */
@@ -145,8 +142,6 @@ export type OrdenExpedientes =
 	| 'antiguos'
 	| 'nombre'
 	| 'nombre-desc'
-	| 'grupo'
-	| 'grupo-desc'
 	| 'archivos'
 	| 'archivos-asc'
 	| 'peso'
@@ -159,8 +154,6 @@ export const OPCIONES_ORDEN_EXPEDIENTES: { valor: OrdenExpedientes; etiqueta: st
 	{ valor: 'antiguos', etiqueta: 'Más antiguos primero' },
 	{ valor: 'nombre', etiqueta: 'Nombre (A-Z)' },
 	{ valor: 'nombre-desc', etiqueta: 'Nombre (Z-A)' },
-	{ valor: 'grupo', etiqueta: 'Grupo (A-Z)' },
-	{ valor: 'grupo-desc', etiqueta: 'Grupo (Z-A)' },
 	{ valor: 'archivos', etiqueta: 'Más archivos primero' },
 	{ valor: 'archivos-asc', etiqueta: 'Menos archivos primero' },
 	{ valor: 'peso', etiqueta: 'Más pesados primero' },
@@ -180,7 +173,6 @@ const comparar = (a: number, b: number) => (a < b ? -1 : a > b ? 1 : 0);
 /** Lo mínimo que hace falta de un expediente para ordenarlo (un `Expediente` de verdad lo cumple). */
 type Ordenable = {
 	nombre: string;
-	grupo?: GrupoDeExpediente | null;
 	totalDocumentos?: number;
 	tamanoBytes?: number;
 	creadoEn?: string | null;
@@ -203,12 +195,6 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 	const filas = lista.map((e, i) => ({ e, i }));
 	type Fila = (typeof filas)[number];
 	const nombre = (a: Fila, b: Fila) => porNombre(a.e.nombre, b.e.nombre) || a.i - b.i;
-	const porGrupo = (a: Fila, b: Fila, sentido: 1 | -1) => {
-		const ga = a.e.grupo?.nombre ?? null;
-		const gb = b.e.grupo?.nombre ?? null;
-		if (ga === null || gb === null) return ga === gb ? 0 : ga === null ? 1 : -1;
-		return sentido * porNombre(ga, gb);
-	};
 	const archivos = (a: Fila) => a.e.totalDocumentos ?? 0;
 	const peso = (a: Fila) => a.e.tamanoBytes ?? 0;
 	const criterios: Record<OrdenExpedientes, (a: Fila, b: Fila) => number> = {
@@ -216,9 +202,6 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 		antiguos: (a, b) => comparar(cuando(a.e), cuando(b.e)) || a.i - b.i,
 		nombre,
 		'nombre-desc': (a, b) => porNombre(b.e.nombre, a.e.nombre) || a.i - b.i,
-		// Los que no tienen grupo van SIEMPRE al final, en las dos direcciones: «sin grupo» no es un grupo que ordenar entre los demás.
-		grupo: (a, b) => porGrupo(a, b, 1) || nombre(a, b),
-		'grupo-desc': (a, b) => porGrupo(a, b, -1) || nombre(a, b),
 		archivos: (a, b) => comparar(archivos(b), archivos(a)) || nombre(a, b),
 		'archivos-asc': (a, b) => comparar(archivos(a), archivos(b)) || nombre(a, b),
 		peso: (a, b) => comparar(peso(b), peso(a)) || nombre(a, b),
@@ -228,7 +211,7 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 }
 
 /** Las columnas de la lista, de izquierda a derecha, y el orden de cada una en cada dirección. */
-export type ColumnaExpedientes = 'nombre' | 'grupo' | 'archivos' | 'peso' | 'creado';
+export type ColumnaExpedientes = 'nombre' | 'archivos' | 'peso' | 'creado';
 
 export const COLUMNAS_EXPEDIENTES: {
 	columna: ColumnaExpedientes;
@@ -239,7 +222,6 @@ export const COLUMNAS_EXPEDIENTES: {
 	primera: 'asc' | 'desc';
 }[] = [
 	{ columna: 'nombre', etiqueta: 'Expediente', asc: 'nombre', desc: 'nombre-desc', primera: 'asc' },
-	{ columna: 'grupo', etiqueta: 'Grupo', asc: 'grupo', desc: 'grupo-desc', primera: 'asc' },
 	{ columna: 'archivos', etiqueta: 'Archivos', asc: 'archivos-asc', desc: 'archivos', primera: 'desc' },
 	{ columna: 'peso', etiqueta: 'Peso', asc: 'peso-asc', desc: 'peso', primera: 'desc' },
 	{ columna: 'creado', etiqueta: 'Fecha de creación', asc: 'antiguos', desc: 'recientes', primera: 'desc' }
@@ -272,24 +254,20 @@ export const OPCIONES_FILTRO_DOCUMENTOS: { valor: FiltroDocumentos; etiqueta: st
 	{ valor: 'sin', etiqueta: 'Sin documentos' }
 ];
 
-/** Lo que vale «Sin grupo» en el filtro de grupos: los expedientes de antes de los grupos, que todavía no tienen. */
-export const FILTRO_SIN_GRUPO = 'sin-grupo';
-
 /**
- * Lo que el listado puede filtrar: el texto (el nombre, sin importar mayúsculas ni acentos), el grupo (los ids de los grupos elegidos,
- * más «Sin grupo»; elegir varios es «cualquiera de ellos»), si tienen o no documentos y el rango de fechas en que se crearon (extremos
- * incluidos, en la hora de quien mira; solo se aplica con los dos extremos, como el calendario del resto de la app). Desde el 2026-10-29 el
- * expediente no tiene tipo, así que ya no se filtra por tipo; desde el 2026-11-03 sí por grupo.
+ * Lo que el listado puede filtrar: el texto (el nombre, sin importar mayúsculas ni acentos), si tienen o no documentos y el rango de
+ * fechas en que se crearon (extremos incluidos, en la hora de quien mira; solo se aplica con los dos extremos, como el calendario del
+ * resto de la app). Desde el 2026-10-29 el expediente no tiene tipo, así que ya no se filtra por tipo; del 2026-11-03 al 2026-11-06 se
+ * filtró por grupo, y los grupos se quitaron.
  */
 export type FiltrosExpedientes = {
 	texto: string;
-	grupos: string[];
 	documentos: FiltroDocumentos[];
 	desde: Date | null;
 	hasta: Date | null;
 };
 
-export const SIN_FILTROS: FiltrosExpedientes = { texto: '', grupos: [], documentos: [], desde: null, hasta: null };
+export const SIN_FILTROS: FiltrosExpedientes = { texto: '', documentos: [], desde: null, hasta: null };
 
 type Filtrable = Ordenable;
 
@@ -298,7 +276,7 @@ const finDelDia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate
 
 /** ¿Hay algún filtro puesto, además del texto? Los dos «con/sin documentos» juntos o un rango a medias no filtran nada. */
 function hayFiltrosAparte(f: FiltrosExpedientes): boolean {
-	return filtraDocumentos(f) !== null || f.grupos.length > 0 || (f.desde !== null && f.hasta !== null);
+	return filtraDocumentos(f) !== null || (f.desde !== null && f.hasta !== null);
 }
 
 /** ¿Hay algo filtrando? Un texto de solo espacios cuenta como ningún texto. */
@@ -327,7 +305,6 @@ export function filtrarExpedientes<T extends Filtrable>(lista: T[], f: FiltrosEx
 	const rango = f.desde && f.hasta ? { de: inicioDelDia(f.desde), a: finDelDia(f.hasta) } : null;
 	return lista.filter((e) => {
 		if (q && !normalizar(e.nombre).includes(q)) return false;
-		if (f.grupos.length > 0 && !(e.grupo ? f.grupos.includes(e.grupo.id) : f.grupos.includes(FILTRO_SIN_GRUPO))) return false;
 		if (documentos === 'con' && !((e.totalDocumentos ?? 0) > 0)) return false;
 		if (documentos === 'sin' && (e.totalDocumentos ?? 0) > 0) return false;
 		if (rango) {

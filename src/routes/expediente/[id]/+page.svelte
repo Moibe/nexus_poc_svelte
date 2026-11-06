@@ -30,9 +30,9 @@
 	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo, y por ese tipo lo encuentran los procesos del motor de reglas. La ventana de
 	 * subir dice la regla y cómo le fue a cada archivo.
 	 *
-	 * **Grupo (2026-11-03, decisión de Moibe).** El expediente vive en un grupo (áreas, departamentos, trimestres… como lo llame cada
-	 * organización): el encabezado lo dice, o dice «Sin grupo» si es de antes de los grupos. Quien organiza lo asigna o lo cambia con el botón de
-	 * al lado (`AsignarGrupoModal`): un expediente se puede pasar de un grupo a otro, pero no dejar sin grupo.
+	 * **Sin grupos (2026-11-06, decisión de Moibe).** Del 2026-11-03 al 2026-11-06 el encabezado decía en qué GRUPO vivía el expediente («Sin
+	 * grupo» si era de antes) y quien organiza lo asignaba o lo cambiaba con un botón. Moibe quitó los grupos «en aras de la simplicidad»: el
+	 * encabezado vuelve a decir solo el nombre y el total de archivos.
 	 *
 	 * **Quitar un documento (2026-11-04, Moibe: «que un archivo pueda ser borrado de un expediente»).** Quien organiza tiene «Quitar» en cada
 	 * tarjeta. Pregunta antes con la confirmación de la casa (`ConfirmarAccion`). Sacarlo NO borra el archivo: sigue siendo de la organización
@@ -40,14 +40,11 @@
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
-	import Layers from '@lucide/svelte/icons/layers';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Upload from '@lucide/svelte/icons/upload';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
-	import AsignarGrupoModal from '$lib/components/expedientes/AsignarGrupoModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
@@ -73,7 +70,6 @@
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
 	let subida = $state(false);
-	let asignandoGrupo = $state(false);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 	let error = $state('');
 	/** El documento que se va a quitar, mientras la confirmación está abierta. */
@@ -152,27 +148,6 @@
 						data-testid="total-documentos">{expediente.documentos.length}</span
 					>
 					<span class="shrink-0">Total de archivos</span>
-					<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
-					<!-- El grupo en que vive. Los de antes de los grupos no tienen: se dice, y quien organiza puede asignárselo desde aquí. -->
-					<span class="flex min-w-0 items-center gap-1" data-testid="expediente-detalle-grupo" data-con-grupo={expediente.grupo ? 'si' : 'no'}>
-						<Layers class="size-3 shrink-0" aria-hidden="true" />
-						<span class="truncate" title={expediente.grupo?.nombre ?? 'Sin grupo'}>{expediente.grupo?.nombre ?? 'Sin grupo'}</span>
-						{#if data.puedeOrganizar}
-							<button
-								type="button"
-								class="-my-1 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-primary transition-colors outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50"
-								data-testid="cambiar-grupo-expediente"
-								aria-label={expediente.grupo ? `Cambiar el grupo de «${expediente.nombre}»` : `Asignar un grupo a «${expediente.nombre}»`}
-								onclick={() => {
-									aviso = null;
-									asignandoGrupo = true;
-								}}
-							>
-								<Pencil class="size-3" aria-hidden="true" />
-								{expediente.grupo ? 'Cambiar' : 'Asignar grupo'}
-							</button>
-						{/if}
-					</span>
 					<!-- Duplicados (2026-11-03; del expediente entero desde el 2026-11-05): documentos de un mismo tipo. El aviso de abajo dice cuáles. -->
 					{#if duplicados.length > 0}
 						<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
@@ -293,20 +268,6 @@
 		</ul>
 	{/if}
 </div>
-
-<AsignarGrupoModal
-	bind:open={asignandoGrupo}
-	expediente={{ id: expediente.id, nombre: expediente.nombre, grupo: expediente.grupo }}
-	grupos={data.grupos}
-	gruposFallo={data.gruposFallo}
-	puedeCrearGrupo={data.puedeAdministrar}
-	alAsignar={async (grupo, cambiado) => {
-		// El expediente YA está en ese grupo: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad. Si ya estaba ahí no hay
-		// de qué avisar.
-		if (cambiado) aviso = { testid: 'grupo-asignado-aviso', titulo: 'Grupo asignado', cuerpo: `«${expediente.nombre}» ahora está en el grupo «${grupo}».` };
-		await invalidateAll();
-	}}
-/>
 
 <!-- Antes de sacar un documento del expediente: dice que el archivo NO se borra. -->
 <ConfirmarAccion
