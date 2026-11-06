@@ -26,6 +26,7 @@
 	 * hasta el primer guardado; nexus_back lo vuelve a comprobar al guardar.
 	 */
 	import X from '@lucide/svelte/icons/x';
+	import { tick } from 'svelte';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -59,6 +60,16 @@
 	);
 	const completo = $derived(nombreLimpio !== '' && !repetido && elegidos.length > 0);
 
+	// Lo elegido se enseña debajo del desplegable, y el panel es de alto fijo con scroll por dentro: en una pantalla normal las etiquetas quedaban al
+	// borde o cortadas y había que desplazar para confirmar qué se marcó y en qué orden (lo vio la prueba en navegador, 2026-11-06). Al marcar, se
+	// desplaza lo justo para que se vean.
+	let listaElegidos = $state<HTMLUListElement | null>(null);
+	$effect(() => {
+		if (elegidos.length === 0 || !listaElegidos) return;
+		const lista = listaElegidos;
+		void tick().then(() => lista.scrollIntoView({ block: 'nearest' }));
+	});
+
 	function continuar() {
 		if (!completo) return;
 		alContinuar({ nombre: nombreLimpio, tipos: [...new Set(elegidos)] });
@@ -75,12 +86,9 @@
 >
 	<div class="min-h-0 flex-1 overflow-y-auto">
 		<h3 class="text-xl font-medium text-foreground">Nuevo proceso</h3>
-		<p class="mt-1 text-sm text-muted-foreground">
-			Un proceso corre sobre un expediente completo y toma de él los documentos de los tipos que elijas aquí. Estos tipos serán las entradas de tu proceso en
-			el lienzo; los campos de cada uno y las reglas las armas allá.
-		</p>
+		<p class="mt-1 text-sm text-muted-foreground">Corre sobre un expediente completo y toma de él los documentos de los tipos que elijas.</p>
 
-		<div class="mt-5 rounded-xl border border-border bg-card p-4">
+		<div class="mt-4 rounded-xl border border-border bg-card p-4">
 			<label for="nuevo-proceso-nombre" class="text-base font-medium text-foreground">Nombre de proceso *</label>
 			<Input
 				id="nuevo-proceso-nombre"
@@ -100,7 +108,7 @@
 			{/if}
 		</div>
 
-		<div class="mt-6 border-t border-border pt-5">
+		<div class="mt-4 border-t border-border pt-4">
 			<h4 class="text-xl font-medium text-foreground">Selección de tipos documentales</h4>
 			<p class="mt-1 text-sm text-muted-foreground">Marca todos los tipos documentales que necesita este proceso. Los campos los eliges después, en el lienzo.</p>
 
@@ -127,7 +135,7 @@
 					</div>
 
 					{#if elegidos.length > 0}
-						<ul class="mt-3 flex flex-wrap gap-2" data-testid="nuevo-proceso-elegidos" aria-label="Tipos documentales elegidos">
+						<ul bind:this={listaElegidos} class="mt-3 flex flex-wrap gap-2" data-testid="nuevo-proceso-elegidos" aria-label="Tipos documentales elegidos">
 							{#each elegidos as id (id)}
 								<li class="flex items-center gap-1 rounded-full border border-border bg-muted/60 py-1 pr-1 pl-3 text-sm text-foreground" data-testid="nuevo-proceso-elegido">
 									<span>{nombreDe(id)}</span>

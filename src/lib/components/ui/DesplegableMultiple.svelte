@@ -39,6 +39,10 @@
 	} = $props();
 
 	let abierto = $state(false);
+	// Al cerrarse, el Popover devuelve el foco al botón. Si se cerró porque la persona hizo clic en OTRA cosa (el campo de al lado), ese clic ya
+	// puso el foco donde quería y devolverlo al botón le robaba lo que tecleaba después (2026-11-06, prueba en navegador): en ese caso no se devuelve.
+	// Con Escape o al elegir sí, que es lo que ayuda a quien navega con el teclado.
+	let cerroPorClicFuera = false;
 
 	const resumen = $derived(
 		valor.length === 0
@@ -68,6 +72,11 @@
 		<Popover.Content
 			align="start"
 			sideOffset={4}
+			onInteractOutside={() => (cerroPorClicFuera = true)}
+			onCloseAutoFocus={(e) => {
+				if (cerroPorClicFuera) e.preventDefault();
+				cerroPorClicFuera = false;
+			}}
 			data-testid="{testid}-lista"
 			class="z-70 max-h-80 w-max max-w-80 min-w-[max(13rem,var(--bits-popover-anchor-width))] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-lg"
 		>
