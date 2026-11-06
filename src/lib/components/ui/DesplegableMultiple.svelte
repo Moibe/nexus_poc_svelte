@@ -43,6 +43,9 @@
 	// puso el foco donde quería y devolverlo al botón le robaba lo que tecleaba después (2026-11-06, prueba en navegador): en ese caso no se devuelve.
 	// Con Escape o al elegir sí, que es lo que ayuda a quien navega con el teclado.
 	let cerroPorClicFuera = false;
+	// Y la lista NO atrapa el foco (`trapFocus={false}` abajo): con la trampa, el clic en un campo de al lado le daba el foco un instante y la trampa se
+	// lo jalaba de vuelta a la lista antes de que se cerrara, así que el foco terminaba en el `body` y lo que se tecleaba se perdía (medido con eventos
+	// en la prueba en navegador). Es una lista de casillas, no un diálogo modal: no necesita encerrar el foco.
 
 	const resumen = $derived(
 		valor.length === 0
@@ -72,6 +75,7 @@
 		<Popover.Content
 			align="start"
 			sideOffset={4}
+			trapFocus={false}
 			onInteractOutside={() => (cerroPorClicFuera = true)}
 			onCloseAutoFocus={(e) => {
 				if (cerroPorClicFuera) e.preventDefault();
