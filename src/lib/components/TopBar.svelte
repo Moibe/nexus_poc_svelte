@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import logo from '$lib/assets/biblioratum-logo.png';
+	import logoOscuro from '$lib/assets/biblioratum-logo-oscuro.png';
 	import DashboardCircleIcon from '$lib/components/icons/DashboardCircleIcon.svelte';
 	import UserStatusIcon from '$lib/components/icons/UserStatusIcon.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -154,7 +155,9 @@
 	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-6 px-6">
 		<div class="flex items-center gap-6">
 			<a href="/" class="flex items-center">
-				<img src={logo} alt="Biblioratum by Grupo CSI" class="h-9 w-auto" />
+				<!-- Dos logos y el tema decide cuál se ve (2026-11-06): el oscuro trae el texto en blanco. -->
+				<img src={logo} alt="Biblioratum by Grupo CSI" class="h-9 w-auto dark:hidden" />
+				<img src={logoOscuro} alt="Biblioratum by Grupo CSI" class="hidden h-9 w-auto dark:block" />
 			</a>
 
 			<nav class="flex items-center gap-2">
