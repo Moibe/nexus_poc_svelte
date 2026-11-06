@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import nexusLogo from '$lib/assets/nexus-logo.png';
+	import logo from '$lib/assets/biblioratum-logo.png';
 	import DashboardCircleIcon from '$lib/components/icons/DashboardCircleIcon.svelte';
 	import UserStatusIcon from '$lib/components/icons/UserStatusIcon.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
@@ -154,7 +154,7 @@
 	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-6 px-6">
 		<div class="flex items-center gap-6">
 			<a href="/" class="flex items-center">
-				<img src={nexusLogo} alt="NexusDoc AI" class="h-9 w-auto" />
+				<img src={logo} alt="Biblioratum by Grupo CSI" class="h-9 w-auto" />
 			</a>
 
 			<nav class="flex items-center gap-2">

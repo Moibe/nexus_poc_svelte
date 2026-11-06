@@ -15,7 +15,7 @@
 	 */
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
-	import logo from '$lib/assets/nexus-logo.png';
+	import logo from '$lib/assets/biblioratum-logo.png';
 	import BanderaMexico from '$lib/components/icons/BanderaMexico.svelte';
 
 	let { children } = $props();
@@ -24,8 +24,8 @@
 <div class="flex min-h-screen bg-background">
 	<div class="flex w-full flex-col lg:w-[52%]">
 		<header class="flex items-center justify-between px-8 py-6 lg:px-14">
-			<a href="/acceso/iniciar-sesion" class="flex items-center" aria-label="NexusDoc AI">
-				<img src={logo} alt="NexusDoc AI" class="h-7 w-auto" />
+			<a href="/acceso/iniciar-sesion" class="flex items-center" aria-label="Biblioratum">
+				<img src={logo} alt="Biblioratum by Grupo CSI" class="h-7 w-auto" />
 			</a>
 			<button
 				type="button"
