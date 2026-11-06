@@ -672,9 +672,10 @@
 		tiposPorSembrar = [];
 		untrack(() => void sembrar(tipos));
 	});
-	/** Un nodo por tipo, en una columna a la izquierda (el lienzo corre cada uno a la derecha de lo que taparía), y la vista ajustada a ellos. */
+	/** Un nodo por tipo, en una columna a la izquierda (el lienzo corre cada uno a la derecha de lo que taparía), y la vista ajustada a ellos.
+	 *  240 px entre uno y otro: un nodo sin campos mide ~192 y con 190 quedaban pegados y solapados (lo vio la prueba en navegador, 2026-11-06). */
 	async function sembrar(tipos: string[]) {
-		tipos.forEach((tipoId, i) => agregar(tipoId, { x: 40, y: 40 + i * 190 }));
+		tipos.forEach((tipoId, i) => agregar(tipoId, { x: 40, y: 40 + i * 240 }));
 		await tick();
 		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
 	}
