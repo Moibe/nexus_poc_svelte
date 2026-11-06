@@ -123,7 +123,7 @@
 	// solo a quien le toca (2026-10-30). Aquí solo está la lista, en el orden en que se enseña:
 	// los dos módulos hasta arriba (Moibe, 2026-10-30), y el de configuración primero, antes que el de uso (Moibe, 2026-11-03).
 	// «Motor de reglas» ya no tiene opción propia (Moibe, 2026-11-03: «solo entraremos vía Módulo de Configuración»): se entra por la tarjeta
-	// «Procesos y reglas» de `/configuracion`. La ruta `/motor-de-reglas` sigue igual.
+	// «Procesos» de `/configuracion` (hasta el 2026-11-06 se llamaba «Procesos y reglas»). La ruta `/motor-de-reglas` sigue igual.
 	const TODAS_LAS_OPCIONES: { id: OpcionDelEngrane; etiqueta: string; icono: typeof SlidersHorizontal; alSeleccionar: (() => void) | undefined }[] = [
 		// Desde el 2026-10-25 lleva a una PÁGINA con un cuadro por sección (tipos documentales, tipos de expediente), en vez de
 		// abrir de golpe la biblioteca de tipos documentales en un panel: en el módulo ya se configura más de una cosa.

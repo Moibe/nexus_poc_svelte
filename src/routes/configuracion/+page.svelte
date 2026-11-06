@@ -4,8 +4,9 @@
 	 *
 	 * Hasta hoy el engrane abría directo la biblioteca de tipos documentales, en un panel lateral. Ahora en el módulo se configura
 	 * más de una cosa, así que el engrane trae aquí: una página con un cuadro por sección, y cada cuadro lleva a su pantalla.
-	 * Son dos —tipos documentales y procesos y reglas (desde el 2026-10-29; lleva a `/motor-de-reglas` y desde el 2026-11-03 es la ÚNICA
-	 * entrada al motor: el engrane ya no tiene «Motor de reglas»)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
+	 * Son dos —tipos documentales y procesos (desde el 2026-10-29; lleva a `/motor-de-reglas` y desde el 2026-11-03 es la ÚNICA entrada al
+	 * motor: el engrane ya no tiene «Motor de reglas»)—; agregar la siguiente es agregar un renglón a `SECCIONES`. La tarjeta de procesos se
+	 * llamó «Procesos y reglas» hasta el 2026-11-06 (Moibe: «que esto ya solo se llame Procesos, no Procesos y reglas»).
 	 * Eran cuatro: «Tipos de expediente virtual» se quitó el 2026-11-05 con los expedientes virtuales (decisión de Moibe), y con ella su
 	 * pantalla `/configuracion/tipos-expediente`; y «Grupos» (el nivel de arriba de los expedientes, del 2026-11-03) se quitó el 2026-11-06
 	 * («en aras de la simplicidad»), con su pantalla `/configuracion/grupos`.
@@ -34,8 +35,8 @@
 				'La biblioteca de tu organización: qué documentos reconoce Biblioratum, qué campos extrae de cada uno y cómo se calibran con ejemplos.'
 		},
 		{
-			id: 'procesos-y-reglas',
-			nombre: 'Procesos y reglas',
+			id: 'procesos',
+			nombre: 'Procesos',
 			href: '/motor-de-reglas',
 			// El ícono que tuvo «Motor de reglas» en el menú del engrane, de donde se quitó el 2026-11-03: ahora se entra por aquí.
 			icono: Cog,
