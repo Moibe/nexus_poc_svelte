@@ -12,6 +12,7 @@
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { descargarBlob } from '$lib/documentos/descargar';
 	import { fechaCorta } from '$lib/expedientes/expedientes';
 
 	type Campo = {
@@ -38,9 +39,21 @@
 		campos: Campo[];
 	};
 
-	let { documento = $bindable() }: { documento: { id: string; nombre: string } | null } = $props();
+	/**
+	 * `vista` es con cuál pestaña abre (2026-11-06, Moibe: «que pueda ver su json»): «Campos» (la tabla de siempre) o «JSON» (lo mismo que dice nexus_back, tal cual,
+	 * con «Descargar .json»). `contexto` es de dónde se abrió, para la migaja de arriba («Archivos procesados» por omisión).
+	 */
+	let { documento = $bindable() }: { documento: { id: string; nombre: string; vista?: 'campos' | 'json'; contexto?: string } | null } = $props();
 
+	let vista = $state<'campos' | 'json'>('campos');
 	let datos = $state<Datos | null>(null);
+	const json = $derived(datos ? JSON.stringify(datos, null, 2) : '');
+	function descargarJson() {
+		if (!documento || !datos) return;
+		const base = documento.nombre.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'documento';
+		descargarBlob(new Blob([json], { type: 'application/json;charset=utf-8' }), `${base}.datos.json`);
+	}
+
 	let error = $state('');
 	let abierto = $state(false);
 
@@ -49,6 +62,7 @@
 		abierto = doc !== null;
 		datos = null;
 		error = '';
+		vista = doc?.vista ?? 'campos';
 		if (!doc) return;
 		let vigente = true;
 		fetch(`/api/documentos/${encodeURIComponent(doc.id)}/datos`)
@@ -86,7 +100,7 @@
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Archivos procesados / {documento?.nombre}</p>
+				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{documento?.contexto ?? 'Archivos procesados'} / {documento?.nombre}</p>
 				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground">
 					<CancelSquareIcon />
 					<span class="sr-only">Cerrar</span>
@@ -113,11 +127,35 @@
 				</div>
 			</div>
 
+			<!-- Dos pestañas: la tabla de campos de siempre y el JSON de lo mismo. Sin datos no hay nada que cambiar. -->
+			{#if datos}
+				<div class="flex gap-1 border-b border-border px-1" role="tablist" aria-label="Cómo ver los datos">
+					{#each [['campos', 'Campos'], ['json', 'JSON']] as const as [clave, texto] (clave)}
+						<button
+							type="button"
+							role="tab"
+							aria-selected={vista === clave}
+							data-testid="datos-pestana-{clave}"
+							class="-mb-px border-b-2 px-3 py-1.5 text-sm transition-colors {vista === clave ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+							onclick={() => (vista = clave)}
+						>
+							{texto}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
 			<div class="px-1 pb-2">
 				{#if error}
 					<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>
 				{:else if !datos}
 					<p class="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+				{:else if vista === 'json'}
+					<div class="mt-3 flex items-center justify-between gap-3">
+						<p class="text-xs text-muted-foreground">Los datos del documento tal como los guarda Biblioratum.</p>
+						<Button type="button" variant="outline" size="sm" data-testid="descargar-json-datos" onclick={descargarJson}>Descargar .json</Button>
+					</div>
+					<pre class="mt-2 max-h-[55vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed text-foreground" data-testid="json-datos-extraidos">{json}</pre>
 				{:else}
 					{#if datos.extraccion?.estado === 'error'}
 						<p class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="ultima-corrida-fallo">

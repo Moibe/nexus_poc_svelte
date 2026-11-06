@@ -31,6 +31,8 @@ export type DocumentoDeExpediente = {
 	recibidoEn: string | null;
 	/** La huella SHA-256 de sus bytes, la que guarda nexus_back. Sirve para avisar de duplicados al subir (2026-11-02). */
 	sha256?: string;
+	/** Dónde está el archivo en el almacén (`{organización}/{aa}/{bb}/{sha256}`): con ella se pide a `/api/archivos/<ruta>` para verlo (2026-11-06). Puede faltar en un servidor anterior. */
+	rutaRelativa?: string;
 	/** Qué tipo documental es, según lo que se guardó al procesarlo (migración 0007): el de su última extracción o, si no se extrajo, el
 	 *  de su última clasificación. `null` si nunca se procesó desde que se guarda o el clasificador dijo «otro». */
 	tipoDocumental?: TipoDeDocumento | null;

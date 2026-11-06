@@ -19,6 +19,8 @@
 	 * virtuales, donde esta misma tarjeta sacaba el documento del «grupito» y no del expediente, se quitaron el 2026-11-05 (y con ellos la
 	 * marca «Agregado por el clasificador», que solo existía dentro de uno).
 	 */
+	import Braces from '@lucide/svelte/icons/braces';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
@@ -29,6 +31,7 @@
 	let {
 		documento,
 		alQuitar,
+		alVerDatos,
 		quitando = false,
 		ayudaQuitar = `Quitar «${documento.nombreOriginal}» de este expediente`,
 		testidQuitar = 'quitar-del-expediente'
@@ -36,6 +39,8 @@
 		documento: DocumentoDeExpediente;
 		/** Si viene, la tarjeta ofrece «Quitar» (del expediente). */
 		alQuitar?: () => void;
+		/** Si viene, la tarjeta ofrece «Ver JSON» (los datos extraídos del documento, en una ventana). */
+		alVerDatos?: () => void;
 		/** Se está quitando: el botón gira y no se puede volver a picar. */
 		quitando?: boolean;
 		/** Lo que el botón dice a un lector de pantalla: de DÓNDE se quita. */
@@ -43,6 +48,10 @@
 		testidQuitar?: string;
 	} = $props();
 
+	/** El archivo se abre en otra pestaña con el visor del navegador (2026-11-06): el servidor lo entrega en línea con su tipo de contenido. */
+	const direccionDelArchivo = $derived(
+		documento.rutaRelativa ? `/api/archivos/${documento.rutaRelativa}?mime=${encodeURIComponent(documento.mime || 'application/pdf')}` : null
+	);
 	const tipo = $derived(documento.tipoDocumental ?? null);
 	/** ¿Está duplicado? Hay otro documento del mismo tipo en el expediente (lo calcula nexus_back al leerlo). */
 	const duplicado = $derived(Boolean(documento.duplicado));
@@ -77,6 +86,36 @@
 				<TriangleAlert class="mt-px size-3 shrink-0" />
 				<span>{tipo ? `Duplicado de «${tipo.nombre}»` : 'Duplicado'}</span>
 			</p>
+		{/if}
+		<!-- Ver el archivo y ver su JSON (2026-11-06, Moibe: «que pueda ver su json y pdf en el doc que reside en expediente»). Los ve quien vea el expediente. -->
+		{#if direccionDelArchivo || alVerDatos}
+			<div class="flex items-center gap-3 text-xs">
+				{#if direccionDelArchivo}
+					<a
+						href={direccionDelArchivo}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+						data-testid="ver-archivo-documento"
+						aria-label="Ver el archivo «{documento.nombreOriginal}» ({formatoDe(documento)})"
+					>
+						<FileText class="size-3" />
+						Ver {formatoDe(documento)}
+					</a>
+				{/if}
+				{#if alVerDatos}
+					<button
+						type="button"
+						class="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+						onclick={alVerDatos}
+						aria-label="Ver el JSON de los datos extraídos de «{documento.nombreOriginal}»"
+						data-testid="ver-json-documento"
+					>
+						<Braces class="size-3" />
+						Ver JSON
+					</button>
+				{/if}
+			</div>
 		{/if}
 		<div class="flex items-center justify-between gap-2">
 			<p class="text-xs font-medium text-muted-foreground" data-testid="documento-fecha">{fechaCorta(documento.recibidoEn)}</p>

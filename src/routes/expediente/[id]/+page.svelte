@@ -45,6 +45,7 @@
 	import Upload from '@lucide/svelte/icons/upload';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
+	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
@@ -70,6 +71,8 @@
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
 	let subida = $state(false);
+	/** El documento cuyos datos (JSON) se están viendo (2026-11-06). */
+	let datosDe = $state<{ id: string; nombre: string; vista?: 'campos' | 'json'; contexto?: string } | null>(null);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 	let error = $state('');
 	/** El documento que se va a quitar, mientras la confirmación está abierta. */
@@ -254,6 +257,7 @@
 				<li>
 					<TarjetaDocumento
 						{documento}
+						alVerDatos={() => (datosDe = { id: documento.id, nombre: documento.nombreOriginal, vista: 'json', contexto: expediente.nombre })}
 						alQuitar={data.puedeOrganizar
 							? () => {
 									aviso = null;
@@ -268,6 +272,8 @@
 		</ul>
 	{/if}
 </div>
+
+<DatosExtraidosModal bind:documento={datosDe} />
 
 <!-- Antes de sacar un documento del expediente: dice que el archivo NO se borra. -->
 <ConfirmarAccion
