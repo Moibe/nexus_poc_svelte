@@ -4,7 +4,8 @@
 	 * de la organización, buscarlos, filtrarlos, ordenarlos, CREAR uno y abrirlo. El encabezado lo pone `./+layout.svelte`.
 	 *
 	 * Un expediente es la carpeta de un cliente o de un caso: un RECEPTÁCULO de documentos. Desde el 2026-10-29 (decisión de Moibe) NO
-	 * tiene tipo: lo que tiene tipo son sus expedientes virtuales, que se arman dentro de cada expediente (`/expediente/[id]`). Tres estados:
+	 * tiene tipo, y desde el 2026-11-05 tampoco lo subdividen expedientes virtuales (Moibe los quitó): el motor de reglas corre sobre el
+	 * expediente completo. Tres estados:
 	 *   · Sin expedientes: el estado vacío del diseño, con su tarjeta «Crea un nuevo expediente» (solo para quien organiza).
 	 *   · Con expedientes: el listado, que se ve como LISTA (una tabla con una fila por expediente) o como MOSAICO (una carpeta por
 	 *     expediente, que es el del diseño). Es lo mismo en las dos: los mismos filtros, el mismo orden y los mismos expedientes.

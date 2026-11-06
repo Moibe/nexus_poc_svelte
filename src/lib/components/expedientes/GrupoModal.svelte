@@ -10,8 +10,8 @@
 	 * Sin `grupo` el modal da de alta uno. Con `grupo` lo RENOMBRA: viene con el nombre actual y «Guardar cambios» solo se enciende si cambió
 	 * de verdad (cambiarle solo las mayúsculas sí cuenta). Los expedientes del grupo ven el nombre nuevo sin tocarlos (guardan el id).
 	 *
-	 * Mismo molde que «Nuevo expediente» (`ExpedienteModal`) y que «Nuevo tipo de expediente virtual» (`TipoExpedienteModal`): modal centrado de
-	 * 684 px con cabecera, título con su ícono, cuerpo con el campo y pie con «Cancelar» y el botón principal.
+	 * Mismo molde que «Nuevo expediente» (`ExpedienteModal`), que a su vez salió del «Registro de motivo»: modal centrado de 684 px con
+	 * cabecera, título con su ícono, cuerpo con el campo y pie con «Cancelar» y el botón principal.
 	 *
 	 * El nombre es obligatorio y mide como mucho `MAX_NOMBRE_GRUPO` caracteres. Nexus_back lo vuelve a comprobar, limpia los espacios de más y
 	 * no deja repetir un nombre dentro de la organización (sin distinguir mayúsculas; cambiarle solo las mayúsculas al propio nombre sí se

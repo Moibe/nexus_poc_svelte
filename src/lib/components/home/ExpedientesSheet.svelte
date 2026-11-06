@@ -1,7 +1,13 @@
 <script lang="ts">
 	/**
-	 * Módulo "Expedientes virtuales" (2026-10-01, a pedido explícito con dos
-	 * capturas de Figma), que abre "Ver expediente" en la píldora del Pipeline.
+	 * Módulo "Expedientes" (2026-10-01, a pedido explícito con dos capturas de
+	 * Figma), que abre "Ver expediente" en la píldora del Pipeline.
+	 *
+	 * El frame lo titula "Expedientes virtuales" y así se llamó aquí hasta el
+	 * 2026-11-05, cuando Moibe quitó los expedientes virtuales de la aplicación
+	 * (los de verdad: grupos de documentos de un expediente con un tipo). Este
+	 * módulo nunca fue eso —solo lista lo que hay en las bandejas—, y con ese
+	 * título parecía serlo: por eso se llama "Expedientes".
 	 *
 	 * ## QUÉ MUESTRA HOY, Y POR QUÉ ESO
 	 *
@@ -134,7 +140,7 @@
 	>
 		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">
-				Expedientes virtuales
+				Expedientes
 			</Sheet.Title>
 			<Sheet.Close
 				class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"

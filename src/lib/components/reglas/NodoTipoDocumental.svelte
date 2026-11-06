@@ -26,7 +26,6 @@
 	 * lo trae («Existe documento»). Su id es `HANDLE_DOCUMENTO`, con arroba para no chocar con el nombre de un campo.
 	 */
 	import { Handle, Position, useNodeConnections, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
-	import { getContext } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -41,7 +40,7 @@
 		type CampoBorrador
 	} from '$lib/state/configuracion.svelte';
 
-	import { CLAVE_ESQUEMA, HANDLE_DOCUMENTO, estadoDeTipoEnLienzo, porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
+	import { HANDLE_DOCUMENTO, estadoDeTipoEnLienzo, porQueNoSeConecta, salidaDe, type DatosNodoTipo, type Salida } from '$lib/reglas/reglas';
 
 	let { id, data, selected }: NodeProps<Node<DatosNodoTipo>> = $props();
 
@@ -67,10 +66,6 @@
 	 */
 	const estadoDelTipo = $derived(estadoBiblioteca.cargada ? estadoDeTipoEnLienzo(tiposDocumentales, data.tipoId) : 'activo');
 	const noActivo = $derived(estadoDelTipo !== 'activo');
-
-	// ¿Su tipo documental está FUERA del esquema del tipo de expediente virtual del proceso? Se marca en ámbar (no se quita): ver `LienzoDeProceso`.
-	const esquema = getContext<{ readonly fuera: (tipoId: string) => boolean; readonly nombre: string | null } | undefined>(CLAVE_ESQUEMA);
-	const fueraDelEsquema = $derived(esquema?.fuera(data.tipoId) ?? false);
 
 	const etiquetaDeDato = (valor: string) => TIPOS_DE_DATO.find((t) => t.value === valor)?.label ?? valor;
 	const seRepite = (c: Pick<CampoBorrador, 'cardinalidad'>) => c.cardinalidad === 'multiple';
@@ -128,14 +123,11 @@
 <div
 	data-testid="nodo-tipo"
 	data-tipo-id={data.tipoId}
-	data-fuera-del-esquema={fueraDelEsquema}
 	data-estado-del-tipo={estadoDelTipo}
 	class="w-72 rounded-xl border bg-card text-card-foreground shadow-sm {selected
 		? 'border-primary ring-2 ring-primary/30'
 		: noActivo
 			? 'border-destructive'
-			: fueraDelEsquema
-				? 'border-amber-400'
 			: 'border-border'}"
 >
 	<div class="flex items-start gap-2 rounded-t-xl border-b border-border bg-muted/50 px-3 py-2.5">
@@ -193,12 +185,6 @@
 				Usar la v{versionNueva}
 			</button>
 		</div>
-	{/if}
-
-	{#if fueraDelEsquema}
-		<p class="border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800" data-testid="nodo-fuera-del-esquema">
-			Este tipo ya no está en el esquema de «{esquema?.nombre}»: el expediente virtual no lo recibirá y sus reglas darán «sin valores».
-		</p>
 	{/if}
 
 	{#if tipo}

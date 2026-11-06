@@ -1,20 +1,24 @@
 <script lang="ts">
 	/**
-	 * Ejecuciones · correr un expediente virtual contra un proceso del motor de reglas (2026-10-30, pedido de Moibe; 2026-11-03: «es la
-	 * combinación de ambas lo que se ejecuta», así que se elige también el proceso; y «adelante, házlo»: ya se ejecuta de verdad).
+	 * Ejecuciones · correr un proceso del motor de reglas sobre un expediente (2026-10-30, pedido de Moibe; 2026-11-03: «es la combinación de ambas
+	 * lo que se ejecuta», así que se elige también el proceso; y «adelante, házlo»: ya se ejecuta de verdad).
 	 *
 	 * Tercera sección del módulo de uso. Las ejecuciones son MANUALES, y la pantalla tiene dos partes:
-	 *   · Arriba, «Ejecutar»: se elige el EXPEDIENTE, luego el PROCESO (los activos que corren sobre el tipo de alguno de sus expedientes
-	 *     virtuales) y, solo si el expediente tiene más de un expediente virtual de ese tipo, cuál. Con todo elegido, un resumen dice qué se va a
-	 *     ejecutar sobre qué y el botón corre el proceso con los datos REALES de los documentos (`POST /api/ejecuciones`). Lo que sale se enseña
-	 *     enseguida: la palabra con la que terminó el proceso y, aparte, el detalle.
-	 *   · Abajo, el historial: una fila por ejecución, con Fecha de ejecución, Expediente, Expediente virtual, Proceso y Resultado; picar una
-	 *     fila la abre (la lista de valores finales, cómo salió cada regla y de qué documento se tomó cada dato). De la más reciente a la más
-	 *     antigua, de 50 en 50. Se puede filtrar por fecha, proceso, estado y persona (2026-11-03, Moibe: «agrega dichos filtros»): una barra bajo
-	 *     el título, con los controles del listado de expedientes, y es el servidor quien filtra (ver `$lib/ejecuciones/filtros`).
+	 *   · Arriba, «Ejecutar»: se elige el EXPEDIENTE y luego el PROCESO (cualquiera de los activos de la organización). Con todo elegido, un resumen
+	 *     dice qué se va a ejecutar sobre qué y el botón corre el proceso con los datos REALES de los documentos del expediente (`POST /api/ejecuciones`).
+	 *     Lo que sale se enseña enseguida: la palabra con la que terminó el proceso y, aparte, el detalle.
+	 *   · Abajo, el historial: una fila por ejecución, con Fecha de ejecución, Expediente, Proceso y Resultado; picar una fila la abre (la lista de
+	 *     valores finales, cómo salió cada regla y de qué documento se tomó cada dato). De la más reciente a la más antigua, de 50 en 50. Se puede
+	 *     filtrar por fecha, proceso, estado y persona (2026-11-03, Moibe: «agrega dichos filtros»): una barra bajo el título, con los controles del
+	 *     listado de expedientes, y es el servidor quien filtra (ver `$lib/ejecuciones/filtros`).
 	 *
-	 * Si el expediente virtual trae DOS O MÁS documentos de un tipo que el proceso usa, el proceso NO se ejecuta: no se sabe cuál es «el INE»
-	 * (Moibe). La pantalla lo avisa, dice cuáles son y lleva al expediente virtual, donde esos documentos quedan marcados «Duplicado».
+	 * Sin expedientes virtuales (2026-11-05, Moibe: «ahora podremos meter el expediente completo a la ejecución de un proceso»): hasta ese día la
+	 * pantalla pedía un tercer dato, el expediente virtual, y los procesos que ofrecía eran los que corrían sobre el tipo del virtual. Ahora un proceso
+	 * corre sobre cualquier expediente y las ejecuciones nuevas no traen virtual. Las VIEJAS siguen mostrando el suyo, como una segunda línea tenue en la
+	 * celda del expediente y en su ventana de detalle: el historial es una foto inmutable.
+	 *
+	 * Si el expediente trae DOS O MÁS documentos de un tipo que el proceso usa, el proceso NO se ejecuta: no se sabe cuál es «el INE» (Moibe). La
+	 * pantalla lo avisa, dice cuáles son y lleva al expediente, donde esos documentos quedan marcados «Duplicado».
 	 *
 	 * Un proceso se ofrece aunque no se pueda ejecutar todavía (los de antes de que el Resultado fuera obligatorio no lo traen), con su razón y
 	 * el botón apagado. Ejecutar es de quien organiza (Administrador, Supervisor, Analista y Operador); los demás roles ven el historial y no el
@@ -35,7 +39,7 @@
 		ETIQUETA_DE_ESTADO,
 		TEXTO_DEL_CASO,
 		fechaYHora,
-		rutaDelVirtual,
+		rutaDelExpediente,
 		type EjecucionCompleta,
 		type EjecucionResumen,
 		type Historial,
@@ -52,16 +56,12 @@
 
 	let { data } = $props();
 
-	const COLUMNAS_HISTORIAL = ['Fecha de ejecución', 'Expediente', 'Expediente virtual', 'Proceso', 'Resultado'];
+	const COLUMNAS_HISTORIAL = ['Fecha de ejecución', 'Expediente', 'Proceso', 'Resultado'];
 
-	/**
-	 * Elegir es navegar: la dirección lleva la elección y el servidor arma lo que se ofrece. Cambiar de expediente borra el proceso y el
-	 * virtual; cambiar de proceso borra el virtual (los de otro proceso pueden ser otros).
-	 */
-	function ir(expediente: string, proceso = '', virtual = '') {
+	/** Elegir es navegar: la dirección lleva la elección y el servidor arma lo que se ofrece. Cambiar de expediente borra el proceso. */
+	function ir(expediente: string, proceso = '') {
 		const q = new URLSearchParams({ expediente });
 		if (proceso) q.set('proceso', proceso);
-		if (virtual) q.set('virtual', virtual);
 		goto(`/ejecuciones?${q}`, { noScroll: true, keepFocus: true });
 	}
 	function elegirExpediente(id: string) {
@@ -70,12 +70,9 @@
 	function elegirProceso(id: string) {
 		if (data.elegido && id && id !== data.procesoElegido?.id) ir(data.elegido.id, id);
 	}
-	function elegirVirtual(id: string) {
-		if (data.elegido && data.procesoElegido && id && id !== data.virtualElegido?.id) ir(data.elegido.id, data.procesoElegido.id, id);
-	}
 
-	/** Hay un expediente con expedientes virtuales y procesos que ofrecerle. */
-	const hayProcesos = $derived(Boolean(data.elegido) && data.virtuales > 0 && data.procesos.length > 0);
+	/** Hay un expediente elegido y procesos activos que ofrecerle. */
+	const hayProcesos = $derived(Boolean(data.elegido) && data.procesos.length > 0);
 
 	// ── Ejecutar ─────────────────────────────────────────────────────────────
 
@@ -87,7 +84,7 @@
 
 	// Lo que salió (o por qué no) es de ESA elección: al cambiarla se quita. La llave es un texto (`$derived` solo avisa si CAMBIA): después de
 	// ejecutar, la carga vuelve a traer `data` entero con la misma elección, y eso no debe borrar lo que acaba de salir.
-	const eleccion = $derived(`${data.elegido?.id ?? ''}|${data.procesoElegido?.id ?? ''}|${data.virtualElegido?.id ?? ''}`);
+	const eleccion = $derived(`${data.elegido?.id ?? ''}|${data.procesoElegido?.id ?? ''}`);
 	$effect(() => {
 		void eleccion;
 		untrack(() => {
@@ -106,7 +103,7 @@
 	);
 
 	async function ejecutar() {
-		if (!data.elegido || !data.procesoElegido || !data.virtualElegido || ejecutando || motivoApagado) return;
+		if (!data.elegido || !data.procesoElegido || ejecutando || motivoApagado) return;
 		ejecutando = true;
 		ultima = null;
 		noSeEjecuto = null;
@@ -114,7 +111,7 @@
 			const respuesta = await fetch('/api/ejecuciones', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ expedienteId: data.elegido.id, virtualId: data.virtualElegido.id, procesoId: data.procesoElegido.id })
+				body: JSON.stringify({ expedienteId: data.elegido.id, procesoId: data.procesoElegido.id })
 			});
 			const cuerpo = await respuesta.json().catch(() => null);
 			if (respuesta.ok) {
@@ -253,7 +250,7 @@
 <div class="mt-2">
 	<h1 class="text-2xl font-semibold text-foreground">Ejecuciones</h1>
 	<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-		Corre un expediente virtual contra un proceso del motor de reglas.
+		Corre un proceso del motor de reglas sobre un expediente.
 	</p>
 </div>
 
@@ -291,53 +288,27 @@
 				</Select.Content>
 			</Select.Root>
 		</div>
-
-		<!-- Solo si el proceso elegido corre sobre MÁS DE UN expediente virtual del expediente (dos «Solicitud de crédito», por ejemplo). -->
-		{#if data.procesoElegido && data.virtualesDelProceso.length > 1}
-			<div class="space-y-2">
-				<Label for="virtual-ejecucion">Expediente virtual</Label>
-				<Select.Root type="single" value={data.virtualElegido?.id ?? ''} onValueChange={elegirVirtual}>
-					<Select.Trigger id="virtual-ejecucion" class="h-10 w-full" data-testid="selector-virtual">
-						{data.virtualElegido?.nombre ?? 'Elige un expediente virtual'}
-					</Select.Trigger>
-					<Select.Content>
-						{#each data.virtualesDelProceso as v (v.id)}
-							<Select.Item value={v.id} label={v.nombre} data-testid="opcion-virtual" />
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</div>
-		{/if}
 	</div>
 
 	<div class="mt-6" data-testid="ejecutables" aria-live="polite">
 		{#if data.expedienteAusente}
 			<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Ese expediente ya no existe. Elige otro de la lista.</p>
 		{:else if !data.elegido}
-			<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Elige un expediente para ver qué procesos se le pueden correr.</p>
-		{:else if data.virtuales === 0}
-			<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">
-				«{data.elegido.nombre}» no tiene expedientes virtuales. Se arman dentro del
-				<a href="/expediente/{encodeURIComponent(data.elegido.id)}" class="text-primary underline-offset-2 hover:underline">expediente</a>.
-			</p>
+			<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Elige un expediente y luego el proceso que quieres correr sobre él.</p>
 		{:else}
-			{#if data.procesos.length === 0}
-				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">
-					Ningún proceso activo corre sobre el tipo de los expedientes virtuales de «{data.elegido.nombre}».
-				</p>
+			{#if data.procesosFallo}
+				<p class="text-sm text-destructive" data-testid="ejecutables-sin-leer">No se pudieron leer los procesos. Recarga la página para intentarlo otra vez.</p>
+			{:else if data.procesos.length === 0}
+				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">No hay procesos activos para ofrecer.</p>
 			{:else if data.procesoAusente}
-				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Ese proceso ya no se ofrece para «{data.elegido.nombre}». Elige otro de la lista.</p>
+				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Ese proceso ya no se ofrece. Elige otro de la lista.</p>
 			{:else if !data.procesoElegido}
 				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">Elige el proceso que quieres correr sobre «{data.elegido.nombre}».</p>
-			{:else if !data.virtualElegido}
-				<p class="text-sm text-muted-foreground" data-testid="ejecutables-aviso">
-					{data.virtualAusente ? 'Ese expediente virtual ya no se ofrece. ' : ''}«{data.procesoElegido.nombre}» corre sobre {data.virtualesDelProceso.length} expedientes virtuales de «{data.elegido.nombre}»: elige cuál.
-				</p>
 			{:else}
-				<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="ejecucion-lista" data-virtual={data.virtualElegido.id} data-proceso={data.procesoElegido.id}>
+				<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="ejecucion-lista" data-expediente={data.elegido.id} data-proceso={data.procesoElegido.id}>
 					<p class="min-w-0 flex-1 text-sm text-foreground" data-testid="ejecucion-resumen">
-						Se ejecutará <span class="font-medium">«{data.procesoElegido.nombre}»</span> sobre el expediente virtual
-						<span class="font-medium">«{data.virtualElegido.nombre}»</span> ({data.virtualElegido.tipoNombre}) de «{data.elegido.nombre}».
+						Se ejecutará <span class="font-medium">«{data.procesoElegido.nombre}»</span> sobre el expediente
+						<span class="font-medium">«{data.elegido.nombre}»</span>.
 					</p>
 					<Button
 						size="sm"
@@ -390,7 +361,7 @@
 								{/each}
 							</ul>
 							<p class="mt-2">
-								<a href={rutaDelVirtual(data.elegido.id, data.virtualElegido.id)} class="font-medium underline underline-offset-2" data-testid="ir-al-virtual">Abrir el expediente virtual</a>
+								<a href={rutaDelExpediente(data.elegido.id)} class="font-medium underline underline-offset-2" data-testid="ir-al-expediente">Abrir el expediente</a>
 								para dejar uno de cada tipo: los duplicados están marcados.
 							</p>
 						{/if}
@@ -410,11 +381,6 @@
 					</div>
 				{/if}
 			{/if}
-			{#if data.sinLeer.length > 0}
-				<p class="mt-3 text-sm text-destructive" data-testid="ejecutables-sin-leer">
-					No se pudieron leer los procesos de: {data.sinLeer.join(', ')}.
-				</p>
-			{/if}
 		{/if}
 	</div>
 </section>
@@ -432,7 +398,7 @@
 	{/if}
 	<div class="mt-3 overflow-x-auto">
 		<table class="w-full min-w-3xl table-fixed text-left text-sm" data-testid="historial" aria-busy={buscando}>
-			<caption class="sr-only">Ejecuciones de procesos sobre expedientes virtuales</caption>
+			<caption class="sr-only">Ejecuciones de procesos sobre expedientes</caption>
 			<thead>
 				<tr class="border-y border-border text-xs text-muted-foreground" data-testid="columnas-historial">
 					{#each COLUMNAS_HISTORIAL as columna (columna)}
@@ -480,8 +446,13 @@
 									}}>{fechaYHora(e.ejecutadaEn)}</button
 								>
 							</td>
-							<td class="truncate py-3 pr-4" title={e.expediente.nombre} data-testid="celda-expediente">{e.expediente.nombre}</td>
-							<td class="truncate py-3 pr-4" title={e.virtual.nombre} data-testid="celda-virtual">{e.virtual.nombre}</td>
+							<td class="truncate py-3 pr-4" title={e.expediente.nombre} data-testid="celda-expediente">
+								{e.expediente.nombre}
+								<!-- Solo una ejecución VIEJA (de antes del 2026-11-05) trae su expediente virtual: se nombra, tenue, como segunda línea. -->
+								{#if e.virtual}
+									<span class="block truncate text-xs text-muted-foreground" title="Expediente virtual: «{e.virtual.nombre}»" data-testid="celda-virtual-viejo">Expediente virtual: «{e.virtual.nombre}»</span>
+								{/if}
+							</td>
 							<td class="truncate py-3 pr-4" title={e.proceso.nombre} data-testid="celda-proceso">{e.proceso.nombre}</td>
 							<td class="py-3 pr-4" data-testid="celda-resultado">
 								<span class="inline-block max-w-full truncate rounded-md px-2 py-0.5 text-xs font-medium align-middle {CLASE_DEL_CASO[e.resultado.caso]}" title={e.resultado.texto}>{e.resultado.texto}</span>

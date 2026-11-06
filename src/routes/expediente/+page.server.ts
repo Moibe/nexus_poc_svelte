@@ -4,8 +4,8 @@
  * Todos los roles pueden VER los expedientes. Crearlos es de quien organiza (Administrador, Supervisor, Analista y Operador): de eso
  * solo decide si se le ofrece el botón; nexus_back responde 403 igual (`roles.PUEDEN_ORGANIZAR`, espejo de `puedeOrganizar`).
  *
- * Desde el 2026-10-29 un expediente no tiene tipo (es un receptáculo de documentos), así que esta pantalla ya no lee los tipos: los tipos
- * son de los expedientes VIRTUALES y se eligen dentro de cada expediente.
+ * Desde el 2026-10-29 un expediente no tiene tipo (es un receptáculo de documentos), así que esta pantalla ya no lee los tipos; y desde el
+ * 2026-11-05 tampoco hay expedientes virtuales que los usaran (Moibe los quitó).
  *
  * Desde el 2026-11-03 un expediente vive en un GRUPO (`/grupos`): se pide la lista de grupos para el filtro del listado y para elegir el del
  * expediente al crearlo. Si no se pueden leer, el listado se sigue viendo (`gruposFallo`) y el modal de alta lo dice y no deja crear.

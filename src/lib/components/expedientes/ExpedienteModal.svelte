@@ -3,8 +3,8 @@
 	 * «Nuevo expediente» (2026-10-24): el alta de un expediente con su nombre y, desde el 2026-11-03, su GRUPO.
 	 *
 	 * Un expediente es la carpeta de un cliente o de un caso, un receptáculo de documentos. Hasta el 2026-10-29 nacía de un tipo de
-	 * expediente y aquí se elegía; ese día el tipo pasó a los expedientes VIRTUALES (grupitos de documentos dentro de un expediente), así
-	 * que el alta pidió solo el nombre. Dos expedientes pueden llamarse igual (un mismo cliente puede tener dos solicitudes), así que aquí
+	 * expediente y aquí se elegía; ese día el tipo se fue (pasó a unos «expedientes virtuales» que Moibe quitó el 2026-11-05), así que el
+	 * alta pidió solo el nombre. Dos expedientes pueden llamarse igual (un mismo cliente puede tener dos solicitudes), así que aquí
 	 * no hay «ya existe».
 	 *
 	 * **El grupo (2026-11-03, decisión de Moibe).** Varios expedientes viven en un grupo (áreas, departamentos, trimestres… como lo llame cada
@@ -13,8 +13,8 @@
 	 * administra. Si la organización tiene UN solo grupo, ya viene elegido (no hay nada que decidir). El selector va en `z-70` para quedar sobre
 	 * el modal.
 	 *
-	 * Es el mismo molde que «Nuevo tipo de expediente virtual» (`TipoExpedienteModal`, que a su vez salió del «Registro de motivo»):
-	 * modal centrado de 684 px con cabecera, título con su ícono, cuerpo con los campos y pie con «Cancelar» y el botón principal.
+	 * Es el mismo molde que el «Registro de motivo»: modal centrado de 684 px con cabecera, título con su ícono, cuerpo con los campos y
+	 * pie con «Cancelar» y el botón principal.
 	 *
 	 * Nexus_back vuelve a comprobar todo, limpia los espacios de más del nombre, y rechaza a un rol que no organiza (403) o un grupo que ya no
 	 * existe (404): lo que diga se muestra aquí mismo, sin cerrar el modal.
@@ -185,8 +185,7 @@
 								class="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
 							/>
 							<p id="ayuda-expediente" class="text-xs text-muted-foreground">
-								Por ejemplo: «Juan Pérez» o «Choque del 12 de marzo». Dos expedientes pueden llamarse igual. Los grupos de documentos con
-								un tipo (sus expedientes virtuales) se arman después, dentro del expediente.
+								Por ejemplo: «Juan Pérez» o «Choque del 12 de marzo». Dos expedientes pueden llamarse igual.
 							</p>
 						</div>
 

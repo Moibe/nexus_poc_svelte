@@ -13,7 +13,7 @@
 	 * lo dice con cuántos tiene. Nexus_back lo vuelve a comprobar al borrar y, si en el ínterin alguien creó un expediente en ese grupo, el aviso
 	 * sale igual con lo que diga el servidor. La cuenta de expedientes es un enlace al listado ya filtrado por ese grupo.
 	 *
-	 * Tres estados, con el lenguaje de «Tipos de expediente virtual» (tarjeta con tabla, estado vacío y aviso verde): sin grupos —con el botón
+	 * Tres estados, con el lenguaje de la pantalla de Usuarios (tarjeta con tabla, estado vacío y aviso verde): sin grupos —con el botón
 	 * para crear el primero, solo para quien administra— y con grupos. El grupo NO existe en el Figma: es una adición del producto, así que esta
 	 * pantalla no tiene un diseño propio.
 	 *

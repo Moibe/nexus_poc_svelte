@@ -2,17 +2,19 @@
  * Ejecuciones · lo que se puede ejecutar para el expediente elegido (2026-10-30, pedido de Moibe; 2026-11-03: «es la combinación de ambas lo
  * que se ejecuta», se elige también el proceso).
  *
- * Una ejecución junta un EXPEDIENTE VIRTUAL con un PROCESO del motor de reglas. Los procesos corren sobre un tipo de expediente virtual
- * (`tipoExpedienteVirtualId`), así que se elige en orden: el EXPEDIENTE; luego el PROCESO, entre los activos que corren sobre el tipo de alguno
- * de sus expedientes virtuales; y por último el EXPEDIENTE VIRTUAL, solo si el expediente tiene más de uno de ese tipo (si hay uno, es ese).
+ * Una ejecución junta un EXPEDIENTE con un PROCESO del motor de reglas. Se elige en orden: el EXPEDIENTE y luego el PROCESO, entre TODOS los procesos
+ * activos de la organización. Desde el 2026-11-05 (Moibe: quitar los expedientes virtuales: «ahora podremos meter el expediente completo a la ejecución
+ * de un proceso») un proceso ya no se limita a nada, así que corre sobre cualquier expediente; hasta ese día la elección llevaba un tercer paso, el
+ * EXPEDIENTE VIRTUAL, y los procesos que se ofrecían eran los que corrían sobre el tipo de alguno de los virtuales del expediente.
  * Todo se arma aquí, en el servidor, que es quien tiene el JWT en la cookie.
  *
- * La elección viaja en la dirección (`?expediente=…&proceso=…&virtual=…`), no en un estado de la página: recargar o compartir el enlace
- * deja lo mismo, y cambiar un selector es navegar. Un id que no es de lo que se ofrece se ignora (la pantalla dice que ya no existe), igual
- * que uno de otra organización (HU11); cambiar de expediente borra el proceso y el virtual, y cambiar de proceso borra el virtual.
+ * La elección viaja en la dirección (`?expediente=…&proceso=…`), no en un estado de la página: recargar o compartir el enlace deja lo mismo, y
+ * cambiar un selector es navegar. Un id que no es de lo que se ofrece se ignora (la pantalla dice que ya no existe o que ya no se ofrece), igual
+ * que uno de otra organización (HU11); cambiar de expediente borra el proceso.
  *
- * Los procesos de cada virtual salen de su propio detalle (`procesos`), que nexus_back da a todo rol que pueda ver el virtual aunque no
- * pueda editar procesos: la lista `/procesos` es solo de quien administra y aquí no hace falta. Un proceso inactivo no se ofrece.
+ * Los procesos salen de `GET /ejecuciones/procesos`, que nexus_back da a todo rol de la organización aunque no pueda editar procesos (la lista
+ * `/procesos` es solo de quien administra y aquí no hace falta). Vienen todos, los activos y los inactivos, y aquí se ofrecen solo los activos. Si no se
+ * pueden leer, la pantalla lo dice (`procesosFallo`) en vez de afirmar que no hay ninguno.
  *
  * Desde el 2026-11-03 se puede EJECUTAR (Moibe: «adelante, házlo»): `/api/ejecuciones` corre el proceso con los datos reales y lo guarda en el historial,
  * que esta carga lee (`GET /ejecuciones`, de la más reciente a la más antigua, de 50 en 50). Si el historial no se puede leer, la pantalla lo dice y
@@ -27,7 +29,6 @@
 
 import { isRedirect } from '@sveltejs/kit';
 
-import type { Expediente, ExpedienteVirtualResumen } from '$lib/expedientes/expedientes';
 import type { Historial } from '$lib/ejecuciones/ejecuciones';
 import { SIN_OPCIONES, type OpcionesDeFiltro } from '$lib/ejecuciones/filtros';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
@@ -35,10 +36,8 @@ import { tenantDe } from '$lib/server/nexus';
 import { puedeOrganizar } from '$lib/usuarios/permisos';
 import type { PageServerLoad } from './$types';
 
-/** Un proceso activo que corre sobre el tipo de algún expediente virtual del expediente elegido. */
-export type ProcesoOfrecido = { id: string; nombre: string; tipoNombre: string; ejecutable: boolean };
-/** Un expediente virtual sobre el que el proceso elegido puede correr (su tipo es el del proceso). */
-export type VirtualOfrecido = { id: string; nombre: string; tipoNombre: string };
+/** Un proceso activo de la organización: se puede ofrecer para correrlo sobre el expediente elegido. */
+export type ProcesoOfrecido = { id: string; nombre: string; ejecutable: boolean };
 
 /** Las primeras 50 ejecuciones del historial. Si no se pueden leer (el servidor falló, o es una instancia sin base), la pantalla lo dice y no se cae. */
 async function leerHistorial(tenant: string, sesion: Parameters<typeof leerDeNexus>[1]): Promise<{ historial: Historial; historialFallo: boolean }> {
@@ -66,62 +65,41 @@ async function leerOpciones(tenant: string, sesion: Parameters<typeof leerDeNexu
 	}
 }
 
+/**
+ * Los procesos activos de la organización, en el orden en que se crearon. «Activo» sigue la regla de todo el front (`procesoActivo`): lo que no diga `false`
+ * expreso lo está. Si no se pueden leer, `fallo` lo dice y la lista queda vacía.
+ */
+async function leerProcesos(tenant: string, sesion: Parameters<typeof leerDeNexus>[1]): Promise<{ procesos: ProcesoOfrecido[]; fallo: boolean }> {
+	try {
+		const cuerpo = await leerDeNexus(`/ejecuciones/procesos?tenant=${tenant}`, sesion, 'No se pudieron leer los procesos.');
+		const procesos = listaDe<{ id: string; nombre: string; activo?: boolean; ejecutable?: boolean }>(cuerpo, 'procesos')
+			.filter((p) => p.activo !== false)
+			.map((p) => ({ id: p.id, nombre: p.nombre, ejecutable: p.ejecutable !== false }));
+		return { procesos, fallo: false };
+	} catch (e) {
+		if (isRedirect(e)) throw e;
+		return { procesos: [], fallo: true };
+	}
+}
+
 export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	const tenant = encodeURIComponent(tenantDe(locals));
 	const sesion = { cookies, url };
 	const [{ historial, historialFallo }, opciones] = await Promise.all([leerHistorial(tenant, sesion), leerOpciones(tenant, sesion)]);
 	const puedeEjecutar = puedeOrganizar(locals.usuario);
-	const lista = listaDe<Expediente>(await leerDeNexus(`/expedientes/?tenant=${tenant}`, sesion, 'No se pudieron cargar los expedientes.'), 'expedientes');
+	const lista = listaDe<{ id: string; nombre: string }>(await leerDeNexus(`/expedientes/?tenant=${tenant}`, sesion, 'No se pudieron cargar los expedientes.'), 'expedientes');
 	const expedientes = lista.map((e) => ({ id: e.id, nombre: e.nombre }));
 
 	const pedido = url.searchParams.get('expediente');
 	const elegido = pedido ? (expedientes.find((e) => e.id === pedido) ?? null) : null;
 	const base = { expedientes, elegido, expedienteAusente: Boolean(pedido && !elegido), historial, historialFallo, opciones, puedeEjecutar };
-	const vacio = { virtuales: 0, procesos: [] as ProcesoOfrecido[], procesoElegido: null as ProcesoOfrecido | null, procesoAusente: false, virtualesDelProceso: [] as VirtualOfrecido[], virtualElegido: null as VirtualOfrecido | null, virtualAusente: false, sinLeer: [] as string[] };
+	const vacio = { procesos: [] as ProcesoOfrecido[], procesoElegido: null as ProcesoOfrecido | null, procesoAusente: false, procesosFallo: false };
 	if (!elegido) return { ...base, ...vacio };
 
-	const detalle = await leerDeNexus(`/expedientes/${encodeURIComponent(elegido.id)}?tenant=${tenant}`, sesion, 'No se pudo cargar el expediente.', 'Ese expediente no existe.');
-	const virtuales = listaDe<ExpedienteVirtualResumen>(detalle, 'expedientesVirtuales');
-
-	const sinLeer: string[] = [];
-	const pares: { virtual: VirtualOfrecido; proceso: ProcesoOfrecido }[] = [];
-	const detalles = await Promise.all(
-		virtuales.map((v) =>
-			leerDeNexus(`/expedientes/${encodeURIComponent(elegido.id)}/virtuales/${encodeURIComponent(v.id)}?tenant=${tenant}`, sesion, 'No se pudieron leer los procesos.').catch((e) => {
-				if (isRedirect(e)) throw e;
-				return null;
-			})
-		)
-	);
-	virtuales.forEach((v, i) => {
-		const procesos = detalles[i] === null ? null : listaDe<{ id: string; nombre: string; activo: boolean; ejecutable?: boolean }>(detalles[i], 'procesos');
-		if (procesos === null) {
-			sinLeer.push(v.nombre);
-			return;
-		}
-		for (const p of procesos) {
-			if (p.activo) pares.push({ virtual: { id: v.id, nombre: v.nombre, tipoNombre: v.tipo.nombre }, proceso: { id: p.id, nombre: p.nombre, tipoNombre: v.tipo.nombre, ejecutable: p.ejecutable !== false } });
-		}
-	});
-
-	// Los procesos distintos que se pueden ofrecer, en el orden en que aparecieron.
-	const procesos = [...new Map(pares.map((x) => [x.proceso.id, x.proceso])).values()];
+	// Los procesos no dependen del expediente (cualquiera corre sobre cualquiera), pero solo se leen cuando ya hay uno elegido: es lo que se ofrece después.
+	const { procesos, fallo } = await leerProcesos(tenant, sesion);
 	const procesoPedido = url.searchParams.get('proceso');
 	const procesoElegido = procesoPedido ? (procesos.find((x) => x.id === procesoPedido) ?? null) : null;
-	// Los virtuales sobre los que corre el proceso elegido; si es uno solo, es ese; si son varios, la persona elige.
-	const virtualesDelProceso = procesoElegido ? pares.filter((x) => x.proceso.id === procesoElegido.id).map((x) => x.virtual) : [];
-	const virtualPedido = url.searchParams.get('virtual');
-	const virtualPedidoValido = virtualPedido ? (virtualesDelProceso.find((x) => x.id === virtualPedido) ?? null) : null;
-	const virtualElegido = virtualPedidoValido ?? (virtualesDelProceso.length === 1 ? virtualesDelProceso[0] : null);
-	return {
-		...base,
-		virtuales: virtuales.length,
-		procesos,
-		procesoElegido,
-		procesoAusente: Boolean(procesoPedido && !procesoElegido),
-		virtualesDelProceso,
-		virtualElegido,
-		virtualAusente: Boolean(procesoElegido && virtualPedido && !virtualPedidoValido),
-		sinLeer
-	};
+	// Si los procesos no se pudieron leer no se sabe cuáles hay: «ya no se ofrece» sería falso (la pantalla dice, en cambio, que no se pudieron leer).
+	return { ...base, procesos, procesoElegido, procesoAusente: !fallo && Boolean(procesoPedido && !procesoElegido), procesosFallo: fallo };
 };

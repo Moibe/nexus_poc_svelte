@@ -1,9 +1,10 @@
 /**
- * Un expediente como lo devuelve nexus_back (`/expedientes`): la carpeta de un cliente o de un caso, un RECEPTÁCULO de documentos. Desde
- * el 2026-10-29 (decisión de Moibe) no tiene tipo: lo que tiene tipo —y esquema— son sus EXPEDIENTES VIRTUALES, grupitos de sus
- * documentos («la solicitud de crédito de Juan Pérez») que usará el motor de reglas. Se llama por su `nombre`; no tiene folio. Aquí solo
- * viven los campos que las pantallas usan, más los formateadores de lo que se muestra de ellos (peso, fecha, formato del archivo): sin
- * dependencias, para poder probarlos sueltos (`node --experimental-strip-types`).
+ * Un expediente como lo devuelve nexus_back (`/expedientes`): la carpeta de un cliente o de un caso, un RECEPTÁCULO de documentos. No tiene
+ * tipo (desde el 2026-10-29) ni nada que lo subdivida: el 2026-11-05 Moibe quitó los expedientes virtuales («ahora podremos meter el
+ * expediente completo a la ejecución de un proceso»), así que el motor de reglas corre sobre el expediente entero y encuentra cada documento
+ * por su tipo documental. Se llama por su `nombre`; no tiene folio. Aquí solo viven los campos que las pantallas usan, más los
+ * formateadores de lo que se muestra de ellos (peso, fecha, formato del archivo): sin dependencias, para poder probarlos sueltos
+ * (`node --experimental-strip-types`).
  */
 
 import type { GrupoDeExpediente } from './grupos';
@@ -36,19 +37,16 @@ export type DocumentoDeExpediente = {
 	/** Qué tipo documental es, según lo que se guardó al procesarlo (migración 0007): el de su última extracción o, si no se extrajo, el
 	 *  de su última clasificación. `null` si nunca se procesó desde que se guarda o el clasificador dijo «otro». */
 	tipoDocumental?: TipoDeDocumento | null;
-	/** Solo dentro de un expediente virtual (2026-11-02): lo metió el clasificador y no una persona. Se saca como cualquier otro. */
-	agregadoPorClasificador?: boolean;
 	/**
-	 * Solo dentro de un expediente virtual (2026-11-03): hay otro documento del MISMO tipo documental en él, así que no se sabe cuál es «el INE» y un
-	 * proceso que usa ese tipo no se puede ejecutar sobre ese virtual (Moibe). Se calcula al leer: sacar uno quita la marca de los dos.
+	 * Solo al ver UN expediente (2026-11-03; desde el 2026-11-05 la marca es del expediente entero): hay otro documento del MISMO tipo documental
+	 * en él, así que no se sabe cuál es «el INE» y un proceso que usa ese tipo no se puede ejecutar sobre el expediente (Moibe). Se calcula al
+	 * leer, no se guarda: sacar uno quita la marca de los dos. La lista de todos los documentos de la organización no la trae.
 	 */
 	duplicado?: boolean;
-	/** Solo al ver el EXPEDIENTE (2026-11-03): en qué expedientes virtuales de él este documento está duplicado, y de qué tipo. */
-	duplicadoEn?: { id: string; nombre: string; tipoNombre: string | null }[];
 };
 
-/** Un tipo documental del que un expediente virtual trae DOS O MÁS documentos, con esos documentos. */
-export type DuplicadoDeVirtual = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
+/** Un tipo documental del que un expediente trae DOS O MÁS documentos, con esos documentos. */
+export type DuplicadoDeTipo = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
 
 export type TipoDeDocumento = {
 	id: string;
@@ -60,66 +58,16 @@ export type TipoDeDocumento = {
 };
 
 /**
- * Un expediente virtual tal como viene dentro de su expediente: su tipo (un tipo de expediente virtual de la organización) y los ids de
- * sus documentos, que son SIEMPRE documentos de ese expediente (lo cuida la base).
+ * El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y los tipos documentales de los que trae
+ * DOS O MÁS (`duplicados`; vacío si ninguno). Los documentos de esos tipos llevan además `duplicado`.
  */
-export type ExpedienteVirtualResumen = {
-	id: string;
-	nombre: string;
-	tipo: { id: string; nombre: string };
-	creadoPor: string | null;
-	creadoEn: string | null;
-	documentos: string[];
-	totalDocumentos: number;
-	/** Los tipos de los que trae documentos duplicados (2026-11-03); vacío si ninguno. Puede faltar si el servidor es anterior a esto. */
-	duplicados?: DuplicadoDeVirtual[];
-};
-
-/**
- * Un expediente virtual tal como viene en la lista de los de UN tipo (`/tipos-expediente/{id}/virtuales`, 2026-10-30): como esa lista cruza
- * todos los expedientes de la organización, cada uno dice a cuál pertenece y cuántos documentos tiene ese expediente, para poder escribir
- * «2 de 3 documentos» sin pedir cada expediente.
- */
-export type ExpedienteVirtualDeTipo = {
-	id: string;
-	nombre: string;
-	expediente: { id: string; nombre: string; totalDocumentos: number };
-	/** Cuántos de los documentos del expediente forman este virtual. */
-	totalDocumentos: number;
-	creadoPor: string | null;
-	creadoEn: string | null;
-};
-
-/** Un expediente virtual abierto (`/expedientes/{id}/virtuales/{vid}`): su tipo con el esquema, su expediente y sus documentos completos. */
-export type ExpedienteVirtual = {
-	id: string;
-	nombre: string;
-	/** Cada tipo documental del esquema con los documentos del virtual que lo cubren (por su tipo guardado; vacío = falta). */
-	tipo: { id: string; nombre: string; tiposDocumentales: { id: string; nombre: string; documentos?: string[] }[] };
-	expediente: { id: string; nombre: string };
-	creadoPor: string | null;
-	creadoEn: string | null;
-	totalDocumentos: number;
-	documentos: DocumentoDeExpediente[];
-	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. `ejecutable`: trae su Resultado con una regla conectada (2026-11-03). */
-	procesos?: { id: string; nombre: string; activo: boolean; ejecutable?: boolean }[];
-	/** Los tipos de los que este virtual trae documentos duplicados (2026-11-03). Con alguno, un proceso que usa ese tipo no se ejecuta sobre él. */
-	duplicados?: DuplicadoDeVirtual[];
-};
-
-/** El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y sus expedientes virtuales. */
 export type ExpedienteConDocumentos = Expediente & {
 	documentos: DocumentoDeExpediente[];
-	expedientesVirtuales: ExpedienteVirtualResumen[];
+	duplicados: DuplicadoDeTipo[];
 };
 
-/** El tope del nombre: el mismo que impone nexus_back (`servicios/expedientes.py` y `servicios/expedientes_virtuales.py`). */
+/** El tope del nombre: el mismo que impone nexus_back (`servicios/expedientes.py`). */
 export const MAX_NOMBRE_EXPEDIENTE = 200;
-
-/** «0 de 3 documentos», «1 de 1 documento»: cuántos de los documentos del expediente forman el virtual. */
-export function documentosDelVirtual(enVirtual: number, enExpediente: number): string {
-	return `${enVirtual} de ${enExpediente} ${enExpediente === 1 ? 'documento' : 'documentos'}`;
-}
 
 const UNIDADES = ['B', 'KB', 'MB', 'GB'];
 

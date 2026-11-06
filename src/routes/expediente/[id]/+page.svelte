@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * Expediente · un expediente abierto (2026-10-24, Figma Sprint 5 HUN2, detalle `5397:104132`): «Atrás», el nombre del expediente con
-	 * el total de archivos, buscador y «Ordenar», y una tarjeta por documento. Cuelga de la pestaña «Expedientes» de `/expediente`.
+	 * el total de archivos, buscador y «Ordenar», y una tarjeta por documento. Cuelga del listado de `/expediente`.
 	 *
 	 * Un expediente vacío se dice como tal. El diseño no trae ese estado; se hizo con el mismo lenguaje del estado vacío del listado y
 	 * con el botón «Subir archivos» para quien organiza (hasta el 2026-10-30 no prometía una forma de agregar documentos, porque no existía).
@@ -9,45 +9,45 @@
 	 * Lo que se aparta del diseño: el encabezado lleva el NOMBRE del expediente y no un folio. Los documentos no traen páginas; el tipo
 	 * documental sí lo traen desde la migración 0007 (ver `TarjetaDocumento`).
 	 *
-	 * **Expedientes virtuales (2026-10-29, decisión de Moibe).** El expediente dejó de tener tipo: es el receptáculo. Debajo de sus
-	 * documentos van sus expedientes virtuales, grupitos de esos documentos que son instancia de un tipo («la solicitud de crédito de
-	 * Juan Pérez»), cada uno con su tipo y cuántos de los documentos del expediente tiene; se abren en `/expediente/[id]/virtual/[vid]`.
-	 * Quien organiza crea uno con «Nuevo expediente virtual» (`ExpedienteVirtualModal`). No hay diseño para esto en el Figma: se hizo con
-	 * el lenguaje de esta misma pantalla.
+	 * **Sin expedientes virtuales (2026-11-05, decisión de Moibe).** El expediente es el receptáculo de sus documentos (no tiene tipo desde el
+	 * 2026-10-29) y hasta ayer debajo de ellos iba una sección con sus «expedientes virtuales»: grupitos de esos documentos con un tipo, para
+	 * el motor de reglas, con su pantalla `/expediente/[id]/virtual/[vid]`. Moibe los quitó («ahora podremos meter el expediente completo a la
+	 * ejecución de un proceso»): la página vuelve a ser solo el encabezado y los documentos, y el proceso corre sobre el expediente entero.
+	 *
+	 * **Duplicados (2026-11-03, Moibe; del expediente entero desde el 2026-11-05).** Si el expediente trae DOS O MÁS documentos de un mismo tipo
+	 * documental no se sabe cuál es «el INE»: un proceso que use ese tipo no se ejecuta sobre el expediente mientras haya más de uno. Se dice en
+	 * tres lugares, todos calculados por nexus_back al leer (sacar uno los apaga): la insignia ámbar «Duplicados» del encabezado, un aviso que lista
+	 * cada tipo repetido con sus documentos y la marca «Duplicado de «tipo»» en la tarjeta de cada uno (`TarjetaDocumento`). Es solo una marca:
+	 * no impide nada, y los duplicados de un tipo que el proceso no usa no estorban a su corrida.
 	 *
 	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
 	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
 	 * archivos y se suben a ESTE expediente como documentos de la organización (carga manual, salen también en «Archivos procesados»). Al cerrar
-	 * la ventana, la página se pone al día y dice cuántos entraron. Los DUPLICADOS (mismo contenido que algo que ya está en el expediente o que
-	 * otro archivo de la misma tanda) se avisan en la ventana y no se suben salvo que la persona lo decida (2026-11-02).
+	 * la ventana, la página se pone al día y dice cuántos entraron. Los DUPLICADOS de lo que se sube (mismo contenido que algo que ya está en el
+	 * expediente o que otro archivo de la misma tanda) se avisan en la ventana y no se suben salvo que la persona lo decida (2026-11-02).
 	 *
 	 * **El clasificador (2026-11-02, Moibe: «los dos clasifican»; sin confianza mínima: basta con ser de ese tipo).** Cada archivo se CLASIFICA al
-	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo y, si el clasificador lo reconoce como de un tipo, entra solo a los expedientes
-	 * virtuales de este expediente que esperan ese tipo, a todos los que haya. La ventana de subir dice la regla, y el aviso de la página cuenta
-	 * cuántos archivos metió el clasificador.
+	 * subirlo (ya no queda sin tipo): la tarjeta dice su tipo, y por ese tipo lo encuentran los procesos del motor de reglas. La ventana de
+	 * subir dice la regla y cómo le fue a cada archivo.
 	 *
 	 * **Grupo (2026-11-03, decisión de Moibe).** El expediente vive en un grupo (áreas, departamentos, trimestres… como lo llame cada
 	 * organización): el encabezado lo dice, o dice «Sin grupo» si es de antes de los grupos. Quien organiza lo asigna o lo cambia con el botón de
 	 * al lado (`AsignarGrupoModal`): un expediente se puede pasar de un grupo a otro, pero no dejar sin grupo.
 	 *
 	 * **Quitar un documento (2026-11-04, Moibe: «que un archivo pueda ser borrado de un expediente»).** Quien organiza tiene «Quitar» en cada
-	 * tarjeta. Pregunta antes con la confirmación de la casa (`ConfirmarAccion`), que nombra los expedientes virtuales de los que también saldría.
-	 * Sacarlo NO borra el archivo: sigue siendo de la organización (en Archivos procesados) y en otros expedientes donde esté; si era el único,
-	 * vuelve al void. Lo saca también de los virtuales de este expediente (lo hace nexus_back). El historial de Ejecuciones no cambia.
+	 * tarjeta. Pregunta antes con la confirmación de la casa (`ConfirmarAccion`). Sacarlo NO borra el archivo: sigue siendo de la organización
+	 * (en Archivos procesados) y en otros expedientes donde esté; si era el único, vuelve al void. El historial de Ejecuciones no cambia.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Folder from '@lucide/svelte/icons/folder';
-	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Layers from '@lucide/svelte/icons/layers';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import Plus from '@lucide/svelte/icons/plus';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Upload from '@lucide/svelte/icons/upload';
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import AsignarGrupoModal from '$lib/components/expedientes/AsignarGrupoModal.svelte';
-	import ExpedienteVirtualModal from '$lib/components/expedientes/ExpedienteVirtualModal.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
@@ -56,7 +56,6 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import {
-		documentosDelVirtual,
 		normalizar,
 		OPCIONES_ORDEN_DOCUMENTOS,
 		ordenarDocumentos,
@@ -68,11 +67,11 @@
 	let { data } = $props();
 
 	const expediente = $derived(data.expediente);
-	const virtuales = $derived(expediente.expedientesVirtuales ?? []);
+	/** Los tipos documentales de los que el expediente trae DOS O MÁS documentos (los marca nexus_back al leer). */
+	const duplicados = $derived(expediente.duplicados);
 
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
-	let altaVirtual = $state(false);
 	let subida = $state(false);
 	let asignandoGrupo = $state(false);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
@@ -82,26 +81,11 @@
 	/** El que se está quitando (su botón gira). */
 	let quitando = $state<string | null>(null);
 
-	/** Los expedientes virtuales de ESTE expediente que tienen ese documento: al sacarlo del expediente, sale también de ellos. */
-	const virtualesCon = (documentoId: string) => virtuales.filter((v) => v.documentos.includes(documentoId));
-
-	/** «A», «A» y «B», «A», «B» y «C». */
-	const enLista = (nombres: string[]) => {
-		const citados = nombres.map((n) => `«${n}»`);
-		return citados.length < 2 ? (citados[0] ?? '') : `${citados.slice(0, -1).join(', ')} y ${citados.at(-1)}`;
-	};
-
-	/** Lo que se dice de los virtuales: «del expediente virtual «A»», «de los expedientes virtuales «A» y «B»». */
-	const deLosVirtuales = (nombres: string[]) =>
-		nombres.length === 1 ? `del expediente virtual ${enLista(nombres)}` : `de los expedientes virtuales ${enLista(nombres)}`;
-
 	async function quitar(documento: DocumentoDeExpediente) {
 		if (quitando) return;
 		quitando = documento.id;
 		aviso = null;
 		error = '';
-		// Se leen ANTES de quitarlo: después de recargar ya no estará en ninguno.
-		const enVirtuales = virtualesCon(documento.id).map((v) => v.nombre);
 		try {
 			const r = await fetch(
 				`/api/expedientes/${encodeURIComponent(expediente.id)}/documentos/${encodeURIComponent(documento.id)}`,
@@ -115,11 +99,10 @@
 				return;
 			}
 			// El documento YA salió: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-			const tambien = enVirtuales.length > 0 ? ` También salió ${deLosVirtuales(enVirtuales)}.` : '';
 			aviso = {
 				testid: 'documento-quitado-del-expediente',
 				titulo: 'Documento quitado',
-				cuerpo: `«${documento.nombreOriginal}» ya no está en «${expediente.nombre}».${tambien} El archivo no se borró: sigue en Archivos procesados.`
+				cuerpo: `«${documento.nombreOriginal}» ya no está en «${expediente.nombre}». El archivo no se borró: sigue en Archivos procesados.`
 			};
 			await invalidateAll();
 		} catch {
@@ -190,6 +173,18 @@
 							</button>
 						{/if}
 					</span>
+					<!-- Duplicados (2026-11-03; del expediente entero desde el 2026-11-05): documentos de un mismo tipo. El aviso de abajo dice cuáles. -->
+					{#if duplicados.length > 0}
+						<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
+						<span
+							class="inline-flex shrink-0 items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-400"
+							data-testid="expediente-con-duplicados"
+							title="Trae documentos duplicados de: {duplicados.map((d) => d.tipoNombre ?? 'un tipo eliminado').join(', ')}"
+						>
+							<TriangleAlert class="size-3" />
+							Duplicados
+						</span>
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -230,6 +225,37 @@
 		</div>
 	</div>
 
+	<!-- Duplicados (Moibe, 2026-11-03; del expediente entero desde el 2026-11-05): dos o más documentos del mismo tipo. No se sabe cuál es «el INE»,
+	     así que un proceso que use ese tipo NO se ejecuta sobre el expediente mientras haya más de uno; las tarjetas de esos documentos llevan
+	     «Duplicado». Se calcula al leer: al quitar uno desaparece el aviso. -->
+	{#if duplicados.length > 0}
+		<div
+			class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+			role="status"
+			data-testid="duplicados-del-expediente"
+		>
+			<TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+			<div>
+				<p class="font-medium">Este expediente trae documentos duplicados</p>
+				<ul class="mt-0.5 list-disc pl-4">
+					{#each duplicados as d (d.tipoId)}
+						<li data-testid="duplicado-del-expediente" data-tipo={d.tipoId}>
+							<span class="font-medium">{d.tipoNombre ?? 'Tipo documental eliminado'}</span>: {d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')}
+						</li>
+					{/each}
+				</ul>
+				<p class="mt-1">
+					No se sabe cuál usar, así que un proceso que use alguno de esos tipos no se ejecuta sobre este expediente mientras haya más de un documento de ese tipo.
+					{#if data.puedeOrganizar}
+						Quita los que sobren y deja uno de cada tipo.
+					{:else}
+						Quien organiza el expediente puede quitar los que sobren.
+					{/if}
+				</p>
+			</div>
+		</div>
+	{/if}
+
 	{#if error}
 		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-expediente">{error}</p>
 	{/if}
@@ -261,120 +287,12 @@
 								}
 							: undefined}
 						quitando={quitando === documento.id}
-						ayudaQuitar={`Quitar «${documento.nombreOriginal}» de este expediente`}
-						testidQuitar="quitar-del-expediente"
 					/>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 </div>
-
-<section class="mt-6 rounded-2xl border-2 border-border bg-card p-3" data-testid="seccion-expedientes-virtuales" aria-labelledby="titulo-virtuales">
-	<div class="flex min-h-12.5 flex-wrap items-center justify-between gap-3">
-		<div class="flex items-center gap-3">
-			<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground">
-				<FolderTree class="size-4" />
-			</span>
-			<div>
-				<h3 id="titulo-virtuales" class="text-sm font-medium text-foreground">Expedientes virtuales</h3>
-				<p class="flex items-center gap-1 text-xs text-muted-foreground">
-					<span class="flex size-4.25 items-center justify-center rounded-sm bg-primary/10 text-[10px] font-medium text-primary" data-testid="total-virtuales"
-						>{virtuales.length}</span
-					>
-					Grupos de documentos de este expediente, cada uno de un tipo
-				</p>
-			</div>
-		</div>
-		{#if data.puedeOrganizar}
-			<Button
-				data-testid="nuevo-expediente-virtual"
-				onclick={() => {
-					aviso = null;
-					altaVirtual = true;
-				}}
-			>
-				<Plus class="size-4" />
-				Nuevo expediente virtual
-			</Button>
-		{/if}
-	</div>
-
-	{#if virtuales.length === 0}
-		<p class="px-2 py-8 text-center text-sm text-muted-foreground" data-testid="sin-expedientes-virtuales">
-			Este expediente todavía no tiene expedientes virtuales. Un expediente virtual toma algunos de sus documentos —por ejemplo, los de una
-			solicitud de crédito— para usarlos juntos en el motor de reglas.
-		</p>
-	{:else}
-		<div class="mt-2 overflow-x-auto">
-			<table class="w-full min-w-xl text-left text-sm" data-testid="tabla-expedientes-virtuales">
-				<thead>
-					<tr class="border-y border-border text-xs text-muted-foreground">
-						<th class="py-2 pr-4 pl-2 font-normal">Expediente virtual</th>
-						<th class="py-2 pr-4 font-normal">Tipo</th>
-						<th class="py-2 pr-2 font-normal">Documentos</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each virtuales as v (v.id)}
-						<tr class="relative border-b border-border transition-colors last:border-0 hover:bg-muted/50" data-testid="fila-expediente-virtual" data-virtual-id={v.id}>
-							<td class="py-3 pr-4 pl-2">
-								<a
-									href={`/expediente/${expediente.id}/virtual/${v.id}`}
-									class="block truncate font-medium text-foreground outline-none after:absolute after:inset-0 focus-visible:after:rounded-lg focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
-									data-testid="virtual-nombre"
-									title={v.nombre}>{v.nombre}</a
-								>
-							</td>
-							<td class="py-3 pr-4">
-								<span
-									class="inline-block max-w-full truncate rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 align-middle text-xs font-medium text-primary"
-									data-testid="virtual-tipo"
-									title={v.tipo.nombre}>{v.tipo.nombre}</span
-								>
-							</td>
-							<td class="py-3 pr-2 text-foreground tabular-nums" data-testid="virtual-documentos">
-								{documentosDelVirtual(v.totalDocumentos, expediente.documentos.length)}
-								<!-- Duplicados (2026-11-03): documentos de un mismo tipo dentro de este virtual; los procesos que usan ese tipo no se ejecutan sobre él. -->
-								{#if (v.duplicados ?? []).length > 0}
-									<span
-										class="ml-2 inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-400"
-										data-testid="virtual-con-duplicados"
-										title="Trae documentos duplicados de: {(v.duplicados ?? []).map((d) => d.tipoNombre ?? 'un tipo eliminado').join(', ')}"
-									>
-										<TriangleAlert class="size-3" />
-										Duplicados
-									</span>
-								{/if}
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
-</section>
-
-<ExpedienteVirtualModal
-	bind:open={altaVirtual}
-	expediente={{ id: expediente.id, nombre: expediente.nombre }}
-	documentos={expediente.documentos}
-	tipos={data.tiposVirtuales}
-	puedeCrearTipo={data.puedeAdministrar}
-	alCrear={async (v) => {
-		// El virtual YA está guardado: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		const n = v.totalDocumentos;
-		// Los que nacieron adentro porque el clasificador ya los había reconocido (no los marcó la persona).
-		const solos = (v.documentos ?? []).filter((d) => d.agregadoPorClasificador).length;
-		const delClasificador = solos > 0 ? ` ${solos} ${solos === 1 ? 'documento fue agregado' : 'documentos fueron agregados'} por el clasificador.` : '';
-		aviso = {
-			testid: 'expediente-virtual-creado-aviso',
-			titulo: 'Expediente virtual creado',
-			cuerpo: `«${v.nombre}» (${v.tipo.nombre}) quedó en «${expediente.nombre}» con ${n} ${n === 1 ? 'documento' : 'documentos'}.${delClasificador}`
-		};
-		await invalidateAll();
-	}}
-/>
 
 <AsignarGrupoModal
 	bind:open={asignandoGrupo}
@@ -390,13 +308,11 @@
 	}}
 />
 
-<!-- Antes de sacar un documento del expediente: dice de cuáles virtuales sale también y que el archivo NO se borra. -->
+<!-- Antes de sacar un documento del expediente: dice que el archivo NO se borra. -->
 <ConfirmarAccion
 	abierto={aQuitar !== null}
 	titulo="Quitar el documento del expediente"
-	mensaje={aQuitar
-		? `«${aQuitar.nombreOriginal}» saldrá de «${expediente.nombre}»${virtualesCon(aQuitar.id).length > 0 ? ` y ${deLosVirtuales(virtualesCon(aQuitar.id).map((v) => v.nombre))}` : ''}. El archivo no se borra: sigue en Archivos procesados.`
-		: ''}
+	mensaje={aQuitar ? `«${aQuitar.nombreOriginal}» saldrá de «${expediente.nombre}». El archivo no se borra: sigue en Archivos procesados.` : ''}
 	etiquetaConfirmar="Quitar"
 	onConfirmar={() => {
 		const documento = aQuitar;
@@ -409,9 +325,9 @@
 	bind:open={subida}
 	expediente={{ id: expediente.id, nombre: expediente.nombre }}
 	existentes={expediente.documentos.map((d) => ({ nombre: d.nombreOriginal, sha256: d.sha256 }))}
-	alTerminar={async ({ subidos, fallidos, omitidos, colocados }) => {
+	alTerminar={async ({ subidos, fallidos, omitidos }) => {
 		// Los archivos YA entraron: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
-		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos, colocados);
+		const dicho = avisoDeSubida(expediente.nombre, subidos, fallidos, omitidos);
 		if (dicho) aviso = { testid: 'archivos-subidos-aviso', ...dicho };
 		await invalidateAll();
 	}}

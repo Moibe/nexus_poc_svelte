@@ -2,9 +2,13 @@
  * Los PROCESOS del motor de reglas de la organización (2026-10-20): leerlos, guardarlos y borrarlos en nexus_back
  * (`/procesos`, a través del BFF `/api/procesos`).
  *
- * Un proceso guardado es su `nombre`, su `descripcion` y el dibujo del lienzo (`nodos` y `aristas`). A diferencia de la biblioteca de
- * tipos documentales —que se guarda sola, en segundo plano—, un proceso se guarda cuando la persona lo pide: un lienzo a medio armar
- * no es algo que convenga publicar a cada movimiento, y cada guardado es una revisión.
+ * Un proceso guardado es su `nombre`, su `descripcion`, si está `activo` y el dibujo del lienzo (`nodos` y `aristas`). A diferencia de la
+ * biblioteca de tipos documentales —que se guarda sola, en segundo plano—, un proceso se guarda cuando la persona lo pide: un lienzo a medio
+ * armar no es algo que convenga publicar a cada movimiento, y cada guardado es una revisión.
+ *
+ * Un proceso corre sobre CUALQUIER expediente de la organización: hasta el 2026-11-05 llevaba además el tipo de expediente virtual sobre el que
+ * corría (`tipoExpedienteVirtualId`); Moibe quitó los expedientes virtuales y el campo desapareció. Los procesos guardados antes pueden seguir
+ * trayéndolo: se ignora, y no se reenvía al guardar (`sinCamposRetirados`).
  *
  * ## Dos personas editando lo mismo
  *
@@ -22,15 +26,25 @@ export type DatosProceso = {
 	/**
 	 * Si el proceso está activo (2026-10-29, la lista de procesos del Figma Sprint 5). Ausente = activo: los procesos guardados antes de
 	 * este campo siguen siéndolo. nexus_back lo conserva sin interpretarlo (guarda lo que venga dentro de `datos`), así que no hizo falta
-	 * tocarlo. Hoy solo MARCA el proceso: todavía no hay un motor que corra procesos sobre expedientes y lo respete.
+	 * tocarlo. Lo respeta Ejecuciones: solo ofrece los procesos activos.
 	 */
 	activo?: boolean;
-	/**
-	 * El tipo de expediente VIRTUAL sobre cuyas instancias corre el proceso (2026-10-29), por ejemplo «Solicitud de crédito»; `null` mientras
-	 * no se elija. nexus_back exige que sea de la organización y lo guarda con una llave foránea real: si el tipo se borra, vuelve como `null`.
-	 */
-	tipoExpedienteVirtualId?: string | null;
 };
+
+/**
+ * Los campos que un proceso guardado pudo traer y que ya no existen: `tipoExpedienteVirtualId`, el tipo de expediente virtual sobre el que corría
+ * (Moibe, 2026-11-05: se quitaron los expedientes virtuales). nexus_back ya no lo devuelve y, si lo recibe, lo ignora; aquí tampoco se reenvía.
+ * Importa porque «Activar» y «Desactivar» desde la lista guardan `{ ...p.datos, activo }`: si el campo viniera en `datos` (un back anterior, una
+ * respuesta vieja) volvería a viajar tal cual.
+ */
+const CAMPOS_RETIRADOS = ['tipoExpedienteVirtualId'] as const;
+
+/** Una copia de `datos` sin los campos retirados. No toca el original (es el que está en la lista en pantalla). */
+export function sinCamposRetirados<T extends object>(datos: T): T {
+	const limpio = { ...datos } as Record<string, unknown>;
+	for (const campo of CAMPOS_RETIRADOS) delete limpio[campo];
+	return limpio as T;
+}
 
 export type ProcesoGuardado = {
 	id: string;
@@ -139,7 +153,7 @@ export async function guardarProceso(id: string, revision: number, datos: DatosP
 		res = await fetch(`/api/procesos/${encodeURIComponent(id)}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ revision, datos })
+			body: JSON.stringify({ revision, datos: sinCamposRetirados(datos) })
 		});
 	} catch {
 		return { ok: false, conflicto: false, status: 0, mensaje: 'No se pudo contactar al servidor.' };

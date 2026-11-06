@@ -22,12 +22,23 @@
 	 * «Resultado» —uno solo por proceso— es la palabra con la que termina («Aprobado», «Certificado»…) según pase o no la regla que se le conecta.
 	 * No tienen salida. Con los valores de ejemplo, el lienzo dice qué entraría a la lista y con qué palabra terminaría (`evaluar`).
 	 *
+	 * ## Sobre qué corre (2026-11-05)
+	 *
+	 * Sobre CUALQUIER expediente de la organización. Moibe quitó los expedientes virtuales: «ahora podremos meter el expediente completo a la
+	 * ejecución de un proceso […] en el canvas desplegaremos todos los tipos documentales, y lo que se vierta dentro del canvas ahora básicamente
+	 * será el delineador de cuáles son las entradas de un proceso». Hasta ese día el proceso llevaba un «Corre sobre» (un tipo de expediente
+	 * virtual) que era obligatorio para guardar y filtraba la paleta por su esquema; ya no hay selector, ni filtro, ni nodo «fuera del esquema».
+	 * La paleta ofrece todos los tipos documentales ACTIVOS y los nodos que se ponen declaran qué documentos necesita el proceso del expediente.
+	 *
 	 * ## Guardar
 	 *
 	 * Un proceso se guarda cuando la persona lo pide (botón o Ctrl+S) y vive en el servidor, por organización (`procesos.svelte.ts`).
-	 * «Cambios sin guardar» sale de comparar la huella del dibujo de ahora con la del último guardado: mover un nodo y devolverlo, o
-	 * escribir un valor y borrarlo, deja el proceso como estaba, sin cambios. Antes de perder cambios —empezar uno nuevo, abrir otro o
-	 * salir de la página— se pregunta. Si otra persona guardó el mismo proceso antes, no se pisa: se ofrece cargar lo suyo.
+	 * «Cambios sin guardar» sale de comparar la huella del dibujo y el nombre de ahora con los del último guardado (`hayCambiosSinGuardar`): mover
+	 * un nodo y devolverlo, o escribir un valor y borrarlo, deja el proceso como estaba, sin cambios. Un proceso viejo que traiga
+	 * `tipoExpedienteVirtualId` en sus `datos` se abre igual: ese campo se ignora y no cuenta (`abrirProceso`). Qué le falta a un proceso para
+	 * guardarse lo decide `faltaParaGuardar` (nombre, al menos un tipo documental, que ninguno haya dejado de estar activo y el Resultado). Antes de
+	 * perder cambios —empezar uno nuevo, abrir otro o salir de la página— se pregunta. Si otra persona guardó el mismo proceso antes, no se pisa: se
+	 * ofrece cargar lo suyo.
 	 *
 	 * Va dentro de un `<SvelteFlowProvider>` (lo pone la página): `useSvelteFlow` solo existe ahí dentro.
 	 *
@@ -53,7 +64,6 @@
 	import '@xyflow/svelte/dist/style.css';
 
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
-	import { page } from '$app/state';
 	import { onMount, setContext, tick, untrack } from 'svelte';
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
@@ -67,7 +77,6 @@
 	import PaletaDeTipos from '$lib/components/reglas/PaletaDeTipos.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import {
-		CLAVE_ESQUEMA,
 		CLAVE_VEREDICTOS,
 		ID_NODO_RESULTADO,
 		MIME_CONSTANTE,
@@ -81,8 +90,10 @@
 		NODO_TIPO,
 		NODO_VALOR_FINAL,
 		TEXTOS_DEL_RESULTADO,
+		abrirProceso,
 		evaluar,
-		hidratarDibujo,
+		faltaParaGuardar,
+		hayCambiosSinGuardar,
 		huellaDelDibujo,
 		estadoDeTipoEnLienzo,
 		idNodoDeTipo,
@@ -98,7 +109,8 @@
 		type DatosNodoOperador,
 		type DatosNodoResultado,
 		type DatosNodoTipo,
-		type DatosNodoValorFinal
+		type DatosNodoValorFinal,
+		type FotoDeProceso
 	} from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import { estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
@@ -439,61 +451,11 @@
 	/** Si el proceso está activo (se cambia desde la lista de procesos, no aquí). Aquí solo se CONSERVA: al guardar se manda lo mismo que se
 	 *  leyó, porque guardar arma el proceso entero y, sin esto, cada guardado lo dejaría activo otra vez. */
 	let activo = $state(true);
-	/** El tipo de expediente virtual sobre el que corre (2026-10-29), o `null`. Se elige en la barra y se guarda con el proceso. */
-	let tipoVirtual = $state<string | null>(null);
-
-	// ── El esquema del tipo elegido (2026-11-03) ─────────────────────────────
-	// El tipo de expediente virtual es OBLIGATORIO para guardar y de él salen los tipos documentales que se ofrecen: el virtual solo recibe
-	// documentos de los tipos de su esquema, así que una regla sobre otro daría «sin valores» siempre. Un tipo anterior a la regla del esquema
-	// (sin tipos documentales) no filtra. Un nodo cuyo tipo documental queda FUERA del esquema (porque el esquema se editó después de armar el
-	// proceso, o porque el proceso es anterior) se marca en ámbar en vez de quitarse: describe, no restringe.
-	const tiposVirtualesLista = $derived<{ id: string; nombre: string; tiposDocumentales: string[] }[]>(page.data.tiposVirtuales ?? []);
-	const tipoElegido = $derived(tiposVirtualesLista.find((t) => t.id === tipoVirtual) ?? null);
-	const esquema = $derived<ReadonlySet<string> | null>(tipoElegido && tipoElegido.tiposDocumentales.length > 0 ? new Set(tipoElegido.tiposDocumentales) : null);
-	setContext(CLAVE_ESQUEMA, {
-		get fuera() {
-			const ids = esquema;
-			return (tipoId: string) => ids !== null && !ids.has(tipoId);
-		},
-		get nombre() {
-			return tipoElegido?.nombre ?? null;
-		}
-	});
 
 	const nombreDeTipoDocumental = (tipoId: string) => tiposDocumentales.find((t) => t.id === tipoId)?.nombre ?? 'Tipo documental no disponible';
 
-	/**
-	 * Se eligió otro tipo de expediente virtual. Si el lienzo tiene nodos de tipos documentales que el esquema nuevo NO lleva, se pregunta antes
-	 * de quitarlos (con sus conexiones); si no hay ninguno, se cambia de una vez.
-	 */
-	function cambiarTipo(nuevo: string) {
-		if (nuevo === tipoVirtual) return;
-		const destino = tiposVirtualesLista.find((t) => t.id === nuevo);
-		const ids = destino && destino.tiposDocumentales.length > 0 ? new Set(destino.tiposDocumentales) : null;
-		const fuera =
-			ids === null
-				? []
-				: nodes.flatMap((n) => {
-						if (n.type !== NODO_TIPO) return [];
-						const tipoId = (n.data as DatosNodoTipo).tipoId;
-						return ids.has(tipoId) ? [] : [{ id: n.id, nombre: nombreDeTipoDocumental(tipoId) }];
-					});
-		if (fuera.length === 0) {
-			tipoVirtual = nuevo;
-			return;
-		}
-		dialogo = { tipo: 'tipo', nuevo, nombreNuevo: destino?.nombre ?? 'el tipo elegido', fuera };
-	}
-
-	/** Lo que la persona confirmó: se quitan los nodos que el esquema nuevo no lleva, con los cables que los tocaban, y se cambia el tipo. */
-	function aplicarCambioDeTipo(nuevo: string, fuera: { id: string }[]) {
-		const quitar = new Set(fuera.map((f) => f.id));
-		nodes = nodes.filter((n) => !quitar.has(n.id));
-		edges = edges.filter((e) => !quitar.has(e.source) && !quitar.has(e.target));
-		tipoVirtual = nuevo;
-	}
 	/** Lo último que se guardó (o se abrió): con esto se compara para saber si hay cambios. */
-	let guardado = $state<{ huella: string; nombre: string; tipo: string | null }>({ huella: HUELLA_VACIA, nombre: '', tipo: null });
+	let guardado = $state<FotoDeProceso>({ huella: HUELLA_VACIA, nombre: '' });
 	let guardando = $state(false);
 
 	/** Se está leyendo el proceso del servidor (solo cuando la dirección trae el id de uno guardado). */
@@ -502,20 +464,15 @@
 	let noSePudoAbrir = $state<{ titulo: string; mensaje: string } | null>(null);
 
 	const huella = $derived(huellaDelDibujo(serializarDibujo(nodes, edges)));
-	const sucio = $derived(
-		existe
-			? huella !== guardado.huella || nombre.trim() !== guardado.nombre || tipoVirtual !== guardado.tipo
-			: nodes.length > 0 || edges.length > 0 || nombre.trim() !== '' || tipoVirtual !== null
-	);
+	const sucio = $derived(hayCambiosSinGuardar(existe, { huella, nombre, hayDibujo: nodes.length > 0 || edges.length > 0 }, guardado));
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
-	// El tipo de expediente virtual es obligatorio (2026-11-03): sin él el proceso no corre sobre nada y Ejecuciones no lo ofrece nunca. El
-	// RESULTADO también (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»): sin la palabra con la que termina no hay con qué contestar.
-	// Solo se exige que el nodo exista; el back NO lo exige (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los
-	// de antes), y la ejecución se niega a correr uno sin Resultado conectado.
-	// Desde el 2026-11-04 también hace falta al menos un tipo documental en el lienzo (NEX-529: sin tipo documental no se guarda); el back tampoco lo exige,
-	// por lo mismo que con el Resultado. Si el tipo de expediente virtual no tiene ningún tipo documental activo, la paleta lo dice y no hay con qué guardar.
-	// Y ningún nodo de un tipo que no esté activo (2026-11-05); el back tampoco lo exige, por lo mismo que con el Resultado.
-	const puedeGuardar = $derived(sucio && nombre.trim() !== '' && tipoVirtual !== null && hayTipoDocumental && hayResultado && tiposNoActivos.length === 0);
+	// Qué se exige para guardar lo decide `faltaParaGuardar`: el nombre, al menos un tipo documental en el lienzo (NEX-529, 2026-11-04), que ningún nodo
+	// sea de un tipo que no esté activo (2026-11-05) y el RESULTADO (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»). De este último solo se
+	// exige que el nodo exista. El back NO exige nada de esto (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los de
+	// antes), y la ejecución se niega a correr uno sin Resultado conectado. Ya NO se exige un tipo de expediente virtual (Moibe, 2026-11-05).
+	const puedeGuardar = $derived(
+		sucio && faltaParaGuardar({ nombre, hayTipoDocumental, tiposNoActivos: tiposNoActivos.length, hayResultado }) === null
+	);
 	/** El nombre que el servidor rechazó por repetido en la organización (409 `ya_existe`): la barra lo dice bajo el campo mientras siga escrito. */
 	let nombreOcupado = $state<string | null>(null);
 	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
@@ -523,7 +480,9 @@
 
 	/** Pone un proceso del servidor en el lienzo. */
 	async function abrir(p: ProcesoGuardado) {
-		const dibujo = hidratarDibujo(p.datos);
+		// `foto` se saca de lo que quedó en el lienzo, no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya no existe) el
+		// proceso no debe aparecer con cambios sin que nadie los haya hecho. Un `tipoExpedienteVirtualId` viejo en `p.datos` no entra a nada.
+		const { dibujo, foto } = abrirProceso(p.datos);
 		clasesVistas.clear();
 		nodes = dibujo.nodes;
 		edges = dibujo.edges;
@@ -536,10 +495,7 @@
 		nombre = p.datos.nombre;
 		descripcion = p.datos.descripcion ?? '';
 		activo = procesoActivo(p);
-		tipoVirtual = p.datos.tipoExpedienteVirtualId ?? null;
-		// La huella se saca de lo que quedó en el lienzo, no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya
-		// no existe) el proceso no debe aparecer con cambios sin que nadie los haya hecho.
-		guardado = { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre: p.datos.nombre.trim(), tipo: tipoVirtual };
+		guardado = foto;
 		aviso = '';
 		await tick();
 		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
@@ -551,13 +507,11 @@
 		| null
 		| { tipo: 'cambios'; despues: () => void }
 		| { tipo: 'borrar' }
-		| { tipo: 'tipo'; nuevo: string; nombreNuevo: string; fuera: { id: string; nombre: string }[] }
 		| { tipo: 'conflicto' }
 		| { tipo: 'quitar'; mensaje: string }
 		| { tipo: 'error'; titulo: string; mensaje: string };
 	let dialogo = $state<Dialogo>(null);
 	const dialogoDeError = $derived(dialogo?.tipo === 'error' ? dialogo : null);
-	const dialogoDeTipo = $derived(dialogo?.tipo === 'tipo' ? dialogo : null);
 	const dialogoDeQuitar = $derived(dialogo?.tipo === 'quitar' ? dialogo : null);
 
 	/** Quien espera la respuesta del aviso de «quitar»: la librería no borra hasta que esto se resuelva con `true`. */
@@ -603,15 +557,14 @@
 		guardando = true;
 		const limpio = nombre.trim();
 		const dibujo = serializarDibujo(nodes, edges);
-		const tipo = tipoVirtual;
-		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, tipoExpedienteVirtualId: tipo, ...dibujo });
+		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, ...dibujo });
 		guardando = false;
 		if (r.ok) {
 			revision = r.proceso.revision;
 			existe = true;
 			nombre = limpio;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
-			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio, tipo };
+			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
 			avisarExito('Proceso guardado', `«${limpio}» quedó guardado.`);
 			// Un proceso que nació en `/motor-de-reglas/nuevo` ya tiene su dirección: se cambia la barra del navegador SIN navegar (recargar o
 			// compartir el enlace abre ESTE proceso, y no un lienzo en blanco).
@@ -728,10 +681,6 @@
 
 <BarraDeProceso
 	bind:nombre
-	{tipoVirtual}
-	tiposVirtuales={tiposVirtualesLista}
-	tiposVirtualesFallo={Boolean(page.data.tiposVirtualesFallo)}
-	alCambiarTipo={cambiarTipo}
 	estado={estadoDeProceso}
 	{guardando}
 	{puedeGuardar}
@@ -757,9 +706,6 @@
 	<PaletaDeTipos
 		bind:this={paleta}
 		{enLienzo}
-		tipoElegido={tipoVirtual !== null}
-		{esquema}
-		nombreDelTipo={tipoElegido?.nombre ?? null}
 		{hayResultado}
 		alAgregar={agregarAlCentro}
 		alAgregarOperador={agregarOperadorAlCentro}
@@ -839,7 +785,7 @@
 	accionExtra={{
 		etiqueta: 'Guardar y salir',
 		deshabilitado: !puedeGuardar,
-		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, tipo, un tipo documental activo o el Resultado): sigue editando para completarlo',
+		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, un tipo documental activo o el Resultado): sigue editando para completarlo',
 		alPulsar: guardarYSalir
 	}}
 	onConfirmar={() => {
@@ -849,24 +795,6 @@
 	}}
 	onCerrar={() => {
 		if (dialogo?.tipo === 'cambios') dialogo = null;
-	}}
-/>
-
-<ConfirmarAccion
-	abierto={dialogoDeTipo !== null}
-	titulo="Cambiar el tipo del proceso"
-	mensaje={dialogoDeTipo
-		? `«${dialogoDeTipo.nombreNuevo}» no lleva ${dialogoDeTipo.fuera.length === 1 ? 'este tipo documental' : 'estos tipos documentales'} del lienzo: ${dialogoDeTipo.fuera.map((f) => `«${f.nombre}»`).join(', ')}. Si cambias el tipo, se quitan del lienzo con sus conexiones.`
-		: ''}
-	etiquetaConfirmar="Cambiar y quitar"
-	etiquetaCancelar="Conservar el tipo actual"
-	onConfirmar={() => {
-		const d = dialogoDeTipo;
-		dialogo = null;
-		if (d) aplicarCambioDeTipo(d.nuevo, d.fuera);
-	}}
-	onCerrar={() => {
-		if (dialogo?.tipo === 'tipo') dialogo = null;
 	}}
 />
 

@@ -21,8 +21,9 @@
 	 *   · El botón de abajo a la izquierda dice «Nueva plantilla documental» en el diseño (es el rótulo de la biblioteca, copiado): aquí
 	 *     dice «Nuevo proceso».
 	 *   · «Documentos configurados | N» cuenta los tipos documentales que el proceso trae como entradas.
-	 *   · Activar y desactivar SOLO marca el proceso (se guarda en el servidor): todavía no hay un motor que corra procesos sobre
-	 *     expedientes y lo respete. El aviso es el del diseño.
+	 *   · Activar y desactivar marca el proceso (se guarda en el servidor) y Ejecuciones solo ofrece los activos. El aviso es el del diseño.
+	 *   · Sin «Corre sobre: …» (2026-11-05, Moibe: quitar los expedientes virtuales): del 2026-10-29 al 2026-11-05 cada tarjeta decía sobre qué
+	 *     tipo de expediente virtual corría el proceso; un proceso corre sobre cualquier expediente de la organización y la tarjeta ya no lo dice.
 	 *
 	 * La tarjeta no se abre picando en su espacio vacío (misma regla que la biblioteca: se pidió así porque un clic en el vacío abría
 	 * cosas por accidente): se abre con su nombre, que es un enlace, o con el lápiz de su tarjeta (ya no hay menú ⋮, 2026-11-03).
@@ -30,7 +31,6 @@
 	 * Solo lo ve quien administra: el candado está en `+layout.server.ts`.
 	 */
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -162,7 +162,6 @@
 					{#each procesos as p (p.id)}
 						{@const activo = procesoActivo(p)}
 						{@const tipos = tiposDelProceso(p)}
-						{@const tipoVirtual = p.datos.tipoExpedienteVirtualId}
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
@@ -180,14 +179,6 @@
 											Sin documentos configurados
 										{:else}
 											Documentos configurados | {tipos}
-										{/if}
-									</span>
-									<!-- El tipo de expediente virtual sobre el que corre (2026-10-29). -->
-									<span class="block truncate text-xs text-muted-foreground" data-testid="proceso-tipo-virtual-en-lista">
-										{#if tipoVirtual}
-											Corre sobre: {page.data.tiposVirtuales?.find((t: { id: string; nombre: string }) => t.id === tipoVirtual)?.nombre ?? 'un tipo de expediente virtual'}
-										{:else}
-											Sin tipo de expediente virtual
 										{/if}
 									</span>
 									<!-- Desde el 2026-11-03 el Resultado es obligatorio: los procesos de antes que no lo traen se siguen abriendo, pero no se pueden ejecutar. -->

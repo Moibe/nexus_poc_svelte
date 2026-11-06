@@ -1,23 +1,22 @@
 /**
- * Expediente · lectura de nexus_back desde los `load` de `/expediente` (2026-10-24): el listado de expedientes, el de tipos y el
- * expediente abierto piden lo mismo y fallan igual, así que lo hacen aquí en vez de repetirlo tres veces.
+ * Expediente · lectura de nexus_back desde los `load` de `/expediente`, de Configuración › Grupos y de Archivos procesados (2026-10-24): el
+ * listado de expedientes, el de grupos y el expediente abierto piden lo mismo y fallan igual, así que lo hacen aquí en vez de repetirlo.
  *
  * Corre en el servidor, que es quien tiene el JWT en la cookie. La sesión que se cerró desde otro lado (HU05) manda al inicio de
  * sesión y no a una página de error; un id que no es de esta organización responde 404 igual que uno que no existe (HU11), y se
  * dice con el texto que cada pantalla pase.
  */
 
-import { error, isRedirect, json, type Cookies } from '@sveltejs/kit';
+import { error, json, type Cookies } from '@sveltejs/kit';
 
-import { opcionesDeTiposDocumentales, type TipoDocumentalOpcion } from '$lib/expedientes/tipos';
 import { mensajeDeError, TIMEOUT_MS, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion, irAlLogin, sesionCerrada } from '$lib/server/sesion';
 
 const ESPERA_ESCRITURA_MS = 30_000;
 
 /**
- * Lo que hacen todos los BFF que ESCRIBEN en un expediente (crearlo, sus expedientes virtuales y lo que se mete y se saca de ellos):
- * reenviar a nexus_back con el JWT de la persona y devolver lo que diga, con su mismo estado. Un error se devuelve como `{ mensaje }`
+ * Lo que hacen los BFF que ESCRIBEN en un expediente o en un grupo (crear un expediente, asignarle grupo, los grupos mismos): reenviar a
+ * nexus_back con el JWT de la persona y devolver lo que diga, con su mismo estado. Un error se devuelve como `{ mensaje }`
  * (el texto que trae nexus_back, o uno genérico), que es lo que leen las pantallas, más su `codigo` si lo trae (`ya_existe`,
  * `con_expedientes`…: algunas pantallas dicen esos casos con sus palabras). La ruta ya trae el `?tenant=` cuando va en la URL;
  * el tenant lo fija siempre quien llama desde la sesión (`tenantDe`), nunca el navegador (HU11).
@@ -57,24 +56,6 @@ export async function leerDeNexus(
 	if (respuesta.status === 404 && noExiste) error(404, noExiste);
 	if (!respuesta.ok) error(respuesta.status, fallo);
 	return cuerpo as Record<string, unknown> | null;
-}
-
-/**
- * Los tipos documentales de la organización, para elegir cuáles forman el esquema de un tipo de expediente al crearlo. Solo se piden
- * cuando quien mira puede crear tipos. Si no se pueden leer (el servidor tardó, falló), NO se rompe la pantalla: `fallo` lo dice y el
- * modal avisa y no deja crear sin esquema. La sesión que se cerró desde otro lado sí manda al inicio de sesión, como en cualquier lectura.
- */
-export async function tiposDocumentalesParaEsquema(
-	sesion: { cookies: Cookies; url: URL },
-	tenant: string
-): Promise<{ opciones: TipoDocumentalOpcion[]; fallo: boolean }> {
-	try {
-		const cuerpo = await leerDeNexus(`/tipos-documentales/?tenant=${encodeURIComponent(tenant)}`, sesion, 'No se pudieron cargar los tipos documentales.');
-		return { opciones: opcionesDeTiposDocumentales(listaDe<unknown>(cuerpo, 'tipos')), fallo: false };
-	} catch (e) {
-		if (isRedirect(e)) throw e;
-		return { opciones: [], fallo: true };
-	}
 }
 
 /** El código con que nexus_back distingue un error (`detail.codigo`: `ya_existe`, `con_expedientes`, `sin_permiso`…), si lo trae. */

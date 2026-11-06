@@ -3,8 +3,10 @@
  * cuándo dos valores son «iguales» y cómo se evalúa una cadena de reglas. Vive aparte de los componentes para poder probarla sola
  * (`verificar-reglas.mjs`): por eso aquí solo se importan TIPOS, nunca código.
  *
- * El modelo: un PROCESO es un conjunto de reglas y corre sobre un EXPEDIENTE (un conjunto de documentos). Los tipos documentales
- * son sus entradas; por cada conexión viaja un CAMPO (no el documento entero) y su tipo de dato decide qué se puede comparar.
+ * El modelo: un PROCESO es un conjunto de reglas y corre sobre un EXPEDIENTE (un conjunto de documentos): cualquiera de la organización, sin
+ * limitarse a nada (Moibe, 2026-11-05: se quitaron los expedientes virtuales, y con ellos el «tipo sobre el que corre» el proceso). Los tipos
+ * documentales son sus entradas —lo que se pone en el lienzo es el delineador de qué documentos necesita el proceso del expediente—; por cada
+ * conexión viaja un CAMPO (no el documento entero) y su tipo de dato decide qué se puede comparar.
  *
  * Por un cable puede viajar:
  *   · un VALOR: un campo suelto, un valor fijo escrito en el lienzo, o el número que entrega una regla (`Cantidad`, `Suma`);
@@ -118,12 +120,6 @@ export const HANDLE_DOCUMENTO = '@documento';
 
 /** Con qué llave el lienzo le ofrece a sus nodos lo que evaluó (`getContext`). */
 export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
-
-/**
- * La clave del contexto con que el lienzo dice a sus nodos de tipo documental si SU tipo está fuera del esquema del tipo de expediente virtual
- * sobre el que corre el proceso (2026-11-03): `{ fuera(tipoId): boolean, nombre: string | null }`. Un nodo fuera del esquema se marca en ámbar.
- */
-export const CLAVE_ESQUEMA = 'nexusdoc-esquema-del-proceso';
 
 /**
  * Un proceso corre sobre un expediente, o sea un conjunto de documentos, así que cada tipo documental aparece UNA vez: el nodo
@@ -1234,4 +1230,54 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 		if (vf) valoresFinalesPuestos = Math.max(valoresFinalesPuestos, Number(vf[1]));
 	}
 	return { nodes, edges, operadoresPuestos, constantesPuestas, valoresFinalesPuestos };
+}
+
+// ── Abrir, guardar y saber si hay cambios por guardar ────────────────────────
+
+/**
+ * Lo que se recuerda de un proceso al abrirlo o guardarlo para saber si hay cambios sin guardar: la huella de su dibujo y su nombre sin espacios
+ * de más. NADA MÁS. Un proceso guardado antes del 2026-11-05 trae además `tipoExpedienteVirtualId` en sus `datos` (el tipo de expediente virtual
+ * sobre el que corría); desde que se quitaron los expedientes virtuales (Moibe) ese campo se IGNORA: no entra aquí, así que abrir uno de esos
+ * procesos no lo deja con «cambios sin guardar», y tampoco se reenvía al guardar (`guardarProceso`).
+ */
+export type FotoDeProceso = { huella: string; nombre: string };
+
+/**
+ * Lo que sale de abrir un proceso del servidor: su dibujo, para el lienzo (`hidratarDibujo`), y la foto con la que se sabrá si después hay cambios.
+ * La foto se saca de lo que QUEDÓ en el lienzo y no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya no existe), el proceso
+ * no debe aparecer con cambios sin que nadie los haya hecho.
+ */
+export function abrirProceso(datos: { nombre?: unknown; nodos?: unknown; aristas?: unknown }): { dibujo: ReturnType<typeof hidratarDibujo>; foto: FotoDeProceso } {
+	const dibujo = hidratarDibujo(datos);
+	const nombre = typeof datos.nombre === 'string' ? datos.nombre.trim() : '';
+	return { dibujo, foto: { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre } };
+}
+
+/**
+ * ¿Hay algo que guardar? De un proceso que ya existe en el servidor, si su dibujo o su nombre difieren de la foto (mover un nodo y devolverlo, o
+ * escribir un valor y borrarlo, deja el proceso como estaba); de uno que todavía no existe, si la persona ya puso algo: un nodo, un cable o un nombre.
+ */
+export function hayCambiosSinGuardar(existe: boolean, ahora: { huella: string; nombre: string; hayDibujo: boolean }, foto: FotoDeProceso): boolean {
+	return existe ? ahora.huella !== foto.huella || ahora.nombre.trim() !== foto.nombre : ahora.hayDibujo || ahora.nombre.trim() !== '';
+}
+
+/**
+ * Qué le falta a un proceso para poder guardarse, en el orden en que se le dice a la persona; `null` si no le falta nada (sin contar si hay cambios).
+ * «Guardar» exige:
+ *   · un NOMBRE;
+ *   · al menos un TIPO DOCUMENTAL en el lienzo (NEX-529): son las entradas, la declaración de qué documentos necesita el proceso del expediente;
+ *   · que NINGUNO de los tipos del lienzo haya dejado de estar activo (2026-11-05, Moibe: «no deberíamos poder usar en el canvas los tipos documentales
+ *     que no estén activos»);
+ *   · el nodo del RESULTADO (2026-11-03, Moibe): sin la palabra con la que termina no hay con qué contestar cuando se ejecute.
+ * Desde el 2026-11-05 YA NO exige un tipo de expediente virtual (Moibe: «voy a quitar los expedientes virtuales»): un proceso corre sobre cualquier
+ * expediente de la organización. Es una regla de la pantalla: el back no exige nada de esto (activar o desactivar desde la lista guarda el proceso
+ * entero y no debe fallar con los procesos de antes).
+ */
+export type FaltaParaGuardar = 'nombre' | 'documento' | 'inactivos' | 'resultado';
+export function faltaParaGuardar(proceso: { nombre: string; hayTipoDocumental: boolean; tiposNoActivos: number; hayResultado: boolean }): FaltaParaGuardar | null {
+	if (proceso.nombre.trim() === '') return 'nombre';
+	if (!proceso.hayTipoDocumental) return 'documento';
+	if (proceso.tiposNoActivos > 0) return 'inactivos';
+	if (!proceso.hayResultado) return 'resultado';
+	return null;
 }

@@ -4,9 +4,11 @@
 	 *
 	 * Hasta hoy el engrane abría directo la biblioteca de tipos documentales, en un panel lateral. Ahora en el módulo se configura
 	 * más de una cosa, así que el engrane trae aquí: una página con un cuadro por sección, y cada cuadro lleva a su pantalla.
-	 * Son cuatro —tipos documentales, tipos de expediente, desde el 2026-10-29 procesos y reglas (lleva a `/motor-de-reglas`; desde el
-	 * 2026-11-03 es la ÚNICA entrada al motor: el engrane ya no tiene «Motor de reglas») y, desde el 2026-11-03, grupos (el nivel de arriba de los
-	 * expedientes: áreas, departamentos, trimestres… como los llame cada organización)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
+	 * Son tres —tipos documentales, procesos y reglas (desde el 2026-10-29; lleva a `/motor-de-reglas` y desde el 2026-11-03 es la ÚNICA
+	 * entrada al motor: el engrane ya no tiene «Motor de reglas») y, desde el 2026-11-03, grupos (el nivel de arriba de los expedientes:
+	 * áreas, departamentos, trimestres… como los llame cada organización)—; agregar la siguiente es agregar un renglón a `SECCIONES`.
+	 * Eran cuatro: «Tipos de expediente virtual» se quitó el 2026-11-05 con los expedientes virtuales (decisión de Moibe), y con ella su
+	 * pantalla `/configuracion/tipos-expediente`.
 	 *
 	 * Los expedientes NO viven aquí: se trabajan en el módulo de uso (`/uso`, la opción «Módulo de uso» del engrane, que sustituyó a
 	 * «Expediente» el 2026-10-30). Aquí se configura de qué están hechos; allá se trabaja con ellos.
@@ -14,7 +16,6 @@
 	 * Quien no administra no ve el engrane (`TopBar.svelte`), pero la dirección se puede escribir a mano: en ese caso se dice que
 	 * esta parte es de quien administra, en vez de enseñar cuadros que llevan a pantallas que no va a poder usar.
 	 */
-	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import Cog from '@lucide/svelte/icons/cog';
 	import Layers from '@lucide/svelte/icons/layers';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
@@ -32,14 +33,6 @@
 			icono: SetupIcon,
 			descripcion:
 				'La biblioteca de tu organización: qué documentos reconoce Biblioratum, qué campos extrae de cada uno y cómo se calibran con ejemplos.'
-		},
-		{
-			id: 'tipos-expediente',
-			nombre: 'Tipos de expediente virtual',
-			href: '/configuracion/tipos-expediente',
-			icono: FolderOpen,
-			descripcion:
-				'Los grupos de documentos que se arman dentro de cada expediente, por ejemplo «Solicitud de crédito», y los tipos documentales que forman el esquema de cada uno.'
 		},
 		{
 			id: 'procesos-y-reglas',
@@ -102,7 +95,7 @@
 		<div>
 			<p class="text-lg font-medium text-foreground">Esta parte la configura quien administra</p>
 			<p class="mt-1 max-w-lg text-sm text-muted-foreground">
-				Los tipos documentales, los tipos de expediente virtual, los procesos y los grupos los define quien administra tu organización. Si necesitas un cambio aquí,
+				Los tipos documentales, los procesos y los grupos los define quien administra tu organización. Si necesitas un cambio aquí,
 				pídeselo.
 			</p>
 		</div>

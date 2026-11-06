@@ -6,7 +6,8 @@
 	 * cuadro por cosa y cada cuadro lleva a su pantalla. Aquí no se configura nada, se trabaja:
 	 *   · Centro operativo documental: el inicio, con sus tres bandejas (carga documental, bandeja de preparación y pipeline).
 	 *   · Expedientes: la carpeta de cada cliente o caso y los documentos que reúne.
-	 *   · Ejecuciones: correr un expediente virtual contra un proceso del motor de reglas (2026-10-30; la pantalla aún está en blanco).
+	 *   · Ejecuciones: correr un proceso del motor de reglas sobre un expediente (2026-10-30; hasta el 2026-11-05 se corría sobre un expediente
+	 *     virtual, que Moibe quitó: ahora el proceso corre sobre el expediente completo).
 	 *
 	 * No pide datos ni decide permisos: cada pantalla a la que lleva decide por su cuenta quién entra. Agregar la siguiente cosa es agregar
 	 * un renglón a `SECCIONES`.
@@ -31,14 +32,14 @@
 			href: '/expediente',
 			icono: FolderOpen,
 			descripcion:
-				'Los expedientes de tu organización: la carpeta de cada cliente o caso, los documentos que reúne y los expedientes virtuales que se arman con ellos.'
+				'Los expedientes de tu organización: la carpeta de cada cliente o caso y los documentos que reúne.'
 		},
 		{
 			id: 'ejecuciones',
 			nombre: 'Ejecuciones',
 			href: '/ejecuciones',
 			icono: Play,
-			descripcion: 'Corre un expediente virtual contra un proceso del motor de reglas y revisa el resultado.'
+			descripcion: 'Corre un proceso del motor de reglas sobre un expediente y revisa el resultado.'
 		}
 	];
 </script>

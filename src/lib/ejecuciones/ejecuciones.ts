@@ -11,7 +11,12 @@ export type EjecucionResumen = {
 	ejecutadaEn: string;
 	ejecutadaPor: { id: string; nombre: string | null };
 	expediente: { id: string; nombre: string };
-	virtual: { id: string; nombre: string; tipoNombre: string | null };
+	/**
+	 * El expediente virtual sobre el que se corrió, SOLO en las ejecuciones VIEJAS (de antes del 2026-11-05, cuando Moibe quitó los expedientes
+	 * virtuales); `null` en las nuevas, que se ejecutan sobre el expediente completo. Es un dato de la foto: el historial es inmutable y sigue
+	 * diciendo lo que se corrió, pero la pantalla del virtual ya no existe, así que solo se nombra, sin enlace.
+	 */
+	virtual: { id: string; nombre: string; tipoNombre: string | null } | null;
 	proceso: { id: string; nombre: string; revision: number };
 	resultado: { caso: CasoDelResultado; texto: string };
 	estado: 'completa' | 'incompleta';
@@ -61,5 +66,8 @@ export function valorParaVer(f: Pick<ValorFinalDeCorrida, 'estado' | 'valor'>): 
 	return f.estado === 'sin_valores' ? 'Sin valor (faltó el dato)' : 'Sin conectar';
 }
 
-/** A dónde lleva el expediente virtual de una ejecución. */
-export const rutaDelVirtual = (expedienteId: string, virtualId: string) => `/expediente/${encodeURIComponent(expedienteId)}/virtual/${encodeURIComponent(virtualId)}`;
+/**
+ * A dónde lleva el expediente al que se le corrió (o se le quiso correr) un proceso. Con duplicados, ahí se dejan «uno de cada tipo»: los
+ * documentos repetidos quedan marcados en el expediente. Sustituye a `rutaDelVirtual` (Moibe, 2026-11-05: quitar los expedientes virtuales).
+ */
+export const rutaDelExpediente = (expedienteId: string) => `/expediente/${encodeURIComponent(expedienteId)}`;

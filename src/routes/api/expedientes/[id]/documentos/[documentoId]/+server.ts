@@ -3,7 +3,7 @@
  * Archivos procesados (Figma Sprint 5, HUN2; 2026-10-29); sacar, «Quitar» en la tarjeta del documento dentro del expediente (2026-11-04).
  *
  * Sacar NO borra el documento: sigue siendo de la organización (en Archivos procesados) y en los demás expedientes donde esté; si era su único
- * expediente, vuelve al void. nexus_back lo saca también de los expedientes virtuales de ESTE expediente.
+ * expediente, vuelve al void.
  *
  * Idempotente en nexus_back: si el documento ya estaba, responde `agregado: false`. Un documento puede estar en varios expedientes a la
  * vez, así que agregar NO lo saca de los que ya tenía. Quien organiza (Administrador, Supervisor, Analista y Operador) puede; a los
