@@ -1281,3 +1281,39 @@ export function faltaParaGuardar(proceso: { nombre: string; hayTipoDocumental: b
 	if (!proceso.hayResultado) return 'resultado';
 	return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────── el alta de un proceso (2026-11-06)
+
+/** El tope del nombre de un proceso: el del campo del lienzo y el que impone nexus_back. */
+export const MAX_NOMBRE_PROCESO = 200;
+/** Cuántos tipos documentales se aceptan de la dirección del alta (la biblioteca de una organización no llega ni cerca; es solo un tope contra direcciones absurdas). */
+const MAX_TIPOS_DEL_ALTA = 50;
+
+/**
+ * La dirección del lienzo de un proceso NUEVO con lo que se eligió en el alta (Moibe, 2026-11-06, Figma HUN5 «Crear proceso»: antes de llegar al lienzo se
+ * pone el nombre y se eligen los TIPOS DOCUMENTALES del proceso; los campos de cada uno se eligen ya en el lienzo). Va en la dirección y no en un estado
+ * guardado aparte para que recargar la página no pierda el borrador. Sin nombre ni tipos es la de siempre: un lienzo en blanco.
+ */
+export function direccionDeProcesoNuevo(nombre: string, tipos: readonly string[]): string {
+	const p = new URLSearchParams();
+	const limpio = nombre.trim().slice(0, MAX_NOMBRE_PROCESO);
+	if (limpio) p.set('nombre', limpio);
+	for (const t of new Set(tipos)) if (t) p.append('tipo', t);
+	const consulta = p.toString();
+	return consulta ? `/motor-de-reglas/nuevo?${consulta}` : '/motor-de-reglas/nuevo';
+}
+
+/**
+ * Lo que el lienzo de un proceso nuevo lee de su dirección (lo contrario de `direccionDeProcesoNuevo`): el nombre sin espacios de más y los ids de los
+ * tipos documentales, sin repetir y en el orden en que vienen. Es lo que viene de la barra de direcciones, así que se desconfía: lo que no es un id
+ * razonable se descarta (el lienzo igual los comprueba contra la biblioteca antes de ponerlos).
+ */
+export function entradasDeProcesoNuevo(params: URLSearchParams): { nombre: string; tipos: string[] } {
+	const nombre = (params.get('nombre') ?? '').trim().slice(0, MAX_NOMBRE_PROCESO);
+	const tipos: string[] = [];
+	for (const crudo of params.getAll('tipo')) {
+		const id = crudo.trim();
+		if (id && id.length <= 100 && !tipos.includes(id)) tipos.push(id);
+	}
+	return { nombre, tipos: tipos.slice(0, MAX_TIPOS_DEL_ALTA) };
+}

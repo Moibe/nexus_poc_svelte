@@ -28,6 +28,11 @@
 	 * La tarjeta no se abre picando en su espacio vacío (misma regla que la biblioteca: se pidió así porque un clic en el vacío abría
 	 * cosas por accidente): se abre con su nombre, que es un enlace, o con el lápiz de su tarjeta (ya no hay menú ⋮, 2026-11-03).
 	 *
+	 * «Nuevo proceso» ya no va directo al lienzo (2026-11-06, Moibe: «en lugar de ir directo al canvas, haremos lo que dice este Figma»): abre en este
+	 * mismo panel el formulario de `NuevoProceso.svelte` (nombre y tipos documentales; los campos se eligen en el lienzo, no ahí) y es «Continuar» el que
+	 * lleva al lienzo de un proceso nuevo, que ya trae el nombre y un nodo por cada tipo elegido. La dirección `/motor-de-reglas/nuevo` sigue abriendo un
+	 * lienzo en blanco.
+	 *
 	 * Solo lo ve quien administra: el candado está en `+layout.server.ts`.
 	 */
 	import { goto } from '$app/navigation';
@@ -40,7 +45,9 @@
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import NuevoProceso from '$lib/components/reglas/NuevoProceso.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { direccionDeProcesoNuevo } from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import {
 		cargarProcesos,
@@ -57,7 +64,10 @@
 	const procesos = $derived(estadoProcesos.lista);
 
 	const rutaDe = (id: string) => `/motor-de-reglas/${encodeURIComponent(id)}`;
-	const nuevo = () => void goto('/motor-de-reglas/nuevo');
+	/** Se está dando de alta un proceso: el panel de la derecha enseña el formulario en vez de la lista. */
+	let creando = $state(false);
+	const nuevo = () => (creando = true);
+	const continuarAlLienzo = (eleccion: { nombre: string; tipos: string[] }) => void goto(direccionDeProcesoNuevo(eleccion.nombre, eleccion.tipos));
 	const salir = () => void goto('/');
 
 	onMount(() => {
@@ -116,22 +126,29 @@
 			<Settings class="size-4" />
 		</span>
 		<div class="min-w-0 flex-1">
-			<h2 class="text-lg font-medium text-foreground">Configura tus procesos documentales</h2>
-			<p class="text-sm text-muted-foreground">
-				Un proceso es un conjunto de reglas que corre sobre un expediente: elige los tipos documentales como entradas y combina operadores
-				para validarlos.
-			</p>
+			{#if creando}
+				<h2 class="text-lg font-medium text-foreground">Configura un nuevo proceso documental</h2>
+				<p class="text-sm text-muted-foreground">Elige los tipos documentales que componen el proceso; los campos y las reglas los defines en el lienzo.</p>
+			{:else}
+				<h2 class="text-lg font-medium text-foreground">Configura tus procesos documentales</h2>
+				<p class="text-sm text-muted-foreground">
+					Un proceso es un conjunto de reglas que corre sobre un expediente: elige los tipos documentales como entradas y combina operadores
+					para validarlos.
+				</p>
+			{/if}
 		</div>
 		<!-- Sin barra lateral (2026-11-03): sin ramas ni sección ya no tenía propósito, y «Nuevo proceso» pasó aquí, a la derecha del título (como «Agregar
 		     nuevo tipo documental» en la Biblioteca). Sin procesos, el acceso es «Crear proceso» del centro. -->
-		{#if estadoProcesos.cargada && procesos.length > 0}
+		{#if estadoProcesos.cargada && procesos.length > 0 && !creando}
 			<Button class="shrink-0" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
 		{/if}
 	</div>
 
 	<div class="flex min-h-0 flex-1">
 		<div class="flex-1 overflow-y-auto border-t-2 border-muted p-8">
-			{#if !estadoProcesos.cargada}
+			{#if creando}
+				<NuevoProceso alCancelar={() => (creando = false)} alContinuar={continuarAlLienzo} />
+			{:else if !estadoProcesos.cargada}
 				<!-- La lista vive en el servidor (por organización) y todavía no llega: un «Crea tu proceso» ahora se leería como «no tienes
 				     ninguno». Con un error, la salida es reintentar. -->
 				{#if estadoProcesos.error}

@@ -13,6 +13,14 @@
 	 * último que se había tocado y la barra traía un selector para cambiar de proceso. Abrir otro o empezar uno nuevo ahora es volver a la
 	 * lista, y de eso se encarga la navegación: la pregunta de «hay cambios sin guardar» ya salta sola al salir de la página.
 	 *
+	 * ## El alta (2026-11-06)
+	 *
+	 * «Nuevo proceso» ya no llega aquí en blanco: la lista pide primero el nombre y los TIPOS DOCUMENTALES (Figma HUN5; `NuevoProceso.svelte`) y los manda
+	 * en la dirección (`/motor-de-reglas/nuevo?nombre=…&tipo=…&tipo=…`, `entradasDeProcesoNuevo`). Aquí se lee eso: el nombre se pone de una vez y cada
+	 * tipo entra como un nodo, en columna, en cuanto la biblioteca está leída (sin ella no se sabe cuáles están activos). Es un borrador sin guardar
+	 * (nada existe en el servidor hasta «Guardar»); los campos de cada tipo se eligen aquí, conectándolos a las reglas. Una dirección `nuevo` sin
+	 * nada de eso sigue siendo un lienzo en blanco.
+	 *
 	 * Qué se acepta conectar lo decide `motivoDeRechazo` (en `reglas.ts`, probado aparte). Cuando se rechaza, el lienzo dice POR QUÉ
 	 * en un aviso sobre el canvas: soltar un cable y que no pase nada es lo peor que le puede pasar a quien está armando una regla.
 	 *
@@ -64,6 +72,7 @@
 	import '@xyflow/svelte/dist/style.css';
 
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount, setContext, tick, untrack } from 'svelte';
 
 	import BarraDeProceso from '$lib/components/reglas/BarraDeProceso.svelte';
@@ -91,6 +100,7 @@
 		NODO_VALOR_FINAL,
 		TEXTOS_DEL_RESULTADO,
 		abrirProceso,
+		entradasDeProcesoNuevo,
 		evaluar,
 		faltaParaGuardar,
 		hayCambiosSinGuardar,
@@ -653,8 +663,29 @@
 	// Un proceso en blanco no necesita nada del servidor. Uno guardado se busca en la lista de la organización: si no está, la dirección
 	// apunta a algo que ya no existe (o que es de otra organización, que desde aquí es lo mismo) y se dice, en vez de enseñar un lienzo
 	// vacío que parecería el proceso perdido.
+	// El alta (2026-11-06): los tipos que eligió la persona antes de llegar, por poner en el lienzo. Esperan a que la biblioteca esté leída: sin ella
+	// `agregar` no sabe si un tipo está activo y lo rechazaría. Se vacía al sembrar, así que solo se siembra una vez.
+	let tiposPorSembrar = $state<string[]>([]);
+	$effect(() => {
+		if (tiposPorSembrar.length === 0 || !estadoBiblioteca.cargada) return;
+		const tipos = tiposPorSembrar;
+		tiposPorSembrar = [];
+		untrack(() => void sembrar(tipos));
+	});
+	/** Un nodo por tipo, en una columna a la izquierda (el lienzo corre cada uno a la derecha de lo que taparía), y la vista ajustada a ellos. */
+	async function sembrar(tipos: string[]) {
+		tipos.forEach((tipoId, i) => agregar(tipoId, { x: 40, y: 40 + i * 190 }));
+		await tick();
+		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
+	}
+
 	onMount(() => {
 		reiniciarProcesos();
+		if (esNuevo) {
+			const entradas = entradasDeProcesoNuevo(page.url.searchParams);
+			if (entradas.nombre) nombre = entradas.nombre;
+			tiposPorSembrar = entradas.tipos;
+		}
 		if (!esNuevo) {
 			void cargarProcesos().then(async () => {
 				cargandoProceso = false;
