@@ -43,7 +43,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { formatearTamano } from '$lib/expedientes/expedientes';
 	import { huellaDe } from '$lib/expedientes/huella';
-	import { leerClasificacion, lineaDeClasificacion, notaDeSubida, type ClasificacionDeSubida } from '$lib/expedientes/clasificador';
+	import { leerClasificacion, leerExtraccion, lineaDeClasificacion, lineaDeExtraccion, notaDeSubida, type ClasificacionDeSubida, type ExtraccionDeSubida } from '$lib/expedientes/clasificador';
 	import { ACEPTAR_ATRIBUTO, MAX_MB_SUBIDA, cuantosArchivos, duplicadoDe, motivoDeRechazo, textoDeDuplicado, type Huella } from '$lib/expedientes/subida';
 
 	/** `duplicado`: se marcó como repetido y NO se sube (a menos que la persona lo permita). */
@@ -62,6 +62,8 @@
 		permitirDuplicado: boolean;
 		/** Lo que dijo el clasificador al subirlo (`null` si el servidor no lo dijo). */
 		clasificacion: ClasificacionDeSubida | null;
+		/** Lo que pasó al extraer sus datos justo después de clasificarlo (`null` si el servidor no lo dijo). */
+		extraccion: ExtraccionDeSubida | null;
 	};
 
 	let {
@@ -144,7 +146,8 @@
 				huella: null,
 				duplicado: '',
 				permitirDuplicado: false,
-				clasificacion: null
+				clasificacion: null,
+				extraccion: null
 			});
 			if (motivo) continue;
 			// La fila reactiva (la que quedó en la lista), no el objeto suelto: es la que hay que mutar cuando termine la huella.
@@ -204,6 +207,7 @@
 					if (r.ok) {
 						// Lo que dijo el clasificador viaja en la misma respuesta; un servidor sin él deja la fila sin esa línea.
 						fila.clasificacion = leerClasificacion(datos?.clasificacion);
+						fila.extraccion = leerExtraccion(datos?.extraccion);
 						fila.estado = 'listo';
 					} else {
 						fila.estado = 'error';
@@ -357,6 +361,19 @@
 										>
 											{linea.texto}
 										</p>
+									{/if}
+									<!-- Y lo de la extracción de sus datos (2026-11-06), debajo: verde si se extrajeron, ámbar si no se pudo; sin tipo no dice nada. -->
+									{#if fila.estado === 'listo' && fila.extraccion}
+										{@const extraccion = lineaDeExtraccion(fila.extraccion)}
+										{#if extraccion}
+											<p
+												class={['mt-0.5 text-xs', extraccion.tono === 'bien' ? 'text-green-700' : extraccion.tono === 'aviso' ? 'text-amber-700' : 'text-muted-foreground']}
+												data-testid="archivo-subida-extraccion"
+												data-extraccion={fila.extraccion.estado}
+											>
+												{extraccion.texto}
+											</p>
+										{/if}
 									{/if}
 									<!-- Un duplicado se dice en ámbar (no es un error: el archivo está bien, solo que ya está) y, si no se permitió, ofrece subirlo igual. -->
 									{#if fila.duplicado && fila.estado !== 'listo'}
