@@ -26,8 +26,9 @@
 	 * Tiene sus mismos tres lugares (insignia, aviso y marca «Duplicado» en cada tarjeta) y se calcula aquí, de lo que cada documento ya trae. No
 	 * frena ningún proceso. Un documento puede llevar las dos marcas: dos copias de un mismo INE son un tipo repetido Y un duplicado.
 	 *
-	 * **PDF de resultados (2026-11-06, Moibe: «quiero ver los resultados de extracción pero en pdf, como lo hacíamos en las bandejas»).** Cada tarjeta
-	 * baja un PDF con los datos que se extrajeron del documento (`construirInformeDeDatos` + `descargarPdf`, el mismo informe de las bandejas).
+	 * **Detalle (2026-11-06, Moibe: «quítalos y que solo sea un botón gris discreto que diga: Detalle»).** Cada tarjeta trae un solo botón, «Detalle», que abre los
+	 * datos extraídos del documento (`DatosExtraidosModal`) con las pestañas PDF y JSON; cada una se descarga con el «Descargar» de su pie, como en el detalle de las
+	 * bandejas (el PDF es el mismo informe, `construirInformeDeDatos` + `descargarPdf`). Antes la tarjeta traía los enlaces «PDF de resultados» y «Ver JSON».
 	 *
 	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
 	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
@@ -69,10 +70,8 @@
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import { descargarPdf, sinExtension } from '$lib/documentos/descargar';
-	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
-	import { construirInformeDeDatos, type Datos } from '$lib/expedientes/datosExtraidos';
-	import {
+		import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
+		import {
 		archivosRepetidos,
 		normalizar,
 		OPCIONES_ORDEN_DOCUMENTOS,
@@ -98,8 +97,8 @@
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
 	let subida = $state(false);
-	/** El documento cuyos datos (JSON) se están viendo (2026-11-06). */
-	let datosDe = $state<{ id: string; nombre: string; vista?: 'campos' | 'json'; contexto?: string } | null>(null);
+	/** El documento cuyo detalle (datos extraídos: PDF y JSON) se está viendo (2026-11-06). */
+	let datosDe = $state<{ id: string; nombre: string; contexto?: string; detalle?: DocumentoDeExpediente } | null>(null);
 	let aviso = $state<{ testid: string; titulo: string; cuerpo: string } | null>(null);
 	let error = $state('');
 	/** El documento que se va a quitar, mientras la confirmación está abierta. */
@@ -135,31 +134,6 @@
 			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
 		} finally {
 			quitando = null;
-		}
-	}
-
-	/** El documento cuyo PDF de resultados se está armando (su botón gira). Uno a la vez: la primera vez carga jsPDF y tarda lo bastante para dar dos clics. */
-	let descargandoPdf = $state<string | null>(null);
-
-	/** Baja el PDF con los resultados de la extracción del documento: lee sus datos al servidor y arma el mismo informe que las bandejas. */
-	async function descargarResultados(documento: DocumentoDeExpediente) {
-		if (descargandoPdf) return;
-		descargandoPdf = documento.id;
-		aviso = null;
-		error = '';
-		try {
-			const r = await fetch(`/api/documentos/${encodeURIComponent(documento.id)}/datos`);
-			const cuerpo = await r.json().catch(() => null);
-			if (!r.ok || !cuerpo) {
-				error = `No se pudo armar el PDF de «${documento.nombreOriginal}»: ${mensajeDeFallo(cuerpo, r.status, 'al leer sus datos')}`;
-				return;
-			}
-			const informe = construirInformeDeDatos(documento, cuerpo as Datos, expediente.nombre);
-			await descargarPdf(informe, `${sinExtension(documento.nombreOriginal)}-resultados.pdf`);
-		} catch {
-			error = `No se pudo armar el PDF de «${documento.nombreOriginal}». Revisa tu conexión e intenta de nuevo.`;
-		} finally {
-			descargandoPdf = null;
 		}
 	}
 
@@ -302,9 +276,7 @@
 				<li>
 					<TarjetaDocumento
 						{documento}
-						alVerDatos={() => (datosDe = { id: documento.id, nombre: documento.nombreOriginal, vista: 'json', contexto: expediente.nombre })}
-						alDescargarPdf={() => void descargarResultados(documento)}
-						descargandoPdf={descargandoPdf === documento.id}
+						alVerDetalle={() => (datosDe = { id: documento.id, nombre: documento.nombreOriginal, contexto: expediente.nombre, detalle: documento })}
 						archivoRepetido={conCopia.has(documento.id)}
 						alQuitar={data.puedeOrganizar
 							? () => {

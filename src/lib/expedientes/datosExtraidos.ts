@@ -88,10 +88,10 @@ function filaDeCampo(c: Campo): { etiqueta: string; valor: string } {
 }
 
 /**
- * El informe de los resultados de extracción de UN documento de un expediente. `expediente` es el nombre del expediente donde vive (sale en el
+ * El informe de los resultados de extracción de UN documento de un expediente. `expediente` es el nombre del expediente donde vive, si se mira desde uno (sale en el
  * subtítulo). Tolera una respuesta a medias (sin `campos`, sin `extraccion`): cuenta lo que haya y dice que lo demás no hay.
  */
-export function construirInformeDeDatos(documento: DocumentoDeExpediente, datos: Datos, expediente: string): Informe {
+export function construirInformeDeDatos(documento: DocumentoDeExpediente, datos: Datos, expediente: string | null = null): Informe {
 	const campos = Array.isArray(datos.campos) ? datos.campos : [];
 	const e = datos.extraccion ?? null;
 	const tipo = e ? (e.tipoDocumental.nombre ?? 'Tipo documental eliminado') : (datos.clasificacion?.tipoDocumental?.nombre ?? null);
@@ -110,13 +110,13 @@ export function construirInformeDeDatos(documento: DocumentoDeExpediente, datos:
 
 	return {
 		titulo: 'Resultados de la extracción',
-		subtitulo: `${documento.nombreOriginal} — ${formatoDe(documento)} • ${formatearTamano(documento.tamanoBytes)} • Expediente «${expediente}»`,
+		subtitulo: `${documento.nombreOriginal} — ${formatoDe(documento)} • ${formatearTamano(documento.tamanoBytes)}${expediente ? ` • Expediente «${expediente}»` : ''}`,
 		secciones: [
 			{
 				titulo: 'Información',
 				filas: [
 					{ etiqueta: 'Nombre de archivo', valor: documento.nombreOriginal },
-					{ etiqueta: 'Expediente', valor: expediente },
+					...(expediente ? [{ etiqueta: 'Expediente', valor: expediente }] : []),
 					...(tipo ? [{ etiqueta: 'Tipo documental', valor: tipo }] : []),
 					{ etiqueta: 'Estado de la extracción', valor: estadoDeExtraccion(datos) },
 					{ etiqueta: 'Fecha y hora de ingesta', valor: fechaHoraDe(documento.recibidoEn) },

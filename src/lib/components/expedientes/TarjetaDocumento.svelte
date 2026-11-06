@@ -19,19 +19,17 @@
 	 *     página con `archivosRepetidos`. No frena ningún proceso; solo sobra una copia.
 	 * Las dos se calculan al leer; al sacar un documento desaparecen de los demás.
 	 *
-	 * **«PDF» y «JSON» (2026-11-06; se llamaron «PDF de resultados» y «Ver JSON» hasta que Moibe pidió recortarlos: «solo deben decir PDF y Json»; el `aria-label` y el
-	 * `title` siguen diciendo todo).** Ver el archivo mismo salía sobrando (Moibe: «no es que quiera ver el archivo, quiero ver
-	 * los resultados de extracción pero en pdf, como lo hacíamos en las bandejas»): `alDescargarPdf` baja el informe de la extracción, igual que
-	 * en las bandejas, y `alVerDatos` abre el JSON.
+	 * **«Detalle» (2026-11-06).** Un solo botón gris y discreto (`alVerDetalle`) que abre los datos extraídos del documento, con sus pestañas PDF y JSON y su botón
+	 * «Descargar» (`DatosExtraidosModal`). Moibe: «es más cambio de opinión, quítalos y que solo sea un botón gris discreto que diga: Detalle». Hasta ese día la tarjeta
+	 * traía dos enlaces, «PDF de resultados» (que bajaba el informe de la extracción, como en las bandejas) y «Ver JSON»; antes, un «Ver PDF/JPG» que abría el archivo
+	 * mismo (Moibe: «no es que quiera ver el archivo, quiero ver los resultados de extracción»).
 	 *
 	 * **«Quitar» (2026-11-04, Moibe: «que un archivo pueda ser borrado de un expediente»).** La tarjeta puede llevarlo (`alQuitar`): saca el
 	 * documento del expediente, sin borrar el archivo. Sin `alQuitar` (quien no organiza) no hay nada que hacer con ella. Los expedientes
 	 * virtuales, donde esta misma tarjeta sacaba el documento del «grupito» y no del expediente, se quitaron el 2026-11-05 (y con ellos la
 	 * marca «Agregado por el clasificador», que solo existía dentro de uno).
 	 */
-	import Braces from '@lucide/svelte/icons/braces';
-	import Copy from '@lucide/svelte/icons/copy';
-	import FileText from '@lucide/svelte/icons/file-text';
+		import Copy from '@lucide/svelte/icons/copy';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
@@ -42,9 +40,7 @@
 	let {
 		documento,
 		alQuitar,
-		alVerDatos,
-		alDescargarPdf,
-		descargandoPdf = false,
+		alVerDetalle,
 		archivoRepetido = false,
 		quitando = false,
 		ayudaQuitar = `Quitar «${documento.nombreOriginal}» de este expediente`,
@@ -53,12 +49,8 @@
 		documento: DocumentoDeExpediente;
 		/** Si viene, la tarjeta ofrece «Quitar» (del expediente). */
 		alQuitar?: () => void;
-		/** Si viene, la tarjeta ofrece «Ver JSON» (los datos extraídos del documento, en una ventana). */
-		alVerDatos?: () => void;
-		/** Si viene, la tarjeta ofrece «PDF de resultados»: baja el informe de la extracción del documento (el de las bandejas). */
-		alDescargarPdf?: () => void;
-		/** Se está armando el PDF de este documento: el botón gira y no se puede volver a picar (jsPDF tarda la primera vez). */
-		descargandoPdf?: boolean;
+		/** Si viene, la tarjeta ofrece «Detalle»: abre los datos extraídos del documento (pestañas PDF y JSON, con «Descargar»). */
+		alVerDetalle?: () => void;
 		/** El expediente trae otro archivo IDÉNTICO a este (misma huella): es un «Duplicado». Lo calcula la página (`archivosRepetidos`). */
 		archivoRepetido?: boolean;
 		/** Se está quitando: el botón gira y no se puede volver a picar. */
@@ -114,35 +106,18 @@
 				<span>Duplicado</span>
 			</p>
 		{/if}
-		<!-- El informe de la extracción en PDF (como en las bandejas) y el JSON de lo mismo (2026-11-06, Moibe). Los ve quien vea el expediente. -->
-		{#if alDescargarPdf || alVerDatos}
-			<div class="flex items-center gap-3 text-xs">
-				{#if alDescargarPdf}
-					<button
-						type="button"
-						class="flex items-center gap-1 text-primary underline-offset-2 hover:underline disabled:opacity-50"
-						disabled={descargandoPdf}
-						onclick={alDescargarPdf}
-						aria-label="Descargar el PDF con los resultados de la extracción de «{documento.nombreOriginal}»"
-						title="Descarga un PDF con los datos que se extrajeron de este documento"
-						data-testid="pdf-resultados-documento"
-					>
-						{#if descargandoPdf}<LoaderCircle class="size-3 animate-spin" />{:else}<FileText class="size-3" />{/if}
-						PDF
-					</button>
-				{/if}
-				{#if alVerDatos}
-					<button
-						type="button"
-						class="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
-						onclick={alVerDatos}
-						aria-label="Ver el JSON de los datos extraídos de «{documento.nombreOriginal}»"
-						data-testid="ver-json-documento"
-					>
-						<Braces class="size-3" />
-						JSON
-					</button>
-				{/if}
+		<!-- «Detalle» (2026-11-06, Moibe): un solo botón gris y discreto que abre los datos extraídos (PDF y JSON, con «Descargar»). Lo ve quien vea el expediente. -->
+		{#if alVerDetalle}
+			<div class="flex">
+				<button
+					type="button"
+					class="rounded-md border border-border bg-muted/50 px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+					onclick={alVerDetalle}
+					aria-label="Ver el detalle de «{documento.nombreOriginal}»: sus datos extraídos en PDF y en JSON"
+					data-testid="detalle-documento"
+				>
+					Detalle
+				</button>
 			</div>
 		{/if}
 		<div class="flex items-center justify-between gap-2">

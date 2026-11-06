@@ -40,6 +40,7 @@
 		ordenarExpedientes,
 		SIN_FILTROS,
 		type ColumnaExpedientes,
+		type DocumentoDeExpediente,
 		type OrdenDocumentos,
 		type OrdenExpedientes
 	} from '$lib/expedientes/expedientes';
@@ -74,7 +75,7 @@
 	const paginaCompleta = $derived(paginaDeDocumentos.length > 0 && paginaDeDocumentos.every((d) => elegidos.has(d.id)));
 	let panelAbierto = $state(false);
 	/** El documento cuyos datos extraídos se están viendo. */
-	let datosDe = $state<{ id: string; nombre: string } | null>(null);
+	let datosDe = $state<{ id: string; nombre: string; detalle?: DocumentoDeExpediente } | null>(null);
 	let aviso = $state('');
 	function alternarPagina(marcar: boolean) {
 		for (const d of paginaDeDocumentos) {
@@ -243,7 +244,7 @@
 												type="button"
 												class="text-left text-primary underline-offset-2 hover:underline"
 												title={d.tipoDocumental.origen === 'clasificacion' ? 'Clasificado, sin datos extraídos todavía' : 'Ver los datos extraídos'}
-												onclick={() => (datosDe = { id: d.id, nombre: d.nombreOriginal })}
+												onclick={() => (datosDe = { id: d.id, nombre: d.nombreOriginal, detalle: d })}
 												data-testid="ver-datos">{d.tipoDocumental.nombre}</button
 											>
 											{#if d.tipoDocumental.origen === 'clasificacion'}
