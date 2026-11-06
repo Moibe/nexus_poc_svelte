@@ -46,6 +46,12 @@
 	 * **Quitar un documento (2026-11-04, Moibe: «que un archivo pueda ser borrado de un expediente»).** Quien organiza tiene «Quitar» en cada
 	 * tarjeta. Pregunta antes con la confirmación de la casa (`ConfirmarAccion`). Sacarlo NO borra el archivo: sigue siendo de la organización
 	 * (en Archivos procesados) y en otros expedientes donde esté; si era el único, vuelve al void. El historial de Ejecuciones no cambia.
+	 *
+	 * **Ejecutar un proceso (2026-11-06, Moibe: «Ejecuciones ahora existirá dentro del Expediente [...] solo tenemos que escoger el proceso y darle Play.
+	 * Ubícalo en un lugar que tú consideres apropiado»).** Debajo del encabezado y antes de los avisos y los documentos va `EjecutarProceso`: un selector con
+	 * los procesos activos y el botón Play, que corre el proceso con los datos de los documentos de ESTE expediente y enseña el resultado ahí mismo. Es una
+	 * acción de todo el expediente (no de un documento) y de quien organiza, y un expediente sin documentos no la trae (no habría con qué decidir; su estado
+	 * vacío ya dice que se suban archivos). Los procesos los lee el `load` de esta página.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Copy from '@lucide/svelte/icons/copy';
@@ -56,6 +62,7 @@
 
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
+	import EjecutarProceso from '$lib/components/expedientes/EjecutarProceso.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
@@ -85,6 +92,8 @@
 	const duplicados = $derived(archivosRepetidos(expediente.documentos));
 	/** Los documentos que tienen una copia idéntica en el expediente, para marcar su tarjeta. */
 	const conCopia = $derived(new Set(duplicados.flatMap((g) => g.documentos.map((d) => d.id))));
+	/** Qué documentos tiene el expediente ahora (sus ids juntos): si cambia, lo que salió de la última ejecución ya no es de lo que hay (`EjecutarProceso`). */
+	const huellaDeDocumentos = $derived(expediente.documentos.map((d) => d.id).join('|'));
 
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
@@ -259,6 +268,16 @@
 		</div>
 	</div>
 
+	<!-- Ejecutar un proceso sobre ESTE expediente (Moibe, 2026-11-06): el selector de proceso y Play. Solo quien organiza, y solo si hay documentos con qué decidir. -->
+	{#if data.puedeOrganizar && expediente.documentos.length > 0}
+		<EjecutarProceso
+			expedienteId={expediente.id}
+			expedienteNombre={expediente.nombre}
+			procesos={data.procesos}
+			procesosFallo={data.procesosFallo}
+			huella={huellaDeDocumentos}
+		/>
+	{/if}
 
 	{#if error}
 		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-expediente">{error}</p>

@@ -29,15 +29,13 @@
 
 import { isRedirect } from '@sveltejs/kit';
 
-import type { Historial } from '$lib/ejecuciones/ejecuciones';
+import type { Historial, ProcesoOfrecido } from '$lib/ejecuciones/ejecuciones';
 import { SIN_OPCIONES, type OpcionesDeFiltro } from '$lib/ejecuciones/filtros';
+import { leerProcesosOfrecidos } from '$lib/server/ejecuciones';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
 import { tenantDe } from '$lib/server/nexus';
 import { puedeOrganizar } from '$lib/usuarios/permisos';
 import type { PageServerLoad } from './$types';
-
-/** Un proceso activo de la organización: se puede ofrecer para correrlo sobre el expediente elegido. */
-export type ProcesoOfrecido = { id: string; nombre: string; ejecutable: boolean };
 
 /** Las primeras 50 ejecuciones del historial. Si no se pueden leer (el servidor falló, o es una instancia sin base), la pantalla lo dice y no se cae. */
 async function leerHistorial(tenant: string, sesion: Parameters<typeof leerDeNexus>[1]): Promise<{ historial: Historial; historialFallo: boolean }> {
@@ -65,23 +63,6 @@ async function leerOpciones(tenant: string, sesion: Parameters<typeof leerDeNexu
 	}
 }
 
-/**
- * Los procesos activos de la organización, en el orden en que se crearon. «Activo» sigue la regla de todo el front (`procesoActivo`): lo que no diga `false`
- * expreso lo está. Si no se pueden leer, `fallo` lo dice y la lista queda vacía.
- */
-async function leerProcesos(tenant: string, sesion: Parameters<typeof leerDeNexus>[1]): Promise<{ procesos: ProcesoOfrecido[]; fallo: boolean }> {
-	try {
-		const cuerpo = await leerDeNexus(`/ejecuciones/procesos?tenant=${tenant}`, sesion, 'No se pudieron leer los procesos.');
-		const procesos = listaDe<{ id: string; nombre: string; activo?: boolean; ejecutable?: boolean }>(cuerpo, 'procesos')
-			.filter((p) => p.activo !== false)
-			.map((p) => ({ id: p.id, nombre: p.nombre, ejecutable: p.ejecutable !== false }));
-		return { procesos, fallo: false };
-	} catch (e) {
-		if (isRedirect(e)) throw e;
-		return { procesos: [], fallo: true };
-	}
-}
-
 export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	const tenant = encodeURIComponent(tenantDe(locals));
 	const sesion = { cookies, url };
@@ -97,7 +78,7 @@ export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	if (!elegido) return { ...base, ...vacio };
 
 	// Los procesos no dependen del expediente (cualquiera corre sobre cualquiera), pero solo se leen cuando ya hay uno elegido: es lo que se ofrece después.
-	const { procesos, fallo } = await leerProcesos(tenant, sesion);
+	const { procesos, fallo } = await leerProcesosOfrecidos(tenant, sesion);
 	const procesoPedido = url.searchParams.get('proceso');
 	const procesoElegido = procesoPedido ? (procesos.find((x) => x.id === procesoPedido) ?? null) : null;
 	// Si los procesos no se pudieron leer no se sabe cuáles hay: «ya no se ofrece» sería falso (la pantalla dice, en cambio, que no se pudieron leer).
