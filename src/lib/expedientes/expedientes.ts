@@ -31,21 +31,56 @@ export type DocumentoDeExpediente = {
 	recibidoEn: string | null;
 	/** La huella SHA-256 de sus bytes, la que guarda nexus_back. Sirve para avisar de duplicados al subir (2026-11-02). */
 	sha256?: string;
-	/** Dónde está el archivo en el almacén (`{organización}/{aa}/{bb}/{sha256}`): con ella se pide a `/api/archivos/<ruta>` para verlo (2026-11-06). Puede faltar en un servidor anterior. */
+	/** Dónde está el archivo en el almacén (`{organización}/{aa}/{bb}/{sha256}`): con ella se pide a `/api/archivos/<ruta>`. La tarjeta del expediente ya no ofrece verlo (2026-11-06: se quiere el PDF de los resultados, no el archivo); queda por si se necesita. Puede faltar en un servidor anterior. */
 	rutaRelativa?: string;
 	/** Qué tipo documental es, según lo que se guardó al procesarlo (migración 0007): el de su última extracción o, si no se extrajo, el
 	 *  de su última clasificación. `null` si nunca se procesó desde que se guarda o el clasificador dijo «otro». */
 	tipoDocumental?: TipoDeDocumento | null;
 	/**
-	 * Solo al ver UN expediente (2026-11-03; desde el 2026-11-05 la marca es del expediente entero): hay otro documento del MISMO tipo documental
-	 * en él, así que no se sabe cuál es «el INE» y un proceso que usa ese tipo no se puede ejecutar sobre el expediente (Moibe). Se calcula al
-	 * leer, no se guarda: sacar uno quita la marca de los dos. La lista de todos los documentos de la organización no la trae.
+	 * **TIPO DOCUMENTAL REPETIDO** (en pantalla; en el contrato con nexus_back se sigue llamando `duplicado`, y no es el archivo repetido: eso es
+	 * `archivosRepetidos`). Solo al ver UN expediente (2026-11-03; desde el 2026-11-05 la marca es del expediente entero): hay otro documento del
+	 * MISMO tipo documental en él, así que no se sabe cuál es «el INE» y un proceso que usa ese tipo no se puede ejecutar sobre el expediente
+	 * (Moibe). Se calcula al leer, no se guarda: sacar uno quita la marca de los dos. La lista de todos los documentos de la organización no la trae.
+	 *
+	 * Moibe, 2026-11-06: «el concepto de duplicado debería ser "Tipo Documental Repetido" porque el duplicado es cuando está duplicado por ser archivo
+	 * idéntico por hash, debe de poder marcar las dos cosas». Por eso el nombre del cable no se tocó (renombrarlo obligaría a cambiar el back y las
+	 * pruebas de los dos lados por una palabra): lo que cambió son los textos, y «Duplicado» ahora dice otra cosa (ver `archivosRepetidos`).
 	 */
 	duplicado?: boolean;
 };
 
-/** Un tipo documental del que un expediente trae DOS O MÁS documentos, con esos documentos. */
+/** Un tipo documental del que un expediente trae DOS O MÁS documentos, con esos documentos (nexus_back lo llama `duplicados`; en pantalla, «tipo documental repetido»). */
 export type DuplicadoDeTipo = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
+
+/** Un archivo que está DOS O MÁS veces en un expediente: mismos bytes, misma huella SHA-256 (aunque se llamen distinto). Es el «Duplicado» de verdad. */
+export type ArchivoRepetido = { sha256: string; documentos: { id: string; nombre: string | null }[] };
+
+/**
+ * Los archivos que el expediente trae más de una vez, por su CONTENIDO (SHA-256) y no por su nombre ni su tipo: «acta.pdf» y «copia.pdf» con los
+ * mismos bytes son un duplicado, y dos INE distintos (otro contenido) no lo son aunque sean del mismo tipo (eso es un tipo documental repetido).
+ * Un documento sin huella (un servidor anterior no la mandaba) no cuenta. Se calcula al leer: sacar una copia quita la marca de las demás.
+ *
+ * Devuelve un grupo por huella repetida, en el orden en que aparece su primer documento, con los documentos en el orden en que vienen.
+ */
+export function archivosRepetidos(documentos: readonly Pick<DocumentoDeExpediente, 'id' | 'nombreOriginal' | 'sha256'>[]): ArchivoRepetido[] {
+	const porHuella = new Map<string, ArchivoRepetido>();
+	for (const d of documentos) {
+		const huella = typeof d.sha256 === 'string' ? d.sha256.trim().toLowerCase() : '';
+		if (!huella) continue;
+		const grupo = porHuella.get(huella) ?? { sha256: huella, documentos: [] };
+		grupo.documentos.push({ id: d.id, nombre: d.nombreOriginal ?? null });
+		porHuella.set(huella, grupo);
+	}
+	return [...porHuella.values()].filter((g) => g.documentos.length >= 2);
+}
+
+/** Cómo se dice un archivo repetido: «INE.jpg — 2 copias» si todas se llaman igual; si no, los nombres juntos, porque lo que cuenta es que son el mismo contenido. */
+export function textoDeArchivoRepetido(g: ArchivoRepetido): { nombre: string; detalle: string } {
+	const nombres = g.documentos.map((d) => d.nombre ?? 'sin nombre');
+	const distintos = [...new Set(nombres)];
+	if (distintos.length === 1) return { nombre: distintos[0], detalle: `${g.documentos.length} copias` };
+	return { nombre: nombres.join(', '), detalle: 'mismo contenido con distinto nombre' };
+}
 
 export type TipoDeDocumento = {
 	id: string;
@@ -58,7 +93,7 @@ export type TipoDeDocumento = {
 
 /**
  * El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y los tipos documentales de los que trae
- * DOS O MÁS (`duplicados`; vacío si ninguno). Los documentos de esos tipos llevan además `duplicado`.
+ * DOS O MÁS (`duplicados` en el cable; vacío si ninguno; en pantalla, «tipos documentales repetidos»). Los documentos de esos tipos llevan además `duplicado`.
  */
 export type ExpedienteConDocumentos = Expediente & {
 	documentos: DocumentoDeExpediente[];

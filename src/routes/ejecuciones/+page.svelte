@@ -18,7 +18,7 @@
 	 * celda del expediente y en su ventana de detalle: el historial es una foto inmutable.
 	 *
 	 * Si el expediente trae DOS O MÁS documentos de un tipo que el proceso usa, el proceso NO se ejecuta: no se sabe cuál es «el INE» (Moibe). La
-	 * pantalla lo avisa, dice cuáles son y lleva al expediente, donde esos documentos quedan marcados «Duplicado».
+	 * pantalla lo avisa, dice cuáles son y lleva al expediente, donde esos documentos quedan marcados «Tipo documental repetido» (desde el 2026-11-06; «Duplicado» ahora es el archivo idéntico).
 	 *
 	 * Un proceso se ofrece aunque no se pueda ejecutar todavía (los de antes de que el Resultado fuera obligatorio no lo traen), con su razón y
 	 * el botón apagado. Ejecutar es de quien organiza (Administrador, Supervisor, Analista y Operador); los demás roles ven el historial y no el
@@ -350,7 +350,7 @@
 						data-testid={noSeEjecuto.codigo === 'duplicados' ? 'aviso-duplicados' : 'no-se-ejecuto'}
 						data-codigo={noSeEjecuto.codigo ?? ''}
 					>
-						<p class="font-medium">{noSeEjecuto.codigo === 'duplicados' ? 'No se ejecutó: hay documentos duplicados' : 'No se pudo ejecutar'}</p>
+						<p class="font-medium">{noSeEjecuto.codigo === 'duplicados' ? 'No se ejecutó: hay tipos documentales repetidos' : 'No se pudo ejecutar'}</p>
 						<p class="mt-1">{noSeEjecuto.mensaje}</p>
 						{#if noSeEjecuto.duplicados?.length}
 							<ul class="mt-2 list-disc pl-5">
@@ -362,7 +362,7 @@
 							</ul>
 							<p class="mt-2">
 								<a href={rutaDelExpediente(data.elegido.id)} class="font-medium underline underline-offset-2" data-testid="ir-al-expediente">Abrir el expediente</a>
-								para dejar uno de cada tipo: los duplicados están marcados.
+								para dejar uno de cada tipo: los documentos con el tipo repetido están marcados.
 							</p>
 						{/if}
 					</div>

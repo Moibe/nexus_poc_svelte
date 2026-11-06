@@ -123,10 +123,10 @@ export type Salida = { corre: true; corrida: Corrida } | { corre: false; motivo:
 
 // ── Cómo se escribe lo que se avisa ──────────────────────────────────────────
 
-/** El aviso de duplicados: cuáles son y qué hacer. Lo usa quien ejecuta y la pantalla. */
+/** El aviso de tipos documentales repetidos (en el cable, `duplicados`; Moibe, 2026-11-06: «Duplicado» es solo el archivo idéntico): cuáles son y qué hacer. Lo usa quien ejecuta y la pantalla. */
 export function avisoDeDuplicados(duplicados: readonly Duplicado[]): string {
 	const partes = duplicados.map((d) => `«${d.tipoNombre}» (${d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')})`);
-	return `El expediente trae documentos duplicados de ${partes.join('; ')}: no se sabe cuál usar, así que el proceso no se ejecutó. Deja uno de cada tipo en el expediente y vuelve a ejecutar.`;
+	return `El expediente trae tipos documentales repetidos: ${partes.join('; ')}. No se sabe cuál usar, así que el proceso no se ejecutó. Deja uno de cada tipo en el expediente y vuelve a ejecutar.`;
 }
 
 // ── Valores reales en lugar de los de ejemplo ────────────────────────────────

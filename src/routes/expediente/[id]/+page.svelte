@@ -14,11 +14,20 @@
 	 * el motor de reglas, con su pantalla `/expediente/[id]/virtual/[vid]`. Moibe los quitó («ahora podremos meter el expediente completo a la
 	 * ejecución de un proceso»): la página vuelve a ser solo el encabezado y los documentos, y el proceso corre sobre el expediente entero.
 	 *
-	 * **Duplicados (2026-11-03, Moibe; del expediente entero desde el 2026-11-05).** Si el expediente trae DOS O MÁS documentos de un mismo tipo
-	 * documental no se sabe cuál es «el INE»: un proceso que use ese tipo no se ejecuta sobre el expediente mientras haya más de uno. Se dice en
-	 * tres lugares, todos calculados por nexus_back al leer (sacar uno los apaga): la insignia ámbar «Duplicados» del encabezado, un aviso que lista
-	 * cada tipo repetido con sus documentos y la marca «Duplicado de «tipo»» en la tarjeta de cada uno (`TarjetaDocumento`). Es solo una marca:
-	 * no impide nada, y los duplicados de un tipo que el proceso no usa no estorban a su corrida.
+	 * **Tipo documental repetido (2026-11-03, Moibe; del expediente entero desde el 2026-11-05; así se llama desde el 2026-11-06, antes «Duplicados»).**
+	 * Si el expediente trae DOS O MÁS documentos de un mismo tipo documental no se sabe cuál es «el INE»: un proceso que use ese tipo no se ejecuta
+	 * sobre el expediente mientras haya más de uno. Se dice en tres lugares, todos calculados por nexus_back al leer (sacar uno los apaga): la
+	 * insignia ámbar «Tipo documental repetido» del encabezado, un aviso que lista cada tipo repetido con sus documentos y la marca en la tarjeta de
+	 * cada uno (`TarjetaDocumento`). Es solo una marca: no impide nada, y un tipo repetido que el proceso no usa no estorba a su corrida. En el cable
+	 * de nexus_back esto se sigue llamando `duplicado`/`duplicados`; aquí se llama `tiposRepetidos`.
+	 *
+	 * **Duplicado (2026-11-06, Moibe: «el duplicado es cuando está duplicado por ser archivo idéntico por hash, debe de poder marcar las dos
+	 * cosas»).** Un archivo que está más de una vez en el expediente, por su contenido (SHA-256, `archivosRepetidos`), aunque se llamen distinto.
+	 * Tiene sus mismos tres lugares (insignia, aviso y marca «Duplicado» en cada tarjeta) y se calcula aquí, de lo que cada documento ya trae. No
+	 * frena ningún proceso. Un documento puede llevar las dos marcas: dos copias de un mismo INE son un tipo repetido Y un duplicado.
+	 *
+	 * **PDF de resultados (2026-11-06, Moibe: «quiero ver los resultados de extracción pero en pdf, como lo hacíamos en las bandejas»).** Cada tarjeta
+	 * baja un PDF con los datos que se extrajeron del documento (`construirInformeDeDatos` + `descargarPdf`, el mismo informe de las bandejas).
 	 *
 	 * **Subir archivos (2026-10-30, pedido de Moibe: «al picar un expediente, poderle subir archivos»).** El botón «Subir archivos» del
 	 * encabezado (solo para quien organiza: Administrador, Supervisor, Analista y Operador) abre `SubirArchivosModal`: se arrastran o se eligen
@@ -39,6 +48,7 @@
 	 * (en Archivos procesados) y en otros expedientes donde esté; si era el único, vuelve al void. El historial de Ejecuciones no cambia.
 	 */
 	import { invalidateAll } from '$app/navigation';
+	import Copy from '@lucide/svelte/icons/copy';
 	import Folder from '@lucide/svelte/icons/folder';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
@@ -52,11 +62,15 @@
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { descargarPdf, sinExtension } from '$lib/documentos/descargar';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
+	import { construirInformeDeDatos, type Datos } from '$lib/expedientes/datosExtraidos';
 	import {
+		archivosRepetidos,
 		normalizar,
 		OPCIONES_ORDEN_DOCUMENTOS,
 		ordenarDocumentos,
+		textoDeArchivoRepetido,
 		type DocumentoDeExpediente,
 		type OrdenDocumentos
 	} from '$lib/expedientes/expedientes';
@@ -65,8 +79,12 @@
 	let { data } = $props();
 
 	const expediente = $derived(data.expediente);
-	/** Los tipos documentales de los que el expediente trae DOS O MÁS documentos (los marca nexus_back al leer). */
-	const duplicados = $derived(expediente.duplicados);
+	/** Los tipos documentales de los que el expediente trae DOS O MÁS documentos (los marca nexus_back al leer; en el cable se llaman `duplicados`). */
+	const tiposRepetidos = $derived(expediente.duplicados);
+	/** Los archivos IDÉNTICOS (misma huella SHA-256) que el expediente trae más de una vez: los «Duplicados» (se calculan aquí, de lo que cada documento ya trae). */
+	const duplicados = $derived(archivosRepetidos(expediente.documentos));
+	/** Los documentos que tienen una copia idéntica en el expediente, para marcar su tarjeta. */
+	const conCopia = $derived(new Set(duplicados.flatMap((g) => g.documentos.map((d) => d.id))));
 
 	let busqueda = $state('');
 	let orden = $state<OrdenDocumentos>('recientes');
@@ -111,6 +129,31 @@
 		}
 	}
 
+	/** El documento cuyo PDF de resultados se está armando (su botón gira). Uno a la vez: la primera vez carga jsPDF y tarda lo bastante para dar dos clics. */
+	let descargandoPdf = $state<string | null>(null);
+
+	/** Baja el PDF con los resultados de la extracción del documento: lee sus datos al servidor y arma el mismo informe que las bandejas. */
+	async function descargarResultados(documento: DocumentoDeExpediente) {
+		if (descargandoPdf) return;
+		descargandoPdf = documento.id;
+		aviso = null;
+		error = '';
+		try {
+			const r = await fetch(`/api/documentos/${encodeURIComponent(documento.id)}/datos`);
+			const cuerpo = await r.json().catch(() => null);
+			if (!r.ok || !cuerpo) {
+				error = `No se pudo armar el PDF de «${documento.nombreOriginal}»: ${mensajeDeFallo(cuerpo, r.status, 'al leer sus datos')}`;
+				return;
+			}
+			const informe = construirInformeDeDatos(documento, cuerpo as Datos, expediente.nombre);
+			await descargarPdf(informe, `${sinExtension(documento.nombreOriginal)}-resultados.pdf`);
+		} catch {
+			error = `No se pudo armar el PDF de «${documento.nombreOriginal}». Revisa tu conexión e intenta de nuevo.`;
+		} finally {
+			descargandoPdf = null;
+		}
+	}
+
 	const visibles = $derived.by(() => {
 		const q = normalizar(busqueda);
 		const coinciden = q ? expediente.documentos.filter((d) => normalizar(d.nombreOriginal).includes(q)) : expediente.documentos;
@@ -151,15 +194,28 @@
 						data-testid="total-documentos">{expediente.documentos.length}</span
 					>
 					<span class="shrink-0">Total de archivos</span>
-					<!-- Duplicados (2026-11-03; del expediente entero desde el 2026-11-05): documentos de un mismo tipo. El aviso de abajo dice cuáles. -->
+					<!-- Tipo documental repetido (2026-11-03; del expediente entero desde el 2026-11-05; con este nombre desde el 2026-11-06): documentos de un
+					     mismo tipo. El aviso de abajo dice cuáles. -->
+					{#if tiposRepetidos.length > 0}
+						<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
+						<span
+							class="inline-flex shrink-0 items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-400"
+							data-testid="expediente-con-tipos-repetidos"
+							title="Trae documentos con el tipo documental repetido: {tiposRepetidos.map((d) => d.tipoNombre ?? 'un tipo eliminado').join(', ')}"
+						>
+							<TriangleAlert class="size-3" />
+							Tipo documental repetido
+						</span>
+					{/if}
+					<!-- Duplicados (2026-11-06): archivos idénticos (misma huella). El aviso de abajo dice cuáles. -->
 					{#if duplicados.length > 0}
 						<span class="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden="true"></span>
 						<span
 							class="inline-flex shrink-0 items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-400"
 							data-testid="expediente-con-duplicados"
-							title="Trae documentos duplicados de: {duplicados.map((d) => d.tipoNombre ?? 'un tipo eliminado').join(', ')}"
+							title="Trae archivos duplicados (idénticos): {duplicados.map((g) => textoDeArchivoRepetido(g).nombre).join('; ')}"
 						>
-							<TriangleAlert class="size-3" />
+							<Copy class="size-3" />
 							Duplicados
 						</span>
 					{/if}
@@ -203,21 +259,21 @@
 		</div>
 	</div>
 
-	<!-- Duplicados (Moibe, 2026-11-03; del expediente entero desde el 2026-11-05): dos o más documentos del mismo tipo. No se sabe cuál es «el INE»,
-	     así que un proceso que use ese tipo NO se ejecuta sobre el expediente mientras haya más de uno; las tarjetas de esos documentos llevan
-	     «Duplicado». Se calcula al leer: al quitar uno desaparece el aviso. -->
-	{#if duplicados.length > 0}
+	<!-- Tipo documental repetido (Moibe, 2026-11-03 como «duplicados»; del expediente entero desde el 2026-11-05; con este nombre desde el 2026-11-06):
+	     dos o más documentos del mismo tipo. No se sabe cuál es «el INE», así que un proceso que use ese tipo NO se ejecuta sobre el expediente
+	     mientras haya más de uno; las tarjetas de esos documentos llevan «Tipo documental repetido». Se calcula al leer: al quitar uno desaparece el aviso. -->
+	{#if tiposRepetidos.length > 0}
 		<div
 			class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
 			role="status"
-			data-testid="duplicados-del-expediente"
+			data-testid="tipos-repetidos-del-expediente"
 		>
 			<TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
 			<div>
-				<p class="font-medium">Este expediente trae documentos duplicados</p>
+				<p class="font-medium">Este expediente trae tipos documentales repetidos</p>
 				<ul class="mt-0.5 list-disc pl-4">
-					{#each duplicados as d (d.tipoId)}
-						<li data-testid="duplicado-del-expediente" data-tipo={d.tipoId}>
+					{#each tiposRepetidos as d (d.tipoId)}
+						<li data-testid="tipo-repetido-del-expediente" data-tipo={d.tipoId}>
 							<span class="font-medium">{d.tipoNombre ?? 'Tipo documental eliminado'}</span>: {d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')}
 						</li>
 					{/each}
@@ -228,6 +284,37 @@
 						Quita los que sobren y deja uno de cada tipo.
 					{:else}
 						Quien organiza el expediente puede quitar los que sobren.
+					{/if}
+				</p>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Duplicados (Moibe, 2026-11-06): el mismo archivo más de una vez, por su contenido (SHA-256). No frena ningún proceso; solo sobra una copia. Puede
+	     salir junto al aviso de arriba: dos copias de un mismo INE son las dos cosas. -->
+	{#if duplicados.length > 0}
+		<div
+			class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+			role="status"
+			data-testid="duplicados-del-expediente"
+		>
+			<Copy class="mt-0.5 size-3.5 shrink-0" />
+			<div>
+				<p class="font-medium">Este expediente trae archivos duplicados</p>
+				<ul class="mt-0.5 list-disc pl-4">
+					{#each duplicados as g (g.sha256)}
+						{@const dicho = textoDeArchivoRepetido(g)}
+						<li data-testid="duplicado-del-expediente" data-huella={g.sha256}>
+							<span class="font-medium">{dicho.nombre}</span>: {dicho.detalle}
+						</li>
+					{/each}
+				</ul>
+				<p class="mt-1">
+					Son el mismo archivo subido más de una vez (tienen exactamente el mismo contenido).
+					{#if data.puedeOrganizar}
+						Quita las copias que sobren.
+					{:else}
+						Quien organiza el expediente puede quitar las copias que sobren.
 					{/if}
 				</p>
 			</div>
@@ -258,6 +345,9 @@
 					<TarjetaDocumento
 						{documento}
 						alVerDatos={() => (datosDe = { id: documento.id, nombre: documento.nombreOriginal, vista: 'json', contexto: expediente.nombre })}
+						alDescargarPdf={() => void descargarResultados(documento)}
+						descargandoPdf={descargandoPdf === documento.id}
+						archivoRepetido={conCopia.has(documento.id)}
 						alQuitar={data.puedeOrganizar
 							? () => {
 									aviso = null;

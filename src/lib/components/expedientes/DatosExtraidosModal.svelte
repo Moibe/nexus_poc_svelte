@@ -13,31 +13,8 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { descargarBlob } from '$lib/documentos/descargar';
+	import { legible, MOTIVOS_SIN_VALOR as MOTIVOS, type Datos } from '$lib/expedientes/datosExtraidos';
 	import { fechaCorta } from '$lib/expedientes/expedientes';
-
-	type Campo = {
-		ruta: string;
-		nombre: string;
-		registro: number | null;
-		valor: string | null;
-		valorCrudo: string | null;
-		motivoSinValor: string | null;
-		confianza: number | null;
-		pagina: number | null;
-		corregido: boolean;
-	};
-	type Datos = {
-		clasificacion: { categoria: string | null; tipoDocumental: { id: string; nombre: string } | null; confianza: number | null } | null;
-		extraccion: {
-			tipoDocumental: { id: string; nombre: string | null; revision: number | null };
-			estado: 'ok' | 'no_reconocido' | 'error';
-			error: string | null;
-			confianzaPromedio: number | null;
-			terminadaEn: string | null;
-			totalCorridas: number;
-		} | null;
-		campos: Campo[];
-	};
 
 	/**
 	 * `vista` es con cuál pestaña abre (2026-11-06, Moibe: «que pueda ver su json»): «Campos» (la tabla de siempre) o «JSON» (lo mismo que dice nexus_back, tal cual,
@@ -80,15 +57,6 @@
 		};
 	});
 
-	const MOTIVOS: Record<string, string> = {
-		not_present: 'No apareció',
-		illegible: 'Ilegible',
-		below_threshold: 'Confianza insuficiente',
-		extraction_error: 'Falló la extracción'
-	};
-
-	/** `socios[2].nombre` → «socios 2 · nombre»: la ruta se lee mejor sin corchetes. */
-	const legible = (ruta: string) => ruta.replace(/\[(\d+)\]/g, ' $1').replaceAll('.', ' · ').replaceAll('_', ' ');
 	const tono = (c: number | null) => (c === null ? 'text-muted-foreground' : c >= 85 ? 'text-green-700' : c >= 60 ? 'text-amber-700' : 'text-red-700');
 </script>
 
