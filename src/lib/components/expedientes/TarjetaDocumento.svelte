@@ -19,7 +19,8 @@
 	 *     página con `archivosRepetidos`. No frena ningún proceso; solo sobra una copia.
 	 * Las dos se calculan al leer; al sacar un documento desaparecen de los demás.
 	 *
-	 * **«PDF de resultados» y «Ver JSON» (2026-11-06).** Ver el archivo mismo salía sobrando (Moibe: «no es que quiera ver el archivo, quiero ver
+	 * **«PDF» y «JSON» (2026-11-06; se llamaron «PDF de resultados» y «Ver JSON» hasta que Moibe pidió recortarlos: «solo deben decir PDF y Json»; el `aria-label` y el
+	 * `title` siguen diciendo todo).** Ver el archivo mismo salía sobrando (Moibe: «no es que quiera ver el archivo, quiero ver
 	 * los resultados de extracción pero en pdf, como lo hacíamos en las bandejas»): `alDescargarPdf` baja el informe de la extracción, igual que
 	 * en las bandejas, y `alVerDatos` abre el JSON.
 	 *
@@ -127,7 +128,7 @@
 						data-testid="pdf-resultados-documento"
 					>
 						{#if descargandoPdf}<LoaderCircle class="size-3 animate-spin" />{:else}<FileText class="size-3" />{/if}
-						PDF de resultados
+						PDF
 					</button>
 				{/if}
 				{#if alVerDatos}
@@ -139,7 +140,7 @@
 						data-testid="ver-json-documento"
 					>
 						<Braces class="size-3" />
-						Ver JSON
+						JSON
 					</button>
 				{/if}
 			</div>
