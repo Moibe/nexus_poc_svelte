@@ -43,6 +43,23 @@
 	// puso el foco donde quería y devolverlo al botón le robaba lo que tecleaba después (2026-11-06, prueba en navegador): en ese caso no se devuelve.
 	// Con Escape o al elegir sí, que es lo que ayuda a quien navega con el teclado.
 	let cerroPorClicFuera = false;
+	let contenido = $state<HTMLElement | null>(null);
+
+	/**
+	 * Sin la trampa de foco, la lista (que cuelga al final del `body`) no está en el orden de tabulación de la página: con Tab desde su última casilla el
+	 * foco se iba a los enlaces del encabezado con la lista abierta flotando, y con Shift+Tab desde la primera saltaba a otro lado (prueba en navegador,
+	 * 2026-11-06). Al intentar salir de ella con Tab se cierra y el foco vuelve al botón: de ahí el siguiente Tab sigue el orden normal de la página.
+	 * Entre las casillas, Tab sigue siendo Tab.
+	 */
+	function alTeclear(e: KeyboardEvent) {
+		if (e.key !== 'Tab' || !contenido) return;
+		const enfocables = [...contenido.querySelectorAll<HTMLElement>('button, [role="checkbox"], input, a[href]')].filter((el) => !el.hasAttribute('disabled'));
+		const sale = e.shiftKey ? document.activeElement === enfocables[0] : document.activeElement === enfocables[enfocables.length - 1];
+		if (!sale) return;
+		e.preventDefault();
+		abierto = false;
+		document.getElementById(id)?.focus();
+	}
 	// Y la lista NO atrapa el foco (`trapFocus={false}` abajo): con la trampa, el clic en un campo de al lado le daba el foco un instante y la trampa se
 	// lo jalaba de vuelta a la lista antes de que se cerrara, así que el foco terminaba en el `body` y lo que se tecleaba se perdía (medido con eventos
 	// en la prueba en navegador). Es una lista de casillas, no un diálogo modal: no necesita encerrar el foco.
@@ -76,6 +93,8 @@
 			align="start"
 			sideOffset={4}
 			trapFocus={false}
+			bind:ref={contenido}
+			onkeydown={alTeclear}
 			onInteractOutside={() => (cerroPorClicFuera = true)}
 			onCloseAutoFocus={(e) => {
 				if (cerroPorClicFuera) e.preventDefault();
