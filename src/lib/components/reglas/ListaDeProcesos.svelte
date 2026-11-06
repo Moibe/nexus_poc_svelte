@@ -38,6 +38,7 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 
+	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Power from '@lucide/svelte/icons/power';
@@ -55,6 +56,7 @@
 		guardarProceso,
 		procesoActivo,
 		reiniciarProcesos,
+		resultadoConectadoDe,
 		tieneResultado,
 		tiposDelProceso,
 		type ProcesoGuardado
@@ -123,7 +125,8 @@
 
 	<div class="flex items-center gap-3 px-6 py-4">
 		<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-			<Settings class="size-4" />
+			<!-- La carpeta con «+» del Figma al dar de alta (HUN5); el engrane el resto del tiempo. -->
+			{#if creando}<FolderPlus class="size-4" />{:else}<Settings class="size-4" />{/if}
 		</span>
 		<div class="min-w-0 flex-1">
 			{#if creando}
@@ -202,6 +205,11 @@
 									{#if !tieneResultado(p)}
 										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-sin-resultado" title="Ábrelo y agrega el nodo «Resultado» para poder ejecutarlo">
 											Sin Resultado: ábrelo y agrégalo para poder ejecutarlo
+										</span>
+									{:else if !resultadoConectadoDe(p)}
+										<!-- Tiene el nodo pero ninguna regla llega a él (2026-11-06): tampoco se puede ejecutar, y con el alta nueva es fácil guardarlo así. -->
+										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-resultado-sin-regla" title="Ábrelo y conecta una regla a su «Resultado» para poder ejecutarlo">
+											Su Resultado no tiene ninguna regla conectada: ábrelo y conéctala para poder ejecutarlo
 										</span>
 									{/if}
 								</span>

@@ -1284,6 +1284,21 @@ export function faltaParaGuardar(proceso: { nombre: string; hayTipoDocumental: b
 
 // ─────────────────────────────────────────────────────────────────────────────────────────── el alta de un proceso (2026-11-06)
 
+/**
+ * ¿Su Resultado tiene una regla conectada? Es lo que hace EJECUTABLE a un proceso (espejo de `procesos.resultado_conectado` de nexus_back): un nodo de
+ * Resultado cuya entrada «a» viene de un operador. Guardar solo exige que el nodo exista; con el alta nueva (que deja el Resultado suelto hasta que se
+ * conecta) es fácil guardar uno que todavía no se puede ejecutar, y la pantalla lo dice (2026-11-06).
+ */
+export function resultadoConectado(dibujo: { nodos: readonly unknown[]; aristas: readonly unknown[] }): boolean {
+	const tipos = new Map<unknown, unknown>();
+	for (const n of dibujo.nodos) if (n && typeof n === 'object') tipos.set((n as { id?: unknown }).id, (n as { type?: unknown }).type);
+	return dibujo.aristas.some((a) => {
+		if (!a || typeof a !== 'object') return false;
+		const { source, target, targetHandle } = a as { source?: unknown; target?: unknown; targetHandle?: unknown };
+		return tipos.get(target) === NODO_RESULTADO && targetHandle === 'a' && tipos.get(source) === NODO_OPERADOR;
+	});
+}
+
 /** El tope del nombre de un proceso: el del campo del lienzo y el que impone nexus_back. */
 export const MAX_NOMBRE_PROCESO = 200;
 /** Cuántos tipos documentales se aceptan de la dirección del alta (la biblioteca de una organización no llega ni cerca; es solo un tope contra direcciones absurdas). */

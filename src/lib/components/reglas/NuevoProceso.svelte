@@ -75,7 +75,7 @@
 </script>
 
 <form
-	class="mx-auto flex h-full w-full max-w-3xl flex-col"
+	class="flex h-full w-full flex-col"
 	data-testid="nuevo-proceso-form"
 	onsubmit={(e) => {
 		e.preventDefault();
@@ -93,7 +93,7 @@
 			<label for="nuevo-proceso-nombre" class="text-base font-medium text-foreground">Nombre de proceso *</label>
 			<Input
 				id="nuevo-proceso-nombre"
-				class="mt-2"
+				class="mt-2 h-11.5"
 				data-testid="nuevo-proceso-nombre"
 				bind:value={nombre}
 				maxlength={MAX_NOMBRE_PROCESO}
@@ -126,9 +126,9 @@
 					{#each filas as fila, i (i)}
 						<div class="flex items-end gap-2 rounded-xl border border-border bg-card p-4" data-testid="nuevo-proceso-fila">
 							<div class="flex min-w-0 flex-1 flex-col gap-2">
-								<span class="text-base font-medium text-foreground {i > 0 ? 'sr-only' : ''}">Tipo documental *</span>
+								<span class="text-base font-medium text-foreground">Tipo documental *</span>
 								<Select.Root type="single" value={fila} onValueChange={(valor) => elegir(i, valor)}>
-									<Select.Trigger class="h-10 w-full" data-testid="nuevo-proceso-tipo" aria-label="Tipo documental {i + 1}">
+									<Select.Trigger class="h-11.5 w-full" data-testid="nuevo-proceso-tipo" aria-label="Tipo documental {i + 1}">
 										{nombreDe(fila) || 'Selecciona un tipo documental'}
 									</Select.Trigger>
 									<Select.Content>
@@ -141,7 +141,7 @@
 							{#if filas.length > 1}
 								<button
 									type="button"
-									class="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+									class="flex size-11.5 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
 									data-testid="nuevo-proceso-quitar-tipo"
 									title="Quitar este tipo documental"
 									aria-label="Quitar el tipo documental {i + 1}"

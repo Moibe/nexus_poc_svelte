@@ -15,7 +15,7 @@
  * Cada proceso trae una `revision`. Si otra persona lo guardó antes, el servidor responde 409 con la `revisionActual`: aquí se
  * devuelve como `conflicto: true` y NO se pisa nada; la pantalla decide qué hacer.
  */
-import { NODO_RESULTADO, NODO_TIPO } from '$lib/reglas/reglas';
+import { NODO_RESULTADO, NODO_TIPO, resultadoConectado } from '$lib/reglas/reglas';
 import { hexAleatorio } from '$lib/state/configuracion.svelte';
 
 export type DatosProceso = {
@@ -75,6 +75,9 @@ export const procesoActivo = (p: ProcesoGuardado): boolean => p.datos.activo !==
  * se les agregue (sin la palabra con la que termina, no hay con qué contestar).
  */
 export const tieneResultado = (p: ProcesoGuardado): boolean => p.datos.nodos.some((n) => (n as { type?: unknown } | null)?.type === NODO_RESULTADO);
+
+/** ¿Su Resultado tiene una regla conectada? Sin eso el proceso no se puede ejecutar aunque el nodo exista (2026-11-06; ver `resultadoConectado`). */
+export const resultadoConectadoDe = (p: ProcesoGuardado): boolean => resultadoConectado({ nodos: p.datos.nodos, aristas: p.datos.aristas });
 
 /** Cuántos tipos documentales componen el proceso: los nodos de tipo documental de su dibujo («Documentos configurados | 3»). */
 export function tiposDelProceso(p: ProcesoGuardado): number {

@@ -98,7 +98,7 @@
 		!data.puedeEjecutar
 			? 'Tu rol puede consultar las ejecuciones, pero no ejecutar procesos'
 			: data.procesoElegido && !data.procesoElegido.ejecutable
-				? 'Este proceso todavía no se puede ejecutar: le falta su Resultado'
+				? 'Este proceso todavía no se puede ejecutar: no tiene su Resultado, o su Resultado no tiene ninguna regla conectada'
 				: null
 	);
 
@@ -336,7 +336,7 @@
 								Tu rol puede consultar las ejecuciones, pero no ejecutar procesos.
 							{:else}
 								«{data.procesoElegido.nombre}» todavía no se puede ejecutar: no tiene su nodo de Resultado, o su Resultado no tiene ninguna regla conectada. Ábrelo en el motor de reglas
-								(Configuración › Procesos y reglas) y agrégalo para poder ejecutarlo.
+								(Configuración › Procesos y reglas): agrega el Resultado o conéctale una regla para poder ejecutarlo.
 							{/if}
 						</span>
 					</p>

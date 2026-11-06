@@ -111,6 +111,7 @@
 		numeroDeOperador,
 		operadorDe,
 		posicionLibre,
+		resultadoConectado,
 		serializarDibujo,
 		usosDeNodo,
 		type ClaveOperador,
@@ -225,7 +226,12 @@
 		// La paleta solo ofrece activos, pero lo que se suelta llega por el arrastre: se comprueba aquí también.
 		const estado = estadoDeTipoEnLienzo(tiposDocumentales, tipoId);
 		if (estado !== 'activo') {
-			avisar(`«${nombreDeTipoDocumental(tipoId)}» ${ESTADO_EN_PALABRAS[estado]}: en un proceso solo se pueden usar tipos documentales activos. Se activan en Configuración › Tipos documentales.`);
+			// Un id que nunca existió (o es de otra organización: una dirección armada a mano) no es «ya no existe»: no se le puede decir el nombre.
+			avisar(
+				estado === 'ausente'
+					? 'Uno de los tipos documentales pedidos no existe en tu organización, así que no se puso en el lienzo.'
+					: `«${nombreDeTipoDocumental(tipoId)}» ${ESTADO_EN_PALABRAS[estado]}: en un proceso solo se pueden usar tipos documentales activos. Se activan en Configuración › Tipos documentales.`
+			);
 			return;
 		}
 		const id = idNodoDeTipo(tipoId);
@@ -399,8 +405,10 @@
 
 	let aviso = $state('');
 	let relojAviso: ReturnType<typeof setTimeout> | undefined;
+	/** Mientras se siembran los tipos del alta, los avisos se SUMAN (si varios tipos de la dirección no sirven, se dicen todos, no solo el último). */
+	let sumandoAvisos = false;
 	function avisar(texto: string) {
-		aviso = texto;
+		aviso = sumandoAvisos && aviso && !aviso.includes(texto) ? `${aviso} ${texto}` : texto;
 		clearTimeout(relojAviso);
 		relojAviso = setTimeout(() => (aviso = ''), 6000);
 	}
@@ -575,7 +583,11 @@
 			nombre = limpio;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
 			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
-			avisarExito('Proceso guardado', `«${limpio}» quedó guardado.`);
+			// Guardar solo exige que el nodo Resultado exista; sin una regla conectada a él el proceso queda guardado pero no se puede ejecutar: se dice (2026-11-06).
+			avisarExito(
+				'Proceso guardado',
+				resultadoConectado(dibujo) ? `«${limpio}» quedó guardado.` : `«${limpio}» quedó guardado, pero todavía no se puede ejecutar: conecta una regla a su Resultado.`
+			);
 			// Un proceso que nació en `/motor-de-reglas/nuevo` ya tiene su dirección: se cambia la barra del navegador SIN navegar (recargar o
 			// compartir el enlace abre ESTE proceso, y no un lienzo en blanco).
 			if (esNuevo && !direccionAlDia) {
@@ -675,7 +687,10 @@
 	/** Un nodo por tipo, en una columna a la izquierda (el lienzo corre cada uno a la derecha de lo que taparía), y la vista ajustada a ellos.
 	 *  240 px entre uno y otro: un nodo sin campos mide ~192 y con 190 quedaban pegados y solapados (lo vio la prueba en navegador, 2026-11-06). */
 	async function sembrar(tipos: string[]) {
+		aviso = '';
+		sumandoAvisos = true;
 		tipos.forEach((tipoId, i) => agregar(tipoId, { x: 40, y: 40 + i * 240 }));
+		sumandoAvisos = false;
 		await tick();
 		fitView({ padding: 0.15, maxZoom: 1, duration: 0 });
 	}
