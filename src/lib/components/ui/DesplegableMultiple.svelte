@@ -22,6 +22,7 @@
 		valor = $bindable([]),
 		conteos = {},
 		compacto = false,
+		alto = '',
 		testid
 	}: {
 		id: string;
@@ -32,6 +33,8 @@
 		conteos?: Partial<Record<T, number>>;
 		/** Más bajo y con letra chica (h-9, la altura del buscador y de «Ordenar»), para una barra de filtros en vez de un formulario. */
 		compacto?: boolean;
+		/** Alto y letra del botón si no son los de siempre (p. ej. `h-11.5 text-sm` en un formulario del tamaño del diseño); gana sobre `compacto`. */
+		alto?: string;
 		testid: string;
 	} = $props();
 
@@ -55,9 +58,8 @@
 	<Popover.Trigger
 		{id}
 		data-testid={testid}
-		class="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 {compacto
-			? 'h-9 text-xs'
-			: 'h-10 text-sm'}"
+		class="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 {alto ||
+			(compacto ? 'h-9 text-xs' : 'h-10 text-sm')}"
 	>
 		<span class="truncate {resumen ? 'text-foreground' : 'text-muted-foreground'}">{resumen || marcador}</span>
 		<ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
