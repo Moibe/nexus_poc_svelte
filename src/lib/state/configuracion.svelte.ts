@@ -834,12 +834,6 @@ export type VersionPublicada = {
 	procesadorVersion: string;
 	/** ISO-8601 de cuándo se publicó ESTA versión (no cuándo se reemplazó). */
 	publicadoEn: string;
-	/** Si ESTA versión llegó a calibrarse, y cuándo. Lo necesita
-	 *  `cancelarNuevaVersion` para devolver el tipo tal como estaba si la
-	 *  edición se abandona sin tocar nada: sin este dato, cancelar dejaría sin
-	 *  calibrar a un tipo que sí lo estaba, y eso ya no es cosmético — un tipo
-	 *  sin calibrar deja de extraer (ver `pipeline.svelte.ts`). */
-	calibradoEn: string | null;
 	campos: CampoBorrador[];
 };
 
@@ -897,29 +891,10 @@ export type TipoDocumentalGuardado = {
 	 *  versión se reemplace por una nueva. `null` mientras nunca se ha
 	 *  publicado, o si el tipo se guardó antes de que este campo existiera. */
 	activadoEn: string | null;
-	/** ISO-8601 de cuándo TERMINÓ la calibración de prompts de la versión
-	 *  vigente, o `null` si todavía no se ha calibrado. Es lo que distingue,
-	 *  en la tarjeta de la Biblioteca, entre ofrecer "Calibrar" y mostrar
-	 *  "Activado".
-	 *
-	 *  Desde el 2026-09-14 también es REQUISITO para procesar: el pipeline
-	 *  exige `estado === 'activo'` **y** `calibradoEn`. Un tipo activo sin
-	 *  calibrar clasifica bien pero no extrae — su documento se va a
-	 *  `pendiente_revision` diciendo qué le falta (ver `pipeline.svelte.ts`).
-	 *  Activar solo crea el Custom Extractor; hasta que la calibración
-	 *  termina, nadie ha comprobado que lo que extrae sea correcto.
-	 *
-	 *  Sigue siendo un campo aparte y NO un valor más de `estado`, aunque
-	 *  ahora los dos hagan falta: `estado` describe qué se publicó a Document
-	 *  AI y `calibradoEn` si se verificó, que son dos hechos distintos y con
-	 *  ciclos de vida distintos (republicar una versión conserva el estado y
-	 *  tira la calibración). Fundirlos obligaría a inventar un orden entre
-	 *  ellos que el dominio no tiene.
-	 *
-	 *  Se BORRA en `crearNuevaVersion`: lo que se calibró fue la versión
-	 *  anterior, y arrastrar la marca haría pasar por calibrada a una
-	 *  configuración que nadie probó. */
-	calibradoEn: string | null;
+	/* Hasta el 2026-11-06 aquí vivía `calibradoEn`: cuándo TERMINÓ la «calibración de prompts» de la versión vigente. Desde el 2026-09-14 era además
+	 * REQUISITO para procesar (el pipeline pedía `estado === 'activo'` y `calibradoEn`), y la tarjeta ofrecía «Calibrar» hasta que existía. Moibe quitó
+	 * el paso («ya no se requiere para activarlos»): activar ya basta para extraer. Los tipos guardados antes todavía traen el campo en su JSON; se
+	 * ignora al leerlo y desaparece la próxima vez que el tipo se guarda. */
 	/** Versiones anteriores a la vigente, más reciente primero. Detrás de
 	 *  "Listar versiones anteriores" en la Biblioteca. Vacío para cualquier
 	 *  tipo que nunca se haya re-publicado. */
@@ -1026,11 +1001,6 @@ function leerVersionPublicada(v: unknown): VersionPublicada | null {
 		procesadorId: d.procesadorId,
 		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
 		publicadoEn: typeof d.publicadoEn === 'string' ? d.publicadoEn : new Date(0).toISOString(),
-		// Lo guardado antes de que existiera este campo cae en null, o sea "esa
-		// versión no constaba como calibrada". Es el lado seguro: si se cancela
-		// una edición vieja, el tipo pide calibrarse otra vez en vez de darse
-		// por bueno sin que nadie lo haya comprobado.
-		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : []
 	};
 }
@@ -1173,8 +1143,6 @@ function leerTipoGuardado(crudo: unknown): TipoDocumentalGuardado | null {
 		procesadorDisplayName: typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
 		ejemploDocumental: d.ejemploDocumental === true,
 		activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
-		// Sin el dato, "sin calibrar": darlo por calibrado sin que nadie lo hiciera sería afirmar algo que no ocurrió.
-		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 		historialVersiones: Array.isArray(d.historialVersiones)
 			? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 			: [],
@@ -1694,7 +1662,6 @@ export function guardarTipoDocumental(): string | null {
 			procesadorDisplayName: '',
 			ejemploDocumental: false,
 			activadoEn: null,
-			calibradoEn: null,
 			historialVersiones: [],
 			versionEnEdicion: null,
 			documentosEjemplo: [],
@@ -1862,9 +1829,11 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 /**
  * Activa un modelo: crea (o adopta) su Custom Extractor en Document AI, vía el
  * back, y solo si Google respondió marca el estado local. Es el botón
- * "Activar" de la tarjeta (HU038; desde el 2026-10-30 el rótulo es
- * "Confirmar configuración"), y es LA operación del sistema: convierte la
- * configuración capturada en un extractor zero-shot utilizable.
+ * "Activar" de la tarjeta (HU038; del 2026-10-30 al 2026-11-06 el rótulo fue
+ * "Confirmar configuración", porque faltaba «Calibrar» para poder usar el
+ * tipo), y es LA operación del sistema: convierte la configuración capturada
+ * en un extractor zero-shot utilizable, y desde que no hay calibración es lo
+ * único que hace falta para que el tipo extraiga.
  *
  * El orden importa: primero el procesador, después el estado. Al revés
  * quedaría un tipo "activo" apuntando a nada si la llamada falla.
@@ -1981,31 +1950,26 @@ export function crearNuevaVersion(id: string): boolean {
 		procesadorId: tipo.procesadorId,
 		procesadorVersion: tipo.procesadorVersion,
 		publicadoEn: tipo.activadoEn ?? tipo.guardadoEn,
-		// Se guarda ANTES de limpiarlo abajo: es lo único que permite devolver
-		// el tipo a como estaba si la edición se abandona sin tocar nada.
-		calibradoEn: tipo.calibradoEn,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
 	tipo.estado = 'borrador';
-	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
-	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
-	tipo.calibradoEn = null;
 	guardarBiblioteca();
 	return true;
 }
 
 /**
  * Deshace `crearNuevaVersion` cuando la edición se abandona sin haber tocado
- * nada: devuelve el tipo a `activo`, le regresa su `calibradoEn` y tira la
- * foto. Es el reverso exacto, y por eso lee de `versionEnEdicion` en vez de
- * adivinar: ahí está justo lo que había antes de empezar.
+ * nada: devuelve el tipo a `activo` y tira la foto. Es el reverso exacto, y
+ * por eso lee de `versionEnEdicion` en vez de adivinar: ahí está justo lo que
+ * había antes de empezar.
  *
  * POR QUÉ HACE FALTA (bug reportado el 2026-09-22). `crearNuevaVersion` muta
  * el registro en el acto, pero salir del asistente con el tache solo cambiaba
  * de vista. El tipo se quedaba en `borrador` para siempre: la tarjeta volvía a
  * ofrecer "Activar" pese a que su procesador seguía publicado y vivo en
- * Document AI, y —desde que calibrar es requisito— además dejaba de extraer.
- * O sea que abrir una pantalla y cerrarla apagaba un tipo en producción.
+ * Document AI, y además dejaba de extraer (en `borrador` el pipeline no lo
+ * encuentra). O sea que abrir una pantalla y cerrarla apagaba un tipo en
+ * producción.
  *
  * Quien decide si la edición está "intacta" es el componente, que es el que
  * conoce el borrador; aquí solo se restaura. Si el usuario SÍ editó algo, no
@@ -2018,36 +1982,19 @@ export function cancelarNuevaVersion(id: string): boolean {
 	// ya se publicó (`activarTipoDocumental` la consume y la deja en null).
 	if (!tipo || !foto || tipo.estado !== 'borrador') return false;
 	tipo.estado = 'activo';
-	tipo.calibradoEn = foto.calibradoEn;
 	tipo.versionEnEdicion = null;
 	guardarBiblioteca();
 	return true;
 }
 
 /**
- * Cierra la calibración de prompts: marca el tipo como calibrado, que es lo
- * que hace que su tarjeta cambie el botón "Calibrar" por el rótulo "Activado".
+ * (Hasta el 2026-11-06 aquí vivía `marcarCalibrado`, que cerraba la «calibración de prompts» y era lo que dejaba la tarjeta en «Activado» y al tipo
+ * en condiciones de extraer. Se quitó con el paso «Calibrar»: ver `ModuloConfiguracion.svelte`.)
  *
- * Lo llama el ÚLTIMO "Continuar" de la pantalla de revisión, y solo cuando al
- * menos un prompt alcanzó el umbral — el caso en que ninguno lo alcanza tiene
- * su propio pie ("Calibrar nuevamente" / "Cargar documento") y no llega aquí.
- *
- * No toca `estado` ni Document AI: el procesador ya existía desde "Activar".
- * Lo único que cambia es que ahora consta que su configuración se probó.
- */
-export function marcarCalibrado(id: string): boolean {
-	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo || tipo.estado !== 'activo') return false;
-	tipo.calibradoEn = new Date().toISOString();
-	guardarBiblioteca();
-	return true;
-}
-
-/**
  * El switch "Ejemplo documental" del menú `⋮` — vuelve a estar en uso desde
  * el 2026-09-03, con un significado nuevo: "estoy listo" (una marca local,
  * reversible, del usuario). Picar el texto/ícono del renglón sigue abriendo
- * Calibración (`abrirCalibracion`); el switch en sí NO dispara ningún envío
+ * la pantalla de ejemplos (`abrirCalibracion`); el switch en sí NO dispara ningún envío
  * todavía — eso es a propósito, queda pendiente de que se defina qué lo va
  * a provocar. Apagarlo NO deshace nada que se haya enviado a Document AI
  * (cuando exista ese envío): es solo la marca local la que se quita.

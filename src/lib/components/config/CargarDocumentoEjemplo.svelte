@@ -99,7 +99,7 @@
 		guardando = false;
 	}
 
-	/** Los mismos 20 MB que ya usan `bandeja.svelte.ts` y `DocumentoParaPrompts`.
+	/** Los mismos 20 MB que ya usa `bandeja.svelte.ts` (y que usaba `DocumentoParaPrompts`, quitado el 2026-11-06 con «Calibrar»).
 	 *  Se copian en vez de exportarlos: son constantes de presentación de cada
 	 *  pantalla, no API compartida — mismo criterio que el resto del módulo. */
 	const MAX_MB = 20;

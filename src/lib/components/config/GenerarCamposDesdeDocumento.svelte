@@ -5,7 +5,7 @@
 	 * (`/api/procesadores/generar-campos`), y aquí se revisan: cada propuesta trae casilla y solo se agregan las elegidas. Lo
 	 * agregado cae en «Campos agregados» y se edita como cualquier otro campo.
 	 *
-	 * Es un `Dialog` normal (como `GenerarPrompts.svelte`) y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
+	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';

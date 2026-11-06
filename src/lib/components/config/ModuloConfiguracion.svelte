@@ -1,7 +1,14 @@
 <script lang="ts">
 	/**
 	 * El MÓDULO DE CONFIGURACIÓN: la biblioteca de tipos documentales de la organización y todo lo que cuelga de ella (el
-	 * asistente de alta, la calibración con sus documentos de ejemplo y recortes, y la generación de prompts).
+	 * asistente de alta y los documentos de ejemplo con sus recortes).
+	 *
+	 * Sin «Calibrar» (2026-11-06, Moibe: «quiero quitar el feature de calibrar en los modelos documentales, eso implica que ya no se requiere
+	 * para activarlos»): hasta ese día un tipo activo tenía además un botón «Calibrar» —generar prompts, correrlos contra un documento y calificar
+	 * sus campos— y no extraía hasta terminarlo (`calibradoEn`). Se quitó todo eso: activar el tipo ya basta. Lo que se queda es «Ejemplo
+	 * documental» (los documentos de ejemplo con sus recortes), que no era requisito de nada. Para recuperar la pantalla de prompts:
+	 * `git show 4ac2a62:src/lib/components/config/ModuloConfiguracion.svelte` y sus tres componentes (`GenerarPrompts`, `DocumentoParaPrompts` y
+	 * `RevisionPrompt`, en la misma carpeta).
 	 *
 	 * Hasta el 2026-10-25 esto era `ConfigSheet.svelte`, un panel lateral que se abría encima de cualquier pantalla desde el
 	 * engrane. Ahora el engrane lleva a `/configuracion`, un mosaico con las secciones que se configuran, y esta es la de
@@ -31,7 +38,6 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
-	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -59,12 +65,8 @@
 	import DocumentoConRecortes from './DocumentoConRecortes.svelte';
 	import RecorteGuardado from './RecorteGuardado.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
-	import GenerarPrompts from './GenerarPrompts.svelte';
-	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
-	import RevisionPrompt from './RevisionPrompt.svelte';
 	import SubcamposGrupo from './SubcamposGrupo.svelte';
 	import GenerarCamposDesdeDocumento from './GenerarCamposDesdeDocumento.svelte';
-	import CodeXml from '@lucide/svelte/icons/code-xml';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { cargarProcesos, estadoProcesos, procesosQueUsanElTipo } from '$lib/state/procesos.svelte';
@@ -89,7 +91,6 @@
 		estadoBiblioteca,
 		cargarBiblioteca,
 		reconocerFallaDeGuardado,
-		marcarCalibrado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
 		cargarTipoDocumental,
@@ -128,20 +129,18 @@
 		if (open) untrack(() => void cargarBiblioteca({ refrescar: true }));
 	});
 
-	// El módulo tiene cuatro vistas:
+	// El módulo tiene tres vistas:
 	//  - 'biblioteca': la pantalla de entrada, con el listado de modelos (hoy
 	//    vacío) y el botón para arrancar uno nuevo.
 	//  - 'wizard': el alta de tipo documental en 3 pasos.
 	//  - 'calibracion': "Ejemplo documental" del menú de la tarjeta (2026-09-02,
-	//    sin frame de Figma — se construyó desde una captura). Por ahora SOLO
-	//    puebla el árbol izquierdo con los campos reales del tipo; qué muestra y
-	//    qué hace el lado derecho queda para la siguiente conversación.
-	//  - 'prompts': la revisión de los prompts generados (2026-09-06, también
-	//    desde una captura). MISMO estado que 'calibracion' cuando nació: el
-	//    árbol izquierdo está construido y el lado derecho queda vacío a
-	//    propósito, a pedido explícito.
+	//    sin frame de Figma — se construyó desde una captura): los documentos de
+	//    ejemplo del tipo y el recorte de cada campo sobre ellos. La clave conserva
+	//    el nombre de cuando la pantalla se llamaba «Calibración» (ya no lo dice).
+	//    La vista 'prompts' (la revisión de los prompts generados, 2026-09-06) se
+	//    quitó el 2026-11-06 junto con el botón «Calibrar».
 	// Se entra siempre por 'biblioteca'.
-	let vista = $state<'biblioteca' | 'wizard' | 'calibracion' | 'prompts'>('biblioteca');
+	let vista = $state<'biblioteca' | 'wizard' | 'calibracion'>('biblioteca');
 	let avisoExito = $state(false);
 	// Si el wizard que está abierto es un ALTA o la edición de un modelo que ya
 	// existía. No se puede deducir al final: el tipo documental entra a la
@@ -222,246 +221,6 @@
 	// ejemplos" está abierto — se necesita el id (para activar) y el nombre
 	// (si algún día el aviso lo muestra), igual que `campoAQuitar` de arriba.
 	let tipoPocosEjemplos = $state<{ id: string; nombre: string } | null>(null);
-
-	// Id del tipo cuyo modal de "Generar prompts" está abierto, o null. Se
-	// guarda el ID y no un booleano porque el modal se abre desde la tarjeta de
-	// UN tipo concreto: cuando exista el back, la cantidad elegida tendrá que
-	// viajar junto con el tipo al que pertenece.
-	let tipoGenerandoPrompts = $state<string | null>(null);
-
-	// El flujo de "Generar prompt" son TRES pasos, y cada uno tiene su propia
-	// variable a propósito — no una sola con banderas:
-	//   1. `tipoGenerandoPrompts`  modal de cantidad abierto
-	//   2. `promptsPendientes`     modal del documento de ejemplo abierto
-	//   3. `promptsDe`             la pantalla de revisión ya tiene datos
-	// Reusar una sola variable haría que cerrar un paso vaciara el siguiente.
-	let promptsPendientes = $state<{ tipoId: string; cantidad: number } | null>(null);
-	let promptsDe = $state<{ tipoId: string; cantidad: number; archivo: File } | null>(null);
-
-	/** Paso 1 → 2: se eligió la cantidad; ahora falta el documento sobre el que
-	 *  se van a probar los prompts. */
-	function pedirDocumentoParaPrompts(cantidad: number) {
-		if (tipoGenerandoPrompts === null) return;
-		promptsPendientes = { tipoId: tipoGenerandoPrompts, cantidad };
-		tipoGenerandoPrompts = null;
-	}
-
-	/** Paso 2 → 3: con documento en mano, se entra a la revisión. Lo único que
-	 *  NO pasa aquí es la GENERACIÓN: no se le pide nada al back, los renglones
-	 *  del árbol son la estructura de la pantalla, no prompts reales. */
-	function irARevisionDePrompts(archivo: File) {
-		if (promptsPendientes === null) return;
-		promptsDe = { ...promptsPendientes, archivo };
-		promptsPendientes = null;
-		promptActual = 1;
-		puntajesPorPrompt = {};
-		intentoCalibracion = 0;
-		vista = 'prompts';
-	}
-
-	/** Cuál de los `promptsDe.cantidad` prompts se está revisando ahora mismo,
-	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
-	let promptActual = $state(1);
-
-	/** El tipo documental que se está calibrando en la pantalla de prompts.
-	 *  `RevisionPrompt` necesita su `procesadorId` para extraer con el Custom
-	 *  Extractor que le toca — antes del 2026-09-07 llamaba siempre al de INE,
-	 *  así que revisar los prompts de una Póliza corría el extractor de una
-	 *  credencial. */
-	const tipoDePrompts = $derived.by(() => {
-		const enCurso = promptsDe;
-		if (!enCurso) return undefined;
-		return tiposDocumentales.find((t) => t.id === enCurso.tipoId);
-	});
-
-	/** Puntaje (0-100) de cada prompt YA ABANDONADO, por número de prompt —
-	 *  "abandonado" en el sentido de que `avanzarPrompt` ya se lo llevó de
-	 *  encima. El del prompt QUE SE ESTÁ VIENDO ahora mismo (`promptActual`) no
-	 *  vive aquí: se calcula al vuelo en `puntajeDe`, para que si la persona
-	 *  cambia un veredicto después de terminar el último prompt (posible: sus
-	 *  campos se quedan visibles e interactivos, ver `calibracionSinExito`) el
-	 *  puntaje reaccione en vez de quedarse con un número viejo. Un objeto
-	 *  normal basta (no `$state` en las claves) porque nunca se edita una
-	 *  entrada ya escrita, solo se agregan nuevas. */
-	let puntajesPorPrompt = $state<Record<number, number>>({});
-
-	/** Puntaje (0-100) del prompt `n`, sea que ya se haya abandonado
-	 *  (`puntajesPorPrompt`) o que sea el que se está viendo ahora mismo
-	 *  (calculado al vuelo desde `avanceRevision`). `undefined` mientras ese
-	 *  prompt no tenga TODOS sus campos calificados todavía. */
-	function puntajeDe(n: number): number | undefined {
-		if (n === promptActual) {
-			return avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
-				? Math.round((avanceRevision.correctos / avanceRevision.total) * 100)
-				: undefined;
-		}
-		return puntajesPorPrompt[n];
-	}
-
-	/** Puntaje mínimo (correctos/total, en %) para que un prompt cuente como
-	 *  "de calidad adecuada" — el mismo corte que ya pinta un puntaje en verde
-	 *  en `claseColorPuntaje`. No hay razón para que "adecuado" y "verde" sean
-	 *  dos números distintos si ninguno de los dos viene de una fuente real
-	 *  todavía (los dos son una lectura mía, no del back ni del mockup). */
-	const UMBRAL_ADECUADO = 80;
-
-	/** Verde/ámbar/rojo del puntaje, a pedido explícito con captura
-	 *  (2026-09-07). Cortes propios — el diseño solo mostró 84% en verde y 60%
-	 *  en ámbar, así que 80/50 es la lectura más simple que reproduce esos dos
-	 *  ejemplos sin inventar un tercer corte que nadie pidió. */
-	function claseColorPuntaje(puntaje: number): string {
-		if (puntaje >= UMBRAL_ADECUADO) return 'bg-green-50 text-green-700';
-		if (puntaje >= 50) return 'bg-amber-50 text-amber-700';
-		return 'bg-red-50 text-red-700';
-	}
-
-	/** true cuando se llegó al ÚLTIMO prompt, se calificaron todos sus campos,
-	 *  y NINGUNO de los `promptsDe.cantidad` prompts alcanzó `UMBRAL_ADECUADO`
-	 *  (2026-09-07, a pedido explícito con captura: "cuando ninguno de los
-	 *  prompts alcanza un nivel adecuado, debe desplegar este mensaje").
-	 *  Es un `$derived`, no una bandera que se prende una vez y se queda
-	 *  prendida: los campos del último prompt se quedan visibles e
-	 *  interactivos después de esto (nada los oculta), así que si la persona
-	 *  cambia un veredicto y el puntaje sube del umbral, el aviso debe
-	 *  desaparecer solo, no quedarse mintiendo. */
-	const calibracionSinExito = $derived.by(() => {
-		if (promptsDe === null || promptActual !== promptsDe.cantidad) return false;
-		const puntajes: number[] = [];
-		for (let n = 1; n <= promptsDe.cantidad; n++) {
-			const p = puntajeDe(n);
-			if (p === undefined) return false; // todavía falta calificar alguno
-			puntajes.push(p);
-		}
-		return puntajes.every((p) => p < UMBRAL_ADECUADO);
-	});
-
-	/** "Continuar" con el pie: por ahora cada prompt es la MISMA operación
-	 *  (correr el extractor contra el mismo documento de ejemplo y calificar sus
-	 *  campos) repetida tantas veces como prompts se hayan pedido — todavía no
-	 *  existe una noción de qué distingue a un prompt del siguiente, así que no
-	 *  hay nada más que "avanzar" por ahora. El `{#key}` que envuelve a
-	 *  `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
-	 *  Svelte destruye el componente viejo y monta uno limpio, que vuelve a
-	 *  extraer desde cero.
-	 *  Antes de avanzar, se calcula el puntaje del prompt que se abandona
-	 *  (correctos/total de `avanceRevision`, que a esta altura siempre tiene
-	 *  `revisados === total` porque así lo exige `revisionCompleta`) y se
-	 *  guarda en `puntajesPorPrompt` para que el sidebar lo pinte.
-	 *  En el ÚLTIMO prompt esto no hace nada — no hay a dónde avanzar. Si
-	 *  además NINGÚN prompt alcanzó el umbral, ese caso lo resuelve
-	 *  `calibracionSinExito` con su propio pie (`calibrarNuevamente` /
-	 *  `pedirNuevoDocumentoParaPrompts`); si SÍ hay al menos uno adecuado, qué
-	 *  debería pasar sigue sin definirse (ver `docs/pendientes-ux.md`). */
-	function avanzarPrompt() {
-		if (promptsDe === null || promptActual >= promptsDe.cantidad) return;
-		if (avanceRevision.total > 0) {
-			puntajesPorPrompt[promptActual] = Math.round(
-				(avanceRevision.correctos / avanceRevision.total) * 100
-			);
-		}
-		promptActual += 1;
-		// Se apaga aquí, no solo en el remount de `RevisionPrompt`: entre el
-		// clic y el primer `onCambioRevision` del componente nuevo hay un hueco
-		// donde `avanceRevision` todavía tendría los números del prompt viejo
-		// (todo revisado), y "Continuar" se vería habilitado un instante antes
-		// de que la extracción nueva ni siquiera empiece.
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-	}
-
-	/** true cuando el prompt en pantalla es el último de la tanda. Es lo que
-	 *  decide si "Continuar" avanza al siguiente o cierra la calibración. */
-	const esUltimoPrompt = $derived(promptsDe !== null && promptActual === promptsDe.cantidad);
-
-	/**
-	 * El ÚLTIMO "Continuar" (2026-09-14, a pedido explícito). Cierra la
-	 * calibración: deja constancia de que este tipo ya se probó —lo que cambia
-	 * su tarjeta de ofrecer "Calibrar" a mostrar "Activado"— y regresa al
-	 * listado de tipos documentales.
-	 *
-	 * Esto llena el hueco que `avanzarPrompt` documentaba como "sin definir":
-	 * qué pasa al terminar el último prompt cuando SÍ hubo alguno adecuado. El
-	 * caso contrario no llega aquí — si ninguno alcanzó el umbral, el pie es
-	 * otro (`calibracionSinExito`) y ni siquiera ofrece "Continuar".
-	 *
-	 * Reusa `salirDeRevisionDePrompts` en vez de repetir el reseteo: son el
-	 * mismo destino, y tener dos copias las dejaría libres de divergir.
-	 */
-	function terminarCalibracion() {
-		if (promptsDe === null) return;
-		// Si la marca no llegó al disco NO se sale de la revisión: irse dejaría
-		// el trabajo de calibrar tirado —el tipo seguiría sin calibrar y sin
-		// extraer— sin más señal que el aviso, ya en otra pantalla. Quedándose
-		// aquí, se libera espacio y se vuelve a picar Continuar.
-		if (!marcarCalibrado(promptsDe.tipoId)) return;
-		salirDeRevisionDePrompts();
-	}
-
-	/** Onclick único de "Continuar": en los prompts intermedios avanza, y en el
-	 *  último cierra la calibración. Una sola función y no dos botones para que
-	 *  el pie no pueda quedar mostrando los dos, o ninguno. */
-	function continuarRevision() {
-		if (esUltimoPrompt) terminarCalibracion();
-		else avanzarPrompt();
-	}
-
-	/** Se incrementa cada vez que `calibrarNuevamente` reinicia el MISMO
-	 *  documento desde el prompt 1. Sin esto, si `cantidad === 1`,
-	 *  `promptActual` volvería a valer 1 —el mismo valor que ya tenía— y el
-	 *  `{#key}` que envuelve a `RevisionPrompt` no cambiaría, así que el
-	 *  componente no se remontaría y no volvería a extraer nada. */
-	let intentoCalibracion = $state(0);
-
-	/** Pie de "No fue posible activar el modelo": reinicia la revisión desde
-	 *  el prompt 1 contra el MISMO documento de ejemplo — a diferencia de
-	 *  "Cargar documento" (abajo), que pide uno nuevo. */
-	function calibrarNuevamente() {
-		promptActual = 1;
-		puntajesPorPrompt = {};
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-		intentoCalibracion += 1;
-	}
-
-	/** El otro camino que ofrece el aviso: probar con un documento de ejemplo
-	 *  distinto. Reabre el mismo modal que el paso 2→3 original
-	 *  (`DocumentoParaPrompts`, vía `promptsPendientes`), con el mismo tipo y
-	 *  cantidad — `irARevisionDePrompts` hace el resto (incluido resetear
-	 *  `promptActual` y `puntajesPorPrompt`) en cuanto se elige el archivo. */
-	function pedirNuevoDocumentoParaPrompts() {
-		if (promptsDe === null) return;
-		promptsPendientes = { tipoId: promptsDe.tipoId, cantidad: promptsDe.cantidad };
-	}
-
-	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
-	 *  documento): aborta el flujo COMPLETO, no solo ese paso — volver al modal
-	 *  de cantidad obligaría a re-elegirla sin haberlo pedido. */
-	function cancelarGeneracionDePrompts() {
-		promptsPendientes = null;
-	}
-
-	/** Salir de la revisión: además de regresar a la Biblioteca, suelta el
-	 *  documento y la cantidad. Lo usan "Cancelar evaluación" del pie y la X del
-	 *  encabezado (vía `cerrarNivel`) — el mismo destino por dos caminos, así
-	 *  que comparten función para que no puedan divergir. */
-	function salirDeRevisionDePrompts() {
-		promptsDe = null;
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-		puntajesPorPrompt = {};
-		intentoCalibracion = 0;
-		vista = 'biblioteca';
-	}
-
-	/** Cuántos campos del prompt en revisión llevan veredicto, de cuántos hay,
-	 *  y cuántos de esos quedaron "Correcto". Lo reporta `RevisionPrompt`.
-	 *  `revisados`/`total` son lo único que habilita "Continuar": seguir
-	 *  adelante con campos sin revisar dejaría huecos justo en el dato que la
-	 *  pantalla existe para recoger. `total: 0` (todavía extrayendo, o un
-	 *  documento sin campos) también deja el botón apagado, que es lo
-	 *  correcto — no hay nada que evaluar. `correctos` alimenta el puntaje que
-	 *  calcula `puntajeDe`. */
-	let avanceRevision = $state({ revisados: 0, total: 0, correctos: 0 });
-	const revisionCompleta = $derived(
-		avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
-	);
 
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
@@ -882,14 +641,9 @@
 	 *
 	 *  Es una lista de vistas INTERIORES, no una negación de 'biblioteca', y hay
 	 *  que acordarse de agregar cada vista nueva aquí: si no, su X cierra el
-	 *  módulo entero en vez de regresar a la Biblioteca — y hoy 'prompts' no
-	 *  tiene pie con botones, así que esa X es su ÚNICA salida. */
+	 *  módulo entero en vez de regresar a la Biblioteca. */
 	function cerrarNivel() {
-		if (vista === 'prompts') {
-			// Mismo camino que "Cancelar evaluación": suelta el documento y la
-			// cantidad, no solo cambia de vista.
-			salirDeRevisionDePrompts();
-		} else if (vista === 'wizard' || vista === 'calibracion') {
+		if (vista === 'wizard' || vista === 'calibracion') {
 			// Salir del asistente sin haber tocado nada deshace la nueva versión
 			// que abrirlo había empezado. Mientras esto fue un panel lateral,
 			// Escape y el clic fuera entraban también por aquí; de página solo
@@ -994,8 +748,8 @@
 	 * como se cargó. Existe para poder distinguir, al salir del asistente,
 	 * entre "abrí y cerré sin tocar nada" y "edité algo y me salí".
 	 *
-	 * `crearNuevaVersion` muta el registro en el acto (lo pasa a `borrador` y
-	 * le quita la calibración), y antes del 2026-09-22 salir con el tache no
+	 * `crearNuevaVersion` muta el registro en el acto (lo pasa a `borrador`), y
+	 * antes del 2026-09-22 salir con el tache no
 	 * deshacía nada: el tipo se quedaba desconfigurado para siempre aunque su
 	 * procesador siguiera publicado y vivo. Esto es lo que permite deshacerlo.
 	 */
@@ -1017,7 +771,7 @@
 	/**
 	 * Al salir del asistente: si se había abierto para una nueva versión y el
 	 * borrador sigue idéntico a como se cargó, se deshace todo y el tipo queda
-	 * como estaba (activo, con su calibración).
+	 * como estaba (activo).
 	 *
 	 * Si SÍ editó algo no se toca nada: su trabajo sigue en el borrador y el
 	 * tipo sigue en edición, retomable desde "Editar". Deshacer ahí le borraría
@@ -1316,14 +1070,8 @@
 	<!-- header . navigation -->
 	<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 		<p class="flex-1 text-base font-medium text-foreground">
-			<!-- "Generación de prompt" es el texto literal del encabezado del
-			     modal que trae a esta pantalla (captura del 2026-09-06). La
-			     captura de ESTA vista viene recortada y no muestra su propio
-			     encabezado, así que se reusa ese en vez de inventar uno. -->
 			{#if vista === 'calibracion'}
 				Configuración de tipo documental
-			{:else if vista === 'prompts'}
-				Generación de prompt
 			{:else}
 				Módulo de configuración
 			{/if}
@@ -1342,7 +1090,7 @@
 		>
 			<CancelSquareIcon />
 			<span class="sr-only">
-				{vista === 'wizard' || vista === 'calibracion' || vista === 'prompts'
+				{vista === 'wizard' || vista === 'calibracion'
 				? 'Volver al módulo de configuración'
 				: 'Cerrar'}
 			</span>
@@ -1354,28 +1102,19 @@
 		<span
 			class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"
 		>
-			<!-- El ícono de "Calibración" es una aproximación: esta pantalla
+			<!-- El ícono de "Ejemplo documental" es una aproximación: esta pantalla
 			     salió de una captura, sin link de Figma que confirmar contra
 			     píxeles reales (a diferencia del resto del módulo). -->
 			{#if vista === 'calibracion'}
 				<Sparkles class="size-4" />
-			{:else if vista === 'prompts'}
-				<CodeXml class="size-4" />
 			{:else}
 				<SetupIcon />
 			{/if}
 		</span>
 		<div class="min-w-0 flex-1">
 			{#if vista === 'calibracion'}
-				<h2 class="text-lg font-medium text-foreground">Calibración de campos extraídos</h2>
+				<h2 class="text-lg font-medium text-foreground">Ejemplo documental</h2>
 				<p class="text-sm text-muted-foreground">Carga tus documentos referencia</p>
-			{:else if vista === 'prompts'}
-				<!-- Sin subtítulo a propósito: la captura de esta vista viene
-				     recortada justo donde iría, y el único texto legible de esa
-				     zona ("...información antes de continuar con el proceso.")
-				     pertenece al panel DERECHO, que está fuera del alcance de
-				     esta iteración. Mejor sin subtítulo que con uno inventado. -->
-				<h2 class="text-lg font-medium text-foreground">Generar prompts de configuración</h2>
 			{:else}
 				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
 				<p class="text-sm text-muted-foreground">
@@ -1390,8 +1129,8 @@
 		     «elimina el árbol doble de aquí»): ahí traía el rótulo «Configuración», la tarjeta «Biblioteca» y un árbol con una
 		     rama por tipo que repetía las tarjetas de la derecha y las filtraba; arrastrar una rama reordenaba. Se quitó la barra
 		     entera, como en Procesos y API Keys (2026-11-03): las tarjetas ocupan todo el ancho, se ven todas y se reordenan
-		     arrastrándolas de su asa. En el asistente, Calibración y Prompts la barra sigue: ahí es su navegación (los pasos, los
-		     campos del tipo, los prompts), no una copia del panel. Para devolver el árbol: `git show b88d625:src/lib/components/config/ModuloConfiguracion.svelte`. -->
+		     arrastrándolas de su asa. En el asistente y en «Ejemplo documental» la barra sigue: ahí es su navegación (los pasos, los
+		     campos del tipo), no una copia del panel. Para devolver el árbol: `git show b88d625:src/lib/components/config/ModuloConfiguracion.svelte`. -->
 		{#if vista !== 'biblioteca'}
 		<aside
 			class="w-82.5 shrink-0 overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
@@ -1446,70 +1185,6 @@
 						</li>
 					</ul>
 				{/if}
-			{:else if vista === 'prompts'}
-				<!-- Réplica de la captura del 2026-09-06. Reusa a propósito el MISMO
-				     lenguaje visual del sidebar del wizard, con sus TRES estados
-				     reales calcado del `state` del wizard de arriba, salvo que aquí
-				     el subrayado y el rótulo/puntaje son DOS preguntas distintas
-				     (2026-09-07, segunda ronda: la primera los ataba juntos a
-				     `n < promptActual`, pero el aviso de "ningún prompt adecuado"
-				     deja el ÚLTIMO prompt con puntaje MIENTRAS sigue siendo el que se
-				     muestra a la derecha):
-				       - El subrayado (`border-b-2 border-green-500`) marca cuál
-				         renglón es el que se está VIENDO ahora mismo: `n === promptActual`,
-				         sin importar si ya tiene puntaje o no.
-				       - El rótulo/chip depende de `puntajeDe(n)`: check verde + "Listo"
-				         (el MISMO texto que usa el wizard para un paso completado; se
-				         llamó "Revisado" en el primer intento) más el chip
-				         "Puntaje | N%" en cuanto ese prompt tiene TODOS sus campos
-				         calificados — sea que ya se haya abandonado (`n < promptActual`)
-				         o que sea el actual y ya esté completo. Sin puntaje, el actual
-				         dice "En revisión" (punto verde) y el resto "Por revisar" (gris).
-				     Los renglones siguen sin ser clicables — no hay forma de VOLVER a
-				     un prompt ya abandonado, a diferencia del wizard — porque no está
-				     pedido: cada prompt de hoy es la misma operación repetida, no una
-				     página con su propio estado que valga la pena reabrir.
-				     El puntaje mismo (correctos/total, ver `puntajeDe`) es una lectura
-				     MÍA, no del mockup: es lo único medible con lo que ya se captura
-				     en pantalla.
-				     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
-				     dedazo del diseño. Aquí se numera correctamente. -->
-				<ol class="space-y-6">
-					{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
-						{@const esActual = n === promptActual}
-						{@const puntaje = puntajeDe(n)}
-						<li class={esActual ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
-							<div class="mb-1 flex items-center justify-between gap-2">
-								<div class="flex items-center gap-1.5">
-									{#if puntaje !== undefined}
-										<Check class="size-3.5 text-green-600" />
-										<span class="text-xs font-medium text-green-600">Listo</span>
-									{:else if esActual}
-										<span class="size-1.5 rounded-full bg-green-500"></span>
-										<span class="text-xs font-medium text-green-600">En revisión</span>
-									{:else}
-										<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
-									{/if}
-								</div>
-								{#if puntaje !== undefined}
-									<span
-										data-testid="puntaje-prompt"
-										data-puntaje={puntaje}
-										class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {claseColorPuntaje(
-											puntaje
-										)}"
-									>
-										Puntaje | {puntaje}%
-									</span>
-								{/if}
-							</div>
-							<p class="text-sm font-semibold text-foreground">{n}. Prompt {n}</p>
-							<p class="mt-1 text-sm text-muted-foreground">
-								Listo para revisión de los resultados extraídos sobre ejemplos documentales
-							</p>
-						</li>
-					{/each}
-				</ol>
 			{:else}
 				<p class="mb-4 text-sm font-semibold text-foreground">Nuevo tipo documental</p>
 				<ol class="space-y-6">
@@ -1610,11 +1285,11 @@
 							     La tarjeta NO es clicable (2026-09-06, a pedido explícito). Antes
 							     el ícono y los textos eran un <button> que abría el modo edición,
 							     pero llevaba `flex-1`: se estiraba por todo el espacio libre hasta
-							     "Confirmar configuración", así que picar en el área VACÍA de la tarjeta —donde no
+							     "Activar", así que picar en el área VACÍA de la tarjeta —donde no
 							     hay nada que sugiera que sea clicable— también entraba a editar.
 							     Ahora la ÚNICA puerta al modo edición es el renglón "Editar" del
 							     menú `⋮` (que ya trae su propio guardia para modelos activos), y
-							     en la tarjeta quedan solo dos controles reales: "Confirmar configuración" y el
+							     en la tarjeta quedan solo dos controles reales: "Activar" y el
 							     menú. Ojo si se reintroduce algo clicable aquí: un <button>
 							     dentro de otro es HTML inválido —el navegador deshace el
 							     anidamiento y los clics dejan de llegar a quien deben—, que es el
@@ -1718,16 +1393,18 @@
 									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
 									     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
 									     se puede leer del volcado —es una instancia de componente— así
-									     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
-									     2026-09-14, cuando se pidió que dijera "Configurado": el
-									     estado interno del tipo SIGUE siendo `activo` —la clave, el
-									     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
-									     palabra que ve el usuario.
-									     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
-									     el tipo no queda "activo, listo para usarse"): confirmar los campos
-									     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
-									     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
-									     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
+									     que el rótulo nunca salió del diseño. El estado interno del tipo
+									     es `activo`, el testid de la insignia `insignia-activo` y el del
+									     botón `activar-tipo`.
+									     Los rótulos son «Activar» y «Activado». Pasaron por «Activo» (hasta
+									     el 2026-09-14), «Configurado» y «Confirmar configuración» (hasta el
+									     2026-11-06) porque entre confirmar los campos y poder usar el tipo
+									     había un paso más, «Calibrar» (Moibe, 2026-10-30: «Activar» engañaba,
+									     el tipo no quedaba listo para usarse). Sin ese paso (2026-11-06,
+									     Moibe: «ya no se requiere para activarlos»), activar SÍ deja el tipo
+									     listo para extraer y las palabras vuelven a decir la verdad. El
+									     botón sigue con `px-4` (el texto manda el ancho) en vez de los
+									     82x38 fijos del frame (`w-20.5`).
 									     NO se implementó el estado intermedio "Validando configuración..."
 									     que aparece en una de las capturas: no hay nada que validar sin
 									     el back, y una animación de espera sobre trabajo que nadie está
@@ -1740,54 +1417,18 @@
 											Eliminando...
 										</Button>
 									{:else if tipo.estado === 'activo'}
-										<!-- Chip + botón de acción, según la captura compartida el
-										     2026-09-06 (ahí el botón decía "Generar prompt"; el 2026-09-14
-										     se renombró a "Calibrar"). El chip ganó un punto verde y dejó su ancho fijo
-										     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
-										     calculado para solo el texto lo apretaba. -->
+										<!-- El chip de estado. Ganó un punto verde (captura compartida el 2026-09-06) y dejó su
+										     ancho fijo (`w-14.75`) por padding: con el punto adentro, un ancho fijo
+										     calculado para solo el texto lo apretaba. Hasta el 2026-11-06 el tipo
+										     activo traía además un botón «Calibrar» (y, ya calibrado, un rótulo
+										     «Activado» suelto): se quitaron con el paso. -->
 										<span
 											data-testid="insignia-activo"
 											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
 										>
 											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-											Configurado
+											Activado
 										</span>
-
-										{#if tipo.calibradoEn}
-											<!-- Ya se calibró (2026-09-14, a pedido explícito): el botón deja
-											     su lugar a un rótulo. No es un Button deshabilitado porque no
-											     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
-											     nada que picar. Conserva la altura del botón (`h-9.5`) para
-											     que la tarjeta no brinque al cambiar de estado.
-											     Tipografía y punto IDÉNTICOS a los de la insignia "Configurado"
-											     de arriba (`text-xs font-medium`, `gap-1.5`, punto `size-1.5
-											     bg-green-500`), a pedido explícito el mismo día: son dos
-											     rótulos de estado uno al lado del otro, y que uno se viera más
-											     grande los hacía leer como cosas de distinta jerarquía. Lo
-											     único que NO se copió es el fondo en píldora (`bg-green-50
-											     rounded-full px-2.5`): sin él se distinguen sin dejar de
-											     emparejar. -->
-											<span
-												data-testid="tipo-activado"
-												class="flex h-9.5 shrink-0 items-center gap-1.5 text-xs font-medium text-green-700"
-											>
-												<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-												Activado
-											</span>
-										{:else}
-											<!-- Abre el modal de "Generar prompts de configuración". Lo que
-											     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
-											     (generar prompts no es un concepto del back aún) — ver
-											     `GenerarPrompts.svelte`. -->
-											<Button
-												size="sm"
-												data-testid="generar-prompt"
-												class="h-9.5 shrink-0"
-												onclick={() => (tipoGenerandoPrompts = tipo.id)}
-											>
-												Calibrar
-											</Button>
-										{/if}
 									{:else if activandoId === tipo.id}
 										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
 										     tres llamadas reales a Google (crear el procesador, inicializar
@@ -1802,7 +1443,7 @@
 											data-testid="activar-tipo"
 											class="h-9.5 shrink-0 px-4"
 											disabled={activandoId !== null}
-											onclick={() => activar(tipo.id)}>Confirmar configuración</Button
+											onclick={() => activar(tipo.id)}>Activar</Button
 										>
 									{/if}
 
@@ -2656,71 +2297,6 @@
 						{/if}
 					</div>
 				{/if}
-			{:else if vista === 'prompts'}
-				<!-- Cada prompt corre la MISMA operación contra el MISMO documento
-				     de ejemplo (2026-09-07, a pedido explícito: "por ahora simplemente
-				     volver a correr lo mismo, así para tantos prompts como se
-				     pongan") — todavía no existe ninguna noción de qué distingue a un
-				     prompt del siguiente.
-				     El `{#key}` es lo que hace que "correr de nuevo" signifique algo:
-				     sin él, `archivo` no cambia entre un prompt y el siguiente, así
-				     que el `$effect` de `RevisionPrompt` nunca se volvería a disparar
-				     y la pantalla se quedaría mostrando los resultados viejos. Con la
-				     key, Svelte destruye el componente entero y monta uno limpio, que
-				     vuelve a extraer desde cero. Lleva `intentoCalibracion` además de
-				     `promptActual` porque "Calibrar nuevamente" puede reiniciar SIN
-				     cambiar el número de prompt (si `cantidad === 1`, vuelve a valer
-				     1) y, sin ese segundo valor, la key no cambiaría.
-				     El `{#if}` de afuera es lo que garantiza que `archivo` no sea
-				     null dentro del componente, que lo declara requerido. -->
-				{#if promptsDe}
-					{#if calibracionSinExito}
-						<!-- "No fue posible activar el modelo" (2026-09-07, a pedido
-						     explícito con captura): se llegó al último prompt y NINGUNO
-						     alcanzó `UMBRAL_ADECUADO`. Va ARRIBA del panel del prompt —no
-						     lo reemplaza—, porque los campos ya calificados de ese último
-						     prompt siguen siendo información real y no hay motivo para
-						     ocultarlos; el aviso es una capa extra, no una pantalla nueva.
-						     Colores fuera de la paleta semántica de la app (--exito/--error)
-						     porque esto no es éxito ni error de sistema: es un resultado de
-						     calidad a medias, y ese tono es justo lo que separa el ámbar. -->
-						<div
-							class="mb-6 max-w-3xl rounded-xl border border-amber-300 bg-amber-50 p-5"
-							data-testid="aviso-sin-exito"
-						>
-							<div class="flex items-center gap-2">
-								<TriangleAlert class="size-5 shrink-0 text-amber-600" aria-hidden="true" />
-								<p class="text-sm font-semibold text-amber-800">
-									No fue posible activar el modelo
-								</p>
-							</div>
-							<p class="mt-1.5 text-sm text-amber-700">
-								Ningún prompt alcanzó el nivel mínimo de calidad requerido para su
-								activación. Revisa los ejemplos documentales configurados o carga un
-								nuevo documento de referencia y vuelve a ejecutar la calibración para
-								obtener mejores resultados.
-								<button
-									type="button"
-									class="font-medium underline underline-offset-2"
-									data-testid="cargar-documento-aviso"
-									onclick={pedirNuevoDocumentoParaPrompts}
-								>
-									Cargar documento
-								</button>
-							</p>
-						</div>
-					{/if}
-					{#key `${promptActual}-${intentoCalibracion}`}
-						<RevisionPrompt
-							archivo={promptsDe.archivo}
-							numero={promptActual}
-							procesador={tipoDePrompts?.procesadorId ?? ''}
-							procesadorVersion={tipoDePrompts?.procesadorVersion ?? ''}
-							onCambioRevision={(revisados, total, correctos) =>
-							(avanceRevision = { revisados, total, correctos })}
-						/>
-					{/key}
-				{/if}
 			{:else if borrador.paso === 1}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
@@ -3405,8 +2981,7 @@
 					     llega a ~4.7:1 y además se parece más al verde apagado del
 					     frame que el 600, que sale demasiado vivo. -->
 					<p class="mt-1 max-w-2xl text-xs text-green-700">
-						La configuración se completó con éxito. El modelo documental está listo para
-						activarse y ejecutar una prueba de procesamiento para validar su funcionamiento.
+						La configuración se completó con éxito. El modelo documental está listo para activarse.
 					</p>
 				</div>
 			</div>
@@ -3464,58 +3039,6 @@
 				Cancelar configuración
 			</Button>
 			<Button onclick={() => (vista = 'biblioteca')}>Guardar configuración</Button>
-		</div>
-	{:else if vista === 'prompts'}
-		<!-- A la DERECHA los dos, no separados a los extremos como en el wizard y
-		     Calibración: así lo trae la captura del 2026-09-06.
-		     "Cancelar evaluación" tiene el MISMO destino que la X del encabezado
-		     (ver `salirDeRevisionDePrompts`) — dos afordancias para lo mismo,
-		     igual que "Cancelar configuración" en Calibración.
-		     "Continuar" se habilita cuando TODOS los campos del prompt llevan
-		     veredicto (ver `revisionCompleta`). Mientras se extrae, o si el
-		     documento no dio campos, sigue apagado: no hay nada que evaluar.
-		     Al picarle, avanza al siguiente prompt (`avanzarPrompt`) — mismo
-		     documento, misma operación, ver el comentario junto a
-		     `RevisionPrompt` de arriba.
-		     Si al llegar al ÚLTIMO prompt `calibracionSinExito` queda en true
-		     (ver el aviso de arriba), este pie CAMBIA DE FORMA: "Continuar" ya
-		     no tiene a dónde ir, así que se reemplaza por "Cargar documento" y
-		     "Calibrar nuevamente" (2026-09-07, a pedido explícito con captura —
-		     la misma captura resuelve, para ESTE caso puntual, la pregunta que
-		     había quedado abierta de "qué pasa al terminar el último prompt").
-		     Si el último SÍ se calificó pero al menos un prompt alcanzó el
-		     umbral, sigue sin definirse: "Continuar" se queda deshabilitado sin
-		     más, tal como antes. -->
-		<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
-			<Button
-				variant="link"
-				class="h-auto p-0 text-destructive"
-				data-testid="cancelar-evaluacion"
-				onclick={salirDeRevisionDePrompts}
-			>
-				Cancelar evaluación
-			</Button>
-			{#if calibracionSinExito}
-				<Button
-					variant="link"
-					class="h-auto p-0"
-					data-testid="cargar-documento-pie"
-					onclick={pedirNuevoDocumentoParaPrompts}
-				>
-					Cargar documento
-				</Button>
-				<Button data-testid="calibrar-nuevamente" onclick={calibrarNuevamente}>
-					Calibrar nuevamente
-				</Button>
-			{:else}
-				<Button
-					data-testid="continuar-evaluacion"
-					disabled={!revisionCompleta}
-					onclick={continuarRevision}
-				>
-					Continuar
-				</Button>
-			{/if}
 		</div>
 	{/if}
 </div>
@@ -3636,9 +3159,6 @@
 	onCerrar={() => (tipoPocosEjemplos = null)}
 />
 
-<!-- Los dos pasos previos a la pantalla de revisión: cuántos prompts, y sobre
-     qué documento probarlos. Ver los comentarios de `pedirDocumentoParaPrompts`
-     e `irARevisionDePrompts`. -->
 <GenerarCamposDesdeDocumento
 	abierto={generarCamposAbierto}
 	nombreTipo={borrador.nombre}
@@ -3647,16 +3167,4 @@
 	existentes={borrador.campos.map((c) => c.nombre)}
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
-/>
-
-<GenerarPrompts
-	abierto={tipoGenerandoPrompts !== null}
-	onCerrar={() => (tipoGenerandoPrompts = null)}
-	onGenerar={pedirDocumentoParaPrompts}
-/>
-
-<DocumentoParaPrompts
-	abierto={promptsPendientes !== null}
-	onContinuar={irARevisionDePrompts}
-	onCancelar={cancelarGeneracionDePrompts}
 />

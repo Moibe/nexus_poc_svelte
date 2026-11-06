@@ -146,8 +146,9 @@
 	/**
 	 * El valor que se pinta. `??` NO alcanza: el back deja pasar la cadena
 	 * vacía —su guardia es `is not None`, no `if not`— y `value_normalized ?? '—'`
-	 * la dejaría como un renglón en blanco. Es la misma regla que ya usa
-	 * `RevisionPrompt.svelte`.
+	 * la dejaría como un renglón en blanco. Es la misma regla que usa
+	 * `informeDocumento.ts` (la usaba también `RevisionPrompt.svelte`, que se
+	 * quitó el 2026-11-06 con «Calibrar»).
 	 */
 	function valorExtraido(campo: CampoExtraido): string {
 		return campo.value_normalized ?? campo.value_raw ?? '';

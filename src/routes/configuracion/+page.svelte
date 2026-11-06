@@ -32,7 +32,7 @@
 			href: '/configuracion/tipos-documentales',
 			icono: SetupIcon,
 			descripcion:
-				'La biblioteca de tu organización: qué documentos reconoce Biblioratum, qué campos extrae de cada uno y cómo se calibran con ejemplos.'
+				'La biblioteca de tu organización: qué documentos reconoce Biblioratum y qué campos extrae de cada uno.'
 		},
 		{
 			id: 'procesos',

@@ -17,7 +17,7 @@ export function porcentaje(valor: number): string {
 
 /** La nota fija de la ventana de subir archivos a un expediente. */
 export function notaDeSubida(): string {
-	return 'Cada archivo se clasifica al subirlo: el clasificador reconoce de qué tipo documental es, y los procesos del motor de reglas usan ese tipo para encontrarlo dentro del expediente. Si reconoce un tipo ya calibrado, también se extraen sus datos, que es lo que leen los procesos.';
+	return 'Cada archivo se clasifica al subirlo: el clasificador reconoce de qué tipo documental es, y los procesos del motor de reglas usan ese tipo para encontrarlo dentro del expediente. Si reconoce un tipo activo, también se extraen sus datos, que es lo que leen los procesos.';
 }
 
 /**
@@ -53,14 +53,14 @@ export function leerClasificacion(valor: unknown): ClasificacionDeSubida | null 
 /**
  * Lo que nexus_back dice de la EXTRACCIÓN de un archivo recién subido (`extraccion` en la misma respuesta; 2026-11-06, Moibe: «cuando corremos los archivos
  * en las bandejas sí se extraen los datos, pero en expedientes no»). Se extrae justo después de clasificar, con las mismas condiciones del pipeline: un
- * tipo reconocido que esté activo, con su procesador y ya calibrado. Nunca tumba la subida.
+ * tipo reconocido que esté activo y con su procesador (hasta el 2026-11-06 también tenía que estar «calibrado»; la calibración se quitó). Nunca tumba la subida.
  */
 export type ExtraccionDeSubida = {
-	/** `extraido`, `no_reconocido` (Document AI no reconoció los campos), `sin_tipo` (no hay tipo con qué extraer), `sin_procesador` o `sin_calibrar` (el tipo está a medias), `error` o `no_extraido` (tardó demasiado o no se pudo guardar). */
-	estado: 'extraido' | 'no_reconocido' | 'sin_tipo' | 'sin_procesador' | 'sin_calibrar' | 'error' | 'no_extraido';
+	/** `extraido`, `no_reconocido` (Document AI no reconoció los campos), `sin_tipo` (no hay tipo con qué extraer), `sin_procesador` (el tipo está a medias), `error` o `no_extraido` (tardó demasiado o no se pudo guardar). */
+	estado: 'extraido' | 'no_reconocido' | 'sin_tipo' | 'sin_procesador' | 'error' | 'no_extraido';
 };
 
-const ESTADOS_DE_EXTRACCION: readonly string[] = ['extraido', 'no_reconocido', 'sin_tipo', 'sin_procesador', 'sin_calibrar', 'error', 'no_extraido'];
+const ESTADOS_DE_EXTRACCION: readonly string[] = ['extraido', 'no_reconocido', 'sin_tipo', 'sin_procesador', 'error', 'no_extraido'];
 
 /** Lee `extraccion` de la respuesta sin fiarse de su forma: un servidor más viejo (sin extracción) o algo raro dan `null` y la pantalla no dice nada. */
 export function leerExtraccion(valor: unknown): ExtraccionDeSubida | null {
@@ -78,8 +78,6 @@ export function lineaDeExtraccion(e: ExtraccionDeSubida): LineaDeClasificacion |
 			return { tono: 'aviso', texto: 'Se intentó extraer sus datos, pero Document AI no reconoció los campos del tipo.' };
 		case 'sin_procesador':
 			return { tono: 'aviso', texto: 'No se extrajeron sus datos: ese tipo documental no tiene un procesador de extracción. Vuelve a activarlo en Configuración › Tipos documentales.' };
-		case 'sin_calibrar':
-			return { tono: 'aviso', texto: 'No se extrajeron sus datos: ese tipo documental todavía no se ha calibrado. Calíbralo en Configuración › Tipos documentales.' };
 		case 'error':
 			return { tono: 'aviso', texto: 'No se pudieron extraer sus datos (Document AI falló); quedó subido con su tipo.' };
 		case 'no_extraido':
