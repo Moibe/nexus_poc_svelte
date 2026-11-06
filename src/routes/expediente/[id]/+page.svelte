@@ -259,67 +259,6 @@
 		</div>
 	</div>
 
-	<!-- Tipo documental repetido (Moibe, 2026-11-03 como «duplicados»; del expediente entero desde el 2026-11-05; con este nombre desde el 2026-11-06):
-	     dos o más documentos del mismo tipo. No se sabe cuál es «el INE», así que un proceso que use ese tipo NO se ejecuta sobre el expediente
-	     mientras haya más de uno; las tarjetas de esos documentos llevan «Tipo documental repetido». Se calcula al leer: al quitar uno desaparece el aviso. -->
-	{#if tiposRepetidos.length > 0}
-		<div
-			class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-			role="status"
-			data-testid="tipos-repetidos-del-expediente"
-		>
-			<TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
-			<div>
-				<p class="font-medium">Este expediente trae tipos documentales repetidos</p>
-				<ul class="mt-0.5 list-disc pl-4">
-					{#each tiposRepetidos as d (d.tipoId)}
-						<li data-testid="tipo-repetido-del-expediente" data-tipo={d.tipoId}>
-							<span class="font-medium">{d.tipoNombre ?? 'Tipo documental eliminado'}</span>: {d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')}
-						</li>
-					{/each}
-				</ul>
-				<p class="mt-1">
-					No se sabe cuál usar, así que un proceso que use alguno de esos tipos no se ejecuta sobre este expediente mientras haya más de un documento de ese tipo.
-					{#if data.puedeOrganizar}
-						Quita los que sobren y deja uno de cada tipo.
-					{:else}
-						Quien organiza el expediente puede quitar los que sobren.
-					{/if}
-				</p>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Duplicados (Moibe, 2026-11-06): el mismo archivo más de una vez, por su contenido (SHA-256). No frena ningún proceso; solo sobra una copia. Puede
-	     salir junto al aviso de arriba: dos copias de un mismo INE son las dos cosas. -->
-	{#if duplicados.length > 0}
-		<div
-			class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-			role="status"
-			data-testid="duplicados-del-expediente"
-		>
-			<Copy class="mt-0.5 size-3.5 shrink-0" />
-			<div>
-				<p class="font-medium">Este expediente trae archivos duplicados</p>
-				<ul class="mt-0.5 list-disc pl-4">
-					{#each duplicados as g (g.sha256)}
-						{@const dicho = textoDeArchivoRepetido(g)}
-						<li data-testid="duplicado-del-expediente" data-huella={g.sha256}>
-							<span class="font-medium">{dicho.nombre}</span>: {dicho.detalle}
-						</li>
-					{/each}
-				</ul>
-				<p class="mt-1">
-					Son el mismo archivo subido más de una vez (tienen exactamente el mismo contenido).
-					{#if data.puedeOrganizar}
-						Quita las copias que sobren.
-					{:else}
-						Quien organiza el expediente puede quitar las copias que sobren.
-					{/if}
-				</p>
-			</div>
-		</div>
-	{/if}
 
 	{#if error}
 		<p class="mt-2 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert" data-testid="error-expediente">{error}</p>
