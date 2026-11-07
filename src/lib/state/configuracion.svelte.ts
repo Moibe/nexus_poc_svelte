@@ -855,11 +855,12 @@ export type TipoDocumentalGuardado = {
 	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
 	 *  sección 2.6 del diccionario — esa validación necesita el back.
 	 *
-	 *  `archivado` lo pone `archivarTipoDocumental()`: es la alternativa NO
-	 *  destructiva a "Borrar" para un modelo activo — no toca Document AI, solo
-	 *  saca el tipo de la Biblioteca. Todavía no hay pantalla de "Archivados"
-	 *  para verlos ni un camino de vuelta; el registro simplemente deja de
-	 *  listarse en el árbol y en las tarjetas. */
+	 *  `archivado` es un estado VIEJO: lo ponía `archivarTipoDocumental()`, que se
+	 *  quitó el 2026-11-07 (Moibe: «como ya podemos borrar libremente, en realidad
+	 *  Archivar ya no es necesario»). Ningún camino nuevo lo escribe, pero los tipos
+	 *  que ya se habían archivado siguen guardados así: no se listan en la Biblioteca,
+	 *  no entran al clasificador, no ocupan nombre y un proceso que los use los ve
+	 *  marcados como archivados. Nunca hubo pantalla de «Archivados» ni camino de vuelta. */
 	estado: 'borrador' | 'activo' | 'archivado';
 	/** Cuántas veces se ha PUBLICADO esta configuración a Document AI. 0 = nunca.
 	 *  Es el precursor de `config_version.version_no` del diccionario, y por eso
@@ -1772,11 +1773,11 @@ export async function completarNombreProcesador(idTipo: string): Promise<void> {
  * Desde el 2026-10-15 NO manda la lista de tipos: nexus_back arma las categorías con los tipos ACTIVOS de la organización,
  * leídos de su propio registro. Antes los mandaba cada navegador, y el último que sincronizaba pisaba a los demás. Desde el
  * 2026-10-26 cada organización tiene SU clasificador (antes era uno para todo el sistema, con los tipos de todas). Por eso,
- * ANTES de llamar se espera a que lo que cambió aquí (activar, archivar, borrar) esté guardado en el servidor: si el guardado
+ * ANTES de llamar se espera a que lo que cambió aquí (activar, borrar) esté guardado en el servidor: si el guardado
  * no llegó, sincronizar usaría el estado viejo, y se avisa en vez de hacerlo.
  *
  * Se llama automáticamente después de cada mutación que puede cambiar el conjunto de activos (`activarTipoDocumental`,
- * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la UI. Si la organización no tiene NINGÚN tipo
+ * `eliminarTipoDocumental`), nunca a mano desde la UI. Si la organización no tiene NINGÚN tipo
  * activo, el servidor responde 422 y aquí eso es un "no hay nada que sincronizar", no un error.
  */
 export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje: string }> {
@@ -2006,35 +2007,11 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
 	guardarBiblioteca();
 }
 
-/**
- * Archiva un tipo documental ACTIVO: lo saca de la Biblioteca sin tocar
- * Document AI. A diferencia de `eliminarTipoDocumental`, no borra nada — ni
- * el registro local ni el Custom Extractor, que sigue viviendo en Google
- * exactamente como estaba. Es la alternativa NO destructiva a "Borrar" para
- * un modelo activo, a pedido explícito: el registro se queda en
- * el servidor, solo deja de listarse en el árbol y en las tarjetas.
- *
- * No hay todavía una pantalla de "Archivados" para verlos ni un
- * `desarchivarTipoDocumental()` para volver — se agregan cuando se pidan.
- *
- * Async desde que archivar también sincroniza el Classifier (2026-09-07): un
- * tipo archivado debe dejar de ser una categoría clasificable, aunque su
- * Custom Extractor se quede vivo sin tocarse. `ok` sigue siendo `true`
- * siempre que el tipo exista —archivar en sí es puramente local, no puede
- * fallar contra Google— así que un problema sincronizando llega SOLO por
- * `avisoClasificador`, nunca convirtiendo esto en un error.
+/*
+ * (Hasta el 2026-11-07 aquí vivía `archivarTipoDocumental`, la alternativa no destructiva a «Borrar» para un modelo activo: lo sacaba de la Biblioteca y del
+ * clasificador sin tocar su Custom Extractor. Se quitó: Moibe, «como ya podemos borrar libremente, en realidad Archivar ya no es necesario». Para recuperarla:
+ * `git show 185a92f:src/lib/state/configuracion.svelte.ts`.)
  */
-export async function archivarTipoDocumental(
-	id: string
-): Promise<{ ok: boolean; avisoClasificador?: string }> {
-	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo) return { ok: false };
-	tipo.estado = 'archivado';
-	guardarBiblioteca();
-
-	const sync = await sincronizarClasificador();
-	return { ok: true, avisoClasificador: sync.ok ? undefined : sync.mensaje };
-}
 
 /**
  * "Guardar" de `CargarDocumentoEjemplo.svelte`: agrega una instancia MÁS al

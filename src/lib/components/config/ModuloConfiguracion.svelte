@@ -48,7 +48,6 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Scissors from '@lucide/svelte/icons/scissors';
-	import Archive from '@lucide/svelte/icons/archive';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -83,7 +82,6 @@
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
-		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
 		paginaDeRecorte,
@@ -289,10 +287,8 @@
 	// Document AI — omitir esa advertencia cuando sí aplica sería dejar que
 	// alguien destruya un recurso real de GCP sin haberlo sabido de antemano.
 	//
-	// Hoy, con el menú mostrando "Borrar" SOLO para tipos no-activos, este
-	// campo casi siempre es `false` — pero la función de abajo no depende de
-	// esa coincidencia, por si el día de mañana un borrador sí llega a
-	// tenerlo.
+	// Desde el 2026-11-04 «Borrar» también se ofrece en un tipo ACTIVO (con su
+	// procesador), así que esto ya no es casi siempre `false`: el diálogo avisa.
 	let tipoAEliminar = $state<{ id: string; nombre: string; tieneProcesador: boolean } | null>(
 		null
 	);
@@ -301,48 +297,25 @@
 	// tanto — no es instantáneo como quitar un campo del borrador.
 	let eliminandoId = $state<string | null>(null);
 
-	// El tipo documental que se está por archivar (SIEMPRE uno activo: es la
-	// alternativa no destructiva a "Borrar" para ese caso). A diferencia de
-	// eliminar, es instantáneo y local — no hay `archivandoId` porque no hay
-	// nada que esperar.
-	let tipoAArchivar = $state<{ id: string; nombre: string } | null>(null);
-	// Qué procesos usan el tipo que se va a archivar (NEX-544). `null` = no se pudo revisar (el diálogo lo dice). Se lee ANTES de abrir el diálogo,
-	// para no pedir la confirmación a ciegas.
+	// Qué procesos usan el tipo que se va a borrar (NEX-544; hasta el 2026-11-07 lo decía el diálogo de «Archivar», que se quitó: Moibe, «como ya podemos borrar
+	// libremente, en realidad Archivar ya no es necesario»). `null` = no se pudo revisar (el diálogo lo dice). Se lee ANTES de abrir el diálogo, para no pedir la
+	// confirmación a ciegas.
 	let procesosDelTipo = $state<{ nombre: string; nodos: number }[] | null>([]);
 
-	async function pedirArchivarTipo(tipo: { id: string; nombre: string }) {
+	async function pedirBorrarTipo(tipo: { id: string; nombre: string; tieneProcesador: boolean }) {
 		await cargarProcesos();
 		procesosDelTipo = estadoProcesos.error ? null : procesosQueUsanElTipo(tipo.id);
-		tipoAArchivar = tipo;
+		tipoAEliminar = tipo;
 	}
 
-	/** Lo que el diálogo de archivar dice de los procesos: a cuáles afecta, o que no se pudo revisar. Vacío si ninguno lo usa. */
+	/** Lo que el diálogo de borrar dice de los procesos: a cuáles afecta, o que no se pudo revisar. Vacío si ninguno lo usa. */
 	const avisoDeProcesos = $derived(
 		procesosDelTipo === null
 			? ' No se pudo revisar si algún proceso lo usa.'
 			: procesosDelTipo.length === 0
 				? ''
-				: ` Lo usan ${procesosDelTipo.length === 1 ? 'este proceso' : 'estos procesos'}: ${procesosDelTipo.map((p) => `«${p.nombre}» (${p.nodos} ${p.nodos === 1 ? 'nodo' : 'nodos'})`).join(', ')}. Siguen guardados con su nodo, que se verá marcado como archivado hasta que lo quites.`
+				: ` Lo usan ${procesosDelTipo.length === 1 ? 'este proceso' : 'estos procesos'}: ${procesosDelTipo.map((p) => `«${p.nombre}» (${p.nodos} ${p.nodos === 1 ? 'nodo' : 'nodos'})`).join(', ')}. Siguen guardados, pero su nodo de este tipo quedará marcado como que ya no existe y no podrán guardarse hasta que lo quites.`
 	);
-
-	async function confirmarArchivarTipo() {
-		const objetivo = tipoAArchivar;
-		tipoAArchivar = null;
-		if (!objetivo) return;
-		// Se limpia AL EMPEZAR, no solo al fallar — mismo motivo que en
-		// `confirmarEliminarTipo`: sin esto, un aviso de un intento anterior se
-		// quedaba pegado en pantalla aunque este intento nuevo terminara bien.
-		errorActivacion = '';
-		const r = await archivarTipoDocumental(objetivo.id);
-		// Archivar en sí es local y no puede fallar (ver el docstring de
-		// `archivarTipoDocumental`) — lo único que puede salir mal es la
-		// sincronización del clasificador, y eso NO debe tratarse como que
-		// "archivar" falló: el tipo YA se archivó.
-		if (r.avisoClasificador) {
-			tituloError = 'El tipo se archivó, pero el clasificador no se pudo actualizar.';
-			errorActivacion = r.avisoClasificador;
-		}
-	}
 
 	async function confirmarEliminarTipo() {
 		const objetivo = tipoAEliminar;
@@ -377,8 +350,8 @@
 	let historialTipo = $state<TipoDocumentalGuardado | null>(null);
 
 	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
-	// (ver `archivarTipoDocumental`) sigue en `localStorage`, pero no debe
-	// listarse en las tarjetas — es justo lo que "Archivar" promete. Todo lo
+	// (estado viejo: «Archivar» se quitó el 2026-11-07) sigue guardado, pero no
+	// se lista en las tarjetas, como cuando se archivaba. Todo lo
 	// que antes leía `tiposDocumentales` para RENDERIZAR usa esto en su lugar;
 	// el estado de verdad sigue siendo `tiposDocumentales`.
 	//
@@ -1675,25 +1648,15 @@
 												<span>Eventos</span>
 											</DropdownMenu.Item>
 
-											<!-- Un modelo ACTIVO ofrece "Archivar" (no toca Document AI, solo lo saca de la Biblioteca y del
-											     clasificador) Y, desde el 2026-11-04 (Moibe: «si quiero ese feature de que se pueda borrar»),
-											     también "Borrar": lo quita junto con su Custom Extractor en Document AI, sin vuelta atrás; la
-											     confirmación lo dice. Antes un activo solo se podía archivar. Un borrador solo tiene "Borrar". -->
-											{#if tipo.estado === 'activo'}
-												<DropdownMenu.Item
-													class="h-11.5 gap-3 px-2 whitespace-nowrap"
-													onSelect={() => void pedirArchivarTipo({ id: tipo.id, nombre: tipo.nombre })}
-												>
-													<Archive class="size-4 text-muted-foreground" />
-													<span>Archivar</span>
-												</DropdownMenu.Item>
-											{/if}
+											<!-- «Borrar»: lo quita junto con su Custom Extractor en Document AI, sin vuelta atrás; la confirmación lo dice, y dice qué procesos lo usan. Hasta el
+											     2026-11-07 un modelo ACTIVO ofrecía además «Archivar» (lo sacaba de la Biblioteca sin tocar Document AI y no había cómo volver); Moibe: «como ya
+											     podemos borrar libremente, en realidad Archivar ya no es necesario». -->
 											{#if eliminandoId !== tipo.id}
 												<DropdownMenu.Item
 													variant="destructive"
 													class="h-11.5 gap-3 px-2 whitespace-nowrap"
 													onSelect={() =>
-														(tipoAEliminar = {
+														void pedirBorrarTipo({
 															id: tipo.id,
 															nombre: tipo.nombre,
 															tieneProcesador: Boolean(tipo.procesadorId)
@@ -3076,30 +3039,17 @@
      comentario de `tipoAEliminar` arriba): ahí no solo se borra un renglón de
      la Biblioteca, también se destruye el Custom Extractor en Document AI.
      Callarse esa parte dejaría confirmar a ciegas algo que toca un recurso de
-     GCP y no se puede deshacer. En la práctica, con "Borrar" mostrándose SOLO
-     para tipos no-activos, casi siempre cae en la rama simple. -->
+     GCP y no se puede deshacer. Desde que «Borrar» también sale en un tipo activo,
+     la rama del procesador es la normal. Y dice qué procesos lo usan (`avisoDeProcesos`). -->
 <ConfirmarAccion
 	abierto={tipoAEliminar !== null}
 	titulo="¿Borrar este tipo documental?"
 	mensaje={tipoAEliminar?.tieneProcesador
-		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
-		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.`}
+		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.${avisoDeProcesos}`
+		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.${avisoDeProcesos}`}
 	etiquetaConfirmar="Sí, borrar"
 	onConfirmar={confirmarEliminarTipo}
 	onCerrar={() => (tipoAEliminar = null)}
-/>
-
-<!-- A diferencia de Borrar, archivar NO toca Google ni pierde el registro:
-     el mensaje lo dice explícitamente para que no se lea con la misma
-     gravedad que un borrado real. -->
-<ConfirmarAccion
-	abierto={tipoAArchivar !== null}
-	variante="neutral"
-	titulo="¿Archivar este tipo documental?"
-	mensaje={`"${tipoAArchivar?.nombre ?? ''}" dejará de listarse en la Biblioteca.${avisoDeProcesos} Su Custom Extractor en Document AI NO se toca: sigue existiendo tal cual.`}
-	etiquetaConfirmar="Sí, archivar"
-	onConfirmar={confirmarArchivarTipo}
-	onCerrar={() => (tipoAArchivar = null)}
 />
 
 <!-- A diferencia de quitar el documento compartido (que se lleva TODOS los
