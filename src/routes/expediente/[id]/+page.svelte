@@ -160,7 +160,7 @@
 				data-testid="volver-a-expedientes"
 				class="flex shrink-0 items-center gap-2 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
 			>
-				<Undo2 class="size-6 text-primary" />
+				<Undo2 class="size-6 text-primary dark:text-blue-400" />
 				Atrás
 			</a>
 			<span class="h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
@@ -173,7 +173,7 @@
 				</h2>
 				<div class="flex items-center gap-1 text-xs text-muted-foreground">
 					<span
-						class="flex size-4.25 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-[10px] font-medium text-primary"
+						class="flex size-4.25 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-[10px] font-medium text-primary dark:text-blue-300"
 						data-testid="total-documentos">{expediente.documentos.length}</span
 					>
 					<span class="shrink-0">Total de archivos</span>

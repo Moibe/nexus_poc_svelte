@@ -52,7 +52,7 @@
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
 				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Ejecuciones{ejecucion ? ` / ${ejecucion.proceso.nombre}` : ''}</p>
-				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground">
+				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300">
 					<CancelSquareIcon />
 					<span class="sr-only">Cerrar</span>
 				</DialogPrimitive.Close>
@@ -60,7 +60,7 @@
 
 			{#if error}
 				<DialogPrimitive.Title class="sr-only">Ejecución</DialogPrimitive.Title>
-				<p class="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert" data-testid="ejecucion-error">{error}</p>
+				<p class="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert" data-testid="ejecucion-error">{error}</p>
 			{:else if !ejecucion}
 				<DialogPrimitive.Title class="sr-only">Ejecución</DialogPrimitive.Title>
 				<p class="py-10 text-center text-sm text-muted-foreground" data-testid="ejecucion-cargando">Cargando…</p>
@@ -86,7 +86,7 @@
 						<span class="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground" data-testid="ejecucion-estado">{ETIQUETA_DE_ESTADO[ejecucion.estado]}</span>
 					</div>
 					{#if ejecucion.detalle.faltantes.length > 0}
-						<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="ejecucion-faltantes">
+						<div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="ejecucion-faltantes">
 							<p class="font-medium">Lo que faltó</p>
 							<ul class="mt-1 list-disc pl-4">
 								{#each ejecucion.detalle.faltantes as f (f)}

@@ -87,14 +87,14 @@
 				e.preventDefault();
 				campo?.focus();
 			}}
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg"
 		>
 			<!-- header . navigation -->
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
 				<p class="flex-1 text-sm text-muted-foreground">Expediente / Expedientes</p>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300"
 					data-testid="cerrar-expediente"
 					onclick={() => (open = false)}
 				>
@@ -151,7 +151,7 @@
 
 				<!-- footer.modal -->
 				<div class="flex items-center justify-end gap-4 border-t border-border p-2.5">
-					<Button type="button" variant="link" class="h-9.5 px-4 text-destructive" data-testid="cancelar-expediente" onclick={() => (open = false)}>
+					<Button type="button" variant="link" class="h-9.5 px-4 text-destructive dark:text-red-300" data-testid="cancelar-expediente" onclick={() => (open = false)}>
 						Cancelar
 					</Button>
 					<Button type="submit" class="h-9.5 px-4" data-testid="crear-expediente" disabled={!completo || enviando}>

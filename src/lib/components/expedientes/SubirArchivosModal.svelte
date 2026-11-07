@@ -259,13 +259,13 @@
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
 			data-testid="modal-subir-archivos"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
 				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Expedientes / {expediente.nombre}</p>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground disabled:opacity-40"
+					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300 disabled:opacity-40"
 					data-testid="cerrar-subir-archivos"
 					disabled={subiendo}
 					onclick={cerrar}
@@ -337,7 +337,7 @@
 									fila.estado === 'error' || fila.estado === 'rechazado'
 										? 'border-destructive/40 bg-background'
 										: fila.duplicado
-											? 'border-amber-300 bg-amber-50'
+											? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950'
 											: 'border-border bg-background'
 								]}
 							>
@@ -355,7 +355,7 @@
 									{#if fila.estado === 'listo' && fila.clasificacion}
 										{@const linea = lineaDeClasificacion(fila.clasificacion)}
 										<p
-											class={['mt-0.5 text-xs', linea.tono === 'bien' ? 'text-green-700' : linea.tono === 'aviso' ? 'text-amber-700' : 'text-muted-foreground']}
+											class={['mt-0.5 text-xs', linea.tono === 'bien' ? 'text-green-700 dark:text-green-400' : linea.tono === 'aviso' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground']}
 											data-testid="archivo-subida-clasificacion"
 											data-clasificacion={fila.clasificacion.estado}
 										>
@@ -367,7 +367,7 @@
 										{@const extraccion = lineaDeExtraccion(fila.extraccion)}
 										{#if extraccion}
 											<p
-												class={['mt-0.5 text-xs', extraccion.tono === 'bien' ? 'text-green-700' : extraccion.tono === 'aviso' ? 'text-amber-700' : 'text-muted-foreground']}
+												class={['mt-0.5 text-xs', extraccion.tono === 'bien' ? 'text-green-700 dark:text-green-400' : extraccion.tono === 'aviso' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground']}
 												data-testid="archivo-subida-extraccion"
 												data-extraccion={fila.extraccion.estado}
 											>
@@ -377,13 +377,13 @@
 									{/if}
 									<!-- Un duplicado se dice en ámbar (no es un error: el archivo está bien, solo que ya está) y, si no se permitió, ofrece subirlo igual. -->
 									{#if fila.duplicado && fila.estado !== 'listo'}
-										<p class="mt-0.5 text-xs text-amber-700" data-testid="archivo-subida-duplicado">
+										<p class="mt-0.5 text-xs text-amber-700 dark:text-amber-400" data-testid="archivo-subida-duplicado">
 											{fila.duplicado}{fila.permitirDuplicado ? ' Se subirá de todos modos.' : ''}
 										</p>
 										{#if fila.estado === 'duplicado' && !subiendo}
 											<button
 												type="button"
-												class="mt-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+												class="mt-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline dark:text-blue-300"
 												data-testid="subir-de-todos-modos"
 												onclick={() => permitir(fila.id)}
 											>
@@ -398,13 +398,13 @@
 										<span class="text-muted-foreground">Subiendo y clasificando…</span>
 									{:else if fila.estado === 'listo'}
 										<Check class="size-3.5 text-green-600" />
-										<span class="font-medium text-green-700">Subido</span>
+										<span class="font-medium text-green-700 dark:text-green-400">Subido</span>
 									{:else if fila.estado === 'error'}
 										<span class="font-medium text-destructive">No se subió</span>
 									{:else if fila.estado === 'rechazado'}
 										<span class="font-medium text-destructive">No válido</span>
 									{:else if fila.estado === 'duplicado'}
-										<span class="font-medium text-amber-700">Duplicado</span>
+										<span class="font-medium text-amber-700 dark:text-amber-400">Duplicado</span>
 									{:else}
 										<span class="text-muted-foreground">En espera</span>
 									{/if}
@@ -429,7 +429,7 @@
 			</div>
 
 			<div class="flex items-center justify-end gap-4 border-t border-border p-2.5">
-				<Button type="button" variant="link" class="h-9.5 px-4 text-destructive" data-testid="cancelar-subir-archivos" disabled={subiendo} onclick={cerrar}>
+				<Button type="button" variant="link" class="h-9.5 px-4 text-destructive dark:text-red-300" data-testid="cancelar-subir-archivos" disabled={subiendo} onclick={cerrar}>
 					{subidos > 0 ? 'Cerrar' : 'Cancelar'}
 				</Button>
 				{#if terminado}

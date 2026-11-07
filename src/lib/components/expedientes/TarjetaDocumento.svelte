@@ -78,10 +78,10 @@
 	data-documento-id={documento.id}
 	data-tipo-repetido={tipoRepetido}
 	data-duplicado={archivoRepetido}
-	class="w-52.5 overflow-hidden rounded-xl border-2 bg-card {conMarca ? 'border-amber-300 dark:border-amber-700' : 'border-border'}"
+	class="w-52.5 overflow-hidden rounded-xl border-2 bg-card dark:bg-background {conMarca ? 'border-amber-300 dark:border-amber-700' : 'border-border'}"
 >
 	<div class="p-3">
-		<div class="flex items-center justify-center rounded-md border border-border bg-background p-6">
+		<div class="flex items-center justify-center rounded-md border border-border bg-background p-6 dark:bg-card">
 			<span class="flex size-12 items-center justify-center"><ArchivoIlustracion /></span>
 		</div>
 	</div>
@@ -90,7 +90,7 @@
 		<p class="text-xs font-medium text-muted-foreground" data-testid="documento-detalle">{formatoDe(documento)} | {formatearTamano(documento.tamanoBytes)}</p>
 		{#if tipo}
 			<p class="flex min-w-0" title={ayudaDelTipo}>
-				<span class="max-w-full truncate rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary" data-testid="documento-tipo">{tipo.nombre}</span>
+				<span class="max-w-full truncate rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary dark:text-blue-300" data-testid="documento-tipo">{tipo.nombre}</span>
 			</p>
 		{/if}
 		<!-- Las dos marcas, juntas si hacen falta (2026-11-06): el tipo repetido frena procesos; el duplicado es solo una copia que sobra. -->
@@ -125,7 +125,7 @@
 			{#if alQuitar}
 				<button
 					type="button"
-					class="flex items-center gap-1 text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+					class="flex items-center gap-1 text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50 dark:text-red-300"
 					disabled={quitando}
 					onclick={alQuitar}
 					aria-label={ayudaQuitar}

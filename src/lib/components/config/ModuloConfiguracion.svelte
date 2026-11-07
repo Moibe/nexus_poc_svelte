@@ -1057,7 +1057,7 @@
 		     engrane; por eso sube de uno en uno, y así se quedó. -->
 		<button
 			type="button"
-			class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+			class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300"
 			data-testid="salir-modulo-configuracion"
 			onclick={cerrarNivel}
 		>
@@ -1397,7 +1397,7 @@
 										     «Activado» suelto): se quitaron con el paso. -->
 										<span
 											data-testid="insignia-activo"
-											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
+											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400"
 										>
 											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
 											Activado
@@ -2934,16 +2934,16 @@
 		{#if avisoExito && vista === 'biblioteca'}
 			<div
 				data-testid="aviso-exito"
-				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
+				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4 dark:border-green-900 dark:from-green-950 dark:to-green-950/60"
 			>
 				<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
 				<div class="min-w-0">
-					<p class="text-sm font-semibold text-green-700">Nuevo tipo documental agregado.</p>
+					<p class="text-sm font-semibold text-green-700 dark:text-green-300">Nuevo tipo documental agregado.</p>
 					<!-- green-700 y no green-600: sobre `green-50`, el 600 a 12px da
 					     ~3.1:1 de contraste y AA pide 4.5:1 para texto normal. El 700
 					     llega a ~4.7:1 y además se parece más al verde apagado del
 					     frame que el 600, que sale demasiado vivo. -->
-					<p class="mt-1 max-w-2xl text-xs text-green-700">
+					<p class="mt-1 max-w-2xl text-xs text-green-700 dark:text-green-300">
 						La configuración se completó con éxito. El modelo documental está listo para activarse.
 					</p>
 				</div>
@@ -2957,12 +2957,12 @@
 			     "no se pudo" sin el porqué obliga a adivinar. -->
 			<div
 				data-testid="aviso-error"
-				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-red-200 bg-linear-to-r from-red-50 to-rose-100/70 px-5 py-4"
+				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-red-200 bg-linear-to-r from-red-50 to-rose-100/70 px-5 py-4 dark:border-red-900 dark:from-red-950 dark:to-red-950/60"
 			>
 				<BadgeAlert class="size-5 shrink-0 fill-red-500 text-white" />
 				<div class="min-w-0">
-					<p class="text-sm font-semibold text-red-700">{tituloError}</p>
-					<p class="mt-1 max-w-2xl text-xs text-red-700">{errorActivacion}</p>
+					<p class="text-sm font-semibold text-red-700 dark:text-red-300">{tituloError}</p>
+					<p class="mt-1 max-w-2xl text-xs text-red-700 dark:text-red-300">{errorActivacion}</p>
 				</div>
 			</div>
 		{/if}

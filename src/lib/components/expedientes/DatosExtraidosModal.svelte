@@ -100,11 +100,11 @@
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
 			data-testid="modal-datos-extraidos"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
 				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{documento?.contexto ?? 'Archivos procesados'} / {documento?.nombre}</p>
-				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground">
+				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300">
 					<CancelSquareIcon />
 					<span class="sr-only">Cerrar</span>
 				</DialogPrimitive.Close>
@@ -150,7 +150,7 @@
 
 			<div class="px-1 pb-2">
 				{#if error}
-					<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>
+					<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert">{error}</p>
 				{:else if !datos}
 					<p class="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
 				{:else if vista === 'json'}
@@ -172,7 +172,7 @@
 							</section>
 						{/each}
 						{#each informe.avisos ?? [] as aviso (aviso.titulo)}
-							<div class="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="informe-aviso">
+							<div class="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="informe-aviso">
 								<p class="font-medium">{aviso.titulo}</p>
 								<p class="mt-0.5">{aviso.texto}</p>
 							</div>
@@ -198,7 +198,7 @@
 					{#if descargando}<LoaderCircle class="size-4 animate-spin" />{:else}<Download class="size-4" />{/if}
 					Descargar
 				</Button>
-				<Button type="button" variant="link" class="h-9.5 px-4" onclick={() => (documento = null)}>Cerrar</Button>
+				<Button type="button" variant="link" class="h-9.5 px-4 dark:text-blue-300" onclick={() => (documento = null)}>Cerrar</Button>
 			</div>
 		</DialogPrimitive.Content>
 	</DialogPrimitive.Portal>

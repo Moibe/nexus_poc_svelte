@@ -185,7 +185,7 @@
 		<!-- Por qué NO se ejecutó. Con tipos repetidos, cuáles son: el expediente ya los trae marcados. -->
 		{#if noSeEjecuto}
 			<div
-				class="mt-3 rounded-lg border px-4 py-3 text-sm {noSeEjecuto.codigo === 'duplicados' ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'border-red-200 bg-red-50 text-red-800'}"
+				class="mt-3 rounded-lg border px-4 py-3 text-sm {noSeEjecuto.codigo === 'duplicados' ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200'}"
 				role="alert"
 				data-testid={noSeEjecuto.codigo === 'duplicados' ? 'ejecutar-aviso-duplicados' : 'ejecutar-no-se-ejecuto'}
 				data-codigo={noSeEjecuto.codigo ?? ''}
@@ -214,7 +214,7 @@
 					<span class="text-sm text-muted-foreground">{TEXTO_DEL_CASO[ultima.resultado.caso]}</span>
 					<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{ETIQUETA_DE_ESTADO[ultima.estado]}</span>
 					<span class="ml-auto flex items-center gap-3">
-						<a href="/ejecuciones" class="text-sm text-primary underline-offset-2 hover:underline" data-testid="ejecutar-ver-historial">Ver el historial</a>
+						<a href="/ejecuciones" class="text-sm text-primary underline-offset-2 hover:underline dark:text-blue-300" data-testid="ejecutar-ver-historial">Ver el historial</a>
 						<Button variant="outline" size="sm" data-testid="ejecutar-ver-detalle" onclick={verElDetalle}>Ver el detalle</Button>
 					</span>
 				</div>
