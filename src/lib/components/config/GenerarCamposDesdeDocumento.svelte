@@ -137,7 +137,7 @@
 			const campos: CampoPropuesto[] = Array.isArray(datos?.campos) ? datos.campos : [];
 			if (campos.length === 0) {
 				fase = 'error';
-				error = 'Document AI no encontró campos que proponer en este documento. Prueba con otro ejemplo.';
+				error = 'Biblioratum no encontró campos que proponer en este documento. Prueba con otro ejemplo.';
 				return;
 			}
 			propuestos = campos;
@@ -192,7 +192,7 @@
 							Generar a partir de un documento
 						</DialogPrimitive.Title>
 						<DialogPrimitive.Description class="mt-1 text-sm text-muted-foreground">
-							Sube un documento de ejemplo y Document AI propondrá los campos a extraer. Tú eliges cuáles agregar;
+							Sube un documento de ejemplo y Biblioratum propondrá los campos a extraer. Tú eliges cuáles agregar;
 							los que después no te sirvan, los puedes quitar.
 						</DialogPrimitive.Description>
 					</div>

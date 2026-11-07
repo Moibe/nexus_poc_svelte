@@ -375,7 +375,7 @@
 							<p class="text-sm font-medium text-amber-800">No se reconocieron sus campos</p>
 							<p class="mt-1 text-xs text-amber-700">
 								{documento.resultado._metadata.motivo ??
-									'Document AI respondió sin campos para este documento.'}
+									'Biblioratum no encontró campos en este documento.'}
 							</p>
 						</div>
 					{/if}

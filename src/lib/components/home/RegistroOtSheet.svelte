@@ -379,7 +379,7 @@
 							'ambar',
 							'No se reconocieron sus campos',
 							documento.resultado._metadata.motivo ??
-								'Document AI respondió sin campos para este documento.'
+								'Biblioratum no encontró campos en este documento.'
 						)}
 					{/if}
 

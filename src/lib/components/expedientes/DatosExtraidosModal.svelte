@@ -124,7 +124,7 @@
 						{:else if datos?.clasificacion?.tipoDocumental}
 							Clasificado como {datos.clasificacion.tipoDocumental.nombre}, sin datos extraídos todavía
 						{:else}
-							Lo que Document AI leyó del documento
+							Lo que Biblioratum leyó del documento
 						{/if}
 					</DialogPrimitive.Description>
 				</div>

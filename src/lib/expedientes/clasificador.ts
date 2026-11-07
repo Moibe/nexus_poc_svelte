@@ -75,11 +75,11 @@ export function lineaDeExtraccion(e: ExtraccionDeSubida): LineaDeClasificacion |
 		case 'extraido':
 			return { tono: 'bien', texto: 'Datos extraídos.' };
 		case 'no_reconocido':
-			return { tono: 'aviso', texto: 'Se intentó extraer sus datos, pero Document AI no reconoció los campos del tipo.' };
+			return { tono: 'aviso', texto: 'Se intentó extraer sus datos, pero Biblioratum no reconoció los campos del tipo.' };
 		case 'sin_procesador':
 			return { tono: 'aviso', texto: 'No se extrajeron sus datos: ese tipo documental no tiene un procesador de extracción. Vuelve a activarlo en Configuración › Tipos documentales.' };
 		case 'error':
-			return { tono: 'aviso', texto: 'No se pudieron extraer sus datos (Document AI falló); quedó subido con su tipo.' };
+			return { tono: 'aviso', texto: 'No se pudieron extraer sus datos (falló la lectura del documento); quedó subido con su tipo.' };
 		case 'no_extraido':
 			return { tono: 'aviso', texto: 'No se pudieron extraer sus datos ahora; quedó subido con su tipo.' };
 		default:

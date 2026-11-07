@@ -81,7 +81,7 @@ function avisosDe(documento: DocumentoEnPipeline): AvisoInforme[] {
 			titulo: 'No se reconocieron sus campos',
 			texto:
 				documento.resultado._metadata.motivo ??
-				'Document AI respondió sin campos para este documento.'
+				'Biblioratum no encontró campos en este documento.'
 		});
 	}
 	const ausentes = textoDeAusentes(documento.resultado?._metadata?.campos_ausentes);

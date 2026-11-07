@@ -313,7 +313,7 @@ async function procesarUno(id: string) {
 	if (!mime) {
 		pasarA(doc, 'no_soportado');
 		doc.terminadoEn = new Date();
-		doc.error = `Document AI no procesa archivos ${doc.extension}. Se aceptan PDF, JPG, JPEG y TIFF.`;
+		doc.error = `Biblioratum no procesa archivos ${doc.extension}. Se aceptan PDF, JPG, JPEG y TIFF.`;
 		return;
 	}
 
@@ -466,7 +466,7 @@ function asegurarRegistro(id: string): Promise<Registro> {
 	const enCurso = registrosEnCurso.get(id);
 	if (enCurso) return enCurso;
 	const mime = MIME_POR_EXTENSION[doc.extension];
-	if (!mime) return Promise.resolve({ ok: false, mensaje: `Document AI no procesa archivos ${doc.extension}.` });
+	if (!mime) return Promise.resolve({ ok: false, mensaje: `Biblioratum no procesa archivos ${doc.extension}.` });
 	const promesa = registrarDocumentoManual(new File([doc.archivo], doc.nombre, { type: mime }))
 		.then((r) => {
 			const vivo = documentosEnPipeline.find((d) => d.id === id);

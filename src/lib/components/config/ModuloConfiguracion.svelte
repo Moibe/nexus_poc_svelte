@@ -2396,7 +2396,7 @@
 						placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
 					/>
 					<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
-						Opcional. Orientan a Document AI al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
+						Opcional. Orientan a Biblioratum al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
 						haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
 						hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
 						coincide con lo impreso se descarta.
@@ -2848,7 +2848,7 @@
 												<!-- La propuso Document AI con un solo ejemplo («Generar a partir de un documento»): conviene revisarla. -->
 												<span
 													class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-normal text-primary"
-													title="Document AI la propuso leyendo el documento de ejemplo. Revísala: un solo ejemplo no garantiza que el dato nunca se repita."
+													title="Biblioratum la propuso leyendo el documento de ejemplo. Revísala: un solo ejemplo no garantiza que el dato nunca se repita."
 													data-testid="cardinalidad-sugerida">Sugerida por el documento</span
 												>
 											{/if}
@@ -3045,7 +3045,7 @@
 	abierto={tipoAEliminar !== null}
 	titulo="¿Borrar este tipo documental?"
 	mensaje={tipoAEliminar?.tieneProcesador
-		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.${avisoDeProcesos}`
+		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su extractor. Esta acción es irreversible: se pierde el extractor junto con su configuración publicada.${avisoDeProcesos}`
 		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.${avisoDeProcesos}`}
 	etiquetaConfirmar="Sí, borrar"
 	onConfirmar={confirmarEliminarTipo}

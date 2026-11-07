@@ -98,7 +98,7 @@ export const DELETE: RequestHandler = async ({ params, cookies, locals }) => {
 		const esTimeout = err instanceof Error && err.name === 'TimeoutError';
 		return fallo(
 			esTimeout
-				? 'El borrado tardó demasiado y se canceló. Puede que ya se haya completado del lado de Document AI: reintentar es seguro.'
+				? 'El borrado tardó demasiado y se canceló. Puede que ya se haya completado: reintentar es seguro.'
 				: 'No se pudo contactar a nexus_back. ¿Está arriba la API en el 8083?',
 			504
 		);
