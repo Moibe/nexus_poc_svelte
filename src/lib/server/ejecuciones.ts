@@ -1,12 +1,12 @@
 /**
- * Ejecuciones · lo que el servidor lee de nexus_back para OFRECER procesos que ejecutar (2026-11-06). Lo piden dos pantallas —la de Ejecuciones y el expediente
- * abierto, donde desde hoy se ejecuta (Moibe: «Ejecuciones ahora existirá dentro del Expediente»)— y falla igual en las dos, así que se lee aquí.
+ * Ejecuciones · lo que el servidor lee de nexus_back para ejecutar procesos desde el expediente y para enseñar su historial. Desde el 2026-11-07 las
+ * Ejecuciones ya no son una sección aparte (Moibe: «quita ejecuciones de la sección aparte»): viven DENTRO del expediente, que es el único que las pide.
  *
  * Corre en el servidor, que es quien tiene el JWT en la cookie.
  */
 import { isRedirect } from '@sveltejs/kit';
 
-import type { ProcesoOfrecido } from '$lib/ejecuciones/ejecuciones';
+import type { Historial, ProcesoOfrecido } from '$lib/ejecuciones/ejecuciones';
 import { leerDeNexus, listaDe } from '$lib/server/expediente';
 
 /**
@@ -31,5 +31,31 @@ export async function leerProcesosOfrecidos(
 	} catch (e) {
 		if (isRedirect(e)) throw e;
 		return { procesos: [], fallo: true };
+	}
+}
+
+/**
+ * Las primeras 50 ejecuciones de UN expediente, de la más reciente a la más antigua (`GET /ejecuciones/?expediente=`; las siguientes se piden con «Ver más» por
+ * `/api/ejecuciones`). Las ven todos los roles que ven el expediente. Si no se pueden leer (el servidor falló, o es una instancia sin base), `fallo` lo dice y el
+ * expediente sigue sirviendo: el historial es un complemento, no puede tumbar la pantalla. Una sesión cerrada sí manda al inicio de sesión.
+ *
+ * `expedienteId` va SIN codificar: aquí se codifica.
+ */
+export async function leerHistorialDeExpediente(
+	tenant: string,
+	expedienteId: string,
+	sesion: Parameters<typeof leerDeNexus>[1]
+): Promise<{ historial: Historial; fallo: boolean }> {
+	try {
+		const cuerpo = await leerDeNexus(
+			`/ejecuciones/?tenant=${tenant}&expediente=${encodeURIComponent(expedienteId)}&limite=50`,
+			sesion,
+			'No se pudo cargar el historial de ejecuciones.'
+		);
+		const ejecuciones = listaDe<Historial['ejecuciones'][number]>(cuerpo, 'ejecuciones');
+		return { historial: { ejecuciones, total: typeof cuerpo?.total === 'number' ? cuerpo.total : ejecuciones.length, hayMas: cuerpo?.hayMas === true }, fallo: false };
+	} catch (e) {
+		if (isRedirect(e)) throw e;
+		return { historial: { ejecuciones: [], total: 0, hayMas: false }, fallo: true };
 	}
 }

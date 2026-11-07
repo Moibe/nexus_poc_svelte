@@ -1,5 +1,5 @@
 /**
- * Lo que la pantalla de Ejecuciones sabe de una ejecución ya guardada (2026-11-03): sus tipos y cómo se escribe cada cosa. Lo que SALE de correr un
+ * Lo que el expediente sabe de una ejecución ya guardada (2026-11-03; antes lo sabía la pantalla de Ejecuciones, que se quitó el 2026-11-07): sus tipos y cómo se escribe cada cosa. Lo que SALE de correr un
  * proceso vive en `$lib/reglas/ejecutar`; esto es lo que nexus_back devuelve después de guardarlo (`GET /ejecuciones`) y cómo se enseña.
  */
 import type { CasoDelResultado } from '$lib/reglas/reglas';
@@ -78,8 +78,3 @@ export function valorParaVer(f: Pick<ValorFinalDeCorrida, 'estado' | 'valor'>): 
 	return f.estado === 'sin_valores' ? 'Sin valor (faltó el dato)' : 'Sin conectar';
 }
 
-/**
- * A dónde lleva el expediente al que se le corrió (o se le quiso correr) un proceso. Con duplicados, ahí se dejan «uno de cada tipo»: los
- * documentos repetidos quedan marcados en el expediente. Sustituye a `rutaDelVirtual` (Moibe, 2026-11-05: quitar los expedientes virtuales).
- */
-export const rutaDelExpediente = (expedienteId: string) => `/expediente/${encodeURIComponent(expedienteId)}`;

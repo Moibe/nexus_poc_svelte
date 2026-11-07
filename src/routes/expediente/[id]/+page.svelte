@@ -53,6 +53,10 @@
 	 * los procesos activos y el botón Play, que corre el proceso con los datos de los documentos de ESTE expediente y enseña el resultado ahí mismo. Es una
 	 * acción de todo el expediente (no de un documento) y de quien organiza, y un expediente sin documentos no la trae (no habría con qué decidir; su estado
 	 * vacío ya dice que se suban archivos). Los procesos los lee el `load` de esta página.
+	 *
+	 * **Historial de ejecuciones (2026-11-07, Moibe: «quita ejecuciones de la sección aparte»).** La pantalla de Ejecuciones desapareció (su tarjeta del módulo de
+	 * uso y su ruta) y su historial se mudó al final de esta página (`HistorialDeEjecuciones`): las ejecuciones de ESTE expediente, para todos los roles; lo lee
+	 * el `load` junto con el expediente.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Copy from '@lucide/svelte/icons/copy';
@@ -64,6 +68,7 @@
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
 	import EjecutarProceso from '$lib/components/expedientes/EjecutarProceso.svelte';
+	import HistorialDeEjecuciones from '$lib/components/expedientes/HistorialDeEjecuciones.svelte';
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
@@ -290,6 +295,12 @@
 				</li>
 			{/each}
 		</ul>
+	{/if}
+
+	<!-- El historial de ejecuciones de ESTE expediente (Moibe, 2026-11-07: «quita ejecuciones de la sección aparte»), al final y para todos los roles. «Ver el historial» de
+	     la tarjeta de ejecutar lleva aquí. Sin ejecuciones no se muestra (salvo que no se haya podido leer: entonces lo dice). -->
+	{#if data.historial.total > 0 || data.historialFallo}
+		<HistorialDeEjecuciones expedienteId={expediente.id} historial={data.historial} fallo={data.historialFallo} />
 	{/if}
 </div>
 

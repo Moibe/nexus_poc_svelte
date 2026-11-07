@@ -11,7 +11,10 @@
 	 *
 	 * Va debajo del encabezado del expediente y antes de sus avisos y de los documentos: es una acción de TODO el expediente, no de un documento, y ahí queda
 	 * siempre en el mismo sitio aunque los avisos aparezcan y desaparezcan. Solo la ve quien organiza (la página la monta con `puedeOrganizar`; Administrador,
-	 * Supervisor, Analista y Operador) y nexus_back es quien manda: contesta 403 a cualquier otro rol. La pantalla de Ejecuciones sigue siendo el historial.
+	 * Supervisor, Analista y Operador) y nexus_back es quien manda: contesta 403 a cualquier otro rol.
+	 *
+	 * Desde el 2026-11-07 (Moibe: «quita ejecuciones de la sección aparte») esta tarjeta es lo ÚNICO que queda de Ejecuciones para correr un proceso: la pantalla
+	 * aparte ya no existe, y el historial se mudó al final del expediente (`HistorialDeEjecuciones`), adonde lleva «Ver el historial».
 	 *
 	 * La elección y lo que salió viven aquí y NO se tiran con la recarga periódica del layout (cada 20 s vuelve a pedir `data`, y un `$effect` que lee props
 	 * para «arrancar limpio» vació formularios el 2026-11-05): lo que salió se quita solo cuando se elige OTRO proceso o cuando los documentos del expediente
@@ -19,6 +22,7 @@
 	 * siempre de lo que se eligió.
 	 */
 	import { untrack } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Play from '@lucide/svelte/icons/play';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -101,6 +105,9 @@
 			const cuerpo = await respuesta.json().catch(() => null);
 			if (respuesta.ok) {
 				ultima = cuerpo as EjecucionCompleta;
+				// Ya quedó en el historial del expediente (`HistorialDeEjecuciones`, más abajo): se vuelve a leer para que aparezca enseguida. Lo que salió no se
+				// pierde con esto: vive aquí y solo se quita al cambiar de proceso o de documentos.
+				await invalidateAll().catch(() => {});
 			} else {
 				noSeEjecuto = { mensaje: cuerpo?.mensaje ?? 'No se pudo ejecutar el proceso.', codigo: cuerpo?.codigo, duplicados: cuerpo?.duplicados };
 			}
@@ -214,7 +221,7 @@
 					<span class="text-sm text-muted-foreground">{TEXTO_DEL_CASO[ultima.resultado.caso]}</span>
 					<span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{ETIQUETA_DE_ESTADO[ultima.estado]}</span>
 					<span class="ml-auto flex items-center gap-3">
-						<a href="/ejecuciones" class="text-sm text-primary underline-offset-2 hover:underline dark:text-blue-300" data-testid="ejecutar-ver-historial">Ver el historial</a>
+						<a href="#historial-ejecuciones" class="text-sm text-primary underline-offset-2 hover:underline dark:text-blue-300" data-testid="ejecutar-ver-historial">Ver el historial</a>
 						<Button variant="outline" size="sm" data-testid="ejecutar-ver-detalle" onclick={verElDetalle}>Ver el detalle</Button>
 					</span>
 				</div>

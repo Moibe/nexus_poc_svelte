@@ -5,16 +5,17 @@
 	 * Sustituye a la opción «Expediente» del engrane. Es el hermano del módulo de configuración (`/configuracion`): una página con un
 	 * cuadro por cosa y cada cuadro lleva a su pantalla. Aquí no se configura nada, se trabaja:
 	 *   · Centro operativo documental: el inicio, con sus tres bandejas (carga documental, bandeja de preparación y pipeline).
-	 *   · Expedientes: la carpeta de cada cliente o caso y los documentos que reúne.
-	 *   · Ejecuciones: correr un proceso del motor de reglas sobre un expediente (2026-10-30; hasta el 2026-11-05 se corría sobre un expediente
-	 *     virtual, que Moibe quitó: ahora el proceso corre sobre el expediente completo).
+	 *   · Expedientes: la carpeta de cada cliente o caso y los documentos que reúne. Desde ahí, dentro de cada expediente, se ejecuta un proceso del motor de
+	 *     reglas y se ve su historial de ejecuciones.
+	 *
+	 * Ejecuciones tuvo aquí su propio cuadro y su pantalla (2026-10-30 al 2026-11-07); Moibe las quitó («quita ejecuciones de la sección aparte»): ahora viven
+	 * dentro del expediente. Recuperar la pantalla: `git show <commit anterior al 2026-11-07>:src/routes/ejecuciones/+page.svelte`.
 	 *
 	 * No pide datos ni decide permisos: cada pantalla a la que lleva decide por su cuenta quién entra. Agregar la siguiente cosa es agregar
 	 * un renglón a `SECCIONES`.
 	 */
 	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
-	import Play from '@lucide/svelte/icons/play';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 
 	const SECCIONES = [
@@ -33,13 +34,6 @@
 			icono: FolderOpen,
 			descripcion:
 				'Los expedientes de tu organización: la carpeta de cada cliente o caso y los documentos que reúne.'
-		},
-		{
-			id: 'ejecuciones',
-			nombre: 'Ejecuciones',
-			href: '/ejecuciones',
-			icono: Play,
-			descripcion: 'Corre un proceso del motor de reglas sobre un expediente y revisa el resultado.'
 		}
 	];
 </script>

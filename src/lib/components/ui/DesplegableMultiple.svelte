@@ -8,8 +8,9 @@
 	 * elegir; aquí se eligen varias y la casilla va a la izquierda, como el diseño.
 	 *
 	 * La lista tiene un tope de alto (20 rem) y se desplaza por dentro (2026-11-03): los filtros del historial de ejecuciones
-	 * la alimentan con las personas y los procesos de una organización, que pueden ser decenas; sin tope, la lista salía de la
-	 * pantalla. Con las pocas opciones de los demás filtros no cambia nada.
+	 * (quitados el 2026-11-07 con esa pantalla) la alimentaban con las personas y los procesos de una organización, que pueden ser decenas, y
+	 * otras listas largas (los tipos documentales de «Nuevo proceso») la siguen necesitando; sin tope, la lista salía de la pantalla. Con las pocas
+	 * opciones de los demás filtros no cambia nada.
 	 */
 	import { Popover } from 'bits-ui';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';

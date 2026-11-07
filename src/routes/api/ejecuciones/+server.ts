@@ -19,7 +19,7 @@
  * El tenant lo fija el servidor desde la sesión (`tenantDe`), nunca el navegador, y se reenvía el JWT de la persona para que nexus_back lo compruebe
  * (HU11). Quién puede ejecutar lo decide el back (`roles.PUEDEN_ORGANIZAR`): a los demás roles responde 403 `sin_permiso` y aquí se reenvía tal cual.
  *
- * El historial se lee en el `load` de `/ejecuciones` (que ya corre en el servidor); el GET de aquí solo trae las páginas siguientes («Ver más»).
+ * El historial de un expediente se lee en el `load` de `/expediente/[id]` (que ya corre en el servidor); el GET de aquí solo trae las páginas siguientes («Ver más»).
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -91,19 +91,15 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 };
 
 /**
- * El historial: más renglones (`?antes=<id de la última que ya se vio>&limite=`) y, con filtros, el historial filtrado (2026-11-03, Moibe: «agrega dichos
- * filtros»). Los filtros se reenvían tal cual a nexus_back, que es quien los aplica: `expediente`, `desde` y `hasta` van una vez; `proceso`,
- * `persona` y `caso` (el estado) pueden repetirse y se reenvían todos. Lo demás que traiga la dirección se descarta, y el tenant es el de la sesión.
- * Ya no hay filtro por expediente virtual (2026-11-05, Moibe): el parámetro `virtual` se descarta como cualquier otro que no se conozca.
+ * El historial: más renglones (`?expediente=<id>&antes=<id de la última que ya se vio>&limite=`). Desde el 2026-11-07 el historial se ve DENTRO de cada expediente
+ * (Moibe: «quita ejecuciones de la sección aparte»), así que lo único que se pide es el de un expediente. Lo demás que traiga la dirección se descarta (también
+ * los filtros de la pantalla vieja: fecha, proceso, estado y persona; nexus_back los sigue entendiendo, pero ya nadie los manda), y el tenant es el de la sesión.
  */
 export const GET: RequestHandler = async ({ cookies, locals, url }) => {
 	const consulta = new URLSearchParams({ tenant: tenantDe(locals) });
-	for (const clave of ['expediente', 'desde', 'hasta', 'limite', 'antes']) {
+	for (const clave of ['expediente', 'limite', 'antes']) {
 		const valor = url.searchParams.get(clave);
 		if (valor) consulta.set(clave, valor);
-	}
-	for (const clave of ['proceso', 'persona', 'caso']) {
-		for (const valor of url.searchParams.getAll(clave)) if (valor) consulta.append(clave, valor);
 	}
 	let respuesta: Response;
 	try {

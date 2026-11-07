@@ -51,7 +51,7 @@
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
-				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Ejecuciones{ejecucion ? ` / ${ejecucion.proceso.nombre}` : ''}</p>
+				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Ejecución{ejecucion ? ` / ${ejecucion.proceso.nombre}` : ''}</p>
 				<DialogPrimitive.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300">
 					<CancelSquareIcon />
 					<span class="sr-only">Cerrar</span>
