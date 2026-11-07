@@ -2276,7 +2276,7 @@
 							<Input
 								id="nombre-tipo"
 								bind:value={borrador.nombre}
-								placeholder="Ingresa el nombre del tipo documental a configurar"
+								placeholder="Ingresa el nombre del tipo documental a configurar, por ejemplo: INE"
 								aria-invalid={nombreTipoRepetido}
 								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : undefined}
 								class={nombreTipoRepetido ? 'pr-9' : undefined}
