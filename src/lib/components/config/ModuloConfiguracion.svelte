@@ -108,7 +108,6 @@
 		tipoConMismoNombre,
 		quitarCampo,
 		quitarValorLista,
-		completarNombreProcesador,
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
@@ -820,13 +819,6 @@
 			return;
 		}
 		tiposExpandidos.add(idTipo);
-		// Al DESPLEGAR (no al replegar) se rellena el nombre del procesador si
-		// falta, leyéndolo de Document AI. Aquí y no al cargar la Biblioteca
-		// porque ese nombre solo se ve en esta ficha: preguntándolo al abrir se
-		// paga exactamente una consulta por tipo que alguien de verdad miró, y
-		// cero por los que no. La función es silenciosa y se acuerda de a
-		// quién ya le preguntó — ver `completarNombreProcesador`.
-		void completarNombreProcesador(idTipo);
 	}
 
 	// Arrastrar-y-soltar para reordenar los tipos documentales (pedido explícito
@@ -1702,43 +1694,6 @@
 												{tipo.descripcion || 'Sin descripción.'}
 											</p>
 										</div>
-
-										<!-- El procesador de Document AI, a pedido explícito
-										     (2026-09-08): "quiero el nombre del procesador que tengo en
-										     Document AI, para que yo pueda identificarlo".
-										     UN SOLO RENGLÓN y sin rótulo, corregido el mismo día: la
-										     primera versión traía "Procesador en Document AI" arriba y el
-										     id abajo, y se pidió quitar las dos cosas —"me sirve más
-										     éste" (el nombre) "y quítale lo de 'Procesador en Document
-										     AI' para que quepa en una sola línea"—. El nombre se explica
-										     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
-										     la consola de GCP.
-										     Viene de Google (`procesadorDisplayName`, lo devuelve
-										     "Activar"), no se arma aquí: si el tipo se renombró después
-										     de activarse, Document AI se queda con el nombre VIEJO —no
-										     ofrece renombrar un procesador ya creado— y recalcularlo de
-										     este lado mostraría algo que allá no existe. Por eso puede
-										     venir vacío en tipos activados antes del 2026-09-08: ahí cae
-										     al id, que ocupa el mismo renglón y también lo identifica.
-										     `truncate` + `title` en vez de `break-all`: un nombre largo
-										     (el slug lleva el nombre del tipo) rompería el renglón único
-										     que se pidió, así que se corta con puntos suspensivos y el
-										     completo se lee al pasar el mouse.
-										     Sin botón de "copiar": `navigator.clipboard` es una API de
-										     contexto seguro y el server de CSI es HTTP plano (ver la nota
-										     permanente en la memoria del proyecto). El texto es
-										     seleccionable, que es lo que sí funciona ahí. -->
-										{#if tipo.procesadorId}
-											{@const nombreProcesador =
-												tipo.procesadorDisplayName || tipo.procesadorId}
-											<p
-												data-testid="procesador-tipo"
-												title={nombreProcesador}
-												class="truncate font-mono text-sm text-muted-foreground"
-											>
-												{nombreProcesador}
-											</p>
-										{/if}
 
 										<div>
 											<p class="text-xs font-medium text-muted-foreground">Campos</p>

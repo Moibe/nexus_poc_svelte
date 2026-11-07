@@ -1,12 +1,8 @@
 /**
- * BFF de un procesador concreto de Document AI. Dos verbos, con vidas muy
- * distintas:
+ * BFF de un procesador concreto de Document AI: solo el verbo `DELETE`, que lo BORRA en Google, con su dataset y su esquema.
  *
- *  - `GET`: lo CONSULTA (nombre visible, versión default, estado). Lectura
- *    pura y gratis; la usa la ficha del tipo documental para mostrar el
- *    nombre de procesadores activados antes de que "Activar" empezara a
- *    devolverlo.
- *  - `DELETE`: lo BORRA en Google, con su dataset y su esquema.
+ * Hubo también un `GET` que lo consultaba (nombre visible, versión default, estado) para que la ficha del tipo documental enseñara el nombre técnico del
+ * procesador. Se quitó el 2026-11-07 (Moibe: «No guardes el nombre técnico», con Document AI transparente para el cliente final): nadie lo pide ya.
  *
  * El DELETE solo borra en GOOGLE. Borrar la entrada de la Biblioteca es
  * responsabilidad de quien llama (`eliminarTipoDocumental` en el state): así,
@@ -50,33 +46,6 @@ async function reenviar(respuesta: Response) {
 
 	return json(datos);
 }
-
-export const GET: RequestHandler = async ({ params, cookies, locals }) => {
-	const { procesadorId } = params;
-	if (!procesadorId) {
-		return fallo('Falta el id del procesador.', 400);
-	}
-	// La organización y la identidad salen de la sesión (NEX-550): nexus_back solo atiende un procesador de un tipo de ESA organización.
-	const tenant = tenantDe(locals);
-
-	let respuesta: Response;
-	try {
-		respuesta = await fetch(urlNexus(`/procesadores/${encodeURIComponent(procesadorId)}?tenant=${encodeURIComponent(tenant)}`), {
-			headers: cabecerasConSesion(cookies),
-			signal: AbortSignal.timeout(TIMEOUT_MS)
-		});
-	} catch (err) {
-		const esTimeout = err instanceof Error && err.name === 'TimeoutError';
-		return fallo(
-			esTimeout
-				? 'La consulta del procesador tardó demasiado y se canceló.'
-				: 'No se pudo contactar a nexus_back. ¿Está arriba la API en el 8083?',
-			504
-		);
-	}
-
-	return reenviar(respuesta);
-};
 
 export const DELETE: RequestHandler = async ({ params, cookies, locals }) => {
 	const { procesadorId } = params;

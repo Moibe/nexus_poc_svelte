@@ -39,6 +39,18 @@ export type Datos = {
 	campos: Campo[];
 };
 
+/**
+ * El motivo de una extracción fallida, para decírselo a la persona; `null` si no hay nada que valga la pena decir. Hasta el 2026-11-07 el servidor guardaba
+ * el texto CRUDO de la excepción («Document AI respondió 400: …», con lo que contestó Google): eso no se enseña (Moibe: Document AI debe ser transparente para el
+ * cliente final), así que un motivo que nombre al proveedor o traiga un código HTTP se calla; el servidor ya solo guarda el texto para la persona. El genérico
+ * «Falló la extracción» tampoco se repite detrás de «falló».
+ */
+export function motivoDeFalla(error: string | null | undefined): string | null {
+	const texto = (error ?? '').trim().replace(/[.\s]+$/, '');
+	if (!texto || /^fall[óo] la extracci[óo]n$/i.test(texto) || /document\s*ai|google|respondi[óo]\s+\d{3}/i.test(texto)) return null;
+	return texto;
+}
+
 /** Lo que se dice de un campo que no trae valor. */
 export const MOTIVOS_SIN_VALOR: Record<string, string> = {
 	not_present: 'No apareció',
@@ -102,7 +114,7 @@ export function construirInformeDeDatos(documento: DocumentoDeExpediente, datos:
 	if (e?.estado === 'error') {
 		avisos.push({
 			titulo: 'No se pudo procesar',
-			texto: `El último intento de extracción falló: ${e.error ?? 'sin detalle'}.${campos.length ? ' Los campos de abajo son los de la extracción anterior.' : ''}`
+			texto: `El último intento de extracción falló${motivoDeFalla(e.error) ? `: ${motivoDeFalla(e.error)}` : ''}.${campos.length ? ' Los campos de abajo son los de la extracción anterior.' : ''}`
 		});
 	} else if (e?.estado === 'no_reconocido') {
 		avisos.push({ titulo: 'No se reconocieron sus campos', texto: 'El extractor no reconoció los campos de este documento.' });

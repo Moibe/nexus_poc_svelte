@@ -876,13 +876,6 @@ export type TipoDocumentalGuardado = {
 	 *  FIJARLA en cada extracción: la default de Google cambia sin aviso y la
 	 *  reproducibilidad ya nos mordió una vez. */
 	procesadorVersion: string;
-	/** El nombre VISIBLE del procesador en la consola de Document AI (algo como
-	 *  `nexusdoc--tipo-abc--v2--ine`), tal como lo devolvió Google al activar —
-	 *  no se recalcula de este lado. Existe solo para que una persona pueda
-	 *  casar el tipo documental de NexusDoc con el procesador que ve en GCP.
-	 *  Vacío en los tipos activados ANTES del 2026-09-08, que no lo recibieron:
-	 *  ahí la ficha cae al `procesadorId`, que igual lo identifica. */
-	procesadorDisplayName: string;
 	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
 	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
 	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
@@ -1141,7 +1134,6 @@ function leerTipoGuardado(crudo: unknown): TipoDocumentalGuardado | null {
 		version: Number.isInteger(d.version) && (d.version as number) >= 0 ? (d.version as number) : d.estado === 'activo' ? 1 : 0,
 		procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
 		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
-		procesadorDisplayName: typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
 		ejemploDocumental: d.ejemploDocumental === true,
 		activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
 		historialVersiones: Array.isArray(d.historialVersiones)
@@ -1660,7 +1652,6 @@ export function guardarTipoDocumental(): string | null {
 			version: 0,
 			procesadorId: '',
 			procesadorVersion: '',
-			procesadorDisplayName: '',
 			ejemploDocumental: false,
 			activadoEn: null,
 			historialVersiones: [],
@@ -1711,60 +1702,6 @@ export function normalizarCategoria(valor: string): string {
 		.replace(/_+/g, '_')
 		.replace(/^[_-]+|[_-]+$/g, '')
 		.slice(0, 64);
-}
-
-/** Tipos cuyo nombre de procesador ya se intentó leer en esta sesión, para no
- *  volver a preguntar por cada vez que se despliega la ficha. Incluye los
- *  intentos FALLIDOS a propósito: si el procesador ya no existe en Google, o
- *  la API no respondió, insistir en cada clic solo agrega ruido — se
- *  reintenta al recargar la página, que es cuando algo pudo haber cambiado. */
-const nombreProcesadorPedido = new Set<string>();
-
-/**
- * Rellena `procesadorDisplayName` leyéndolo de Document AI, para los tipos
- * que se activaron ANTES de que "Activar" empezara a devolverlo (2026-09-08).
- *
- * Por qué leerlo y no obligar a republicar: cada publicación crea un Custom
- * Extractor NUEVO en GCP, así que "reactiva para ver el nombre" sale
- * carísimo para un dato de solo lectura. `processors.get` no cobra — la
- * facturación de Document AI es por página PROCESADA — y además devuelve la
- * verdad de Google, no una copia local que pudo quedar vieja.
- *
- * No hace nada si el tipo ya tiene el nombre, si no tiene procesador, o si ya
- * se preguntó en esta sesión. Es silenciosa por diseño: si falla, la ficha se
- * queda mostrando el id, que es exactamente lo que mostraba antes — no vale
- * un mensaje de error por un dato accesorio que la persona no pidió.
- */
-export async function completarNombreProcesador(idTipo: string): Promise<void> {
-	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
-	if (!tipo || !tipo.procesadorId || tipo.procesadorDisplayName) return;
-	if (nombreProcesadorPedido.has(tipo.procesadorId)) return;
-	nombreProcesadorPedido.add(tipo.procesadorId);
-
-	let respuesta: Response;
-	try {
-		respuesta = await fetch(`/api/procesadores/${encodeURIComponent(tipo.procesadorId)}`);
-	} catch {
-		return;
-	}
-	if (!respuesta.ok) return;
-
-	let datos: Record<string, unknown> = {};
-	try {
-		datos = await respuesta.json();
-	} catch {
-		return;
-	}
-
-	const nombre = typeof datos.procesadorDisplayName === 'string' ? datos.procesadorDisplayName : '';
-	if (!nombre) return;
-
-	// Se vuelve a buscar: entre la petición y la respuesta el tipo pudo
-	// borrarse o archivarse.
-	const vigente = tiposDocumentales.find((t) => t.id === idTipo);
-	if (!vigente || vigente.procesadorId !== tipo.procesadorId) return;
-	vigente.procesadorDisplayName = nombre;
-	guardarBiblioteca();
 }
 
 /**
@@ -1907,8 +1844,6 @@ export async function activarTipoDocumental(
 	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
 	tipo.procesadorVersion =
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
-	tipo.procesadorDisplayName =
-		typeof datos.procesadorDisplayName === 'string' ? datos.procesadorDisplayName : '';
 	tipo.activadoEn = new Date().toISOString();
 	guardarBiblioteca();
 
