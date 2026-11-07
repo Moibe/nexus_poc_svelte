@@ -309,6 +309,7 @@ const CLAVES_DE_LA_PERSONA = [LLAVE, 'nexusdoc:tipos-documentales:v1', 'nexusdoc
  * no es un motivo para que el cierre de sesión falle.
  */
 export function limpiarDatosLocalesDeLaPersona(): void {
+	ejemplosEnMemoria.clear(); // los documentos de ejemplo de la persona que se va no se quedan en la pestaña
 	const store = almacen();
 	if (!store) return;
 	for (const clave of CLAVES_DE_LA_PERSONA) {
@@ -318,6 +319,30 @@ export function limpiarDatosLocalesDeLaPersona(): void {
 			/* sin permiso para borrar: no hay nada más que hacer */
 		}
 	}
+}
+
+/**
+ * Los documentos de ejemplo con que se generaron los campos de un tipo (2026-11-07, «Generar a partir de VARIOS documentos»), para poder PROBAR la extracción con
+ * ellos en cuanto el tipo se active (`ProbarExtraccion`). Viven SOLO en la memoria de esta pestaña, por tipo: no se guardan en el navegador (son documentos
+ * reales, y `localStorage` los dejaría ahí para quien use el equipo después), ni en el servidor, ni llegan a Google más que para leerlos. Si se recarga la página
+ * se pierden, y la prueba se hace eligiendo los archivos otra vez. Se borran al cerrar sesión y al borrar el tipo.
+ */
+const ejemplosEnMemoria = new Map<string, File[]>();
+
+/** Recuerda los ejemplos de un tipo (reemplaza los anteriores). Sin archivos, los olvida. */
+export function recordarEjemplos(idTipo: string, archivos: File[]): void {
+	if (archivos.length === 0) ejemplosEnMemoria.delete(idTipo);
+	else ejemplosEnMemoria.set(idTipo, [...archivos]);
+}
+
+/** Los ejemplos que se recuerdan de un tipo (una copia: quien los use no toca la lista guardada). */
+export function ejemplosDeTipo(idTipo: string): File[] {
+	return [...(ejemplosEnMemoria.get(idTipo) ?? [])];
+}
+
+/** Olvida los ejemplos de un tipo. */
+export function olvidarEjemplos(idTipo: string): void {
+	ejemplosEnMemoria.delete(idTipo);
 }
 
 /** Normaliza un subcampo de un grupo. `null` si no es ni un objeto. */
@@ -485,6 +510,11 @@ export type CampoPropuesto = {
 	cardinalidad: string;
 	valoresLista: string[];
 	subcampos: { nombre: string; tipoDato: string; descripcion: string; obligatorio: boolean }[];
+	/**
+	 * Solo con VARIOS documentos de ejemplo (`unirPropuestas`): el campo no salió en todos, así que se agrega como OPCIONAL: un documento válido que no lo trae
+	 * no debe fallar por eso. Sin esto (un solo documento, o el campo salió en todos) nace obligatorio, como siempre.
+	 */
+	opcionalSugerido?: boolean;
 };
 
 /**
@@ -495,7 +525,7 @@ export type CampoPropuesto = {
  *
  * Nacen OBLIGATORIOS (también sus subcampos), igual que un campo capturado a mano (`campoVacio`), sin importar lo que diga Google:
  * en todas las pruebas del 2026-10-29 propuso todo como opcional, y eso dejaba lo generado con un criterio distinto de lo manual
- * (Moibe, 2026-10-29). La cardinalidad sí se toma de la propuesta, marcada como sugerida para revisarla en el paso 3.
+ * (Moibe, 2026-10-29). La excepción es el que salió en solo ALGUNOS de varios documentos de ejemplo (`opcionalSugerido`, 2026-11-07): ese nace opcional. La cardinalidad sí se toma de la propuesta, marcada como sugerida para revisarla en el paso 3.
  */
 export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregados: number; omitidos: string[] } {
 	const omitidos: string[] = [];
@@ -512,7 +542,7 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 			nombre,
 			tipoDato: tipo,
 			descripcion: p.descripcion.trim() || nombre,
-			obligatorio: true,
+			obligatorio: p.opcionalSugerido !== true,
 			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
 			cardinalidadSugerida: true,
 			valoresLista: tipo === 'lista' ? [...p.valoresLista] : [],
@@ -2104,6 +2134,7 @@ export async function eliminarTipoDocumental(
 
 	const i = tiposDocumentales.findIndex((tp) => tp.id === id);
 	if (i !== -1) tiposDocumentales.splice(i, 1);
+	olvidarEjemplos(id); // sus documentos de ejemplo en memoria ya no tienen a qué tipo servir
 	// Si se borró el que el borrador tenía asociado, se desliga para que un
 	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
 	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;

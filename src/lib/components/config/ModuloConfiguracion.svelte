@@ -41,6 +41,7 @@
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Calendar from '@lucide/svelte/icons/calendar';
@@ -66,6 +67,7 @@
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
 	import SubcamposGrupo from './SubcamposGrupo.svelte';
 	import GenerarCamposDesdeDocumento from './GenerarCamposDesdeDocumento.svelte';
+	import ProbarExtraccion from './ProbarExtraccion.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { cargarProcesos, estadoProcesos, procesosQueUsanElTipo } from '$lib/state/procesos.svelte';
@@ -74,6 +76,8 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarCamposPropuestos,
+		ejemplosDeTipo,
+		recordarEjemplos,
 		agregarValorLista,
 		alCambiarTipoDato,
 		alternarEjemploDocumental,
@@ -272,11 +276,20 @@
 
 	/** Lo que la persona eligió de la propuesta cae en «Campos agregados». Si el formulario de captura estaba en blanco se
 	 *  oculta (como al guardar un campo), para que lo agregado quede a la vista; si tenía algo a medias, se respeta. */
-	function agregarPropuestos(elegidos: CampoPropuesto[]) {
+	function agregarPropuestos(elegidos: CampoPropuesto[], ejemplos: File[]) {
 		agregarCamposPropuestos(elegidos);
+		// Los documentos con que se generaron los campos se recuerdan (SOLO en la memoria de la pestaña) para poder probar la extracción con ellos al activar el
+		// tipo (`ProbarExtraccion`). El asistente guarda el tipo con cada cambio, pero se asegura aquí para tener su id.
+		const id = guardarTipoDocumental() ?? borrador.idGuardado;
+		if (id && ejemplos.length > 0) recordarEjemplos(id, ejemplos);
 		generarCamposAbierto = false;
 		if (campoIntacto(borrador.campoEnCaptura)) mostrarFormularioCampo = false;
 	}
+
+	// «Probar con documentos» (2026-11-07): el tipo cuya extracción se está probando (`null` = cerrado). Se abre desde el menú ⋮ de un tipo activo y, solo, justo
+	// después de ACTIVAR un tipo cuyos campos se generaron con documentos de ejemplo que todavía están en memoria.
+	let pruebaDeId = $state<string | null>(null);
+	const tipoEnPrueba = $derived(pruebaDeId ? (tiposDocumentales.find((t) => t.id === pruebaDeId) ?? null) : null);
 
 	// El tipo documental que se está por eliminar. Guarda también si TIENE un
 	// procesador real (no si está "activo": un borrador nacido de una futura
@@ -376,6 +389,8 @@
 			errorActivacion = r.mensaje;
 			return;
 		}
+		// Si los campos se generaron con documentos de ejemplo, ahora que ya hay procesador se ofrece probar la extracción con ellos (no corre sola: pide un botón).
+		if (ejemplosDeTipo(id).length > 0) pruebaDeId = id;
 		// El Extractor (lo que este botón promete) ya quedó activo llegado
 		// aquí — un fallo sincronizando el clasificador es secundario: este
 		// tipo puede seguir cayendo en "otro" al clasificar hasta que se
@@ -1496,6 +1511,17 @@
 											>
 												<Plus class="size-4 text-muted-foreground" />
 												<span>Crear nueva versión</span>
+											</DropdownMenu.Item>
+
+											<!-- «Probar con documentos» (2026-11-07): ver qué extrae el tipo de hasta 3 documentos, sin guardar nada. Solo un tipo activo con su procesador. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled={tipo.estado !== 'activo' || !tipo.procesadorId}
+												data-testid="probar-tipo"
+												onSelect={() => (pruebaDeId = tipo.id)}
+											>
+												<FlaskConical class="size-4 text-muted-foreground" />
+												<span>Probar con documentos</span>
 											</DropdownMenu.Item>
 
 											<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
@@ -3062,6 +3088,13 @@
 	onAgregarMas={irACalibracionDesdeAviso}
 	onContinuar={confirmarActivacionConPocosEjemplos}
 	onCerrar={() => (tipoPocosEjemplos = null)}
+/>
+
+<ProbarExtraccion
+	abierto={tipoEnPrueba !== null}
+	tipo={tipoEnPrueba}
+	archivosIniciales={pruebaDeId ? ejemplosDeTipo(pruebaDeId) : []}
+	onCerrar={() => (pruebaDeId = null)}
 />
 
 <GenerarCamposDesdeDocumento
