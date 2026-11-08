@@ -2385,7 +2385,7 @@
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 							<!-- Con qué sugerir (2026-11-08, Moibe: «que esto sea una especie de switch, para que se sepa que es o uno u otro»): un interruptor de dos posiciones, con el lenguaje de
 							     «Ver como lista / mosaico» (borde, y la elegida pintada), y UNA acción al lado que cambia según lo elegido. Son radios nativos: las flechas del teclado y los lectores de
-							     pantalla ya saben que es «uno u otro». Se puede elegir sin haber escrito el nombre; lo que pide el nombre es la acción. -->
+							     pantalla ya saben que es «uno u otro». Sin nombre del tipo, todo (interruptor y acción) queda apagado (2026-11-08, Moibe: «que toda la sección esté greyada hasta que el título lo habilite»). -->
 							<div
 								role="radiogroup"
 								aria-label="Con qué sugerir la descripción"
@@ -2393,8 +2393,8 @@
 								data-testid="modo-sugerencia"
 							>
 								{#each MODOS_SUGERENCIA as modo (modo.valor)}
-									<label class="relative flex min-w-0 {sugiriendo ? 'cursor-not-allowed' : 'cursor-pointer'}" data-testid="modo-sugerencia-{modo.valor}">
-										<input type="radio" name="modo-sugerencia" value={modo.valor} bind:group={modoSugerencia} disabled={sugiriendo} class="peer sr-only" />
+									<label class="relative flex min-w-0 {sugiriendo || borrador.nombre.trim() === '' ? 'cursor-not-allowed' : 'cursor-pointer'}" data-testid="modo-sugerencia-{modo.valor}">
+										<input type="radio" name="modo-sugerencia" value={modo.valor} bind:group={modoSugerencia} disabled={sugiriendo || borrador.nombre.trim() === ''} class="peer sr-only" />
 										<span
 											class="flex min-h-6.5 items-center justify-center rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium transition-colors peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 peer-disabled:opacity-50 {modoSugerencia === modo.valor
 												? 'bg-primary text-primary-foreground'
