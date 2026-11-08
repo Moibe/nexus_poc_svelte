@@ -1844,12 +1844,9 @@
 					</span>
 					<div>
 						<p class="text-sm font-medium text-foreground">
-							Comienza configurando un modelo documental
+							Aún no hay tipos documentales
 						</p>
-						<p class="mt-1 max-w-md text-xs text-muted-foreground">
-							Agrega un tipo documental para comenzar a configurar los campos, reglas de extracción
-							y validaciones del modelo.
-						</p>
+						<p class="mt-1 max-w-md text-xs text-muted-foreground">Crea el primero para definir sus campos.</p>
 					</div>
 					<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 				</div>
