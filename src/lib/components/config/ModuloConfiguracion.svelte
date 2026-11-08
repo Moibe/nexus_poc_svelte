@@ -2384,7 +2384,7 @@
 						<div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
 							<Label for="descripcion-tipo">Descripción *</Label>
 							<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
-								Así el clasificador reconoce este tipo: di qué documento es y cómo distinguirlo de otros.
+								Para que el clasificador reconozca este tipo: di qué documento es y cómo distinguirlo de otros.
 							</p>
 						</div>
 						<Textarea
