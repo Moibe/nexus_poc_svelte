@@ -469,6 +469,23 @@
 	 * documentos ya elegidos (siguen recordados para el paso 2 y para probar la extracción).
 	 */
 	let modoSugerencia = $state<'nombre' | 'documentos'>('nombre');
+	// Empezar por el nombre (2026-11-08, Moibe): al abrir el paso 1 de un alta el foco va al nombre; si se pica otra cosa del paso sin haberlo escrito, se
+	// regresa ahí y una línea lo dice (sin nombre, la descripción y las sugerencias no sirven de nada: la IA lo necesita).
+	let entradaNombreTipo = $state<HTMLInputElement | null>(null);
+	let pedirNombrePrimero = $state(false);
+	$effect(() => {
+		if (borrador.paso === 1 && entradaNombreTipo && untrack(() => borrador.nombre.trim() === '')) entradaNombreTipo.focus();
+	});
+	$effect(() => {
+		if (borrador.nombre.trim() !== '') pedirNombrePrimero = false;
+	});
+	function exigirNombrePrimero(evento: PointerEvent) {
+		if (borrador.nombre.trim() !== '' || !entradaNombreTipo) return;
+		if (entradaNombreTipo.contains(evento.target as Node)) return;
+		evento.preventDefault();
+		pedirNombrePrimero = true;
+		entradaNombreTipo.focus();
+	}
 	const MODOS_SUGERENCIA = [
 		{ valor: 'nombre', etiqueta: 'Solo con el nombre' },
 		{ valor: 'documentos', etiqueta: 'Con documentos de ejemplo' }
@@ -2329,7 +2346,8 @@
 					Captura los datos básicos del tipo; después defines sus campos.
 				</p>
 
-				<div class="mt-8 max-w-2xl space-y-6">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="mt-8 max-w-2xl space-y-6" onpointerdowncapture={exigirNombrePrimero}>
 					<div class="space-y-2">
 						<Label for="nombre-tipo">Nombre de tipo documental *</Label>
 						<!-- Nombre único en la organización (2026-11-04): mismo trato visual que el nombre de campo repetido del
@@ -2337,10 +2355,11 @@
 						<div class="relative">
 							<Input
 								id="nombre-tipo"
+								bind:ref={entradaNombreTipo}
 								bind:value={borrador.nombre}
 								placeholder="Ingresa el nombre del tipo documental a configurar, por ejemplo: INE"
-								aria-invalid={nombreTipoRepetido}
-								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : undefined}
+								aria-invalid={nombreTipoRepetido || pedirNombrePrimero}
+								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : pedirNombrePrimero ? 'nombre-tipo-primero' : undefined}
 								class={nombreTipoRepetido ? 'pr-9' : undefined}
 							/>
 							{#if nombreTipoRepetido}
@@ -2349,6 +2368,9 @@
 								/>
 							{/if}
 						</div>
+						{#if pedirNombrePrimero}
+							<p id="nombre-tipo-primero" class="text-xs text-destructive" role="alert" data-testid="nombre-tipo-primero">Empieza por el nombre del tipo documental.</p>
+						{/if}
 						{#if nombreTipoRepetido}
 							<p id="nombre-tipo-error" class="text-xs text-destructive" data-testid="nombre-tipo-repetido">
 								Ya existe un tipo documental con este nombre. Utiliza uno diferente.
