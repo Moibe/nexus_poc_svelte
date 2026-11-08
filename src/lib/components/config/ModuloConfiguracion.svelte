@@ -2532,10 +2532,12 @@
 									<span class="sr-only">Para qué sirven las instrucciones</span>
 								</Tooltip.Trigger>
 								<Tooltip.Content side="top" class="max-w-80" data-testid="instrucciones-tipo-ayuda">
-									Opcional. Orientan a Biblioratum al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
-									haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
-									hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
-									coincide con lo impreso se descarta.
+									<!-- Justificado y más corto (2026-11-08, Moibe: «pon justificado el texto de ésta ventana, y redúcelo un poco, es mucho texto»). Va en
+									     su propio <p> porque el contenido del tooltip es `inline-flex` y así el `text-justify` no depende de la caja anónima del texto. -->
+									<p class="text-justify">
+										Opcional. Orientan a Biblioratum al generar campos y al extraer: di qué dato tomar cuando hay varios, qué dejar fuera o de qué país
+										es el documento. No pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no coincide con lo impreso se descarta.
+									</p>
 								</Tooltip.Content>
 							</Tooltip.Root>
 						</Tooltip.Provider>
