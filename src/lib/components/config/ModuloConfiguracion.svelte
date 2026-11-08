@@ -606,6 +606,21 @@
 	// después.
 	const hayCampoAlAvanzar = $derived(borrador.campos.length > 0 || puedeAgregar);
 
+	/**
+	 * ¿El paso `n` está HECHO? Es lo que pinta «Listo» en el costado (2026-11-08, Moibe: «no sé por qué tiene palomita en el 2, si de verdad no tiene
+	 * campos configurados, ¿será un bug?»). Lo era: «Listo» salía con solo haber llegado al paso (`pasoMaximo`), así que ir al 2 y regresar al 1 sin
+	 * agregar nada dejaba el 2 en «Listo» con cero campos. Ahora, además de visitado:
+	 *   · paso 1: nombre y descripción, sin nombre repetido (lo mismo que pide su botón);
+	 *   · paso 2: al menos un campo agregado;
+	 *   · paso 3: también al menos un campo (sus propiedades vienen con valores por omisión; sin campos no hay nada que configurar).
+	 * Un paso visitado pero sin hacer dice «Por configurar» y se sigue pudiendo picar (eso lo decide `pasoNavegable`, no esto).
+	 */
+	function pasoListo(n: number): boolean {
+		if (n > borrador.pasoMaximo) return false;
+		if (n === 1) return borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== '' && !nombreTipoRepetido;
+		return borrador.campos.length > 0;
+	}
+
 	// Se puede pasar al paso 3 si va a quedar al menos un campo (cambio
 	// pedido el 2026-09-03: antes los campos eran opcionales para avanzar,
 	// a propósito, para no atrapar a quien quería un tipo documental sin
@@ -1272,16 +1287,9 @@
 				<ol class="space-y-6">
 					{#each steps as step, i (step.title)}
 					{@const n = i + 1}
-					<!-- El estado se calcula contra `pasoMaximo`, no contra `paso`: al
-					     regresar al paso 1 desde el sidebar, los pasos 2 y 3 ya visitados
-					     deben seguir diciendo "Listo". Con `paso` volverían a "Por
-					     configurar" y se leería como si se hubiera perdido el avance. -->
-					{@const state =
-						n === borrador.paso
-							? 'activo'
-							: n <= borrador.pasoMaximo
-								? 'completado'
-								: 'pendiente'}
+					<!-- «Listo» = el paso está hecho (`pasoListo`), no solo visitado: al regresar al paso 1 desde el costado, el 2 y el 3 siguen
+					     en «Listo» si ya tienen campos, y dicen «Por configurar» si no (2026-11-08: antes bastaba con haberlos visitado). -->
+					{@const state = n === borrador.paso ? 'activo' : pasoListo(n) ? 'completado' : 'pendiente'}
 					{@const navegable = pasoNavegable(n) && n !== borrador.paso}
 					<!-- El subrayado del paso activo va en el verde de éxito de Figma
 					     (--exito/exito-2 = #22c55e), no en el color de marca. -->
