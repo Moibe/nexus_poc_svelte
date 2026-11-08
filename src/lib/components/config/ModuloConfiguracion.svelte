@@ -456,6 +456,11 @@
 	 * campos en el paso 2 (`fijarEjemplosDelPaso1`) en vez de pedirlos otra vez.
 	 */
 	let documentosDeLaSugerencia = $state<string[]>([]);
+	/**
+	 * Los documentos que la persona dio en el paso 1 y siguen recordados (en memoria) para reutilizarlos: a diferencia de `documentosDeLaSugerencia`, NO se vacía cuando una sugerencia
+	 * posterior es solo con el nombre. Es lo que dice la línea «Se reutilizarán para…» bajo los botones, que antes no se avisaba y parecía que los documentos solo servían para la sugerencia.
+	 */
+	let documentosDelPaso1 = $state<string[]>([]);
 	let entradaDocumentosSugerencia = $state<HTMLInputElement | null>(null);
 	const MAX_DOCUMENTOS_SUGERENCIA = 3;
 	const MAX_BYTES_SUGERENCIA = 18 * 1024 * 1024;
@@ -517,7 +522,10 @@
 			}
 			// Los documentos que la leyeron: se dicen en la leyenda y se guardan (en memoria) para ofrecerlos en el paso 2.
 			documentosDeLaSugerencia = archivos.map((a) => a.name);
-			if (archivos.length > 0) fijarEjemplosDelPaso1(archivos);
+			if (archivos.length > 0) {
+				fijarEjemplosDelPaso1(archivos);
+				documentosDelPaso1 = archivos.map((a) => a.name);
+			}
 			if (borrador.descripcion.trim() === '') {
 				borrador.descripcion = datos.descripcion;
 				descripcionSugerida = datos.descripcion;
@@ -548,6 +556,7 @@
 			errorSugerencia = '';
 			descripcionSugerida = '';
 			documentosDeLaSugerencia = [];
+			documentosDelPaso1 = [];
 		});
 	});
 
@@ -719,6 +728,9 @@
 		// borrador vacío se limpia como siempre.
 		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
 		limpiarBorrador();
+		// Un alta nueva no hereda los documentos del paso 1 de la anterior (si esa se dejó sin salir del paso 1, `idGuardado` seguía en null y nada más los reiniciaba).
+		documentosDelPaso1 = [];
+		documentosDeLaSugerencia = [];
 		avisoExito = false;
 		tituloError = '';
 		errorActivacion = '';
@@ -2400,6 +2412,12 @@
 								{/if}
 							</span>
 						</div>
+						<!-- Una vez elegidos documentos, se dice para qué más sirven (2026-11-07, Moibe: «sí, agrégala»): sin esto parecía que solo eran para la sugerencia. -->
+						{#if documentosDelPaso1.length > 0}
+							<p class="text-xs text-muted-foreground" data-testid="documentos-paso1-aviso">
+								Se reutilizarán para proponer los campos y probar la extracción; no se guardan.
+							</p>
+						{/if}
 						{#if errorSugerencia}
 							<p class="text-xs text-destructive" role="alert" data-testid="sugerencia-error">{errorSugerencia}</p>
 						{/if}
