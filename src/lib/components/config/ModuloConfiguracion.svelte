@@ -2343,7 +2343,14 @@
 					</div>
 
 					<div class="space-y-2">
-						<Label for="descripcion-tipo">Descripción *</Label>
+						<!-- La ayuda va al lado del rótulo (2026-11-07, Moibe: «ponlo a lado de la palabra descripción»), no debajo de la caja: se lee antes de escribir, y la caja queda
+						     pegada a los botones de sugerir. Sigue siendo la descripción accesible de la caja (`aria-describedby`). -->
+						<div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+							<Label for="descripcion-tipo">Descripción *</Label>
+							<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
+								Así el clasificador reconoce este tipo: di qué documento es y cómo distinguirlo de otros.
+							</p>
+						</div>
 						<Textarea
 							id="descripcion-tipo"
 							bind:value={borrador.descripcion}
@@ -2360,9 +2367,6 @@
 						<!-- 2026-11-04 (Moibe: la Descripción y las Instrucciones parecían lo mismo): dice para qué sirve. La descripción es la
 						     etiqueta con la que el CLASIFICADOR reconoce este tipo entre los demás; leer el documento al extraer es de las
 						     «Instrucciones para la extracción», del paso 2. -->
-						<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
-							Sirve para que el clasificador reconozca este tipo entre los demás: di qué documento es y cómo distinguirlo de otros.
-						</p>
 						<!-- «Sugerir descripción» (2026-11-05): ver `sugerirDescripcion`. Necesita el nombre del tipo; nunca guarda ni pisa nada solo. -->
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 							<button
