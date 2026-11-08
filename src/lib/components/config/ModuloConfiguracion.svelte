@@ -2528,7 +2528,24 @@
 				     tiene su propio scroll) y pasaba igual de desapercibida; (2) «Generar» las toma tal como estén al pulsarlo, así que hay que
 				     escribirlas ANTES: el orden de la pantalla es el orden en que se usan. -->
 				<div class="mt-6 max-w-3xl space-y-2" data-testid="instrucciones-extraccion">
-					<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
+					<!-- La explicación va en la «i» junto al rótulo (2026-11-08, Moibe: «mejor ponlo en una i junto a Instrucciones para la extracción»), no debajo de la caja. -->
+					<div class="flex items-center gap-1.5">
+						<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
+						<Tooltip.Provider>
+							<Tooltip.Root>
+								<Tooltip.Trigger data-testid="instrucciones-tipo-ayuda-boton">
+									<Info class="size-3.5 text-muted-foreground" />
+									<span class="sr-only">Para qué sirven las instrucciones</span>
+								</Tooltip.Trigger>
+								<Tooltip.Content side="top" class="max-w-80" data-testid="instrucciones-tipo-ayuda">
+									Opcional. Orientan a Biblioratum al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
+									haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
+									hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
+									coincide con lo impreso se descarta.
+								</Tooltip.Content>
+							</Tooltip.Root>
+						</Tooltip.Provider>
+					</div>
 					<Textarea
 						id="instrucciones-tipo"
 						data-testid="instrucciones-tipo"
@@ -2537,12 +2554,6 @@
 						rows={2}
 						placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
 					/>
-					<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
-						Opcional. Orientan a Biblioratum al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
-						haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
-						hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
-						coincide con lo impreso se descarta.
-					</p>
 				</div>
 
 				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
