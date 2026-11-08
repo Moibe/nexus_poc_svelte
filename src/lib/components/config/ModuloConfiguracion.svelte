@@ -2379,20 +2379,14 @@
 					</div>
 
 					<div class="space-y-2">
-						<!-- La ayuda va al lado del rótulo (2026-11-07, Moibe: «ponlo a lado de la palabra descripción»), no debajo de la caja: se lee antes de escribir, y la caja queda
-						     pegada a los botones de sugerir. Sigue siendo la descripción accesible de la caja (`aria-describedby`). -->
-						<div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-							<Label for="descripcion-tipo">Descripción *</Label>
-							<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
-								Para que el clasificador reconozca este tipo: di qué documento es y cómo distinguirlo de otros.
-							</p>
-						</div>
+						<!-- Sin línea de ayuda (2026-11-08, Moibe: «quita el texto de "Para que el clasificador reconozca..." con el de abajo basta»): el texto
+						     de ejemplo de la caja ya dice qué escribir. -->
+						<Label for="descripcion-tipo">Descripción *</Label>
 						<Textarea
 							id="descripcion-tipo"
 							bind:value={borrador.descripcion}
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
-							aria-describedby="descripcion-tipo-ayuda"
 							class="text-justify"
 						/>
 						<!-- Texto justificado (2026-11-05, Moibe: «¿podría salir justificado?»): la descripción suele ser un párrafo largo (la que
