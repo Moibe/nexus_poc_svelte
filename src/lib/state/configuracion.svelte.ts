@@ -310,6 +310,7 @@ const CLAVES_DE_LA_PERSONA = [LLAVE, 'nexusdoc:tipos-documentales:v1', 'nexusdoc
  */
 export function limpiarDatosLocalesDeLaPersona(): void {
 	ejemplosEnMemoria.clear(); // los documentos de ejemplo de la persona que se va no se quedan en la pestaña
+	ejemplosDelPaso1 = [];
 	const store = almacen();
 	if (!store) return;
 	for (const clave of CLAVES_DE_LA_PERSONA) {
@@ -328,6 +329,23 @@ export function limpiarDatosLocalesDeLaPersona(): void {
  * se pierden, y la prueba se hace eligiendo los archivos otra vez. Se borran al cerrar sesión y al borrar el tipo.
  */
 const ejemplosEnMemoria = new Map<string, File[]>();
+
+/**
+ * Los documentos que se dieron en el PASO 1, para «Sugerir descripción» con documentos (2026-11-07): todavía no hay tipo (se crea al salir del paso 1), así que
+ * esperan aquí, en la memoria de la pestaña, y el paso 2 los ofrece para generar los campos sin pedirlos otra vez. Al salir del paso 1 pasan a ser los del tipo
+ * (`recordarEjemplos`). Se borran con el borrador, al cerrar sesión y al reemplazarlos.
+ */
+let ejemplosDelPaso1: File[] = [];
+
+/** Fija los documentos del paso 1 (reemplaza los anteriores). */
+export function fijarEjemplosDelPaso1(archivos: File[]): void {
+	ejemplosDelPaso1 = [...archivos];
+}
+
+/** Los documentos del paso 1 (una copia). */
+export function ejemplosDelPaso1Actuales(): File[] {
+	return [...ejemplosDelPaso1];
+}
 
 /** Recuerda los ejemplos de un tipo (reemplaza los anteriores). Sin archivos, los olvida. */
 export function recordarEjemplos(idTipo: string, archivos: File[]): void {
@@ -672,6 +690,7 @@ export function guardarBorrador() {
 
 export function limpiarBorrador() {
 	Object.assign(borradorTipoDocumental, vacio());
+	ejemplosDelPaso1 = []; // los documentos del borrador que se descarta no se quedan en la pestaña
 	const store = almacen();
 	if (!store) return;
 	try {
@@ -2244,6 +2263,7 @@ export function colorParaCampo(nombreCampo: string): (typeof PALETA_COLORES_CAMP
 export function cargarTipoDocumental(id: string): boolean {
 	const tipo = tiposDocumentales.find((tp) => tp.id === id);
 	if (!tipo) return false;
+	ejemplosDelPaso1 = []; // el borrador pasa a ser OTRO tipo: los documentos del paso 1 de uno anterior no le corresponden
 	Object.assign(borradorTipoDocumental, {
 		nombre: tipo.nombre,
 		descripcion: tipo.descripcion,

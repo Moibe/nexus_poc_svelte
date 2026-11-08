@@ -38,6 +38,7 @@
 		descripcionTipo = '',
 		instruccionesTipo = '',
 		existentes = [],
+		ejemplosPrevios = [],
 		onCerrar,
 		onAgregar
 	}: {
@@ -53,6 +54,8 @@
 		instruccionesTipo?: string;
 		/** Los nombres de los campos que el tipo YA tiene: una propuesta con el mismo nombre no se puede elegir. */
 		existentes?: string[];
+		/** Los documentos que ya se dieron en el paso 1 (para «Sugerir descripción» con documentos): se ofrecen para no pedirlos otra vez. */
+		ejemplosPrevios?: File[];
 		onCerrar: () => void;
 		/** Los campos elegidos y los documentos de ejemplo que se LEYERON (los que sí dieron propuesta), para probar la extracción con ellos después. */
 		onAgregar: (elegidos: CampoPropuesto[], ejemplos: File[]) => void;
@@ -253,6 +256,18 @@
 				</div>
 
 				{#if fase === 'elegir'}
+					<!-- Los documentos del paso 1 (2026-11-07): ya se leyeron para sugerir la descripción; aquí se pueden reutilizar en vez de pedirlos otra vez. -->
+					{#if ejemplosPrevios.length > 0}
+						<div class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3" data-testid="generar-campos-previos">
+							<p class="min-w-0 flex-1 text-sm text-foreground">
+								Ya elegiste {ejemplosPrevios.length === 1 ? 'un documento' : `${ejemplosPrevios.length} documentos`} en el paso 1:
+								<span class="text-muted-foreground">{lista(ejemplosPrevios.map((a) => `«${a.name}»`))}</span>.
+							</p>
+							<Button size="sm" data-testid="generar-campos-usar-previos" onclick={() => void generar([...ejemplosPrevios])}>
+								Usar {ejemplosPrevios.length === 1 ? 'este documento' : 'estos documentos'}
+							</Button>
+						</div>
+					{/if}
 					<!-- Solo cuando se van a usar: sin instrucciones no se dice nada (no es un regaño por no escribirlas). -->
 					{#if hayInstrucciones}
 						<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-usa-instrucciones">

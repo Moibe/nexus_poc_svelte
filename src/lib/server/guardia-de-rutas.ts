@@ -66,8 +66,8 @@ const LIMITES: readonly { patron: RegExp; metodo: string; regla: ReglaDeLimite }
 	// Cada llamada a Document AI cuesta: subir varios documentos seguidos no debe toparse (cada documento son 2 o 3 llamadas).
 	{ patron: /^\/api\/pipeline\/(clasificar|extraer)$/, metodo: 'POST', regla: { nombre: 'pipeline', usuario: 120, ip: 600 } },
 	// Cada sugerencia es una llamada a Gemini (centavos): un clic compulsivo, o un script con una sesión robada, no debe volverse una factura. 20 por
-	// minuto por persona sobra para quien captura tipos a mano; la IP va holgada porque detrás del proxy puede ser la de toda la oficina.
-	{ patron: /^\/api\/tipos-documentales\/sugerir-descripcion$/, metodo: 'POST', regla: { nombre: 'sugerir-descripcion', usuario: 20, ip: 100 } },
+	// minuto por persona sobra para quien captura tipos a mano (con documentos, que cuesta más, comparte el mismo tope: 2026-11-07); la IP va holgada porque detrás del proxy puede ser la de toda la oficina.
+	{ patron: /^\/api\/tipos-documentales\/sugerir-descripcion(-con-documentos)?$/, metodo: 'POST', regla: { nombre: 'sugerir-descripcion', usuario: 20, ip: 100 } },
 	// El servidor le pega a una URL de un tercero (nexus_back ya limita por webhook; esto es el tope por persona).
 	{ patron: /^\/api\/webhooks\/[^/]+\/validar$/, metodo: 'POST', regla: { nombre: 'validar-webhook', usuario: 20, ip: 60 } },
 	// Cada reenvío es un correo.

@@ -41,6 +41,7 @@
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Share2 from '@lucide/svelte/icons/share-2';
@@ -77,6 +78,8 @@
 		agregarCampoEnCaptura,
 		agregarCamposPropuestos,
 		ejemplosDeTipo,
+		ejemplosDelPaso1Actuales,
+		fijarEjemplosDelPaso1,
 		recordarEjemplos,
 		agregarValorLista,
 		alCambiarTipoDato,
@@ -273,6 +276,8 @@
 
 	// «Generar a partir de un documento» (2026-10-29): el modal que propone campos leyendo un documento de ejemplo.
 	let generarCamposAbierto = $state(false);
+	/** Los documentos del paso 1 que se le ofrecen al modal (una copia al abrirlo: no cambian mientras está abierto). */
+	let ejemplosParaGenerar = $state<File[]>([]);
 
 	/** Lo que la persona eligió de la propuesta cae en «Campos agregados». Si el formulario de captura estaba en blanco se
 	 *  oculta (como al guardar un campo), para que lo agregado quede a la vista; si tenía algo a medias, se respeta. */
@@ -445,19 +450,64 @@
 	let errorSugerencia = $state('');
 	/** El texto que puso la IA en la caja, mientras la persona no lo haya tocado. */
 	let descripcionSugerida = $state('');
+	/**
+	 * Con qué documentos de ejemplo se escribió la sugerencia que se ve (2026-11-07, Moibe: «va»): vacío si fue solo con el nombre. Gemini los LEE y se descartan; no se
+	 * guardan. Se dice en la leyenda (y que hay que quitar cualquier dato personal que se haya colado), y se recuerdan en la memoria de la pestaña para ofrecerlos al generar los
+	 * campos en el paso 2 (`fijarEjemplosDelPaso1`) en vez de pedirlos otra vez.
+	 */
+	let documentosDeLaSugerencia = $state<string[]>([]);
+	let entradaDocumentosSugerencia = $state<HTMLInputElement | null>(null);
+	const MAX_DOCUMENTOS_SUGERENCIA = 3;
+	const MAX_BYTES_SUGERENCIA = 18 * 1024 * 1024;
+	const FORMATOS_SUGERENCIA = ['pdf', 'jpg', 'jpeg', 'png'];
 
-	async function sugerirDescripcion() {
+	/** «a», «a y b», «a, b y c». */
+	const nombresJuntos = (nombres: string[]) => (nombres.length <= 1 ? (nombres[0] ?? '') : `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`);
+
+	/** Los documentos que la persona eligió para la sugerencia: se revisan aquí (formato, cuántos, peso) antes de mandarlos; el servidor los vuelve a revisar. */
+	function alElegirDocumentosDeSugerencia(evento: Event) {
+		const input = evento.currentTarget as HTMLInputElement;
+		const elegidos = [...(input.files ?? [])];
+		input.value = ''; // para que volver a elegir el MISMO archivo dispare el cambio
+		if (elegidos.length === 0) return;
+		errorSugerencia = '';
+		if (elegidos.some((a) => !FORMATOS_SUGERENCIA.includes(a.name.split('.').pop()?.toLowerCase() ?? ''))) {
+			errorSugerencia = 'Para sugerir la descripción con documentos usa PDF, JPG o PNG.';
+			return;
+		}
+		if (elegidos.length > MAX_DOCUMENTOS_SUGERENCIA) {
+			errorSugerencia = `Son demasiados documentos: elige hasta ${MAX_DOCUMENTOS_SUGERENCIA}.`;
+			return;
+		}
+		if (elegidos.reduce((suma, a) => suma + a.size, 0) > MAX_BYTES_SUGERENCIA) {
+			errorSugerencia = 'Los documentos pesan demasiado: entre todos, a lo más 18 MB.';
+			return;
+		}
+		void sugerirDescripcion(elegidos);
+	}
+
+	async function sugerirDescripcion(archivos: File[] = []) {
 		if (sugiriendo || borrador.nombre.trim() === '') return;
 		sugiriendo = true;
 		sugerencia = null;
 		errorSugerencia = '';
 		const tipoPedido = borrador.idGuardado;
 		try {
-			const r = await fetch('/api/tipos-documentales/sugerir-descripcion', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ nombre: borrador.nombre, tipoId: borrador.idGuardado ?? undefined })
-			});
+			let r: Response;
+			if (archivos.length > 0) {
+				// Con documentos: multipart (el nombre, el tipo si ya existe y los archivos). Nada se guarda en ningún lado.
+				const cuerpo = new FormData();
+				cuerpo.append('nombre', borrador.nombre);
+				if (borrador.idGuardado) cuerpo.append('tipoId', borrador.idGuardado);
+				for (const a of archivos) cuerpo.append('archivos', a, a.name);
+				r = await fetch('/api/tipos-documentales/sugerir-descripcion-con-documentos', { method: 'POST', body: cuerpo });
+			} else {
+				r = await fetch('/api/tipos-documentales/sugerir-descripcion', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ nombre: borrador.nombre, tipoId: borrador.idGuardado ?? undefined })
+				});
+			}
 			const datos = await r.json().catch(() => null);
 			// Si mientras tanto se pasó a otro tipo, esta respuesta ya no es de lo que se ve.
 			if (tipoPedido !== borrador.idGuardado) return;
@@ -465,6 +515,9 @@
 				errorSugerencia = mensajeDeFallo(datos, r.status, 'al sugerir la descripción');
 				return;
 			}
+			// Los documentos que la leyeron: se dicen en la leyenda y se guardan (en memoria) para ofrecerlos en el paso 2.
+			documentosDeLaSugerencia = archivos.map((a) => a.name);
+			if (archivos.length > 0) fijarEjemplosDelPaso1(archivos);
 			if (borrador.descripcion.trim() === '') {
 				borrador.descripcion = datos.descripcion;
 				descripcionSugerida = datos.descripcion;
@@ -494,6 +547,7 @@
 			sugerencia = null;
 			errorSugerencia = '';
 			descripcionSugerida = '';
+			documentosDeLaSugerencia = [];
 		});
 	});
 
@@ -963,7 +1017,12 @@
 		// actualiza la entrada cuando el borrador ya trae `idGuardado`. Así los
 		// campos se agregan a la MISMA entrada que se creó un paso antes.
 		if (borrador.paso === 1 || borrador.paso === 2) {
-			guardarTipoDocumental();
+			const idGuardado = guardarTipoDocumental();
+			// Los documentos del paso 1 (con los que se sugirió la descripción) pasan a ser los del tipo: así, aunque no se generen los campos con ellos, al activarlo se
+			// ofrece probar la extracción. Solo si hay: no se pisan los que ya tuviera (los del paso 2).
+			if (borrador.paso === 1 && idGuardado && ejemplosDelPaso1Actuales().length > 0 && ejemplosDeTipo(idGuardado).length === 0) {
+				recordarEjemplos(idGuardado, ejemplosDelPaso1Actuales());
+			}
 			// Si no llegó al disco no se avanza: el paso siguiente da por hecho
 			// que el tipo ya existe en la Biblioteca, y seguir dejaría al usuario
 			// configurando campos de algo que va a desaparecer al refrescar. El
@@ -2314,9 +2373,34 @@
 									Sugerir descripción
 								{/if}
 							</button>
+							<!-- Con documentos de ejemplo (2026-11-07): la IA los LEE para describir lo que de verdad traen. Hasta 3 (PDF, JPG o PNG). No se guardan. -->
+							<button
+								type="button"
+								data-testid="sugerir-con-documentos"
+								class="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary transition-colors outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:text-blue-300"
+								disabled={sugiriendo || borrador.nombre.trim() === ''}
+								title={borrador.nombre.trim() === '' ? 'Escribe primero el nombre del tipo documental' : `Elige hasta ${MAX_DOCUMENTOS_SUGERENCIA} documentos de ejemplo (PDF, JPG o PNG): se leen para escribirla y no se guardan`}
+								onclick={() => entradaDocumentosSugerencia?.click()}
+							>
+								<Paperclip class="size-3.5" aria-hidden="true" />
+								Sugerir con documentos de ejemplo
+							</button>
+							<input
+								bind:this={entradaDocumentosSugerencia}
+								data-testid="sugerir-documentos-archivo"
+								type="file"
+								multiple
+								class="hidden"
+								accept=".pdf,.jpg,.jpeg,.png"
+								onchange={alElegirDocumentosDeSugerencia}
+							/>
 							<span role="status" aria-live="polite">
 								{#if descripcionSugerida !== '' && borrador.descripcion === descripcionSugerida}
-									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">Sugerencia generada con IA: revísala antes de guardar.</span>
+									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">
+										{documentosDeLaSugerencia.length > 0
+											? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}: revísala antes de guardar y quita cualquier dato personal de los ejemplos que se haya colado.`
+											: 'Sugerencia generada con IA: revísala antes de guardar.'}
+									</span>
 								{/if}
 							</span>
 						</div>
@@ -2325,7 +2409,11 @@
 						{/if}
 						{#if sugerencia !== null}
 							<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3" data-testid="sugerencia-panel">
-								<p class="text-xs font-medium text-muted-foreground">Sugerencia generada con IA: revísala antes de usarla.</p>
+								<p class="text-xs font-medium text-muted-foreground" data-testid="sugerencia-panel-titulo">
+									{documentosDeLaSugerencia.length > 0
+										? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}: revísala antes de usarla y quita cualquier dato personal de los ejemplos que se haya colado.`
+										: 'Sugerencia generada con IA: revísala antes de usarla.'}
+								</p>
 								<p class="text-sm text-justify text-foreground" data-testid="sugerencia-texto">{sugerencia}</p>
 								<div class="flex flex-wrap gap-2">
 									<Button size="sm" data-testid="usar-sugerencia" onclick={usarSugerencia}>Usar esta sugerencia</Button>
@@ -2391,7 +2479,10 @@
 					variant="outline"
 					class="mt-4 gap-2"
 					data-testid="abrir-generar-campos"
-					onclick={() => (generarCamposAbierto = true)}
+					onclick={() => {
+						ejemplosParaGenerar = ejemplosDelPaso1Actuales();
+						generarCamposAbierto = true;
+					}}
 				>
 					<Sparkles class="size-4 text-primary" />
 					Generar a partir de un documento
@@ -3103,6 +3194,7 @@
 	descripcionTipo={borrador.descripcion}
 	instruccionesTipo={borrador.instrucciones}
 	existentes={borrador.campos.map((c) => c.nombre)}
+	ejemplosPrevios={ejemplosParaGenerar}
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
 />
