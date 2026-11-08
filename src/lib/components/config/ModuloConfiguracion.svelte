@@ -2505,7 +2505,7 @@
 					</div>
 				</div>
 			{:else if borrador.paso === 2}
-				<h3 class="text-xl font-semibold text-foreground">Nuevo campo de extracción</h3>
+				<h3 class="text-xl font-semibold text-foreground">Campos de Extracción</h3>
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 					Completa la información requerida para agregar un nuevo campo al modelo documental y
 					mejorar la precisión de la extracción automática.
