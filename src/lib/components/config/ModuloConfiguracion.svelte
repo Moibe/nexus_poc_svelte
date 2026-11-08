@@ -2300,8 +2300,7 @@
 			{:else if borrador.paso === 1}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-					Ingresa la información necesaria para registrar un nuevo tipo documental y continuar
-					con la configuración de sus reglas de procesamiento.
+					Captura los datos básicos del tipo; después defines sus campos.
 				</p>
 
 				<div class="mt-8 max-w-2xl space-y-6">
