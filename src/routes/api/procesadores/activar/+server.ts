@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
 	const crudo = (entrada ?? {}) as Record<string, unknown>;
 	// Lista blanca (NEX-551): solo el tipo y sus campos, con la organización de la sesión (si el navegador mandó otra, se descarta).
 	const cuerpo = {
-		...soloCampos(crudo, { id: esTexto, nombre: esTexto, descripcion: esTexto, instrucciones: esTexto, version: esNumero }),
+		...soloCampos(crudo, { id: esTexto, nombre: esTexto, descripcion: esTexto, version: esNumero }),
 		...(Array.isArray(crudo.campos) ? { campos: crudo.campos.map(acotarCampo) } : {}),
 		tenant
 	};

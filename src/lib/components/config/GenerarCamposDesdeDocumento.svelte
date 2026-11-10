@@ -36,7 +36,6 @@
 		abierto = false,
 		nombreTipo = '',
 		descripcionTipo = '',
-		instruccionesTipo = '',
 		existentes = [],
 		ejemplosPrevios = [],
 		onCerrar,
@@ -46,12 +45,6 @@
 		/** Lo capturado en el paso 1: viaja como contexto para el modelo. */
 		nombreTipo?: string;
 		descripcionTipo?: string;
-		/**
-		 * Las «instrucciones para la extracción» del tipo (paso 2), tal como estén al elegir el documento. Además de contexto, ORIENTAN la
-		 * propuesta: medido contra Google el 2026-11-05, con «la persona que interesa es el titular, no el beneficiario» el generador deja
-		 * fuera el campo del beneficiario. Por eso se avisa cuando se usan, y de nuevo en la propuesta (si falta un campo, ahí está el porqué).
-		 */
-		instruccionesTipo?: string;
 		/** Los nombres de los campos que el tipo YA tiene: una propuesta con el mismo nombre no se puede elegir. */
 		existentes?: string[];
 		/** Los documentos que ya se dieron en el paso 1 (para «Sugerir descripción» con documentos): se ofrecen para no pedirlos otra vez. */
@@ -80,10 +73,6 @@
 	// Cada generación se numera: si se cierra el modal o se elige otro documento mientras Google lee, la respuesta vieja ya es de
 	// nadie y no debe pintarse encima de lo nuevo.
 	let vigente = 0;
-	// ¿La propuesta que se está mostrando se pidió CON instrucciones? Se fija al pedirla: si después se editan las instrucciones, esa
-	// propuesta sigue siendo la de las que había entonces.
-	let propuestaConInstrucciones = $state(false);
-	const hayInstrucciones = $derived(instruccionesTipo.trim() !== '');
 
 	/** «a», «a y b», «a, b y c». */
 	const lista = (nombres: string[]) => (nombres.length <= 1 ? (nombres[0] ?? '') : `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`);
@@ -111,7 +100,6 @@
 		error = '';
 		propuestos = [];
 		elegidos = [];
-		propuestaConInstrucciones = false;
 	}
 
 	function cerrar() {
@@ -147,7 +135,6 @@
 		cuerpo.append('archivo', archivo, archivo.name);
 		if (nombreTipo.trim()) cuerpo.append('nombre', nombreTipo.trim());
 		if (descripcionTipo.trim()) cuerpo.append('descripcion', descripcionTipo.trim());
-		if (instruccionesTipo.trim() !== '') cuerpo.append('instrucciones', instruccionesTipo.trim());
 		try {
 			const r = await fetch('/api/procesadores/generar-campos', { method: 'POST', body: cuerpo });
 			const datos = await r.json().catch(() => null);
@@ -204,7 +191,6 @@
 		nombresArchivos = leidos.map((a) => a.name);
 		propuestos = unirPropuestas(propuestasPorDocumento);
 		elegidos = propuestos.map((c) => !yaExiste(c.nombre) && sugeridoPorOmision(c));
-		propuestaConInstrucciones = instruccionesTipo.trim() !== '';
 		fase = 'propuesta';
 	}
 
@@ -267,12 +253,6 @@
 								Usar {ejemplosPrevios.length === 1 ? 'este documento' : 'estos documentos'}
 							</Button>
 						</div>
-					{/if}
-					<!-- Solo cuando se van a usar: sin instrucciones no se dice nada (no es un regaño por no escribirlas). -->
-					{#if hayInstrucciones}
-						<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-usa-instrucciones">
-							Se tendrán en cuenta tus instrucciones para la extracción: orientan qué campos se proponen.
-						</p>
 					{/if}
 					<button
 						type="button"
@@ -361,13 +341,6 @@
 							Seleccionar todos
 						</label>
 					</div>
-					<!-- Si la propuesta se pidió con instrucciones, se dice: un campo que ellas mandan ignorar (p. ej. el beneficiario) no sale, y
-					     sin esta línea parecería que Document AI no lo encontró. -->
-					{#if propuestaConInstrucciones}
-						<p class="-mt-3 text-xs text-muted-foreground" data-testid="generar-campos-con-instrucciones">
-							Propuesta con tus instrucciones para la extracción: si falta un campo que esperabas, revísalas.
-						</p>
-					{/if}
 					<!-- Lo que no se pudo leer, o lo que sobró, se dice: sin esto la propuesta parecería hecha con todos los documentos. -->
 					{#if fallos.length > 0}
 						<div class="-mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="generar-campos-fallos" role="status">

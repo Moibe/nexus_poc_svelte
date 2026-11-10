@@ -174,8 +174,6 @@ export type CampoBorrador = {
 	cardinalidadSugerida?: boolean;
 };
 
-/** Largo máximo de las «instrucciones para la extracción»; el servidor (`MAX_INSTRUCCIONES` en nexus_back) las rechaza si pasan. */
-export const MAX_INSTRUCCIONES = 1000;
 
 export type BorradorTipoDocumental = {
 	nombre: string;
@@ -475,7 +473,6 @@ export function hayBorrador(): boolean {
 	return (
 		borradorTipoDocumental.nombre.trim() !== '' ||
 		borradorTipoDocumental.descripcion.trim() !== '' ||
-		borradorTipoDocumental.instrucciones.trim() !== '' ||
 		borradorTipoDocumental.vertical !== '' ||
 		borradorTipoDocumental.campos.length > 0 ||
 		!campoIntacto(borradorTipoDocumental.campoEnCaptura)

@@ -118,7 +118,6 @@
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
-		MAX_INSTRUCCIONES,
 		REGLAS_TRANSFORMACION,
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
@@ -2402,9 +2401,6 @@
 						     línea queda a la izquierda (lo normal en `text-align: justify`). El recuadro de la sugerencia, más abajo, va igual para
 						     que lo que se previsualiza se vea como quedará en la caja. Sin guiones automáticos a propósito: la página declara
 						     `lang="en"` y partiría el español con las reglas del inglés. -->
-						<!-- 2026-11-04 (Moibe: la Descripción y las Instrucciones parecían lo mismo): dice para qué sirve. La descripción es la
-						     etiqueta con la que el CLASIFICADOR reconoce este tipo entre los demás; leer el documento al extraer es de las
-						     «Instrucciones para la extracción», del paso 2. -->
 						<!-- «Sugerir descripción» (2026-11-05): ver `sugerirDescripcion`. Necesita el nombre del tipo; nunca guarda ni pisa nada solo. -->
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 							<!-- Con qué sugerir (2026-11-08, Moibe: «que esto sea una especie de switch, para que se sepa que es o uno u otro»): un interruptor de dos posiciones, con el lenguaje de
@@ -2518,51 +2514,13 @@
 					Completa la información requerida para agregar un nuevo campo al modelo documental y
 					mejorar la precisión de la extracción automática.
 				</p>
-				<!-- Opcional. Del TIPO entero, no de un campo: contexto para LEER el documento. Viaja al extractor como el `documentPrompt` de su
-				     esquema (medido contra Google el 2026-10-30: orienta qué dato se toma, titular o beneficiario; si se le pide reescribir un valor,
-				     otro formato o mayúsculas, ese campo desaparece de la respuesta, de ahí el aviso) y TAMBIÉN orienta «Generar a partir de un
-				     documento» (medido el 2026-11-05, 3 corridas por condición: con «la persona que interesa es el titular, no el beneficiario» el
-				     generador deja fuera el campo del beneficiario; sin instrucciones lo propone siempre).
-
-				     Historia: nació al final del paso 1; el 2026-11-04 (Moibe: parecía redundante con la Descripción, que sirve para CLASIFICAR) se
-				     plegó en «Opciones avanzadas»; el 2026-11-05 (Moibe: plegada ni se nota que existe) pasó al paso 2, sin plegar. Va ARRIBA, antes
-				     del botón y del formulario de campos, a propósito: (1) puesta al final de un paso tan largo quedaba bajo el borde del panel (que
-				     tiene su propio scroll) y pasaba igual de desapercibida; (2) «Generar» las toma tal como estén al pulsarlo, así que hay que
-				     escribirlas ANTES: el orden de la pantalla es el orden en que se usan. -->
-				<div class="mt-6 max-w-3xl space-y-2" data-testid="instrucciones-extraccion">
-					<!-- La explicación va en la «i» junto al rótulo (2026-11-08, Moibe: «mejor ponlo en una i junto a Instrucciones para la extracción»), no debajo de la caja. -->
-					<div class="flex items-center gap-1.5">
-						<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
-						<Tooltip.Provider>
-							<Tooltip.Root>
-								<Tooltip.Trigger data-testid="instrucciones-tipo-ayuda-boton">
-									<Info class="size-3.5 text-muted-foreground" />
-									<span class="sr-only">Para qué sirven las instrucciones</span>
-								</Tooltip.Trigger>
-								<Tooltip.Content side="top" class="max-w-80" data-testid="instrucciones-tipo-ayuda">
-									<!-- Justificado y más corto (2026-11-08, Moibe: «pon justificado el texto de ésta ventana, y redúcelo un poco, es mucho texto»). Va en
-									     su propio <p> porque el contenido del tooltip es `inline-flex` y así el `text-justify` no depende de la caja anónima del texto. -->
-									<p class="text-justify">
-										Opcional. Orientan a Biblioratum al generar campos y al extraer: di qué dato tomar cuando hay varios, qué dejar fuera o de qué país
-										es el documento. No pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no coincide con lo impreso se descarta.
-									</p>
-								</Tooltip.Content>
-							</Tooltip.Root>
-						</Tooltip.Provider>
-					</div>
-					<Textarea
-						id="instrucciones-tipo"
-						data-testid="instrucciones-tipo"
-						bind:value={borrador.instrucciones}
-						maxlength={MAX_INSTRUCCIONES}
-						rows={2}
-						placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
-					/>
-				</div>
-
+				<!-- Aquí vivieron las «Instrucciones para la extracción» (2026-10-30 → 2026-11-10). Quitadas el 2026-11-10 (Moibe: «adelante», tras medir que la descripción del campo logra lo mismo): medido contra Google el 2026-11-10,
+				     «Nombre completo del titular, no del beneficiario» en la descripción del campo devolvió solo al titular 3/3, igual que las
+				     instrucciones, y hasta orientó la fecha de nacimiento (sin regla propia). Con una regla por campo no hace falta una general, y se
+				     evita el riesgo de pedir formatos (lo que no coincide con lo impreso desaparece). Los tipos ya activados conservan su documentPrompt. -->
 				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
 				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. Va después de
-				     las instrucciones porque las usa (2026-11-05). -->
+				     -->
 				<Button
 					variant="outline"
 					class="mt-4 gap-2"
@@ -3280,7 +3238,6 @@
 	abierto={generarCamposAbierto}
 	nombreTipo={borrador.nombre}
 	descripcionTipo={borrador.descripcion}
-	instruccionesTipo={borrador.instrucciones}
 	existentes={borrador.campos.map((c) => c.nombre)}
 	ejemplosPrevios={ejemplosParaGenerar}
 	onCerrar={() => (generarCamposAbierto = false)}
