@@ -2463,18 +2463,12 @@
 								{#if descripcionSugerida !== '' && borrador.descripcion === descripcionSugerida}
 									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">
 										{documentosDeLaSugerencia.length > 0
-											? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}: revísala antes de guardar y quita cualquier dato personal de los ejemplos que se haya colado.`
-											: 'Sugerencia generada con IA: revísala antes de guardar.'}
+											? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}.`
+											: 'Sugerencia generada con IA.'}
 									</span>
 								{/if}
 							</span>
-						</div>
-						<!-- Una vez elegidos documentos, se dice para qué más sirven (2026-11-07, Moibe: «sí, agrégala»): sin esto parecía que solo eran para la sugerencia. -->
-						{#if documentosDelPaso1.length > 0}
-							<p class="text-xs text-muted-foreground" data-testid="documentos-paso1-aviso">
-								Se reutilizarán para proponer los campos y probar la extracción; no se guardan.
-							</p>
-						{/if}
+						</div>
 						{#if errorSugerencia}
 							<p class="text-xs text-destructive" role="alert" data-testid="sugerencia-error">{errorSugerencia}</p>
 						{/if}
