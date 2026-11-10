@@ -32,6 +32,7 @@ import {
 	NODO_VALOR_FINAL,
 	evaluar,
 	hidratarDibujo,
+	lineasDeEjemplo,
 	llaveDeParecido,
 	nombreDeValorFinal,
 	numeroDeOperador,
@@ -89,6 +90,22 @@ export type ValorFinalDeCorrida = {
 	origen: string | null;
 };
 
+/**
+ * Lo que le llegó a UNA entrada de una regla al correr (2026-11-10, Moibe: «en los detalles de por qué fue rechazado no incluyes ese valor fijo, y eso
+ * sería de utilidad»): de dónde vino y qué valor traía, para ver de un vistazo QUÉ se comparó.
+ */
+export type EntradaDeCorrida = {
+	/** El rótulo de la entrada, como en el nodo: «Entrada A», «Valor», «Desde», «Lista», «Regla A», «Si (condición)», «Documento»… */
+	etiqueta: string;
+	/** De dónde vino: «Nombre · INE», «Valor fijo #1», «Igual a #2»; `null` si no tenía nada conectado. */
+	origen: string | null;
+	/**
+	 * Lo que traía, como se lee: el valor; los elementos de una lista, separados por comas; «N filas» de un grupo; «Pasa» o «No pasa» de una regla (o
+	 * el número que calculó); «Lo trae» o «No lo trae» de un documento. `null` si no traía nada (el documento no tenía ese dato, o no hay cable).
+	 */
+	valor: string | null;
+};
+
 /** Cómo salió una regla. */
 export type ReglaDeCorrida = {
 	id: string;
@@ -99,6 +116,8 @@ export type ReglaDeCorrida = {
 	texto: string;
 	/** Solo de un «Parecido a» ya medido: lo que dijo la IA (porcentaje y razón) y el mínimo con que se decidió. Queda escrito en el historial. */
 	parecido?: { porcentaje: number; razon: string; minimo: number };
+	/** Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. */
+	entradas?: EntradaDeCorrida[];
 };
 
 /** De qué documento se tomó lo de un tipo documental y qué campos del proceso se leyeron. */
@@ -193,6 +212,45 @@ function origenDe(cable: CableDeLienzo | undefined, nodos: readonly NodoDeLienzo
 const TEXTO_SIN_VALORES = 'Faltan valores para decidirla';
 const TEXTO_INCOMPLETA = 'Le falta algo conectado';
 
+/** Lo que dice el historial de una regla que llega a otra: su veredicto en palabras (igual que la insignia del lienzo). */
+const ESTADO_EN_PALABRAS: Record<Estado, string> = { pasa: 'Pasa', no_pasa: 'No pasa', listo: 'Listo', sin_valores: 'Sin valores', sin_conexion: 'Incompleta' };
+/** Hasta cuánto se guarda de lo que llegó a una entrada: una lista larga no debe engordar el historial (lo completo está en «De dónde salieron los datos»). */
+export const TOPE_VALOR_DE_ENTRADA = 300;
+const recortar = (t: string) => (t.length > TOPE_VALOR_DE_ENTRADA ? `${t.slice(0, TOPE_VALOR_DE_ENTRADA - 1)}…` : t);
+
+/**
+ * Lo que le llegó a cada entrada de la regla `n` (con los valores REALES ya puestos por `conValoresReales`): de un campo, su valor (o los elementos de
+ * su lista, o cuántas filas); de un valor fijo, su valor; de otra regla, su veredicto o el número que calculó; del documento entero, si el expediente lo
+ * trae. Es lo mismo que leyó `evaluar`, puesto en palabras.
+ */
+function entradasDe(n: NodoDeLienzo, cables: readonly CableDeLienzo[], nodos: readonly NodoDeLienzo[], tipos: readonly TipoDocumentalGuardado[], ev: ReturnType<typeof evaluar>): EntradaDeCorrida[] {
+	const def = operadorDe(String((n.data as DatosNodoOperador).operador));
+	if (!def) return [];
+	return def.entradas.map((e): EntradaDeCorrida => {
+		const cable = cables.find((a) => a.target === n.id && a.targetHandle === e.id);
+		const origen = cable && nodos.find((x) => x.id === cable.source);
+		if (!cable || !origen) return { etiqueta: e.etiqueta, origen: null, valor: null };
+		let valor: string | null = null;
+		if (origen.type === NODO_TIPO) {
+			const muestra = String(n.data[e.id] ?? '');
+			if (cable.sourceHandle === HANDLE_DOCUMENTO) {
+				valor = muestra === 'si' ? 'Lo trae' : muestra === 'no' ? 'No lo trae' : null;
+			} else {
+				const lineas = lineasDeEjemplo(muestra);
+				const forma = salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, cable.sourceHandle ?? '')?.forma;
+				valor = lineas.length === 0 ? null : forma === 'filas' ? `${lineas.length} fila${lineas.length === 1 ? '' : 's'}` : lineas.join(', ');
+			}
+		} else if (origen.type === NODO_CONSTANTE) {
+			valor = String(origen.data.valor ?? '').trim() || null;
+		} else if (origen.type === NODO_OPERADOR) {
+			const otro = operadorDe(String((origen.data as DatosNodoOperador).operador));
+			const estado = ev.estados[origen.id] ?? 'sin_conexion';
+			valor = otro?.salida === 'valor' && estado === 'listo' ? (ev.valores[origen.id] ?? null) : ESTADO_EN_PALABRAS[estado];
+		}
+		return { etiqueta: e.etiqueta, origen: origenDe(cable, nodos, tipos), valor: valor === null ? null : recortar(valor) };
+	});
+}
+
 // ── Correr ───────────────────────────────────────────────────────────────────
 
 /**
@@ -268,8 +326,9 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
 		const estado = ev.estados[n.id] ?? 'sin_conexion';
 		const valor = ev.valores[n.id] ?? null;
 		const parecido = ev.parecidos[n.id];
+		const entradas = entradasDe(n, aristas, nodos, tipos, ev);
 		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
-			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido } });
+			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });
 			continue;
 		}
 		reglas.push({
@@ -279,7 +338,8 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
 			estado,
 			valor,
 			texto:
-				estado === 'pasa' ? def.textoPasa : estado === 'no_pasa' ? def.textoNoPasa : estado === 'listo' ? `Resultado: ${valor ?? ''}` : estado === 'sin_valores' ? TEXTO_SIN_VALORES : TEXTO_INCOMPLETA
+				estado === 'pasa' ? def.textoPasa : estado === 'no_pasa' ? def.textoNoPasa : estado === 'listo' ? `Resultado: ${valor ?? ''}` : estado === 'sin_valores' ? TEXTO_SIN_VALORES : TEXTO_INCOMPLETA,
+			entradas
 		});
 	}
 
