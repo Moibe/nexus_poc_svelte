@@ -32,16 +32,20 @@ import {
 	NODO_VALOR_FINAL,
 	evaluar,
 	hidratarDibujo,
+	llaveDeParecido,
 	nombreDeValorFinal,
 	numeroDeOperador,
 	operadorDe,
 	salidaDeCampo,
+	textoDeParecido,
 	type CasoDelResultado,
 	type ClaveOperador,
 	type DatosNodoOperador,
 	type DatosNodoTipo,
 	type Estado,
 	type Familia,
+	type MedidaDeParecido,
+	type Parecidos,
 	type Veredicto
 } from './reglas';
 import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
@@ -86,7 +90,16 @@ export type ValorFinalDeCorrida = {
 };
 
 /** Cómo salió una regla. */
-export type ReglaDeCorrida = { id: string; etiqueta: string; operador: ClaveOperador; estado: Estado; valor: string | null; texto: string };
+export type ReglaDeCorrida = {
+	id: string;
+	etiqueta: string;
+	operador: ClaveOperador;
+	estado: Estado;
+	valor: string | null;
+	texto: string;
+	/** Solo de un «Parecido a» ya medido: lo que dijo la IA (porcentaje y razón) y el mínimo con que se decidió. Queda escrito en el historial. */
+	parecido?: { porcentaje: number; razon: string; minimo: number };
+};
 
 /** De qué documento se tomó lo de un tipo documental y qué campos del proceso se leyeron. */
 export type EvidenciaDeCorrida = {
@@ -183,10 +196,30 @@ const TEXTO_INCOMPLETA = 'Le falta algo conectado';
 // ── Correr ───────────────────────────────────────────────────────────────────
 
 /**
+ * Los pares de textos REALES que los «Parecido a» del proceso necesitan medir con IA antes de correr (vacío si no hay o no aplica). Quien ejecuta los
+ * mide (`POST /procesos/parecido`), arma el mapa con `parecidosMedidos` y llama a `correr` con él. Con duplicados no corre: no hay nada que medir.
+ */
+export function paresPorMedir(prep: Preparacion): { a: string; b: string }[] {
+	if (prep.duplicados.length > 0) return [];
+	const dibujo = hidratarDibujo(prep.proceso.datos);
+	const nodos = conValoresReales(dibujo.nodes, dibujo.edges, prep.documentos);
+	return evaluar(nodos, dibujo.edges, prep.tipos as unknown as TipoDocumentalGuardado[]).pendientes;
+}
+
+/** El mapa que recibe `correr`: cada par con lo que dijo la IA, en el mismo orden en que se pidieron. */
+export function parecidosMedidos(pares: readonly { a: string; b: string }[], medidas: readonly MedidaDeParecido[]): Parecidos {
+	const mapa: Record<string, MedidaDeParecido> = {};
+	pares.forEach((p, i) => {
+		if (medidas[i]) mapa[llaveDeParecido(p.a, p.b)] = medidas[i];
+	});
+	return mapa;
+}
+
+/**
  * Corre el proceso con los datos de `prep` y arma lo que se guarda. Si no hay con qué decidir (duplicados, sin Resultado, una regla incompleta) NO
  * corre y dice por qué: eso no es una corrida y no se guarda.
  */
-export function correr(prep: Preparacion): Salida {
+export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
 	if (prep.duplicados.length > 0) return { corre: false, motivo: { codigo: 'duplicados', mensaje: avisoDeDuplicados(prep.duplicados), duplicados: prep.duplicados } };
 
 	const dibujo = hidratarDibujo(prep.proceso.datos);
@@ -194,7 +227,7 @@ export function correr(prep: Preparacion): Salida {
 	const nodos = conValoresReales(dibujo.nodes, aristas, prep.documentos);
 	// Los tipos llegan como `{id, nombre, campos}`: es lo único que `evaluar` lee de ellos.
 	const tipos = prep.tipos as unknown as TipoDocumentalGuardado[];
-	const ev = evaluar(nodos, aristas, tipos);
+	const ev = evaluar(nodos, aristas, tipos, medidos);
 
 	const nodoResultado = nodos.find((n) => n.type === NODO_RESULTADO);
 	if (!nodoResultado || !ev.resultado) {
@@ -234,6 +267,11 @@ export function correr(prep: Preparacion): Salida {
 		if (!def) continue;
 		const estado = ev.estados[n.id] ?? 'sin_conexion';
 		const valor = ev.valores[n.id] ?? null;
+		const parecido = ev.parecidos[n.id];
+		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
+			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido } });
+			continue;
+		}
 		reglas.push({
 			id: n.id,
 			etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`,

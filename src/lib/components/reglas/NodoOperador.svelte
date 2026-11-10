@@ -34,8 +34,10 @@
 		SALIDA_RESULTADO,
 		esNumero,
 		lineasDeEjemplo,
+		minimoDeParecido,
 		numeroDeOperador,
 		operadorDe,
+		textoDeParecido,
 		type DatosNodoOperador,
 		type EvaluadoDelLienzo,
 		type Estado
@@ -55,6 +57,24 @@
 	const esDocumento = $derived(def?.grupo === 'documento');
 	const entregaValor = $derived(def?.salida === 'valor');
 
+	// «Parecido a» (2026-11-10): el mínimo vive en el nodo; el porcentaje lo mide la IA y llega por el contexto del lienzo.
+	const esParecido = $derived(def?.clave === 'parecido');
+	const minimo = $derived(minimoDeParecido(data));
+	const medida = $derived(evaluado.parecidos?.[id]);
+	const llaveDelPar = $derived(evaluado.llavesDeParecido?.[id]);
+	const midiendoElPar = $derived(llaveDelPar !== undefined && (evaluado.midiendo?.has(llaveDelPar) ?? false));
+	const errorDelPar = $derived(llaveDelPar !== undefined ? evaluado.erroresDeParecido?.[llaveDelPar] : undefined);
+	let minimoEscrito = $state('');
+	$effect(() => {
+		minimoEscrito = String(minimo);
+	});
+	/** Se guarda al salir de la caja (o con Enter): un entero de 1 a 100. Otra cosa vuelve al que tenía. */
+	function fijarMinimo() {
+		const n = Number(minimoEscrito.trim());
+		if (Number.isInteger(n) && n >= 1 && n <= 100) updateNodeData(id, { minimo: n });
+		else minimoEscrito = String(minimo);
+	}
+
 	/** El renglón de una lista de ejemplo que no es número, cuando la regla suma: se avisa en vez de dejar un «sin valores» mudo. */
 	function lineaQueNoEsNumero(): string | null {
 		if (def?.clave !== 'suma') return null;
@@ -67,18 +87,21 @@
 		if (!def) return '';
 		switch (estado) {
 			case 'pasa': {
+				if (esParecido && medida) return textoDeParecido('pasa', medida);
 				// «Implica» pasa de dos maneras: porque se cumple lo que exige, o porque la condición no se cumple y no hay nada que
 				// exigir. Se dice cuál, porque lo segundo —pasar cuando la regla de entrada no pasa— parece un error.
 				const condicion = def.textoPasaSinCondicion ? origenDe('a') : null;
 				return condicion?.clase === 'regla' && condicion.estado === 'no_pasa' ? (def.textoPasaSinCondicion ?? def.textoPasa) : def.textoPasa;
 			}
 			case 'no_pasa':
-				return def.textoNoPasa;
+				return esParecido && medida ? textoDeParecido('no_pasa', medida) : def.textoNoPasa;
 			case 'listo':
 				return `Resultado: ${valorDeSalida ?? ''}`;
 			case 'sin_valores': {
 				if (esLogico) return 'Falta el veredicto de alguna regla';
 				if (esDocumento) return 'Elige si el expediente de ejemplo trae el documento';
+				if (esParecido && midiendoElPar) return 'Midiendo el parecido con IA…';
+				if (esParecido && errorDelPar) return errorDelPar;
 				const mala = lineaQueNoEsNumero();
 				if (mala !== null) return `«${mala}» no es un número`;
 				return def.grupo === 'lista' ? 'Escribe los valores de ejemplo (uno por renglón)' : 'Escribe un valor de ejemplo en cada lado';
@@ -135,6 +158,26 @@
 			</div>
 		{/each}
 
+		{#if esParecido}
+			<div class="border-b border-border px-3 py-2.5" data-testid="parecido-minimo">
+				<label class="text-[11px] font-medium tracking-wide text-muted-foreground uppercase" for="minimo-{id}">Parecido mínimo</label>
+				<div class="mt-1 flex items-center gap-2">
+					<input
+						id="minimo-{id}"
+						type="text"
+						maxlength="3"
+						inputmode="numeric"
+						data-testid="parecido-minimo-valor"
+						class="nodrag h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+						bind:value={minimoEscrito}
+						onblur={fijarMinimo}
+						onkeydown={(e) => e.key === 'Enter' && fijarMinimo()}
+					/>
+					<span class="text-sm text-muted-foreground">%</span>
+				</div>
+			</div>
+		{/if}
+
 		<!-- El veredicto de la regla (2026-11-04, Moibe: «el resultado final, ligeramente más grande, y la palomota más prominente»). El texto sube
 		     de 12 a 14 px, y «pasa» y «no pasa» llevan su sello: círculo verde con paloma amarilla, círculo rojo con tache blanco. Todos los estados
 		     comparten la misma caja de 24 px para el ícono, así el nodo no cambia de alto ni se mueve su punto de salida al cambiar el veredicto.
@@ -151,7 +194,20 @@
 					<CircleDashed class="size-4" />
 				{/if}
 			</span>
-			<span class="min-w-0" data-testid="resultado-operador" data-estado={estado} data-valor={valorDeSalida ?? ''}>{textoDelEstado}</span>
+			<span class="min-w-0" data-testid="resultado-operador" data-estado={estado} data-valor={valorDeSalida ?? ''}>
+				{textoDelEstado}
+				{#if esParecido && medida?.razon && (estado === 'pasa' || estado === 'no_pasa')}
+					<span class="mt-0.5 block text-xs font-normal text-muted-foreground" data-testid="parecido-razon">IA: {medida.razon}</span>
+				{/if}
+				{#if esParecido && errorDelPar && llaveDelPar && !midiendoElPar}
+					<button
+						type="button"
+						class="nodrag mt-0.5 block text-xs font-medium text-primary hover:underline"
+						data-testid="parecido-reintentar"
+						onclick={() => evaluado.reintentarParecido(llaveDelPar)}>Reintentar</button
+					>
+				{/if}
+			</span>
 			<Handle
 				type="source"
 				position={Position.Right}

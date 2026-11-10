@@ -58,7 +58,33 @@ export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado
  * prueba la regla (uno por entrada: el lienzo aún no corre sobre un expediente de verdad). Si lo que entra es una LISTA, el ejemplo
  * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`.
  */
-export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string };
+export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string; minimo?: number };
+
+/** «Parecido a» (2026-11-10): el porcentaje mínimo de parecido para que pase, cuando el nodo no trae otro. El back usa el mismo (`MINIMO_PARECIDO`). */
+export const MINIMO_PARECIDO = 90;
+
+/** Lo que dice un «Parecido a» ya medido: «Pasa: se parecen 96 %» o «No pasa: se parecen 40 % (mínimo 90 %)». Lo usan el nodo y el historial de ejecuciones. */
+export function textoDeParecido(estado: 'pasa' | 'no_pasa', medida: { porcentaje: number; minimo: number }): string {
+	return estado === 'pasa' ? `Pasa: se parecen ${medida.porcentaje} %` : `No pasa: se parecen ${medida.porcentaje} % (mínimo ${medida.minimo} %)`;
+}
+
+/** El mínimo de un nodo «Parecido a»: un entero de 1 a 100; cualquier otra cosa es el de siempre. */
+export function minimoDeParecido(datos: { minimo?: unknown } | null | undefined): number {
+	const m = datos?.minimo;
+	return typeof m === 'number' && Number.isInteger(m) && m >= 1 && m <= 100 ? m : MINIMO_PARECIDO;
+}
+
+/**
+ * Lo que dijo la IA de un par de textos (`POST /procesos/parecido` de nexus_back): `porcentaje` de 0 a 100 y la `razon` en una frase. Se guardan por
+ * `llaveDeParecido`, la misma llave que usa el back: el parecido es simétrico y no cambia con espacios de más.
+ */
+export type MedidaDeParecido = { porcentaje: number; razon: string };
+export type Parecidos = Readonly<Record<string, MedidaDeParecido>>;
+export function llaveDeParecido(a: string, b: string): string {
+	const x = a.split(/\s+/).filter(Boolean).join(' ');
+	const y = b.split(/\s+/).filter(Boolean).join(' ');
+	return JSON.stringify(x <= y ? [x, y] : [y, x]);
+}
 
 /** Lo que lleva un nodo de valor fijo: de qué clase es y el valor. A diferencia de un ejemplo, éste es parte de la regla. */
 export type DatosNodoConstante = { familia: Familia; valor: string };
@@ -244,6 +270,7 @@ export type ClaveOperador =
 	| 'igual'
 	| 'distinto'
 	| 'contiene'
+	| 'parecido'
 	| 'mayor'
 	| 'menor'
 	| 'cantidad'
@@ -319,6 +346,21 @@ export const OPERADORES: readonly DefOperador[] = [
 		familias: ['texto'],
 		textoPasa: 'Pasa: el texto contiene el fragmento',
 		textoNoPasa: 'No pasa: el texto no contiene el fragmento'
+	},
+	{
+		// «Parecido a» (2026-11-10, Moibe: «vamos directo con la 3», la IA): pasa si los dos textos se parecen al menos el mínimo del nodo. Quien mide
+		// el parecido es Gemini (vía nexus_back), porque una distancia entre letras no sabe que «S.A. de C.V.» es «Sociedad Anónima de Capital Variable».
+		// `evaluar` NO pregunta: recibe los parecidos ya medidos (`Parecidos`) y dice cuáles le faltan (`pendientes`); quien llama los pide y vuelve a evaluar.
+		clave: 'parecido',
+		etiqueta: 'Parecido a',
+		simbolo: '≈',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si los dos textos se parecen al menos el porcentaje indicado.',
+		entradas: ENTRADAS_AB,
+		familias: ['texto'],
+		textoPasa: 'Pasa: los textos se parecen',
+		textoNoPasa: 'No pasa: los textos no se parecen lo suficiente'
 	},
 	{
 		clave: 'mayor',
@@ -954,6 +996,12 @@ export type Evaluacion = {
 	finales: Record<string, EvaluacionDeValorFinal>;
 	/** `null` si el lienzo no tiene nodo de resultado. */
 	resultado: EvaluacionDelResultado | null;
+	/** Por cada «Parecido a» que ya tiene su medida: el porcentaje, la razón de la IA y el mínimo con que se decidió. */
+	parecidos: Record<string, MedidaDeParecido & { minimo: number }>;
+	/** Los pares de textos que algún «Parecido a» necesita medir y todavía no tiene (sin repetir): quien llama los pide y vuelve a evaluar. */
+	pendientes: { a: string; b: string }[];
+	/** Qué par (su `llaveDeParecido`) le toca a cada «Parecido a» que ya tiene sus dos textos: así el nodo sabe si el suyo se está midiendo o falló. */
+	llavesDeParecido: Record<string, string>;
 };
 
 /** Lo que el lienzo les ofrece a sus nodos por contexto (`CLAVE_VEREDICTOS`): lo evaluado para todo el grafo. */
@@ -962,6 +1010,13 @@ export type EvaluadoDelLienzo = {
 	readonly valores: Record<string, string>;
 	readonly finales: Record<string, EvaluacionDeValorFinal>;
 	readonly resultado: EvaluacionDelResultado | null;
+	readonly parecidos: Record<string, MedidaDeParecido & { minimo: number }>;
+	/** Los «Parecido a» cuyo par se está midiendo AHORA (el lienzo lo pidió y no ha vuelto), y los que no se pudieron medir, con el porqué. */
+	readonly llavesDeParecido: Record<string, string>;
+	readonly midiendo: ReadonlySet<string>;
+	readonly erroresDeParecido: Readonly<Record<string, string>>;
+	/** Olvida el fallo de un par (su llave) para que el lienzo lo vuelva a pedir. */
+	reintentarParecido(llave: string): void;
 };
 
 /** Lo que llega a una entrada de un nodo: un campo, un valor fijo o la regla de la que viene. */
@@ -985,9 +1040,17 @@ export function valoresFinalesRepetidos(nodos: readonly NodoMinimo[]): Set<strin
  * El estado de CADA operador del lienzo, siguiendo los cables: las comparaciones y las listas leen sus campos con sus valores de
  * ejemplo, los valores fijos y lo que entregan `Cantidad` y `Suma`; las lógicas leen a las reglas que les llegan.
  */
-export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion[], tipos: readonly TipoDocumentalGuardado[]): Evaluacion {
+export function evaluar(
+	nodos: readonly NodoMinimo[],
+	aristas: readonly Conexion[],
+	tipos: readonly TipoDocumentalGuardado[],
+	medidos: Parecidos = {}
+): Evaluacion {
 	const estados: Record<string, Estado> = {};
 	const valores: Record<string, string> = {};
+	const parecidos: Record<string, MedidaDeParecido & { minimo: number }> = {};
+	const pendientes = new Map<string, { a: string; b: string }>();
+	const llavesDeParecido: Record<string, string> = {};
 
 	/** Lo que llega por una entrada: qué es, el texto de ejemplo y —si viene de otra regla— el estado de ésa. */
 	type Llega = { fuente: Fuente | null; muestra: string; estadoOrigen?: Estado };
@@ -1027,6 +1090,20 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 			} else if (llegan.some((l) => l.estadoOrigen !== undefined && l.estadoOrigen !== 'listo')) {
 				// Un valor que viene de otra regla que todavía no lo tiene.
 				estado = 'sin_valores';
+			} else if (def.clave === 'parecido') {
+				const [a, b] = [llegan[0].muestra.trim(), llegan[1].muestra.trim()];
+				const medida = a && b ? medidos[llaveDeParecido(a, b)] : undefined;
+				if (a && b) llavesDeParecido[id] = llaveDeParecido(a, b);
+				if (!a || !b) estado = 'sin_valores';
+				else if (!medida) {
+					// Falta medirlo: no se sabe todavía. Quien llama lo pide a la IA y vuelve a evaluar.
+					pendientes.set(llaveDeParecido(a, b), { a, b });
+					estado = 'sin_valores';
+				} else {
+					const minimo = minimoDeParecido(datos);
+					parecidos[id] = { ...medida, minimo };
+					estado = medida.porcentaje >= minimo ? 'pasa' : 'no_pasa';
+				}
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
 				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
@@ -1086,7 +1163,7 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 		const caso: CasoDelResultado | null = condicion === 'pasa' ? 'si' : condicion === 'no_pasa' ? 'no' : condicion === 'sin_valores' ? 'sin' : null;
 		resultado = { condicion, caso, texto: caso ? textosDelResultado(nodoResultado.data)[caso] : null };
 	}
-	return { estados, valores, finales, resultado };
+	return { estados, valores, finales, resultado, parecidos, pendientes: [...pendientes.values()], llavesDeParecido };
 }
 
 // ── Guardar el dibujo y volver a abrirlo ─────────────────────────────────────
@@ -1126,7 +1203,7 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 			});
 		} else if (n.type === NODO_OPERADOR) {
 			const d = n.data as DatosNodoOperador;
-			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '' } });
+			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '', ...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {}) } });
 		} else if (n.type === NODO_CONSTANTE) {
 			const d = n.data as DatosNodoConstante;
 			nodos.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: esFamilia(d.familia) ? d.familia : 'texto', valor: d.valor ?? '' } });
@@ -1188,7 +1265,12 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 				id: n.id,
 				type: NODO_OPERADOR,
 				position,
-				data: { operador: n.data.operador, a: typeof n.data.a === 'string' ? n.data.a : '', b: typeof n.data.b === 'string' ? n.data.b : '' }
+				data: {
+					operador: n.data.operador,
+					a: typeof n.data.a === 'string' ? n.data.a : '',
+					b: typeof n.data.b === 'string' ? n.data.b : '',
+					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {})
+				}
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {
 			nodes.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: n.data.familia, valor: typeof n.data.valor === 'string' ? n.data.valor : '' } });
