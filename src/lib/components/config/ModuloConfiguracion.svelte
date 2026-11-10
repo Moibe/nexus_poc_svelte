@@ -460,13 +460,8 @@
 	 */
 	let documentosDelPaso1 = $state<string[]>([]);
 	let entradaDocumentosSugerencia = $state<HTMLInputElement | null>(null);
-	/**
-	 * Con qué se sugiere la descripción (2026-11-08, Moibe: «que esto sea una especie de switch, para que se sepa que es o uno u otro»): `nombre` (lo de siempre: el nombre del tipo y los
-	 * demás tipos de la organización) o `documentos` (además, Gemini LEE hasta 3 documentos de ejemplo). Es un interruptor de dos posiciones con UNA acción al lado, que cambia según lo elegido:
-	 * antes eran dos botones sueltos y no se notaba que eran dos maneras de pedir lo mismo. Arranca en `nombre`, no se arrastra de un tipo al siguiente, y volver a `nombre` NO borra los
-	 * documentos ya elegidos (siguen recordados para el paso 2 y para probar la extracción).
-	 */
-	let modoSugerencia = $state<'nombre' | 'documentos'>('nombre');
+	/** Si la sugerencia en curso es con documentos: el «Pensando…» va en el botón que se usó. */
+	let sugiriendoConDocumentos = $state(false);
 	// Empezar por el nombre (2026-11-08, Moibe): al abrir el paso 1 de un alta el foco va al nombre; si se pica otra cosa del paso sin haberlo escrito, se
 	// regresa ahí y una línea lo dice (sin nombre, la descripción y las sugerencias no sirven de nada: la IA lo necesita).
 	let entradaNombreTipo = $state<HTMLInputElement | null>(null);
@@ -484,10 +479,6 @@
 		pedirNombrePrimero = true;
 		entradaNombreTipo.focus();
 	}
-	const MODOS_SUGERENCIA = [
-		{ valor: 'nombre', etiqueta: 'Solo con el nombre' },
-		{ valor: 'documentos', etiqueta: 'Con documentos de ejemplo' }
-	] as const;
 	const MAX_DOCUMENTOS_SUGERENCIA = 3;
 	const MAX_BYTES_SUGERENCIA = 18 * 1024 * 1024;
 	const FORMATOS_SUGERENCIA = ['pdf', 'jpg', 'jpeg', 'png'];
@@ -501,7 +492,6 @@
 		const elegidos = [...(input.files ?? [])];
 		input.value = ''; // para que volver a elegir el MISMO archivo dispare el cambio
 		if (elegidos.length === 0) return;
-		modoSugerencia = 'documentos'; // lo que se ve siempre dice con qué se está sugiriendo
 		errorSugerencia = '';
 		if (elegidos.some((a) => !FORMATOS_SUGERENCIA.includes(a.name.split('.').pop()?.toLowerCase() ?? ''))) {
 			errorSugerencia = 'Para sugerir la descripción con documentos usa PDF, JPG o PNG.';
@@ -521,6 +511,7 @@
 	async function sugerirDescripcion(archivos: File[] = []) {
 		if (sugiriendo || borrador.nombre.trim() === '') return;
 		sugiriendo = true;
+		sugiriendoConDocumentos = archivos.length > 0;
 		sugerencia = null;
 		errorSugerencia = '';
 		const tipoPedido = borrador.idGuardado;
@@ -584,7 +575,6 @@
 			descripcionSugerida = '';
 			documentosDeLaSugerencia = [];
 			documentosDelPaso1 = [];
-			modoSugerencia = 'nombre';
 		});
 	});
 
@@ -768,7 +758,6 @@
 		// Un alta nueva no hereda los documentos del paso 1 de la anterior (si esa se dejó sin salir del paso 1, `idGuardado` seguía en null y nada más los reiniciaba).
 		documentosDelPaso1 = [];
 		documentosDeLaSugerencia = [];
-		modoSugerencia = 'nombre';
 		avisoExito = false;
 		tituloError = '';
 		errorActivacion = '';
@@ -2396,53 +2385,52 @@
 						     `lang="en"` y partiría el español con las reglas del inglés. -->
 						<!-- «Sugerir descripción» (2026-11-05): ver `sugerirDescripcion`. Necesita el nombre del tipo; nunca guarda ni pisa nada solo. -->
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-							<!-- Con qué sugerir (2026-11-08, Moibe: «que esto sea una especie de switch, para que se sepa que es o uno u otro»): un interruptor de dos posiciones, con el lenguaje de
-							     «Ver como lista / mosaico» (borde, y la elegida pintada), y UNA acción al lado que cambia según lo elegido. Son radios nativos: las flechas del teclado y los lectores de
-							     pantalla ya saben que es «uno u otro». Sin nombre del tipo, todo (interruptor y acción) queda apagado (2026-11-08, Moibe: «que toda la sección esté greyada hasta que el título lo habilite»). -->
+							<!-- Dos botones de acción en un mismo marco (2026-11-10, Moibe: «en lugar del texto "Solo con el nombre", que ese botón diga ya de
+							     golpe "✨ Sugerir descripción" directamente»). Antes (2026-11-08) era un interruptor «Solo con el nombre / Con documentos de
+							     ejemplo» más un botón de acción aparte; ahora cada mitad actúa con un clic. El marco común conserva la idea de «uno u otro».
+							     Sin nombre del tipo, los dos quedan apagados (2026-11-08: «que toda la sección esté greyada hasta que el título lo habilite»). -->
 							<div
-								role="radiogroup"
-								aria-label="Con qué sugerir la descripción"
+								role="group"
+								aria-label="Sugerir la descripción"
 								class="inline-flex min-h-8 max-w-full items-stretch gap-0.5 rounded-lg border border-border bg-background p-0.5"
-								data-testid="modo-sugerencia"
+								data-testid="sugerir-grupo"
 							>
-								{#each MODOS_SUGERENCIA as modo (modo.valor)}
-									<label class="relative flex min-w-0 {sugiriendo || borrador.nombre.trim() === '' ? 'cursor-not-allowed' : 'cursor-pointer'}" data-testid="modo-sugerencia-{modo.valor}">
-										<input type="radio" name="modo-sugerencia" value={modo.valor} bind:group={modoSugerencia} disabled={sugiriendo || borrador.nombre.trim() === ''} class="peer sr-only" />
-										<span
-											class="flex min-h-6.5 items-center justify-center rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium transition-colors peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 peer-disabled:opacity-50 {modoSugerencia === modo.valor
-												? 'bg-primary text-primary-foreground'
-												: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-										>
-											{modo.etiqueta}
-										</span>
-									</label>
-								{/each}
+								<button
+									type="button"
+									data-testid="sugerir-descripcion"
+									class="flex min-h-6.5 min-w-0 items-center justify-center gap-1 rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+									disabled={sugiriendo || borrador.nombre.trim() === ''}
+									title={borrador.nombre.trim() === '' ? 'Escribe primero el nombre del tipo documental' : 'La IA la escribe a partir del nombre del tipo'}
+									onclick={() => void sugerirDescripcion()}
+								>
+									{#if sugiriendo && !sugiriendoConDocumentos}
+										<LoaderCircle class="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+										Pensando…
+									{:else}
+										<Sparkles class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+										Sugerir descripción
+									{/if}
+								</button>
+								<!-- Con documentos (2026-11-07): la IA los LEE para describir lo que de verdad traen (hasta 3: PDF, JPG o PNG; no se guardan). Abre el selector y al elegirlos sugiere. -->
+								<button
+									type="button"
+									data-testid="sugerir-con-documentos"
+									class="flex min-h-6.5 min-w-0 items-center justify-center gap-1 rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+									disabled={sugiriendo || borrador.nombre.trim() === ''}
+									title={borrador.nombre.trim() === ''
+										? 'Escribe primero el nombre del tipo documental'
+										: `Elige hasta ${MAX_DOCUMENTOS_SUGERENCIA} documentos de ejemplo (PDF, JPG o PNG): se leen para escribirla y no se guardan`}
+									onclick={() => entradaDocumentosSugerencia?.click()}
+								>
+									{#if sugiriendo && sugiriendoConDocumentos}
+										<LoaderCircle class="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+										Pensando…
+									{:else}
+										<Paperclip class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+										Con documentos de ejemplo
+									{/if}
+								</button>
 							</div>
-							<!-- La acción. Con «documentos», la IA los LEE para describir lo que de verdad traen (hasta 3: PDF, JPG o PNG; no se guardan): el botón abre el selector y al elegirlos sugiere. -->
-							<Button
-								type="button"
-								variant="outline"
-								class="text-xs"
-								data-testid={modoSugerencia === 'documentos' ? 'sugerir-con-documentos' : 'sugerir-descripcion'}
-								disabled={sugiriendo || borrador.nombre.trim() === ''}
-								title={borrador.nombre.trim() === ''
-									? 'Escribe primero el nombre del tipo documental'
-									: modoSugerencia === 'documentos'
-										? `Elige hasta ${MAX_DOCUMENTOS_SUGERENCIA} documentos de ejemplo (PDF, JPG o PNG): se leen para escribirla y no se guardan`
-										: undefined}
-								onclick={() => (modoSugerencia === 'documentos' ? entradaDocumentosSugerencia?.click() : void sugerirDescripcion())}
-							>
-								{#if sugiriendo}
-									<LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
-									Pensando…
-								{:else if modoSugerencia === 'documentos'}
-									<Paperclip class="size-3.5" aria-hidden="true" />
-									Elegir documentos y sugerir
-								{:else}
-									<Sparkles class="size-3.5" aria-hidden="true" />
-									Sugerir descripción
-								{/if}
-							</Button>
 							<input
 								bind:this={entradaDocumentosSugerencia}
 								data-testid="sugerir-documentos-archivo"
