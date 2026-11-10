@@ -156,7 +156,7 @@
 											<span class="block text-xs text-muted-foreground">{r.texto}</span>
 											<!-- «Parecido a»: por qué lo decidió la IA (ya se guardaba; el detalle no lo enseñaba). -->
 											{#if r.parecido?.razon}
-												<span class="block text-xs text-muted-foreground" data-testid="regla-razon-ia">IA: {r.parecido.razon}</span>
+												<span class="block text-xs text-muted-foreground" data-testid="regla-razon-ia">{r.parecido.sinIA ? '' : 'IA: '}{r.parecido.razon}</span>
 											{/if}
 										</span>
 										<span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium {ESTADO_DE_REGLA[r.estado]?.clase ?? 'bg-muted text-muted-foreground'}">{ESTADO_DE_REGLA[r.estado]?.texto ?? r.estado}</span>

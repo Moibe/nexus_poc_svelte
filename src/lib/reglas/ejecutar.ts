@@ -115,7 +115,7 @@ export type ReglaDeCorrida = {
 	valor: string | null;
 	texto: string;
 	/** Solo de un «Parecido a» ya medido: lo que dijo la IA (porcentaje y razón) y el mínimo con que se decidió. Queda escrito en el historial. */
-	parecido?: { porcentaje: number; razon: string; minimo: number };
+	parecido?: { porcentaje: number; razon: string; minimo: number; sinIA?: true };
 	/** Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. */
 	entradas?: EntradaDeCorrida[];
 };

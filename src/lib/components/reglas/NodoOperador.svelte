@@ -198,7 +198,7 @@
 			<span class="min-w-0" data-testid="resultado-operador" data-estado={estado} data-valor={valorDeSalida ?? ''}>
 				{textoDelEstado}
 				{#if esParecido && medida?.razon && (estado === 'pasa' || estado === 'no_pasa')}
-					<span class="mt-0.5 block text-xs font-normal text-muted-foreground" data-testid="parecido-razon">IA: {medida.razon}</span>
+					<span class="mt-0.5 block text-xs font-normal text-muted-foreground" data-testid="parecido-razon">{medida.sinIA ? '' : 'IA: '}{medida.razon}</span>
 				{/if}
 				{#if esParecido && errorDelPar && llaveDelPar && !midiendoElPar}
 					<button

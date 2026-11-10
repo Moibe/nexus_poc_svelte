@@ -78,15 +78,29 @@ export function minimoDeParecido(datos: { minimo?: unknown } | null | undefined)
 
 /**
  * Lo que dijo la IA de un par de textos (`POST /procesos/parecido` de nexus_back): `porcentaje` de 0 a 100 y la `razon` en una frase. Se guardan por
- * `llaveDeParecido`, la misma llave que usa el back: el parecido es simétrico y no cambia con espacios de más.
+ * `llaveDeParecido`, la misma llave que usa el back. `sinIA` marca la medida que no vino de la IA (`MISMO_TEXTO`): ahí la pantalla no dice «IA:».
  */
-export type MedidaDeParecido = { porcentaje: number; razon: string };
+export type MedidaDeParecido = { porcentaje: number; razon: string; sinIA?: true };
 export type Parecidos = Readonly<Record<string, MedidaDeParecido>>;
+
+/**
+ * Cómo se comparan los textos de un «Parecido a»: en mayúsculas, sin acentos (ni la tilde de la ñ) y sin espacios de más. «Pérez  lópez» → «PEREZ LOPEZ».
+ * Existe porque la forma de escribir le cambiaba la respuesta a la IA (2026-11-10, Moibe: «KEYSI» contra «KEISY» no pasaba y «Keysi» contra «KEISY»
+ * sí): el back le pregunta SIEMPRE con los textos así (`parecido.comparable`, la misma regla), y aquí sirve para que las variantes compartan la medida.
+ */
+export function textoComparable(texto: string): string {
+	return texto.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().split(/\s+/).filter(Boolean).join(' ');
+}
+
+/** El par visto como se compara: simétrico («A ~ B» es «B ~ A») y sin importar mayúsculas, acentos ni espacios. */
 export function llaveDeParecido(a: string, b: string): string {
-	const x = a.split(/\s+/).filter(Boolean).join(' ');
-	const y = b.split(/\s+/).filter(Boolean).join(' ');
+	const x = textoComparable(a);
+	const y = textoComparable(b);
 	return JSON.stringify(x <= y ? [x, y] : [y, x]);
 }
+
+/** Dos textos que solo se escriben distinto (mayúsculas, acentos, espacios) son el mismo texto: 100 sin preguntarle a la IA. El back contesta igual. */
+export const MISMO_TEXTO: MedidaDeParecido = { porcentaje: 100, razon: 'Es el mismo texto: solo cambian mayúsculas, acentos o espacios.', sinIA: true };
 
 /** Lo que lleva un nodo de valor fijo: de qué clase es y el valor. A diferencia de un ejemplo, éste es parte de la regla. */
 export type DatosNodoConstante = { familia: Familia; valor: string };
@@ -1169,7 +1183,8 @@ export function evaluar(
 				estado = 'sin_valores';
 			} else if (def.clave === 'parecido') {
 				const [a, b] = [llegan[0].muestra.trim(), llegan[1].muestra.trim()];
-				const medida = a && b ? medidos[llaveDeParecido(a, b)] : undefined;
+				// Escritos igual salvo mayúsculas, acentos o espacios: el mismo texto, sin preguntar (y sin esperar a la red, también al ejecutar).
+				const medida = a && b ? (textoComparable(a) === textoComparable(b) ? MISMO_TEXTO : medidos[llaveDeParecido(a, b)]) : undefined;
 				if (a && b) llavesDeParecido[id] = llaveDeParecido(a, b);
 				if (!a || !b) estado = 'sin_valores';
 				else if (!medida) {
