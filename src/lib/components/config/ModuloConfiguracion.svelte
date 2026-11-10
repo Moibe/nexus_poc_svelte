@@ -100,6 +100,7 @@
 		reconocerFallaDeGuardado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
+		reordenarCampo,
 		cargarTipoDocumental,
 		etiquetaVersion,
 		etiquetaVertical,
@@ -974,6 +975,30 @@
 		idArrastrando = null;
 		idSobreTarjeta = null;
 		soltarDespues = false;
+	}
+
+	// Lo mismo para los campos de «Campos agregados» del paso 2 (2026-11-10, Moibe: «los campos en el paso 2, pueden ser reordenados con
+	// arrastrarlos»): se toman del asa a su izquierda y una línea dice dónde caen. Variables aparte de las de las tarjetas: son otra lista
+	// y otra vista. El orden real vive en `borrador.campos` (ver `reordenarCampo`).
+	let idCampoArrastrando = $state<string | null>(null);
+	let idSobreCampo = $state<string | null>(null);
+	let soltarCampoDespues = $state(false);
+	/** Tipo de dato propio del arrastre: un `text/plain` se pegaría como texto si se suelta sobre una caja editable. */
+	const ARRASTRE_DE_CAMPO = 'application/x-biblioratum-campo';
+
+	function arrastrarSobreCampo(e: DragEvent, idDestino: string) {
+		if (!idCampoArrastrando) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		const caja = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		idSobreCampo = idDestino;
+		soltarCampoDespues = e.clientY > caja.top + caja.height / 2;
+	}
+
+	function terminarArrastreDeCampo() {
+		idCampoArrastrando = null;
+		idSobreCampo = null;
+		soltarCampoDespues = false;
 	}
 	const tipoEnCalibracion = $derived(
 		calibrandoId ? (tiposDocumentales.find((t) => t.id === calibrandoId) ?? null) : null
@@ -2681,7 +2706,7 @@
 				{#if borrador.campos.length > 0}
 					<h4 class="mt-8 text-xl font-semibold text-foreground">Campos agregados</h4>
 
-					<div class="mt-4 flex max-w-3xl flex-col gap-4">
+					<div class="mt-4 flex max-w-3xl flex-col gap-4" role="list" data-testid="campos-agregados">
 						{#each borrador.campos as campo (campo.id)}
 							<!-- Duplicado contra los DEMÁS campos, no contra la lista completa:
 							     de otro modo un campo editable se marcaría duplicado de sí mismo
@@ -2692,83 +2717,136 @@
 									campo.nombre,
 									borrador.campos.filter((c) => c.id !== campo.id)
 								)}
-							<div class="flex items-end gap-4">
-								<div class="grid flex-1 gap-4 md:grid-cols-2">
-									<div class="space-y-2">
-										<Label for="agregado-nombre-{campo.id}">Nombre del campo</Label>
-										{#if altaEnCurso}
-											<!-- readonly, no disabled: `disabled` los saca del orden de
-											     tabulación y del lector de pantalla, y este contenido sí
-											     hay que poder leerlo. En una alta nueva la edición no existe
-											     en el diseño; para cambiar algo se quita y se vuelve a
-											     agregar. En modo edición o "Crear nueva versión" (abajo) sí
-											     se puede tocar directo — a petición explícita del
-											     2026-09-02: ya se pasó por Editar/Crear nueva versión a
-											     propósito, así que no tiene sentido obligar a
-											     quitar-y-reagregar solo para corregir un nombre. -->
-											<Input
-												id="agregado-nombre-{campo.id}"
-												value={campo.nombre}
-												readonly
-												class="bg-muted text-muted-foreground"
-											/>
-										{:else}
-											<div class="relative">
+							<!-- Reordenar arrastrando (2026-11-10): como las tarjetas de la Biblioteca, solo el ASA levanta el campo —si el renglón entero
+							     fuera `draggable`, sus cajas de texto y su selector pelearían con el arrastre— y el destino es el campo entero, con sus
+							     subcampos si es un grupo. Una línea arriba o abajo dice dónde va a caer. -->
+							{@const destinoCampo = idCampoArrastrando !== null && idCampoArrastrando !== campo.id && idSobreCampo === campo.id}
+							<div
+								role="listitem"
+								data-testid="campo-agregado"
+								data-campo-id={campo.id}
+								data-nombre={campo.nombre}
+								data-soltar={destinoCampo ? (soltarCampoDespues ? 'despues' : 'antes') : ''}
+								class="relative flex flex-col gap-4 transition-opacity {idCampoArrastrando === campo.id ? 'opacity-40' : ''} {destinoCampo
+									? soltarCampoDespues
+										? 'after:absolute after:inset-x-0 after:-bottom-2 after:h-0.5 after:rounded-full after:bg-primary'
+										: 'before:absolute before:inset-x-0 before:-top-2 before:h-0.5 before:rounded-full before:bg-primary'
+									: ''}"
+								ondragenter={(e) => arrastrarSobreCampo(e, campo.id)}
+								ondragover={(e) => arrastrarSobreCampo(e, campo.id)}
+								ondragleave={(e) => {
+									// Igual que en las tarjetas: pasar a un hijo también dispara `dragleave`; solo cuenta si el puntero salió de la caja.
+									const caja = e.currentTarget.getBoundingClientRect();
+									const dentro = e.clientX > caja.left && e.clientX < caja.right && e.clientY > caja.top && e.clientY < caja.bottom;
+									if (!dentro && idSobreCampo === campo.id) idSobreCampo = null;
+								}}
+								ondrop={(e) => {
+									if (!idCampoArrastrando) return;
+									e.preventDefault();
+									reordenarCampo(idCampoArrastrando, campo.id, soltarCampoDespues);
+									terminarArrastreDeCampo();
+								}}
+							>
+								<div class="flex items-end gap-4">
+									<span
+										data-testid="asa-campo"
+										draggable="true"
+										title="Arrastra para reordenar"
+										aria-label="Arrastra para reordenar {campo.nombre}"
+										role="img"
+										class="-mr-2 mb-0.5 flex h-8 w-4 shrink-0 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors hover:text-muted-foreground active:cursor-grabbing"
+										ondragstart={(e) => {
+											idCampoArrastrando = campo.id;
+											if (e.dataTransfer) {
+												e.dataTransfer.effectAllowed = 'move';
+												// Firefox no empieza el arrastre sin datos.
+												e.dataTransfer.setData(ARRASTRE_DE_CAMPO, campo.id);
+												// Bajo el puntero se ve el renglón entero, no solo el asa.
+												const renglon = e.currentTarget.parentElement;
+												if (renglon) e.dataTransfer.setDragImage(renglon, 16, renglon.offsetHeight / 2);
+											}
+										}}
+										ondragend={terminarArrastreDeCampo}
+									>
+										<GripVertical class="size-4" aria-hidden="true" />
+									</span>
+									<div class="grid flex-1 gap-4 md:grid-cols-2">
+										<div class="space-y-2">
+											<Label for="agregado-nombre-{campo.id}">Nombre del campo</Label>
+											{#if altaEnCurso}
+												<!-- readonly, no disabled: `disabled` los saca del orden de
+												     tabulación y del lector de pantalla, y este contenido sí
+												     hay que poder leerlo. En una alta nueva la edición no existe
+												     en el diseño; para cambiar algo se quita y se vuelve a
+												     agregar. En modo edición o "Crear nueva versión" (abajo) sí
+												     se puede tocar directo — a petición explícita del
+												     2026-09-02: ya se pasó por Editar/Crear nueva versión a
+												     propósito, así que no tiene sentido obligar a
+												     quitar-y-reagregar solo para corregir un nombre. -->
 												<Input
 													id="agregado-nombre-{campo.id}"
-													bind:value={campo.nombre}
-													aria-invalid={nombreDuplicadoAqui}
-													aria-describedby={nombreDuplicadoAqui
-														? `agregado-nombre-${campo.id}-error`
-														: undefined}
-													class={nombreDuplicadoAqui ? 'pr-9' : undefined}
+													value={campo.nombre}
+													readonly
+													class="bg-muted text-muted-foreground"
 												/>
-												{#if nombreDuplicadoAqui}
-													<AlertCircle
-														class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+											{:else}
+												<div class="relative">
+													<Input
+														id="agregado-nombre-{campo.id}"
+														bind:value={campo.nombre}
+														aria-invalid={nombreDuplicadoAqui}
+														aria-describedby={nombreDuplicadoAqui
+															? `agregado-nombre-${campo.id}-error`
+															: undefined}
+														class={nombreDuplicadoAqui ? 'pr-9' : undefined}
 													/>
+													{#if nombreDuplicadoAqui}
+														<AlertCircle
+															class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-destructive"
+														/>
+													{/if}
+												</div>
+												{#if nombreDuplicadoAqui}
+													<p id="agregado-nombre-{campo.id}-error" class="text-xs text-destructive">
+														Ya existe un campo con este nombre. Utiliza uno diferente.
+													</p>
 												{/if}
-											</div>
-											{#if nombreDuplicadoAqui}
-												<p id="agregado-nombre-{campo.id}-error" class="text-xs text-destructive">
-													Ya existe un campo con este nombre. Utiliza uno diferente.
-												</p>
 											{/if}
-										{/if}
+										</div>
+										<div class="space-y-2">
+											<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
+											<!-- El tipo de un campo ya agregado se puede cambiar también en un alta nueva (2026-11-10, Moibe: «en ésta etapa quiero poder cambiar el tipo de dato»). -->
+											<Select.Root
+												type="single"
+												value={campo.tipoDato}
+												onValueChange={(v) => alCambiarTipoDato(campo, v)}
+											>
+												<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
+													{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
+												</Select.Trigger>
+												<Select.Content>
+													{#each TIPOS_DE_DATO as tipo (tipo.value)}
+														<Select.Item value={tipo.value} label={tipo.label} />
+													{/each}
+												</Select.Content>
+											</Select.Root>
+										</div>
 									</div>
-									<div class="space-y-2">
-										<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
-										<!-- El tipo de un campo ya agregado se puede cambiar también en un alta nueva (2026-11-10, Moibe: «en ésta etapa quiero poder cambiar el tipo de dato»). -->
-										<Select.Root
-											type="single"
-											value={campo.tipoDato}
-											onValueChange={(v) => alCambiarTipoDato(campo, v)}
-										>
-											<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
-												{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
-											</Select.Trigger>
-											<Select.Content>
-												{#each TIPOS_DE_DATO as tipo (tipo.value)}
-													<Select.Item value={tipo.value} label={tipo.label} />
-												{/each}
-											</Select.Content>
-										</Select.Root>
-									</div>
-								</div>
 
-								<button
-									type="button"
-									aria-label={`Quitar el campo ${campo.nombre}`}
-									class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
-									onclick={() => (campoAQuitar = { id: campo.id, nombre: campo.nombre })}
-								>
-									<Minus class="size-4" />
-								</button>
+									<button
+										type="button"
+										aria-label={`Quitar el campo ${campo.nombre}`}
+										class="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+										onclick={() => (campoAQuitar = { id: campo.id, nombre: campo.nombre })}
+									>
+										<Minus class="size-4" />
+									</button>
+								</div>
+								{#if campo.tipoDato === 'grupo'}
+									<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
+									<div class="-mt-2"><SubcamposGrupo {campo} /></div>
+								{/if}
 							</div>
-							{#if campo.tipoDato === 'grupo'}
-								<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
-								<div class="-mt-2"><SubcamposGrupo {campo} /></div>
-							{/if}
 						{/each}
 					</div>
 				{:else if !puedeAgregar}

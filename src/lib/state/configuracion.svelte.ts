@@ -582,6 +582,24 @@ export function quitarCampo(id: string) {
 	if (i !== -1) borradorTipoDocumental.campos.splice(i, 1);
 }
 
+/**
+ * Mueve un campo del paso 2 justo antes de otro (o justo después, con `despues`): lo que hace soltarlo al arrastrarlo de su asa
+ * (2026-11-10, Moibe: «los campos en el paso 2, pueden ser reordenados con arrastrarlos»). Mismo cálculo que `reordenarTipoDocumental`:
+ * el destino se busca DESPUÉS de sacar el arrastrado, así sirve igual hacia arriba que hacia abajo. No guarda nada por su cuenta: el
+ * `$effect` del asistente recorre el borrador entero y el nuevo orden viaja al tipo como cualquier otro cambio. El orden es el que ven
+ * el paso 3, la Biblioteca y los datos extraídos, y con el que se publican los campos al activar.
+ */
+export function reordenarCampo(idArrastrado: string, idDestino: string, despues = false): boolean {
+	if (idArrastrado === idDestino) return false;
+	const campos = borradorTipoDocumental.campos;
+	const desde = campos.findIndex((c) => c.id === idArrastrado);
+	if (desde === -1 || !campos.some((c) => c.id === idDestino)) return false;
+	const [movido] = campos.splice(desde, 1);
+	const hacia = campos.findIndex((c) => c.id === idDestino);
+	campos.splice(hacia + (despues ? 1 : 0), 0, movido);
+	return true;
+}
+
 /** Un subcampo está completo cuando tiene nombre y tipo (la descripción es opcional: ayuda al modelo, pero no se exige). */
 export function subcampoCompleto(s: SubcampoBorrador): boolean {
 	return s.nombre.trim() !== '' && s.tipoDato !== '';
