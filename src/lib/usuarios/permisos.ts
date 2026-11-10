@@ -42,7 +42,7 @@ export function puedeUsar(usuario: Pick<Usuario, 'esAdminPlataforma' | 'rol'> | 
  * «Conectores» y «Auditoría y trazabilidad» todavía no tienen pantalla: quedan con quien administra hasta que se defina quién más las usa
  * (el diseño habla de Auditor y Compliance Officer para la auditoría, pero eso se decide cuando exista).
  *
- * «Motor de reglas» ya no es una opción del engrane (2026-11-03): se entra por «Módulo de configuración › Procesos y reglas», que solo ve quien administra.
+ * «Motor de reglas» ya no es una opción del engrane (2026-11-03): se entra por «Módulo de configuración › Procesos», que solo ve quien administra.
  */
 export type OpcionDelEngrane =
 	| 'modulo-de-uso'

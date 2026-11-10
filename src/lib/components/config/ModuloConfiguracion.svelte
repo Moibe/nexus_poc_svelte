@@ -1,7 +1,14 @@
 <script lang="ts">
 	/**
 	 * El MÓDULO DE CONFIGURACIÓN: la biblioteca de tipos documentales de la organización y todo lo que cuelga de ella (el
-	 * asistente de alta, la calibración con sus documentos de ejemplo y recortes, y la generación de prompts).
+	 * asistente de alta y los documentos de ejemplo con sus recortes).
+	 *
+	 * Sin «Calibrar» (2026-11-06, Moibe: «quiero quitar el feature de calibrar en los modelos documentales, eso implica que ya no se requiere
+	 * para activarlos»): hasta ese día un tipo activo tenía además un botón «Calibrar» —generar prompts, correrlos contra un documento y calificar
+	 * sus campos— y no extraía hasta terminarlo (`calibradoEn`). Se quitó todo eso: activar el tipo ya basta. Lo que se queda es «Ejemplo
+	 * documental» (los documentos de ejemplo con sus recortes), que no era requisito de nada. Para recuperar la pantalla de prompts:
+	 * `git show 4ac2a62:src/lib/components/config/ModuloConfiguracion.svelte` y sus tres componentes (`GenerarPrompts`, `DocumentoParaPrompts` y
+	 * `RevisionPrompt`, en la misma carpeta).
 	 *
 	 * Hasta el 2026-10-25 esto era `ConfigSheet.svelte`, un panel lateral que se abría encima de cualquier pantalla desde el
 	 * engrane. Ahora el engrane lleva a `/configuracion`, un mosaico con las secciones que se configuran, y esta es la de
@@ -31,10 +38,11 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import AlertCircle from '@lucide/svelte/icons/circle-alert';
-	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import BadgeAlert from '@lucide/svelte/icons/badge-alert';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Calendar from '@lucide/svelte/icons/calendar';
@@ -42,7 +50,6 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Scissors from '@lucide/svelte/icons/scissors';
-	import Archive from '@lucide/svelte/icons/archive';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -59,12 +66,9 @@
 	import DocumentoConRecortes from './DocumentoConRecortes.svelte';
 	import RecorteGuardado from './RecorteGuardado.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
-	import GenerarPrompts from './GenerarPrompts.svelte';
-	import DocumentoParaPrompts from './DocumentoParaPrompts.svelte';
-	import RevisionPrompt from './RevisionPrompt.svelte';
 	import SubcamposGrupo from './SubcamposGrupo.svelte';
 	import GenerarCamposDesdeDocumento from './GenerarCamposDesdeDocumento.svelte';
-	import CodeXml from '@lucide/svelte/icons/code-xml';
+	import ProbarExtraccion from './ProbarExtraccion.svelte';
 	import HistorialVersiones from './HistorialVersiones.svelte';
 	import { formatearTamano } from '$lib/state/bandeja.svelte';
 	import { cargarProcesos, estadoProcesos, procesosQueUsanElTipo } from '$lib/state/procesos.svelte';
@@ -73,6 +77,10 @@
 		borradorTipoDocumental,
 		agregarCampoEnCaptura,
 		agregarCamposPropuestos,
+		ejemplosDeTipo,
+		ejemplosDelPaso1Actuales,
+		fijarEjemplosDelPaso1,
+		recordarEjemplos,
 		agregarValorLista,
 		alCambiarTipoDato,
 		alternarEjemploDocumental,
@@ -81,7 +89,6 @@
 		campoCompleto,
 		campoIntacto,
 		activarTipoDocumental,
-		archivarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
 		paginaDeRecorte,
@@ -89,7 +96,6 @@
 		estadoBiblioteca,
 		cargarBiblioteca,
 		reconocerFallaDeGuardado,
-		marcarCalibrado,
 		eliminarTipoDocumental,
 		reordenarTipoDocumental,
 		cargarTipoDocumental,
@@ -97,7 +103,6 @@
 		etiquetaVertical,
 		colorParaCampo,
 		guardarTipoDocumental,
-		hayBorrador,
 		irAPaso,
 		pasoNavegable,
 		pedidoDeConfiguracion,
@@ -109,11 +114,9 @@
 		tipoConMismoNombre,
 		quitarCampo,
 		quitarValorLista,
-		completarNombreProcesador,
 		sincronizarTipoGuardado,
 		valorListaDuplicado,
 		CARDINALIDADES,
-		MAX_INSTRUCCIONES,
 		REGLAS_TRANSFORMACION,
 		TIPOS_DE_DATO,
 		UMBRALES_CONFIANZA
@@ -128,20 +131,18 @@
 		if (open) untrack(() => void cargarBiblioteca({ refrescar: true }));
 	});
 
-	// El módulo tiene cuatro vistas:
+	// El módulo tiene tres vistas:
 	//  - 'biblioteca': la pantalla de entrada, con el listado de modelos (hoy
 	//    vacío) y el botón para arrancar uno nuevo.
 	//  - 'wizard': el alta de tipo documental en 3 pasos.
 	//  - 'calibracion': "Ejemplo documental" del menú de la tarjeta (2026-09-02,
-	//    sin frame de Figma — se construyó desde una captura). Por ahora SOLO
-	//    puebla el árbol izquierdo con los campos reales del tipo; qué muestra y
-	//    qué hace el lado derecho queda para la siguiente conversación.
-	//  - 'prompts': la revisión de los prompts generados (2026-09-06, también
-	//    desde una captura). MISMO estado que 'calibracion' cuando nació: el
-	//    árbol izquierdo está construido y el lado derecho queda vacío a
-	//    propósito, a pedido explícito.
+	//    sin frame de Figma — se construyó desde una captura): los documentos de
+	//    ejemplo del tipo y el recorte de cada campo sobre ellos. La clave conserva
+	//    el nombre de cuando la pantalla se llamaba «Calibración» (ya no lo dice).
+	//    La vista 'prompts' (la revisión de los prompts generados, 2026-09-06) se
+	//    quitó el 2026-11-06 junto con el botón «Calibrar».
 	// Se entra siempre por 'biblioteca'.
-	let vista = $state<'biblioteca' | 'wizard' | 'calibracion' | 'prompts'>('biblioteca');
+	let vista = $state<'biblioteca' | 'wizard' | 'calibracion'>('biblioteca');
 	let avisoExito = $state(false);
 	// Si el wizard que está abierto es un ALTA o la edición de un modelo que ya
 	// existía. No se puede deducir al final: el tipo documental entra a la
@@ -223,246 +224,6 @@
 	// (si algún día el aviso lo muestra), igual que `campoAQuitar` de arriba.
 	let tipoPocosEjemplos = $state<{ id: string; nombre: string } | null>(null);
 
-	// Id del tipo cuyo modal de "Generar prompts" está abierto, o null. Se
-	// guarda el ID y no un booleano porque el modal se abre desde la tarjeta de
-	// UN tipo concreto: cuando exista el back, la cantidad elegida tendrá que
-	// viajar junto con el tipo al que pertenece.
-	let tipoGenerandoPrompts = $state<string | null>(null);
-
-	// El flujo de "Generar prompt" son TRES pasos, y cada uno tiene su propia
-	// variable a propósito — no una sola con banderas:
-	//   1. `tipoGenerandoPrompts`  modal de cantidad abierto
-	//   2. `promptsPendientes`     modal del documento de ejemplo abierto
-	//   3. `promptsDe`             la pantalla de revisión ya tiene datos
-	// Reusar una sola variable haría que cerrar un paso vaciara el siguiente.
-	let promptsPendientes = $state<{ tipoId: string; cantidad: number } | null>(null);
-	let promptsDe = $state<{ tipoId: string; cantidad: number; archivo: File } | null>(null);
-
-	/** Paso 1 → 2: se eligió la cantidad; ahora falta el documento sobre el que
-	 *  se van a probar los prompts. */
-	function pedirDocumentoParaPrompts(cantidad: number) {
-		if (tipoGenerandoPrompts === null) return;
-		promptsPendientes = { tipoId: tipoGenerandoPrompts, cantidad };
-		tipoGenerandoPrompts = null;
-	}
-
-	/** Paso 2 → 3: con documento en mano, se entra a la revisión. Lo único que
-	 *  NO pasa aquí es la GENERACIÓN: no se le pide nada al back, los renglones
-	 *  del árbol son la estructura de la pantalla, no prompts reales. */
-	function irARevisionDePrompts(archivo: File) {
-		if (promptsPendientes === null) return;
-		promptsDe = { ...promptsPendientes, archivo };
-		promptsPendientes = null;
-		promptActual = 1;
-		puntajesPorPrompt = {};
-		intentoCalibracion = 0;
-		vista = 'prompts';
-	}
-
-	/** Cuál de los `promptsDe.cantidad` prompts se está revisando ahora mismo,
-	 *  1-indexado. Nace en 1 en `irARevisionDePrompts`. */
-	let promptActual = $state(1);
-
-	/** El tipo documental que se está calibrando en la pantalla de prompts.
-	 *  `RevisionPrompt` necesita su `procesadorId` para extraer con el Custom
-	 *  Extractor que le toca — antes del 2026-09-07 llamaba siempre al de INE,
-	 *  así que revisar los prompts de una Póliza corría el extractor de una
-	 *  credencial. */
-	const tipoDePrompts = $derived.by(() => {
-		const enCurso = promptsDe;
-		if (!enCurso) return undefined;
-		return tiposDocumentales.find((t) => t.id === enCurso.tipoId);
-	});
-
-	/** Puntaje (0-100) de cada prompt YA ABANDONADO, por número de prompt —
-	 *  "abandonado" en el sentido de que `avanzarPrompt` ya se lo llevó de
-	 *  encima. El del prompt QUE SE ESTÁ VIENDO ahora mismo (`promptActual`) no
-	 *  vive aquí: se calcula al vuelo en `puntajeDe`, para que si la persona
-	 *  cambia un veredicto después de terminar el último prompt (posible: sus
-	 *  campos se quedan visibles e interactivos, ver `calibracionSinExito`) el
-	 *  puntaje reaccione en vez de quedarse con un número viejo. Un objeto
-	 *  normal basta (no `$state` en las claves) porque nunca se edita una
-	 *  entrada ya escrita, solo se agregan nuevas. */
-	let puntajesPorPrompt = $state<Record<number, number>>({});
-
-	/** Puntaje (0-100) del prompt `n`, sea que ya se haya abandonado
-	 *  (`puntajesPorPrompt`) o que sea el que se está viendo ahora mismo
-	 *  (calculado al vuelo desde `avanceRevision`). `undefined` mientras ese
-	 *  prompt no tenga TODOS sus campos calificados todavía. */
-	function puntajeDe(n: number): number | undefined {
-		if (n === promptActual) {
-			return avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
-				? Math.round((avanceRevision.correctos / avanceRevision.total) * 100)
-				: undefined;
-		}
-		return puntajesPorPrompt[n];
-	}
-
-	/** Puntaje mínimo (correctos/total, en %) para que un prompt cuente como
-	 *  "de calidad adecuada" — el mismo corte que ya pinta un puntaje en verde
-	 *  en `claseColorPuntaje`. No hay razón para que "adecuado" y "verde" sean
-	 *  dos números distintos si ninguno de los dos viene de una fuente real
-	 *  todavía (los dos son una lectura mía, no del back ni del mockup). */
-	const UMBRAL_ADECUADO = 80;
-
-	/** Verde/ámbar/rojo del puntaje, a pedido explícito con captura
-	 *  (2026-09-07). Cortes propios — el diseño solo mostró 84% en verde y 60%
-	 *  en ámbar, así que 80/50 es la lectura más simple que reproduce esos dos
-	 *  ejemplos sin inventar un tercer corte que nadie pidió. */
-	function claseColorPuntaje(puntaje: number): string {
-		if (puntaje >= UMBRAL_ADECUADO) return 'bg-green-50 text-green-700';
-		if (puntaje >= 50) return 'bg-amber-50 text-amber-700';
-		return 'bg-red-50 text-red-700';
-	}
-
-	/** true cuando se llegó al ÚLTIMO prompt, se calificaron todos sus campos,
-	 *  y NINGUNO de los `promptsDe.cantidad` prompts alcanzó `UMBRAL_ADECUADO`
-	 *  (2026-09-07, a pedido explícito con captura: "cuando ninguno de los
-	 *  prompts alcanza un nivel adecuado, debe desplegar este mensaje").
-	 *  Es un `$derived`, no una bandera que se prende una vez y se queda
-	 *  prendida: los campos del último prompt se quedan visibles e
-	 *  interactivos después de esto (nada los oculta), así que si la persona
-	 *  cambia un veredicto y el puntaje sube del umbral, el aviso debe
-	 *  desaparecer solo, no quedarse mintiendo. */
-	const calibracionSinExito = $derived.by(() => {
-		if (promptsDe === null || promptActual !== promptsDe.cantidad) return false;
-		const puntajes: number[] = [];
-		for (let n = 1; n <= promptsDe.cantidad; n++) {
-			const p = puntajeDe(n);
-			if (p === undefined) return false; // todavía falta calificar alguno
-			puntajes.push(p);
-		}
-		return puntajes.every((p) => p < UMBRAL_ADECUADO);
-	});
-
-	/** "Continuar" con el pie: por ahora cada prompt es la MISMA operación
-	 *  (correr el extractor contra el mismo documento de ejemplo y calificar sus
-	 *  campos) repetida tantas veces como prompts se hayan pedido — todavía no
-	 *  existe una noción de qué distingue a un prompt del siguiente, así que no
-	 *  hay nada más que "avanzar" por ahora. El `{#key}` que envuelve a
-	 *  `RevisionPrompt` es lo que fuerza una corrida nueva: al cambiar la key,
-	 *  Svelte destruye el componente viejo y monta uno limpio, que vuelve a
-	 *  extraer desde cero.
-	 *  Antes de avanzar, se calcula el puntaje del prompt que se abandona
-	 *  (correctos/total de `avanceRevision`, que a esta altura siempre tiene
-	 *  `revisados === total` porque así lo exige `revisionCompleta`) y se
-	 *  guarda en `puntajesPorPrompt` para que el sidebar lo pinte.
-	 *  En el ÚLTIMO prompt esto no hace nada — no hay a dónde avanzar. Si
-	 *  además NINGÚN prompt alcanzó el umbral, ese caso lo resuelve
-	 *  `calibracionSinExito` con su propio pie (`calibrarNuevamente` /
-	 *  `pedirNuevoDocumentoParaPrompts`); si SÍ hay al menos uno adecuado, qué
-	 *  debería pasar sigue sin definirse (ver `docs/pendientes-ux.md`). */
-	function avanzarPrompt() {
-		if (promptsDe === null || promptActual >= promptsDe.cantidad) return;
-		if (avanceRevision.total > 0) {
-			puntajesPorPrompt[promptActual] = Math.round(
-				(avanceRevision.correctos / avanceRevision.total) * 100
-			);
-		}
-		promptActual += 1;
-		// Se apaga aquí, no solo en el remount de `RevisionPrompt`: entre el
-		// clic y el primer `onCambioRevision` del componente nuevo hay un hueco
-		// donde `avanceRevision` todavía tendría los números del prompt viejo
-		// (todo revisado), y "Continuar" se vería habilitado un instante antes
-		// de que la extracción nueva ni siquiera empiece.
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-	}
-
-	/** true cuando el prompt en pantalla es el último de la tanda. Es lo que
-	 *  decide si "Continuar" avanza al siguiente o cierra la calibración. */
-	const esUltimoPrompt = $derived(promptsDe !== null && promptActual === promptsDe.cantidad);
-
-	/**
-	 * El ÚLTIMO "Continuar" (2026-09-14, a pedido explícito). Cierra la
-	 * calibración: deja constancia de que este tipo ya se probó —lo que cambia
-	 * su tarjeta de ofrecer "Calibrar" a mostrar "Activado"— y regresa al
-	 * listado de tipos documentales.
-	 *
-	 * Esto llena el hueco que `avanzarPrompt` documentaba como "sin definir":
-	 * qué pasa al terminar el último prompt cuando SÍ hubo alguno adecuado. El
-	 * caso contrario no llega aquí — si ninguno alcanzó el umbral, el pie es
-	 * otro (`calibracionSinExito`) y ni siquiera ofrece "Continuar".
-	 *
-	 * Reusa `salirDeRevisionDePrompts` en vez de repetir el reseteo: son el
-	 * mismo destino, y tener dos copias las dejaría libres de divergir.
-	 */
-	function terminarCalibracion() {
-		if (promptsDe === null) return;
-		// Si la marca no llegó al disco NO se sale de la revisión: irse dejaría
-		// el trabajo de calibrar tirado —el tipo seguiría sin calibrar y sin
-		// extraer— sin más señal que el aviso, ya en otra pantalla. Quedándose
-		// aquí, se libera espacio y se vuelve a picar Continuar.
-		if (!marcarCalibrado(promptsDe.tipoId)) return;
-		salirDeRevisionDePrompts();
-	}
-
-	/** Onclick único de "Continuar": en los prompts intermedios avanza, y en el
-	 *  último cierra la calibración. Una sola función y no dos botones para que
-	 *  el pie no pueda quedar mostrando los dos, o ninguno. */
-	function continuarRevision() {
-		if (esUltimoPrompt) terminarCalibracion();
-		else avanzarPrompt();
-	}
-
-	/** Se incrementa cada vez que `calibrarNuevamente` reinicia el MISMO
-	 *  documento desde el prompt 1. Sin esto, si `cantidad === 1`,
-	 *  `promptActual` volvería a valer 1 —el mismo valor que ya tenía— y el
-	 *  `{#key}` que envuelve a `RevisionPrompt` no cambiaría, así que el
-	 *  componente no se remontaría y no volvería a extraer nada. */
-	let intentoCalibracion = $state(0);
-
-	/** Pie de "No fue posible activar el modelo": reinicia la revisión desde
-	 *  el prompt 1 contra el MISMO documento de ejemplo — a diferencia de
-	 *  "Cargar documento" (abajo), que pide uno nuevo. */
-	function calibrarNuevamente() {
-		promptActual = 1;
-		puntajesPorPrompt = {};
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-		intentoCalibracion += 1;
-	}
-
-	/** El otro camino que ofrece el aviso: probar con un documento de ejemplo
-	 *  distinto. Reabre el mismo modal que el paso 2→3 original
-	 *  (`DocumentoParaPrompts`, vía `promptsPendientes`), con el mismo tipo y
-	 *  cantidad — `irARevisionDePrompts` hace el resto (incluido resetear
-	 *  `promptActual` y `puntajesPorPrompt`) en cuanto se elige el archivo. */
-	function pedirNuevoDocumentoParaPrompts() {
-		if (promptsDe === null) return;
-		promptsPendientes = { tipoId: promptsDe.tipoId, cantidad: promptsDe.cantidad };
-	}
-
-	/** "Cancelar generación" (y la X, Escape y el clic fuera del modal del
-	 *  documento): aborta el flujo COMPLETO, no solo ese paso — volver al modal
-	 *  de cantidad obligaría a re-elegirla sin haberlo pedido. */
-	function cancelarGeneracionDePrompts() {
-		promptsPendientes = null;
-	}
-
-	/** Salir de la revisión: además de regresar a la Biblioteca, suelta el
-	 *  documento y la cantidad. Lo usan "Cancelar evaluación" del pie y la X del
-	 *  encabezado (vía `cerrarNivel`) — el mismo destino por dos caminos, así
-	 *  que comparten función para que no puedan divergir. */
-	function salirDeRevisionDePrompts() {
-		promptsDe = null;
-		avanceRevision = { revisados: 0, total: 0, correctos: 0 };
-		puntajesPorPrompt = {};
-		intentoCalibracion = 0;
-		vista = 'biblioteca';
-	}
-
-	/** Cuántos campos del prompt en revisión llevan veredicto, de cuántos hay,
-	 *  y cuántos de esos quedaron "Correcto". Lo reporta `RevisionPrompt`.
-	 *  `revisados`/`total` son lo único que habilita "Continuar": seguir
-	 *  adelante con campos sin revisar dejaría huecos justo en el dato que la
-	 *  pantalla existe para recoger. `total: 0` (todavía extrayendo, o un
-	 *  documento sin campos) también deja el botón apagado, que es lo
-	 *  correcto — no hay nada que evaluar. `correctos` alimenta el puntaje que
-	 *  calcula `puntajeDe`. */
-	let avanceRevision = $state({ revisados: 0, total: 0, correctos: 0 });
-	const revisionCompleta = $derived(
-		avanceRevision.total > 0 && avanceRevision.revisados === avanceRevision.total
-	);
-
 	/** Onclick del switch "Ejemplo documental": apagarlo siempre es directo
 	 *  (no hay nada que recomendar al quitar la marca de "listo"). Prenderlo
 	 *  con menos de `MINIMO_EJEMPLOS_RECOMENDADO` instancias abre el aviso en
@@ -513,14 +274,25 @@
 
 	// «Generar a partir de un documento» (2026-10-29): el modal que propone campos leyendo un documento de ejemplo.
 	let generarCamposAbierto = $state(false);
+	/** Los documentos del paso 1 que se le ofrecen al modal (una copia al abrirlo: no cambian mientras está abierto). */
+	let ejemplosParaGenerar = $state<File[]>([]);
 
 	/** Lo que la persona eligió de la propuesta cae en «Campos agregados». Si el formulario de captura estaba en blanco se
 	 *  oculta (como al guardar un campo), para que lo agregado quede a la vista; si tenía algo a medias, se respeta. */
-	function agregarPropuestos(elegidos: CampoPropuesto[]) {
+	function agregarPropuestos(elegidos: CampoPropuesto[], ejemplos: File[]) {
 		agregarCamposPropuestos(elegidos);
+		// Los documentos con que se generaron los campos se recuerdan (SOLO en la memoria de la pestaña) para poder probar la extracción con ellos al activar el
+		// tipo (`ProbarExtraccion`). El asistente guarda el tipo con cada cambio, pero se asegura aquí para tener su id.
+		const id = guardarTipoDocumental() ?? borrador.idGuardado;
+		if (id && ejemplos.length > 0) recordarEjemplos(id, ejemplos);
 		generarCamposAbierto = false;
 		if (campoIntacto(borrador.campoEnCaptura)) mostrarFormularioCampo = false;
 	}
+
+	// «Probar con documentos» (2026-11-07): el tipo cuya extracción se está probando (`null` = cerrado). Se abre desde el menú ⋮ de un tipo activo y, solo, justo
+	// después de ACTIVAR un tipo cuyos campos se generaron con documentos de ejemplo que todavía están en memoria.
+	let pruebaDeId = $state<string | null>(null);
+	const tipoEnPrueba = $derived(pruebaDeId ? (tiposDocumentales.find((t) => t.id === pruebaDeId) ?? null) : null);
 
 	// El tipo documental que se está por eliminar. Guarda también si TIENE un
 	// procesador real (no si está "activo": un borrador nacido de una futura
@@ -530,10 +302,8 @@
 	// Document AI — omitir esa advertencia cuando sí aplica sería dejar que
 	// alguien destruya un recurso real de GCP sin haberlo sabido de antemano.
 	//
-	// Hoy, con el menú mostrando "Borrar" SOLO para tipos no-activos, este
-	// campo casi siempre es `false` — pero la función de abajo no depende de
-	// esa coincidencia, por si el día de mañana un borrador sí llega a
-	// tenerlo.
+	// Desde el 2026-11-04 «Borrar» también se ofrece en un tipo ACTIVO (con su
+	// procesador), así que esto ya no es casi siempre `false`: el diálogo avisa.
 	let tipoAEliminar = $state<{ id: string; nombre: string; tieneProcesador: boolean } | null>(
 		null
 	);
@@ -542,48 +312,25 @@
 	// tanto — no es instantáneo como quitar un campo del borrador.
 	let eliminandoId = $state<string | null>(null);
 
-	// El tipo documental que se está por archivar (SIEMPRE uno activo: es la
-	// alternativa no destructiva a "Borrar" para ese caso). A diferencia de
-	// eliminar, es instantáneo y local — no hay `archivandoId` porque no hay
-	// nada que esperar.
-	let tipoAArchivar = $state<{ id: string; nombre: string } | null>(null);
-	// Qué procesos usan el tipo que se va a archivar (NEX-544). `null` = no se pudo revisar (el diálogo lo dice). Se lee ANTES de abrir el diálogo,
-	// para no pedir la confirmación a ciegas.
+	// Qué procesos usan el tipo que se va a borrar (NEX-544; hasta el 2026-11-07 lo decía el diálogo de «Archivar», que se quitó: Moibe, «como ya podemos borrar
+	// libremente, en realidad Archivar ya no es necesario»). `null` = no se pudo revisar (el diálogo lo dice). Se lee ANTES de abrir el diálogo, para no pedir la
+	// confirmación a ciegas.
 	let procesosDelTipo = $state<{ nombre: string; nodos: number }[] | null>([]);
 
-	async function pedirArchivarTipo(tipo: { id: string; nombre: string }) {
+	async function pedirBorrarTipo(tipo: { id: string; nombre: string; tieneProcesador: boolean }) {
 		await cargarProcesos();
 		procesosDelTipo = estadoProcesos.error ? null : procesosQueUsanElTipo(tipo.id);
-		tipoAArchivar = tipo;
+		tipoAEliminar = tipo;
 	}
 
-	/** Lo que el diálogo de archivar dice de los procesos: a cuáles afecta, o que no se pudo revisar. Vacío si ninguno lo usa. */
+	/** Lo que el diálogo de borrar dice de los procesos: a cuáles afecta, o que no se pudo revisar. Vacío si ninguno lo usa. */
 	const avisoDeProcesos = $derived(
 		procesosDelTipo === null
 			? ' No se pudo revisar si algún proceso lo usa.'
 			: procesosDelTipo.length === 0
 				? ''
-				: ` Lo usan ${procesosDelTipo.length === 1 ? 'este proceso' : 'estos procesos'}: ${procesosDelTipo.map((p) => `«${p.nombre}» (${p.nodos} ${p.nodos === 1 ? 'nodo' : 'nodos'})`).join(', ')}. Siguen guardados con su nodo, que se verá marcado como archivado hasta que lo quites.`
+				: ` Lo usan ${procesosDelTipo.length === 1 ? 'este proceso' : 'estos procesos'}: ${procesosDelTipo.map((p) => `«${p.nombre}» (${p.nodos} ${p.nodos === 1 ? 'nodo' : 'nodos'})`).join(', ')}. Siguen guardados, pero su nodo de este tipo quedará marcado como que ya no existe y no podrán guardarse hasta que lo quites.`
 	);
-
-	async function confirmarArchivarTipo() {
-		const objetivo = tipoAArchivar;
-		tipoAArchivar = null;
-		if (!objetivo) return;
-		// Se limpia AL EMPEZAR, no solo al fallar — mismo motivo que en
-		// `confirmarEliminarTipo`: sin esto, un aviso de un intento anterior se
-		// quedaba pegado en pantalla aunque este intento nuevo terminara bien.
-		errorActivacion = '';
-		const r = await archivarTipoDocumental(objetivo.id);
-		// Archivar en sí es local y no puede fallar (ver el docstring de
-		// `archivarTipoDocumental`) — lo único que puede salir mal es la
-		// sincronización del clasificador, y eso NO debe tratarse como que
-		// "archivar" falló: el tipo YA se archivó.
-		if (r.avisoClasificador) {
-			tituloError = 'El tipo se archivó, pero el clasificador no se pudo actualizar.';
-			errorActivacion = r.avisoClasificador;
-		}
-	}
 
 	async function confirmarEliminarTipo() {
 		const objetivo = tipoAEliminar;
@@ -618,8 +365,8 @@
 	let historialTipo = $state<TipoDocumentalGuardado | null>(null);
 
 	// Lo que existe en la Biblioteca de cara al usuario: un tipo `archivado`
-	// (ver `archivarTipoDocumental`) sigue en `localStorage`, pero no debe
-	// listarse en las tarjetas — es justo lo que "Archivar" promete. Todo lo
+	// (estado viejo: «Archivar» se quitó el 2026-11-07) sigue guardado, pero no
+	// se lista en las tarjetas, como cuando se archivaba. Todo lo
 	// que antes leía `tiposDocumentales` para RENDERIZAR usa esto en su lugar;
 	// el estado de verdad sigue siendo `tiposDocumentales`.
 	//
@@ -645,6 +392,8 @@
 			errorActivacion = r.mensaje;
 			return;
 		}
+		// Si los campos se generaron con documentos de ejemplo, ahora que ya hay procesador se ofrece probar la extracción con ellos (no corre sola: pide un botón).
+		if (ejemplosDeTipo(id).length > 0) pruebaDeId = id;
 		// El Extractor (lo que este botón promete) ya quedó activo llegado
 		// aquí — un fallo sincronizando el clasificador es secundario: este
 		// tipo puede seguir cayendo en "otro" al clasificar hasta que se
@@ -699,25 +448,101 @@
 	let errorSugerencia = $state('');
 	/** El texto que puso la IA en la caja, mientras la persona no lo haya tocado. */
 	let descripcionSugerida = $state('');
+	/**
+	 * Con qué documentos de ejemplo se escribió la sugerencia que se ve (2026-11-07, Moibe: «va»): vacío si fue solo con el nombre. Gemini los LEE y se descartan; no se
+	 * guardan. Se dice en la leyenda (y que hay que quitar cualquier dato personal que se haya colado), y se recuerdan en la memoria de la pestaña para ofrecerlos al generar los
+	 * campos en el paso 2 (`fijarEjemplosDelPaso1`) en vez de pedirlos otra vez.
+	 */
+	let documentosDeLaSugerencia = $state<string[]>([]);
+	/**
+	 * Los documentos que la persona dio en el paso 1 y siguen recordados (en memoria) para reutilizarlos: a diferencia de `documentosDeLaSugerencia`, NO se vacía cuando una sugerencia
+	 * posterior es solo con el nombre. Es lo que dice la línea «Se reutilizarán para…» bajo los botones, que antes no se avisaba y parecía que los documentos solo servían para la sugerencia.
+	 */
+	let documentosDelPaso1 = $state<string[]>([]);
+	let entradaDocumentosSugerencia = $state<HTMLInputElement | null>(null);
+	/** Si la sugerencia en curso es con documentos: el «Pensando…» va en el botón que se usó. */
+	let sugiriendoConDocumentos = $state(false);
+	// Empezar por el nombre (2026-11-08, Moibe): al abrir el paso 1 de un alta el foco va al nombre; si se pica otra cosa del paso sin haberlo escrito, se
+	// regresa ahí y una línea lo dice (sin nombre, la descripción y las sugerencias no sirven de nada: la IA lo necesita).
+	let entradaNombreTipo = $state<HTMLInputElement | null>(null);
+	let pedirNombrePrimero = $state(false);
+	$effect(() => {
+		if (borrador.paso === 1 && entradaNombreTipo && untrack(() => borrador.nombre.trim() === '')) entradaNombreTipo.focus();
+	});
+	$effect(() => {
+		if (borrador.nombre.trim() !== '') pedirNombrePrimero = false;
+	});
+	function exigirNombrePrimero(evento: PointerEvent) {
+		if (borrador.nombre.trim() !== '' || !entradaNombreTipo) return;
+		if (entradaNombreTipo.contains(evento.target as Node)) return;
+		evento.preventDefault();
+		pedirNombrePrimero = true;
+		entradaNombreTipo.focus();
+	}
+	const MAX_DOCUMENTOS_SUGERENCIA = 3;
+	const MAX_BYTES_SUGERENCIA = 18 * 1024 * 1024;
+	const FORMATOS_SUGERENCIA = ['pdf', 'jpg', 'jpeg', 'png'];
 
-	async function sugerirDescripcion() {
+	/** «a», «a y b», «a, b y c». */
+	const nombresJuntos = (nombres: string[]) => (nombres.length <= 1 ? (nombres[0] ?? '') : `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`);
+
+	/** Los documentos que la persona eligió para la sugerencia: se revisan aquí (formato, cuántos, peso) antes de mandarlos; el servidor los vuelve a revisar. */
+	function alElegirDocumentosDeSugerencia(evento: Event) {
+		const input = evento.currentTarget as HTMLInputElement;
+		const elegidos = [...(input.files ?? [])];
+		input.value = ''; // para que volver a elegir el MISMO archivo dispare el cambio
+		if (elegidos.length === 0) return;
+		errorSugerencia = '';
+		if (elegidos.some((a) => !FORMATOS_SUGERENCIA.includes(a.name.split('.').pop()?.toLowerCase() ?? ''))) {
+			errorSugerencia = 'Para sugerir la descripción con documentos usa PDF, JPG o PNG.';
+			return;
+		}
+		if (elegidos.length > MAX_DOCUMENTOS_SUGERENCIA) {
+			errorSugerencia = `Son demasiados documentos: elige hasta ${MAX_DOCUMENTOS_SUGERENCIA}.`;
+			return;
+		}
+		if (elegidos.reduce((suma, a) => suma + a.size, 0) > MAX_BYTES_SUGERENCIA) {
+			errorSugerencia = 'Los documentos pesan demasiado: entre todos, a lo más 18 MB.';
+			return;
+		}
+		void sugerirDescripcion(elegidos);
+	}
+
+	async function sugerirDescripcion(archivos: File[] = []) {
 		if (sugiriendo || borrador.nombre.trim() === '') return;
 		sugiriendo = true;
+		sugiriendoConDocumentos = archivos.length > 0;
 		sugerencia = null;
 		errorSugerencia = '';
 		const tipoPedido = borrador.idGuardado;
 		try {
-			const r = await fetch('/api/tipos-documentales/sugerir-descripcion', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ nombre: borrador.nombre, tipoId: borrador.idGuardado ?? undefined })
-			});
+			let r: Response;
+			if (archivos.length > 0) {
+				// Con documentos: multipart (el nombre, el tipo si ya existe y los archivos). Nada se guarda en ningún lado.
+				const cuerpo = new FormData();
+				cuerpo.append('nombre', borrador.nombre);
+				if (borrador.idGuardado) cuerpo.append('tipoId', borrador.idGuardado);
+				for (const a of archivos) cuerpo.append('archivos', a, a.name);
+				r = await fetch('/api/tipos-documentales/sugerir-descripcion-con-documentos', { method: 'POST', body: cuerpo });
+			} else {
+				r = await fetch('/api/tipos-documentales/sugerir-descripcion', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ nombre: borrador.nombre, tipoId: borrador.idGuardado ?? undefined })
+				});
+			}
 			const datos = await r.json().catch(() => null);
 			// Si mientras tanto se pasó a otro tipo, esta respuesta ya no es de lo que se ve.
 			if (tipoPedido !== borrador.idGuardado) return;
 			if (!r.ok || typeof datos?.descripcion !== 'string') {
 				errorSugerencia = mensajeDeFallo(datos, r.status, 'al sugerir la descripción');
 				return;
+			}
+			// Los documentos que la leyeron: se dicen en la leyenda y se guardan (en memoria) para ofrecerlos en el paso 2.
+			documentosDeLaSugerencia = archivos.map((a) => a.name);
+			if (archivos.length > 0) {
+				fijarEjemplosDelPaso1(archivos);
+				documentosDelPaso1 = archivos.map((a) => a.name);
 			}
 			if (borrador.descripcion.trim() === '') {
 				borrador.descripcion = datos.descripcion;
@@ -748,6 +573,8 @@
 			sugerencia = null;
 			errorSugerencia = '';
 			descripcionSugerida = '';
+			documentosDeLaSugerencia = [];
+			documentosDelPaso1 = [];
 		});
 	});
 
@@ -766,6 +593,21 @@
 	// abajo debe mostrarse exactamente cuando esto es falso, ni antes ni
 	// después.
 	const hayCampoAlAvanzar = $derived(borrador.campos.length > 0 || puedeAgregar);
+
+	/**
+	 * ¿El paso `n` está HECHO? Es lo que pinta «Listo» en el costado (2026-11-08, Moibe: «no sé por qué tiene palomita en el 2, si de verdad no tiene
+	 * campos configurados, ¿será un bug?»). Lo era: «Listo» salía con solo haber llegado al paso (`pasoMaximo`), así que ir al 2 y regresar al 1 sin
+	 * agregar nada dejaba el 2 en «Listo» con cero campos. Ahora, además de visitado:
+	 *   · paso 1: nombre y descripción, sin nombre repetido (lo mismo que pide su botón);
+	 *   · paso 2: al menos un campo agregado;
+	 *   · paso 3: también al menos un campo (sus propiedades vienen con valores por omisión; sin campos no hay nada que configurar).
+	 * Un paso visitado pero sin hacer dice «Por configurar» y se sigue pudiendo picar (eso lo decide `pasoNavegable`, no esto).
+	 */
+	function pasoListo(n: number): boolean {
+		if (n > borrador.pasoMaximo) return false;
+		if (n === 1) return borrador.nombre.trim() !== '' && borrador.descripcion.trim() !== '' && !nombreTipoRepetido;
+		return borrador.campos.length > 0;
+	}
 
 	// Se puede pasar al paso 3 si va a quedar al menos un campo (cambio
 	// pedido el 2026-09-03: antes los campos eran opcionales para avanzar,
@@ -882,14 +724,9 @@
 	 *
 	 *  Es una lista de vistas INTERIORES, no una negación de 'biblioteca', y hay
 	 *  que acordarse de agregar cada vista nueva aquí: si no, su X cierra el
-	 *  módulo entero en vez de regresar a la Biblioteca — y hoy 'prompts' no
-	 *  tiene pie con botones, así que esa X es su ÚNICA salida. */
+	 *  módulo entero en vez de regresar a la Biblioteca. */
 	function cerrarNivel() {
-		if (vista === 'prompts') {
-			// Mismo camino que "Cancelar evaluación": suelta el documento y la
-			// cantidad, no solo cambia de vista.
-			salirDeRevisionDePrompts();
-		} else if (vista === 'wizard' || vista === 'calibracion') {
+		if (vista === 'wizard' || vista === 'calibracion') {
 			// Salir del asistente sin haber tocado nada deshace la nueva versión
 			// que abrirlo había empezado. Mientras esto fue un panel lateral,
 			// Escape y el clic fuera entraban también por aquí; de página solo
@@ -912,18 +749,15 @@
 	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
 	 *  picando su tarjeta en la lista, que es donde el usuario lo busca. */
 	function nuevoTipoDocumental() {
-		// RESCATE antes de limpiar. El diseño se apoya en un invariante: "todo lo
-		// capturado ya viajó a la biblioteca, así que limpiar no pierde nada". Eso
-		// es cierto para datos nuevos —el tipo se guarda al salir del paso 1— pero
-		// NO para un borrador escrito por una versión anterior a que existiera la
-		// biblioteca: ese llega con `idGuardado` en null y sin tarjeta que lo abra,
-		// así que este botón era su única affordance visible... y lo destruía. En
-		// la versión que escribió ese dato, este mismo botón era el que lo RETOMABA.
-		//
-		// `guardarTipoDocumental` no hace nada si no hay nombre, así que un
-		// borrador vacío se limpia como siempre.
-		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
+		// Ya NO hay «rescate» (2026-11-10). Guardaba como tipo NUEVO cualquier borrador sin `idGuardado` que tuviera algo escrito. Nació
+		// para los borradores de antes de que existiera la biblioteca (esa época terminó: desde el 2026-10-15 el catálogo vive en el
+		// servidor), y en la práctica hacía dos cosas que nadie pidió: RESUCITAR con otro id un tipo recién borrado (al borrarlo, el
+		// borrador se desligaba pero conservaba su nombre; Moibe lo vio como «ya existe un tipo con este nombre» tras borrar INE) y meter
+		// a la biblioteca un alta abandonada en el paso 1. Un tipo entra a la biblioteca solo con «Continuar» del paso 1.
 		limpiarBorrador();
+		// Un alta nueva no hereda los documentos del paso 1 de la anterior (si esa se dejó sin salir del paso 1, `idGuardado` seguía en null y nada más los reiniciaba).
+		documentosDelPaso1 = [];
+		documentosDeLaSugerencia = [];
 		avisoExito = false;
 		tituloError = '';
 		errorActivacion = '';
@@ -994,8 +828,8 @@
 	 * como se cargó. Existe para poder distinguir, al salir del asistente,
 	 * entre "abrí y cerré sin tocar nada" y "edité algo y me salí".
 	 *
-	 * `crearNuevaVersion` muta el registro en el acto (lo pasa a `borrador` y
-	 * le quita la calibración), y antes del 2026-09-22 salir con el tache no
+	 * `crearNuevaVersion` muta el registro en el acto (lo pasa a `borrador`), y
+	 * antes del 2026-09-22 salir con el tache no
 	 * deshacía nada: el tipo se quedaba desconfigurado para siempre aunque su
 	 * procesador siguiera publicado y vivo. Esto es lo que permite deshacerlo.
 	 */
@@ -1017,7 +851,7 @@
 	/**
 	 * Al salir del asistente: si se había abierto para una nueva versión y el
 	 * borrador sigue idéntico a como se cargó, se deshace todo y el tipo queda
-	 * como estaba (activo, con su calibración).
+	 * como estaba (activo).
 	 *
 	 * Si SÍ editó algo no se toca nada: su trabajo sigue en el borrador y el
 	 * tipo sigue en edición, retomable desde "Editar". Deshacer ahí le borraría
@@ -1093,13 +927,6 @@
 			return;
 		}
 		tiposExpandidos.add(idTipo);
-		// Al DESPLEGAR (no al replegar) se rellena el nombre del procesador si
-		// falta, leyéndolo de Document AI. Aquí y no al cargar la Biblioteca
-		// porque ese nombre solo se ve en esta ficha: preguntándolo al abrir se
-		// paga exactamente una consulta por tipo que alguien de verdad miró, y
-		// cero por los que no. La función es silenciosa y se acuerda de a
-		// quién ya le preguntó — ver `completarNombreProcesador`.
-		void completarNombreProcesador(idTipo);
 	}
 
 	// Arrastrar-y-soltar para reordenar los tipos documentales (pedido explícito
@@ -1229,7 +1056,12 @@
 		// actualiza la entrada cuando el borrador ya trae `idGuardado`. Así los
 		// campos se agregan a la MISMA entrada que se creó un paso antes.
 		if (borrador.paso === 1 || borrador.paso === 2) {
-			guardarTipoDocumental();
+			const idGuardado = guardarTipoDocumental();
+			// Los documentos del paso 1 (con los que se sugirió la descripción) pasan a ser los del tipo: así, aunque no se generen los campos con ellos, al activarlo se
+			// ofrece probar la extracción. Solo si hay: no se pisan los que ya tuviera (los del paso 2).
+			if (borrador.paso === 1 && idGuardado && ejemplosDelPaso1Actuales().length > 0 && ejemplosDeTipo(idGuardado).length === 0) {
+				recordarEjemplos(idGuardado, ejemplosDelPaso1Actuales());
+			}
 			// Si no llegó al disco no se avanza: el paso siguiente da por hecho
 			// que el tipo ya existe en la Biblioteca, y seguir dejaría al usuario
 			// configurando campos de algo que va a desaparecer al refrescar. El
@@ -1316,14 +1148,8 @@
 	<!-- header . navigation -->
 	<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
 		<p class="flex-1 text-base font-medium text-foreground">
-			<!-- "Generación de prompt" es el texto literal del encabezado del
-			     modal que trae a esta pantalla (captura del 2026-09-06). La
-			     captura de ESTA vista viene recortada y no muestra su propio
-			     encabezado, así que se reusa ese en vez de inventar uno. -->
 			{#if vista === 'calibracion'}
 				Configuración de tipo documental
-			{:else if vista === 'prompts'}
-				Generación de prompt
 			{:else}
 				Módulo de configuración
 			{/if}
@@ -1336,13 +1162,13 @@
 		     engrane; por eso sube de uno en uno, y así se quedó. -->
 		<button
 			type="button"
-			class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground"
+			class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300"
 			data-testid="salir-modulo-configuracion"
 			onclick={cerrarNivel}
 		>
 			<CancelSquareIcon />
 			<span class="sr-only">
-				{vista === 'wizard' || vista === 'calibracion' || vista === 'prompts'
+				{vista === 'wizard' || vista === 'calibracion'
 				? 'Volver al módulo de configuración'
 				: 'Cerrar'}
 			</span>
@@ -1354,28 +1180,19 @@
 		<span
 			class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary"
 		>
-			<!-- El ícono de "Calibración" es una aproximación: esta pantalla
+			<!-- El ícono de "Ejemplo documental" es una aproximación: esta pantalla
 			     salió de una captura, sin link de Figma que confirmar contra
 			     píxeles reales (a diferencia del resto del módulo). -->
 			{#if vista === 'calibracion'}
 				<Sparkles class="size-4" />
-			{:else if vista === 'prompts'}
-				<CodeXml class="size-4" />
 			{:else}
 				<SetupIcon />
 			{/if}
 		</span>
 		<div class="min-w-0 flex-1">
 			{#if vista === 'calibracion'}
-				<h2 class="text-lg font-medium text-foreground">Calibración de campos extraídos</h2>
+				<h2 class="text-lg font-medium text-foreground">Ejemplo documental</h2>
 				<p class="text-sm text-muted-foreground">Carga tus documentos referencia</p>
-			{:else if vista === 'prompts'}
-				<!-- Sin subtítulo a propósito: la captura de esta vista viene
-				     recortada justo donde iría, y el único texto legible de esa
-				     zona ("...información antes de continuar con el proceso.")
-				     pertenece al panel DERECHO, que está fuera del alcance de
-				     esta iteración. Mejor sin subtítulo que con uno inventado. -->
-				<h2 class="text-lg font-medium text-foreground">Generar prompts de configuración</h2>
 			{:else}
 				<h2 class="text-lg font-medium text-foreground">Motor de configuración documental</h2>
 				<p class="text-sm text-muted-foreground">
@@ -1390,8 +1207,8 @@
 		     «elimina el árbol doble de aquí»): ahí traía el rótulo «Configuración», la tarjeta «Biblioteca» y un árbol con una
 		     rama por tipo que repetía las tarjetas de la derecha y las filtraba; arrastrar una rama reordenaba. Se quitó la barra
 		     entera, como en Procesos y API Keys (2026-11-03): las tarjetas ocupan todo el ancho, se ven todas y se reordenan
-		     arrastrándolas de su asa. En el asistente, Calibración y Prompts la barra sigue: ahí es su navegación (los pasos, los
-		     campos del tipo, los prompts), no una copia del panel. Para devolver el árbol: `git show b88d625:src/lib/components/config/ModuloConfiguracion.svelte`. -->
+		     arrastrándolas de su asa. En el asistente y en «Ejemplo documental» la barra sigue: ahí es su navegación (los pasos, los
+		     campos del tipo), no una copia del panel. Para devolver el árbol: `git show b88d625:src/lib/components/config/ModuloConfiguracion.svelte`. -->
 		{#if vista !== 'biblioteca'}
 		<aside
 			class="w-82.5 shrink-0 overflow-y-auto border-t-2 border-r-2 border-muted bg-background p-6"
@@ -1446,85 +1263,14 @@
 						</li>
 					</ul>
 				{/if}
-			{:else if vista === 'prompts'}
-				<!-- Réplica de la captura del 2026-09-06. Reusa a propósito el MISMO
-				     lenguaje visual del sidebar del wizard, con sus TRES estados
-				     reales calcado del `state` del wizard de arriba, salvo que aquí
-				     el subrayado y el rótulo/puntaje son DOS preguntas distintas
-				     (2026-09-07, segunda ronda: la primera los ataba juntos a
-				     `n < promptActual`, pero el aviso de "ningún prompt adecuado"
-				     deja el ÚLTIMO prompt con puntaje MIENTRAS sigue siendo el que se
-				     muestra a la derecha):
-				       - El subrayado (`border-b-2 border-green-500`) marca cuál
-				         renglón es el que se está VIENDO ahora mismo: `n === promptActual`,
-				         sin importar si ya tiene puntaje o no.
-				       - El rótulo/chip depende de `puntajeDe(n)`: check verde + "Listo"
-				         (el MISMO texto que usa el wizard para un paso completado; se
-				         llamó "Revisado" en el primer intento) más el chip
-				         "Puntaje | N%" en cuanto ese prompt tiene TODOS sus campos
-				         calificados — sea que ya se haya abandonado (`n < promptActual`)
-				         o que sea el actual y ya esté completo. Sin puntaje, el actual
-				         dice "En revisión" (punto verde) y el resto "Por revisar" (gris).
-				     Los renglones siguen sin ser clicables — no hay forma de VOLVER a
-				     un prompt ya abandonado, a diferencia del wizard — porque no está
-				     pedido: cada prompt de hoy es la misma operación repetida, no una
-				     página con su propio estado que valga la pena reabrir.
-				     El puntaje mismo (correctos/total, ver `puntajeDe`) es una lectura
-				     MÍA, no del mockup: es lo único medible con lo que ya se captura
-				     en pantalla.
-				     OJO con la captura: su tercer renglón dice "2. Prompt 3", un
-				     dedazo del diseño. Aquí se numera correctamente. -->
-				<ol class="space-y-6">
-					{#each Array.from({ length: promptsDe?.cantidad ?? 0 }, (_, i) => i + 1) as n (n)}
-						{@const esActual = n === promptActual}
-						{@const puntaje = puntajeDe(n)}
-						<li class={esActual ? 'border-b-2 border-green-500 pb-4' : 'pb-4'}>
-							<div class="mb-1 flex items-center justify-between gap-2">
-								<div class="flex items-center gap-1.5">
-									{#if puntaje !== undefined}
-										<Check class="size-3.5 text-green-600" />
-										<span class="text-xs font-medium text-green-600">Listo</span>
-									{:else if esActual}
-										<span class="size-1.5 rounded-full bg-green-500"></span>
-										<span class="text-xs font-medium text-green-600">En revisión</span>
-									{:else}
-										<span class="text-xs font-medium text-muted-foreground">Por revisar</span>
-									{/if}
-								</div>
-								{#if puntaje !== undefined}
-									<span
-										data-testid="puntaje-prompt"
-										data-puntaje={puntaje}
-										class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {claseColorPuntaje(
-											puntaje
-										)}"
-									>
-										Puntaje | {puntaje}%
-									</span>
-								{/if}
-							</div>
-							<p class="text-sm font-semibold text-foreground">{n}. Prompt {n}</p>
-							<p class="mt-1 text-sm text-muted-foreground">
-								Listo para revisión de los resultados extraídos sobre ejemplos documentales
-							</p>
-						</li>
-					{/each}
-				</ol>
 			{:else}
 				<p class="mb-4 text-sm font-semibold text-foreground">Nuevo tipo documental</p>
 				<ol class="space-y-6">
 					{#each steps as step, i (step.title)}
 					{@const n = i + 1}
-					<!-- El estado se calcula contra `pasoMaximo`, no contra `paso`: al
-					     regresar al paso 1 desde el sidebar, los pasos 2 y 3 ya visitados
-					     deben seguir diciendo "Listo". Con `paso` volverían a "Por
-					     configurar" y se leería como si se hubiera perdido el avance. -->
-					{@const state =
-						n === borrador.paso
-							? 'activo'
-							: n <= borrador.pasoMaximo
-								? 'completado'
-								: 'pendiente'}
+					<!-- «Listo» = el paso está hecho (`pasoListo`), no solo visitado: al regresar al paso 1 desde el costado, el 2 y el 3 siguen
+					     en «Listo» si ya tienen campos, y dicen «Por configurar» si no (2026-11-08: antes bastaba con haberlos visitado). -->
+					{@const state = n === borrador.paso ? 'activo' : pasoListo(n) ? 'completado' : 'pendiente'}
 					{@const navegable = pasoNavegable(n) && n !== borrador.paso}
 					<!-- El subrayado del paso activo va en el verde de éxito de Figma
 					     (--exito/exito-2 = #22c55e), no en el color de marca. -->
@@ -1610,11 +1356,11 @@
 							     La tarjeta NO es clicable (2026-09-06, a pedido explícito). Antes
 							     el ícono y los textos eran un <button> que abría el modo edición,
 							     pero llevaba `flex-1`: se estiraba por todo el espacio libre hasta
-							     "Confirmar configuración", así que picar en el área VACÍA de la tarjeta —donde no
+							     "Activar", así que picar en el área VACÍA de la tarjeta —donde no
 							     hay nada que sugiera que sea clicable— también entraba a editar.
 							     Ahora la ÚNICA puerta al modo edición es el renglón "Editar" del
 							     menú `⋮` (que ya trae su propio guardia para modelos activos), y
-							     en la tarjeta quedan solo dos controles reales: "Confirmar configuración" y el
+							     en la tarjeta quedan solo dos controles reales: "Activar" y el
 							     menú. Ojo si se reintroduce algo clicable aquí: un <button>
 							     dentro de otro es HTML inválido —el navegador deshace el
 							     anidamiento y los clics dejan de llegar a quien deben—, que es el
@@ -1718,16 +1464,18 @@
 									     activar lleva un Button de 82x38 (1077:65581), y ya activada lo
 									     cambia por un Badge de 59x22 (1077:66268). El texto del badge no
 									     se puede leer del volcado —es una instancia de componente— así
-									     que el rótulo nunca salió del diseño. Decía "Activo" hasta el
-									     2026-09-14, cuando se pidió que dijera "Configurado": el
-									     estado interno del tipo SIGUE siendo `activo` —la clave, el
-									     testid y el botón (`activar-tipo`) no cambiaron—, solo cambia la
-									     palabra que ve el usuario.
-									     El botón decía "Activar" hasta el 2026-10-30 (Moibe: engañaba, porque
-									     el tipo no queda "activo, listo para usarse"): confirmar los campos
-									     solo lo deja "Configurado", y lo que lo deja "Activado" es calibrarlo.
-									     Ahora dice "Confirmar configuración", y por eso ya no mide 82x38 como
-									     en el frame: el texto manda el ancho (`px-4` en vez de `w-20.5`).
+									     que el rótulo nunca salió del diseño. El estado interno del tipo
+									     es `activo`, el testid de la insignia `insignia-activo` y el del
+									     botón `activar-tipo`.
+									     Los rótulos son «Activar» y «Activado». Pasaron por «Activo» (hasta
+									     el 2026-09-14), «Configurado» y «Confirmar configuración» (hasta el
+									     2026-11-06) porque entre confirmar los campos y poder usar el tipo
+									     había un paso más, «Calibrar» (Moibe, 2026-10-30: «Activar» engañaba,
+									     el tipo no quedaba listo para usarse). Sin ese paso (2026-11-06,
+									     Moibe: «ya no se requiere para activarlos»), activar SÍ deja el tipo
+									     listo para extraer y las palabras vuelven a decir la verdad. El
+									     botón sigue con `px-4` (el texto manda el ancho) en vez de los
+									     82x38 fijos del frame (`w-20.5`).
 									     NO se implementó el estado intermedio "Validando configuración..."
 									     que aparece en una de las capturas: no hay nada que validar sin
 									     el back, y una animación de espera sobre trabajo que nadie está
@@ -1740,54 +1488,18 @@
 											Eliminando...
 										</Button>
 									{:else if tipo.estado === 'activo'}
-										<!-- Chip + botón de acción, según la captura compartida el
-										     2026-09-06 (ahí el botón decía "Generar prompt"; el 2026-09-14
-										     se renombró a "Calibrar"). El chip ganó un punto verde y dejó su ancho fijo
-										     (`w-14.75`) por padding: con el punto adentro, un ancho fijo
-										     calculado para solo el texto lo apretaba. -->
+										<!-- El chip de estado. Ganó un punto verde (captura compartida el 2026-09-06) y dejó su
+										     ancho fijo (`w-14.75`) por padding: con el punto adentro, un ancho fijo
+										     calculado para solo el texto lo apretaba. Hasta el 2026-11-06 el tipo
+										     activo traía además un botón «Calibrar» (y, ya calibrado, un rótulo
+										     «Activado» suelto): se quitaron con el paso. -->
 										<span
 											data-testid="insignia-activo"
-											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700"
+											class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400"
 										>
 											<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-											Configurado
+											Activado
 										</span>
-
-										{#if tipo.calibradoEn}
-											<!-- Ya se calibró (2026-09-14, a pedido explícito): el botón deja
-											     su lugar a un rótulo. No es un Button deshabilitado porque no
-											     hay ninguna acción que ofrecer y luego negar — aquí ya no hay
-											     nada que picar. Conserva la altura del botón (`h-9.5`) para
-											     que la tarjeta no brinque al cambiar de estado.
-											     Tipografía y punto IDÉNTICOS a los de la insignia "Configurado"
-											     de arriba (`text-xs font-medium`, `gap-1.5`, punto `size-1.5
-											     bg-green-500`), a pedido explícito el mismo día: son dos
-											     rótulos de estado uno al lado del otro, y que uno se viera más
-											     grande los hacía leer como cosas de distinta jerarquía. Lo
-											     único que NO se copió es el fondo en píldora (`bg-green-50
-											     rounded-full px-2.5`): sin él se distinguen sin dejar de
-											     emparejar. -->
-											<span
-												data-testid="tipo-activado"
-												class="flex h-9.5 shrink-0 items-center gap-1.5 text-xs font-medium text-green-700"
-											>
-												<span class="size-1.5 rounded-full bg-green-500" aria-hidden="true"></span>
-												Activado
-											</span>
-										{:else}
-											<!-- Abre el modal de "Generar prompts de configuración". Lo que
-											     todavía no existe es lo que pasa DESPUÉS de elegir la cantidad
-											     (generar prompts no es un concepto del back aún) — ver
-											     `GenerarPrompts.svelte`. -->
-											<Button
-												size="sm"
-												data-testid="generar-prompt"
-												class="h-9.5 shrink-0"
-												onclick={() => (tipoGenerandoPrompts = tipo.id)}
-											>
-												Calibrar
-											</Button>
-										{/if}
 									{:else if activandoId === tipo.id}
 										<!-- El estado con spinner del diseño. Ahora es honesto: detrás hay
 										     tres llamadas reales a Google (crear el procesador, inicializar
@@ -1802,7 +1514,7 @@
 											data-testid="activar-tipo"
 											class="h-9.5 shrink-0 px-4"
 											disabled={activandoId !== null}
-											onclick={() => activar(tipo.id)}>Confirmar configuración</Button
+											onclick={() => activar(tipo.id)}>Activar</Button
 										>
 									{/if}
 
@@ -1890,6 +1602,17 @@
 											>
 												<Plus class="size-4 text-muted-foreground" />
 												<span>Crear nueva versión</span>
+											</DropdownMenu.Item>
+
+											<!-- «Probar con documentos» (2026-11-07): ver qué extrae el tipo de hasta 3 documentos, sin guardar nada. Solo un tipo activo con su procesador. -->
+											<DropdownMenu.Item
+												class="h-11.5 gap-3 px-2 whitespace-nowrap"
+												disabled={tipo.estado !== 'activo' || !tipo.procesadorId}
+												data-testid="probar-tipo"
+												onSelect={() => (pruebaDeId = tipo.id)}
+											>
+												<FlaskConical class="size-4 text-muted-foreground" />
+												<span>Probar con documentos</span>
 											</DropdownMenu.Item>
 
 											<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
@@ -2034,25 +1757,15 @@
 												<span>Eventos</span>
 											</DropdownMenu.Item>
 
-											<!-- Un modelo ACTIVO ofrece "Archivar" (no toca Document AI, solo lo saca de la Biblioteca y del
-											     clasificador) Y, desde el 2026-11-04 (Moibe: «si quiero ese feature de que se pueda borrar»),
-											     también "Borrar": lo quita junto con su Custom Extractor en Document AI, sin vuelta atrás; la
-											     confirmación lo dice. Antes un activo solo se podía archivar. Un borrador solo tiene "Borrar". -->
-											{#if tipo.estado === 'activo'}
-												<DropdownMenu.Item
-													class="h-11.5 gap-3 px-2 whitespace-nowrap"
-													onSelect={() => void pedirArchivarTipo({ id: tipo.id, nombre: tipo.nombre })}
-												>
-													<Archive class="size-4 text-muted-foreground" />
-													<span>Archivar</span>
-												</DropdownMenu.Item>
-											{/if}
+											<!-- «Borrar»: lo quita junto con su Custom Extractor en Document AI, sin vuelta atrás; la confirmación lo dice, y dice qué procesos lo usan. Hasta el
+											     2026-11-07 un modelo ACTIVO ofrecía además «Archivar» (lo sacaba de la Biblioteca sin tocar Document AI y no había cómo volver); Moibe: «como ya
+											     podemos borrar libremente, en realidad Archivar ya no es necesario». -->
 											{#if eliminandoId !== tipo.id}
 												<DropdownMenu.Item
 													variant="destructive"
 													class="h-11.5 gap-3 px-2 whitespace-nowrap"
 													onSelect={() =>
-														(tipoAEliminar = {
+														void pedirBorrarTipo({
 															id: tipo.id,
 															nombre: tipo.nombre,
 															tieneProcesador: Boolean(tipo.procesadorId)
@@ -2098,43 +1811,6 @@
 												{tipo.descripcion || 'Sin descripción.'}
 											</p>
 										</div>
-
-										<!-- El procesador de Document AI, a pedido explícito
-										     (2026-09-08): "quiero el nombre del procesador que tengo en
-										     Document AI, para que yo pueda identificarlo".
-										     UN SOLO RENGLÓN y sin rótulo, corregido el mismo día: la
-										     primera versión traía "Procesador en Document AI" arriba y el
-										     id abajo, y se pidió quitar las dos cosas —"me sirve más
-										     éste" (el nombre) "y quítale lo de 'Procesador en Document
-										     AI' para que quepa en una sola línea"—. El nombre se explica
-										     solo: empieza con `Biblioratum--` y es idéntico al que se lee en
-										     la consola de GCP.
-										     Viene de Google (`procesadorDisplayName`, lo devuelve
-										     "Activar"), no se arma aquí: si el tipo se renombró después
-										     de activarse, Document AI se queda con el nombre VIEJO —no
-										     ofrece renombrar un procesador ya creado— y recalcularlo de
-										     este lado mostraría algo que allá no existe. Por eso puede
-										     venir vacío en tipos activados antes del 2026-09-08: ahí cae
-										     al id, que ocupa el mismo renglón y también lo identifica.
-										     `truncate` + `title` en vez de `break-all`: un nombre largo
-										     (el slug lleva el nombre del tipo) rompería el renglón único
-										     que se pidió, así que se corta con puntos suspensivos y el
-										     completo se lee al pasar el mouse.
-										     Sin botón de "copiar": `navigator.clipboard` es una API de
-										     contexto seguro y el server de CSI es HTTP plano (ver la nota
-										     permanente en la memoria del proyecto). El texto es
-										     seleccionable, que es lo que sí funciona ahí. -->
-										{#if tipo.procesadorId}
-											{@const nombreProcesador =
-												tipo.procesadorDisplayName || tipo.procesadorId}
-											<p
-												data-testid="procesador-tipo"
-												title={nombreProcesador}
-												class="truncate font-mono text-sm text-muted-foreground"
-											>
-												{nombreProcesador}
-											</p>
-										{/if}
 
 										<div>
 											<p class="text-xs font-medium text-muted-foreground">Campos</p>
@@ -2200,12 +1876,9 @@
 					</span>
 					<div>
 						<p class="text-sm font-medium text-foreground">
-							Comienza configurando un modelo documental
+							Aún no hay tipos documentales
 						</p>
-						<p class="mt-1 max-w-md text-xs text-muted-foreground">
-							Agrega un tipo documental para comenzar a configurar los campos, reglas de extracción
-							y validaciones del modelo.
-						</p>
+						<p class="mt-1 max-w-md text-xs text-muted-foreground">Crea el primero para definir sus campos.</p>
 					</div>
 					<Button class="w-60" onclick={nuevoTipoDocumental}>Nuevo tipo documental</Button>
 				</div>
@@ -2656,79 +2329,14 @@
 						{/if}
 					</div>
 				{/if}
-			{:else if vista === 'prompts'}
-				<!-- Cada prompt corre la MISMA operación contra el MISMO documento
-				     de ejemplo (2026-09-07, a pedido explícito: "por ahora simplemente
-				     volver a correr lo mismo, así para tantos prompts como se
-				     pongan") — todavía no existe ninguna noción de qué distingue a un
-				     prompt del siguiente.
-				     El `{#key}` es lo que hace que "correr de nuevo" signifique algo:
-				     sin él, `archivo` no cambia entre un prompt y el siguiente, así
-				     que el `$effect` de `RevisionPrompt` nunca se volvería a disparar
-				     y la pantalla se quedaría mostrando los resultados viejos. Con la
-				     key, Svelte destruye el componente entero y monta uno limpio, que
-				     vuelve a extraer desde cero. Lleva `intentoCalibracion` además de
-				     `promptActual` porque "Calibrar nuevamente" puede reiniciar SIN
-				     cambiar el número de prompt (si `cantidad === 1`, vuelve a valer
-				     1) y, sin ese segundo valor, la key no cambiaría.
-				     El `{#if}` de afuera es lo que garantiza que `archivo` no sea
-				     null dentro del componente, que lo declara requerido. -->
-				{#if promptsDe}
-					{#if calibracionSinExito}
-						<!-- "No fue posible activar el modelo" (2026-09-07, a pedido
-						     explícito con captura): se llegó al último prompt y NINGUNO
-						     alcanzó `UMBRAL_ADECUADO`. Va ARRIBA del panel del prompt —no
-						     lo reemplaza—, porque los campos ya calificados de ese último
-						     prompt siguen siendo información real y no hay motivo para
-						     ocultarlos; el aviso es una capa extra, no una pantalla nueva.
-						     Colores fuera de la paleta semántica de la app (--exito/--error)
-						     porque esto no es éxito ni error de sistema: es un resultado de
-						     calidad a medias, y ese tono es justo lo que separa el ámbar. -->
-						<div
-							class="mb-6 max-w-3xl rounded-xl border border-amber-300 bg-amber-50 p-5"
-							data-testid="aviso-sin-exito"
-						>
-							<div class="flex items-center gap-2">
-								<TriangleAlert class="size-5 shrink-0 text-amber-600" aria-hidden="true" />
-								<p class="text-sm font-semibold text-amber-800">
-									No fue posible activar el modelo
-								</p>
-							</div>
-							<p class="mt-1.5 text-sm text-amber-700">
-								Ningún prompt alcanzó el nivel mínimo de calidad requerido para su
-								activación. Revisa los ejemplos documentales configurados o carga un
-								nuevo documento de referencia y vuelve a ejecutar la calibración para
-								obtener mejores resultados.
-								<button
-									type="button"
-									class="font-medium underline underline-offset-2"
-									data-testid="cargar-documento-aviso"
-									onclick={pedirNuevoDocumentoParaPrompts}
-								>
-									Cargar documento
-								</button>
-							</p>
-						</div>
-					{/if}
-					{#key `${promptActual}-${intentoCalibracion}`}
-						<RevisionPrompt
-							archivo={promptsDe.archivo}
-							numero={promptActual}
-							procesador={tipoDePrompts?.procesadorId ?? ''}
-							procesadorVersion={tipoDePrompts?.procesadorVersion ?? ''}
-							onCambioRevision={(revisados, total, correctos) =>
-							(avanceRevision = { revisados, total, correctos })}
-						/>
-					{/key}
-				{/if}
 			{:else if borrador.paso === 1}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-					Ingresa la información necesaria para registrar un nuevo tipo documental y continuar
-					con la configuración de sus reglas de procesamiento.
+					Captura los datos básicos del tipo; después defines sus campos.
 				</p>
 
-				<div class="mt-8 max-w-2xl space-y-6">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="mt-8 max-w-2xl space-y-6" onpointerdowncapture={exigirNombrePrimero}>
 					<div class="space-y-2">
 						<Label for="nombre-tipo">Nombre de tipo documental *</Label>
 						<!-- Nombre único en la organización (2026-11-04): mismo trato visual que el nombre de campo repetido del
@@ -2736,10 +2344,11 @@
 						<div class="relative">
 							<Input
 								id="nombre-tipo"
+								bind:ref={entradaNombreTipo}
 								bind:value={borrador.nombre}
-								placeholder="Ingresa el nombre del tipo documental a configurar"
-								aria-invalid={nombreTipoRepetido}
-								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : undefined}
+								placeholder="Ingresa el nombre del tipo documental a configurar, por ejemplo: INE"
+								aria-invalid={nombreTipoRepetido || pedirNombrePrimero}
+								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : pedirNombrePrimero ? 'nombre-tipo-primero' : undefined}
 								class={nombreTipoRepetido ? 'pr-9' : undefined}
 							/>
 							{#if nombreTipoRepetido}
@@ -2748,6 +2357,9 @@
 								/>
 							{/if}
 						</div>
+						{#if pedirNombrePrimero}
+							<p id="nombre-tipo-primero" class="text-xs text-destructive" role="alert" data-testid="nombre-tipo-primero">Empieza por el nombre del tipo documental.</p>
+						{/if}
 						{#if nombreTipoRepetido}
 							<p id="nombre-tipo-error" class="text-xs text-destructive" data-testid="nombre-tipo-repetido">
 								Ya existe un tipo documental con este nombre. Utiliza uno diferente.
@@ -2756,13 +2368,14 @@
 					</div>
 
 					<div class="space-y-2">
+						<!-- Sin línea de ayuda (2026-11-08, Moibe: «quita el texto de "Para que el clasificador reconozca..." con el de abajo basta»): el texto
+						     de ejemplo de la caja ya dice qué escribir. -->
 						<Label for="descripcion-tipo">Descripción *</Label>
 						<Textarea
 							id="descripcion-tipo"
 							bind:value={borrador.descripcion}
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
-							aria-describedby="descripcion-tipo-ayuda"
 							class="text-justify"
 						/>
 						<!-- Texto justificado (2026-11-05, Moibe: «¿podría salir justificado?»): la descripción suele ser un párrafo largo (la que
@@ -2770,42 +2383,83 @@
 						     línea queda a la izquierda (lo normal en `text-align: justify`). El recuadro de la sugerencia, más abajo, va igual para
 						     que lo que se previsualiza se vea como quedará en la caja. Sin guiones automáticos a propósito: la página declara
 						     `lang="en"` y partiría el español con las reglas del inglés. -->
-						<!-- 2026-11-04 (Moibe: la Descripción y las Instrucciones parecían lo mismo): dice para qué sirve. La descripción es la
-						     etiqueta con la que el CLASIFICADOR reconoce este tipo entre los demás; leer el documento al extraer es de las
-						     «Instrucciones para la extracción», del paso 2. -->
-						<p id="descripcion-tipo-ayuda" class="text-xs text-muted-foreground" data-testid="descripcion-tipo-ayuda">
-							Sirve para que el clasificador reconozca este tipo entre los demás: di qué documento es y cómo distinguirlo de otros.
-						</p>
 						<!-- «Sugerir descripción» (2026-11-05): ver `sugerirDescripcion`. Necesita el nombre del tipo; nunca guarda ni pisa nada solo. -->
-						<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-							<button
-								type="button"
-								data-testid="sugerir-descripcion"
-								class="-ml-1.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary transition-colors outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-								disabled={sugiriendo || borrador.nombre.trim() === ''}
-								title={borrador.nombre.trim() === '' ? 'Escribe primero el nombre del tipo documental' : undefined}
-								onclick={() => void sugerirDescripcion()}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<!-- Dos botones de acción en un mismo marco (2026-11-10, Moibe: «en lugar del texto "Solo con el nombre", que ese botón diga ya de
+							     golpe "✨ Sugerir descripción" directamente»). Antes (2026-11-08) era un interruptor «Solo con el nombre / Con documentos de
+							     ejemplo» más un botón de acción aparte; ahora cada mitad actúa con un clic. El marco común conserva la idea de «uno u otro».
+							     Sin nombre del tipo, los dos quedan apagados (2026-11-08: «que toda la sección esté greyada hasta que el título lo habilite»). -->
+							<div
+								role="group"
+								aria-label="Sugerir la descripción"
+								class="inline-flex min-h-8 max-w-full items-stretch gap-0.5 rounded-lg border border-border bg-background p-0.5"
+								data-testid="sugerir-grupo"
 							>
-								{#if sugiriendo}
-									<LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
-									Pensando…
-								{:else}
-									<Sparkles class="size-3.5" aria-hidden="true" />
-									Sugerir descripción
-								{/if}
-							</button>
+								<button
+									type="button"
+									data-testid="sugerir-descripcion"
+									class="flex min-h-6.5 min-w-0 items-center justify-center gap-1 rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+									disabled={sugiriendo || borrador.nombre.trim() === ''}
+									title={borrador.nombre.trim() === '' ? 'Escribe primero el nombre del tipo documental' : 'La IA la escribe a partir del nombre del tipo'}
+									onclick={() => void sugerirDescripcion()}
+								>
+									{#if sugiriendo && !sugiriendoConDocumentos}
+										<LoaderCircle class="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+										Pensando…
+									{:else}
+										<Sparkles class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+										Sugerir descripción
+									{/if}
+								</button>
+								<!-- Con documentos (2026-11-07): la IA los LEE para describir lo que de verdad traen (hasta 3: PDF, JPG o PNG; no se guardan). Abre el selector y al elegirlos sugiere. -->
+								<button
+									type="button"
+									data-testid="sugerir-con-documentos"
+									class="flex min-h-6.5 min-w-0 items-center justify-center gap-1 rounded-md px-2.5 py-0.5 text-center text-xs leading-tight font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+									disabled={sugiriendo || borrador.nombre.trim() === ''}
+									title={borrador.nombre.trim() === ''
+										? 'Escribe primero el nombre del tipo documental'
+										: `Elige hasta ${MAX_DOCUMENTOS_SUGERENCIA} documentos de ejemplo (PDF, JPG o PNG): se leen para escribirla y no se guardan`}
+									onclick={() => entradaDocumentosSugerencia?.click()}
+								>
+									{#if sugiriendo && sugiriendoConDocumentos}
+										<LoaderCircle class="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+										Pensando…
+									{:else}
+										<Paperclip class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+										Con documentos de ejemplo
+									{/if}
+								</button>
+							</div>
+							<input
+								bind:this={entradaDocumentosSugerencia}
+								data-testid="sugerir-documentos-archivo"
+								type="file"
+								multiple
+								class="hidden"
+								accept=".pdf,.jpg,.jpeg,.png"
+								onchange={alElegirDocumentosDeSugerencia}
+							/>
 							<span role="status" aria-live="polite">
 								{#if descripcionSugerida !== '' && borrador.descripcion === descripcionSugerida}
-									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">Sugerencia generada con IA: revísala antes de guardar.</span>
+									<span class="text-xs text-muted-foreground" data-testid="sugerencia-aviso">
+										{documentosDeLaSugerencia.length > 0
+											? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}.`
+											: 'Sugerencia generada con IA.'}
+									</span>
 								{/if}
 							</span>
-						</div>
+						</div>
 						{#if errorSugerencia}
 							<p class="text-xs text-destructive" role="alert" data-testid="sugerencia-error">{errorSugerencia}</p>
 						{/if}
 						{#if sugerencia !== null}
 							<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3" data-testid="sugerencia-panel">
-								<p class="text-xs font-medium text-muted-foreground">Sugerencia generada con IA: revísala antes de usarla.</p>
+								<p class="text-xs font-medium text-muted-foreground" data-testid="sugerencia-panel-titulo">
+									{documentosDeLaSugerencia.length > 0
+										? `Sugerencia generada con IA a partir de ${nombresJuntos(documentosDeLaSugerencia.map((n) => `«${n}»`))}: revísala antes de usarla y quita cualquier dato personal de los ejemplos que se haya colado.`
+										: 'Sugerencia generada con IA: revísala antes de usarla.'}
+								</p>
 								<p class="text-sm text-justify text-foreground" data-testid="sugerencia-texto">{sugerencia}</p>
 								<div class="flex flex-wrap gap-2">
 									<Button size="sm" data-testid="usar-sugerencia" onclick={usarSugerencia}>Usar esta sugerencia</Button>
@@ -2830,48 +2484,26 @@
 					</div>
 				</div>
 			{:else if borrador.paso === 2}
-				<h3 class="text-xl font-semibold text-foreground">Nuevo campo de extracción</h3>
+				<h3 class="text-xl font-semibold text-foreground">Campos de Extracción</h3>
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
 					Completa la información requerida para agregar un nuevo campo al modelo documental y
 					mejorar la precisión de la extracción automática.
 				</p>
-				<!-- Opcional. Del TIPO entero, no de un campo: contexto para LEER el documento. Viaja al extractor como el `documentPrompt` de su
-				     esquema (medido contra Google el 2026-10-30: orienta qué dato se toma, titular o beneficiario; si se le pide reescribir un valor,
-				     otro formato o mayúsculas, ese campo desaparece de la respuesta, de ahí el aviso) y TAMBIÉN orienta «Generar a partir de un
-				     documento» (medido el 2026-11-05, 3 corridas por condición: con «la persona que interesa es el titular, no el beneficiario» el
-				     generador deja fuera el campo del beneficiario; sin instrucciones lo propone siempre).
-
-				     Historia: nació al final del paso 1; el 2026-11-04 (Moibe: parecía redundante con la Descripción, que sirve para CLASIFICAR) se
-				     plegó en «Opciones avanzadas»; el 2026-11-05 (Moibe: plegada ni se nota que existe) pasó al paso 2, sin plegar. Va ARRIBA, antes
-				     del botón y del formulario de campos, a propósito: (1) puesta al final de un paso tan largo quedaba bajo el borde del panel (que
-				     tiene su propio scroll) y pasaba igual de desapercibida; (2) «Generar» las toma tal como estén al pulsarlo, así que hay que
-				     escribirlas ANTES: el orden de la pantalla es el orden en que se usan. -->
-				<div class="mt-6 max-w-3xl space-y-2" data-testid="instrucciones-extraccion">
-					<Label for="instrucciones-tipo">Instrucciones para la extracción</Label>
-					<Textarea
-						id="instrucciones-tipo"
-						data-testid="instrucciones-tipo"
-						bind:value={borrador.instrucciones}
-						maxlength={MAX_INSTRUCCIONES}
-						rows={2}
-						placeholder="Ej. La persona que interesa es el titular, no el beneficiario."
-					/>
-					<p class="text-xs text-muted-foreground" data-testid="instrucciones-tipo-ayuda">
-						Opcional. Orientan a Document AI al leer el documento: al proponer campos con «Generar a partir de un documento» (toma lo que
-						haya escrito al pulsarlo) y al extraer (para reconocer el tipo está la descripción). Sirven para decir qué dato tomar cuando
-						hay varios, qué dejar fuera o de qué país es. No le pidas cambiar cómo se escribe un valor (formatos, mayúsculas): lo que no
-						coincide con lo impreso se descarta.
-					</p>
-				</div>
-
+				<!-- Aquí vivieron las «Instrucciones para la extracción» (2026-10-30 → 2026-11-10). Quitadas el 2026-11-10 (Moibe: «adelante», tras medir que la descripción del campo logra lo mismo): medido contra Google el 2026-11-10,
+				     «Nombre completo del titular, no del beneficiario» en la descripción del campo devolvió solo al titular 3/3, igual que las
+				     instrucciones, y hasta orientó la fecha de nacimiento (sin regla propia). Con una regla por campo no hace falta una general, y se
+				     evita el riesgo de pedir formatos (lo que no coincide con lo impreso desaparece). Los tipos ya activados conservan su documentPrompt. -->
 				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
 				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. Va después de
-				     las instrucciones porque las usa (2026-11-05). -->
+				     -->
 				<Button
 					variant="outline"
 					class="mt-4 gap-2"
 					data-testid="abrir-generar-campos"
-					onclick={() => (generarCamposAbierto = true)}
+					onclick={() => {
+						ejemplosParaGenerar = ejemplosDelPaso1Actuales();
+						generarCamposAbierto = true;
+					}}
 				>
 					<Sparkles class="size-4 text-primary" />
 					Generar a partir de un documento
@@ -3083,29 +2715,21 @@
 									</div>
 									<div class="space-y-2">
 										<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
-										{#if altaEnCurso}
-											<Input
-												id="agregado-tipo-{campo.id}"
-												value={etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
-												readonly
-												class="bg-muted text-muted-foreground"
-											/>
-										{:else}
-											<Select.Root
-												type="single"
-												value={campo.tipoDato}
-												onValueChange={(v) => alCambiarTipoDato(campo, v)}
-											>
-												<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
-													{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
-												</Select.Trigger>
-												<Select.Content>
-													{#each TIPOS_DE_DATO as tipo (tipo.value)}
-														<Select.Item value={tipo.value} label={tipo.label} />
-													{/each}
-												</Select.Content>
-											</Select.Root>
-										{/if}
+										<!-- El tipo de un campo ya agregado se puede cambiar también en un alta nueva (2026-11-10, Moibe: «en ésta etapa quiero poder cambiar el tipo de dato»). -->
+										<Select.Root
+											type="single"
+											value={campo.tipoDato}
+											onValueChange={(v) => alCambiarTipoDato(campo, v)}
+										>
+											<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
+												{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
+											</Select.Trigger>
+											<Select.Content>
+												{#each TIPOS_DE_DATO as tipo (tipo.value)}
+													<Select.Item value={tipo.value} label={tipo.label} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
 									</div>
 								</div>
 
@@ -3120,7 +2744,7 @@
 							</div>
 							{#if campo.tipoDato === 'grupo'}
 								<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
-								<div class="-mt-2"><SubcamposGrupo {campo} soloLectura={altaEnCurso} /></div>
+								<div class="-mt-2"><SubcamposGrupo {campo} /></div>
 							{/if}
 						{/each}
 					</div>
@@ -3309,7 +2933,7 @@
 												<!-- La propuso Document AI con un solo ejemplo («Generar a partir de un documento»): conviene revisarla. -->
 												<span
 													class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-normal text-primary"
-													title="Document AI la propuso leyendo el documento de ejemplo. Revísala: un solo ejemplo no garantiza que el dato nunca se repita."
+													title="Biblioratum la propuso leyendo el documento de ejemplo. Revísala: un solo ejemplo no garantiza que el dato nunca se repita."
 													data-testid="cardinalidad-sugerida">Sugerida por el documento</span
 												>
 											{/if}
@@ -3395,18 +3019,17 @@
 		{#if avisoExito && vista === 'biblioteca'}
 			<div
 				data-testid="aviso-exito"
-				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4"
+				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-green-200 bg-linear-to-r from-green-50 to-emerald-100/70 px-5 py-4 dark:border-green-900 dark:from-green-950 dark:to-green-950/60"
 			>
 				<BadgeCheck class="size-5 shrink-0 fill-green-500 text-white" />
 				<div class="min-w-0">
-					<p class="text-sm font-semibold text-green-700">Nuevo tipo documental agregado.</p>
+					<p class="text-sm font-semibold text-green-700 dark:text-green-300">Nuevo tipo documental agregado.</p>
 					<!-- green-700 y no green-600: sobre `green-50`, el 600 a 12px da
 					     ~3.1:1 de contraste y AA pide 4.5:1 para texto normal. El 700
 					     llega a ~4.7:1 y además se parece más al verde apagado del
 					     frame que el 600, que sale demasiado vivo. -->
-					<p class="mt-1 max-w-2xl text-xs text-green-700">
-						La configuración se completó con éxito. El modelo documental está listo para
-						activarse y ejecutar una prueba de procesamiento para validar su funcionamiento.
+					<p class="mt-1 max-w-2xl text-xs text-green-700 dark:text-green-300">
+						La configuración se completó con éxito. El modelo documental está listo para activarse.
 					</p>
 				</div>
 			</div>
@@ -3419,12 +3042,12 @@
 			     "no se pudo" sin el porqué obliga a adivinar. -->
 			<div
 				data-testid="aviso-error"
-				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-red-200 bg-linear-to-r from-red-50 to-rose-100/70 px-5 py-4"
+				class="mx-8 mb-8 flex items-start gap-3 rounded-lg border border-red-200 bg-linear-to-r from-red-50 to-rose-100/70 px-5 py-4 dark:border-red-900 dark:from-red-950 dark:to-red-950/60"
 			>
 				<BadgeAlert class="size-5 shrink-0 fill-red-500 text-white" />
 				<div class="min-w-0">
-					<p class="text-sm font-semibold text-red-700">{tituloError}</p>
-					<p class="mt-1 max-w-2xl text-xs text-red-700">{errorActivacion}</p>
+					<p class="text-sm font-semibold text-red-700 dark:text-red-300">{tituloError}</p>
+					<p class="mt-1 max-w-2xl text-xs text-red-700 dark:text-red-300">{errorActivacion}</p>
 				</div>
 			</div>
 		{/if}
@@ -3465,58 +3088,6 @@
 			</Button>
 			<Button onclick={() => (vista = 'biblioteca')}>Guardar configuración</Button>
 		</div>
-	{:else if vista === 'prompts'}
-		<!-- A la DERECHA los dos, no separados a los extremos como en el wizard y
-		     Calibración: así lo trae la captura del 2026-09-06.
-		     "Cancelar evaluación" tiene el MISMO destino que la X del encabezado
-		     (ver `salirDeRevisionDePrompts`) — dos afordancias para lo mismo,
-		     igual que "Cancelar configuración" en Calibración.
-		     "Continuar" se habilita cuando TODOS los campos del prompt llevan
-		     veredicto (ver `revisionCompleta`). Mientras se extrae, o si el
-		     documento no dio campos, sigue apagado: no hay nada que evaluar.
-		     Al picarle, avanza al siguiente prompt (`avanzarPrompt`) — mismo
-		     documento, misma operación, ver el comentario junto a
-		     `RevisionPrompt` de arriba.
-		     Si al llegar al ÚLTIMO prompt `calibracionSinExito` queda en true
-		     (ver el aviso de arriba), este pie CAMBIA DE FORMA: "Continuar" ya
-		     no tiene a dónde ir, así que se reemplaza por "Cargar documento" y
-		     "Calibrar nuevamente" (2026-09-07, a pedido explícito con captura —
-		     la misma captura resuelve, para ESTE caso puntual, la pregunta que
-		     había quedado abierta de "qué pasa al terminar el último prompt").
-		     Si el último SÍ se calificó pero al menos un prompt alcanzó el
-		     umbral, sigue sin definirse: "Continuar" se queda deshabilitado sin
-		     más, tal como antes. -->
-		<div class="flex items-center justify-end gap-4 border-t border-border px-6 py-4">
-			<Button
-				variant="link"
-				class="h-auto p-0 text-destructive"
-				data-testid="cancelar-evaluacion"
-				onclick={salirDeRevisionDePrompts}
-			>
-				Cancelar evaluación
-			</Button>
-			{#if calibracionSinExito}
-				<Button
-					variant="link"
-					class="h-auto p-0"
-					data-testid="cargar-documento-pie"
-					onclick={pedirNuevoDocumentoParaPrompts}
-				>
-					Cargar documento
-				</Button>
-				<Button data-testid="calibrar-nuevamente" onclick={calibrarNuevamente}>
-					Calibrar nuevamente
-				</Button>
-			{:else}
-				<Button
-					data-testid="continuar-evaluacion"
-					disabled={!revisionCompleta}
-					onclick={continuarRevision}
-				>
-					Continuar
-				</Button>
-			{/if}
-		</div>
 	{/if}
 </div>
 
@@ -3553,30 +3124,17 @@
      comentario de `tipoAEliminar` arriba): ahí no solo se borra un renglón de
      la Biblioteca, también se destruye el Custom Extractor en Document AI.
      Callarse esa parte dejaría confirmar a ciegas algo que toca un recurso de
-     GCP y no se puede deshacer. En la práctica, con "Borrar" mostrándose SOLO
-     para tipos no-activos, casi siempre cae en la rama simple. -->
+     GCP y no se puede deshacer. Desde que «Borrar» también sale en un tipo activo,
+     la rama del procesador es la normal. Y dice qué procesos lo usan (`avisoDeProcesos`). -->
 <ConfirmarAccion
 	abierto={tipoAEliminar !== null}
 	titulo="¿Borrar este tipo documental?"
 	mensaje={tipoAEliminar?.tieneProcesador
-		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su Custom Extractor en Document AI. Esta acción es irreversible: se pierde el procesador junto con su configuración publicada.`
-		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.`}
+		? `Se eliminará "${tipoAEliminar.nombre}" de la Biblioteca y su extractor. Esta acción es irreversible: se pierde el extractor junto con su configuración publicada.${avisoDeProcesos}`
+		: `Se eliminará "${tipoAEliminar?.nombre ?? ''}" de la Biblioteca. Esta acción no se puede deshacer.${avisoDeProcesos}`}
 	etiquetaConfirmar="Sí, borrar"
 	onConfirmar={confirmarEliminarTipo}
 	onCerrar={() => (tipoAEliminar = null)}
-/>
-
-<!-- A diferencia de Borrar, archivar NO toca Google ni pierde el registro:
-     el mensaje lo dice explícitamente para que no se lea con la misma
-     gravedad que un borrado real. -->
-<ConfirmarAccion
-	abierto={tipoAArchivar !== null}
-	variante="neutral"
-	titulo="¿Archivar este tipo documental?"
-	mensaje={`"${tipoAArchivar?.nombre ?? ''}" dejará de listarse en la Biblioteca.${avisoDeProcesos} Su Custom Extractor en Document AI NO se toca: sigue existiendo tal cual.`}
-	etiquetaConfirmar="Sí, archivar"
-	onConfirmar={confirmarArchivarTipo}
-	onCerrar={() => (tipoAArchivar = null)}
 />
 
 <!-- A diferencia de quitar el documento compartido (que se lleva TODOS los
@@ -3636,27 +3194,19 @@
 	onCerrar={() => (tipoPocosEjemplos = null)}
 />
 
-<!-- Los dos pasos previos a la pantalla de revisión: cuántos prompts, y sobre
-     qué documento probarlos. Ver los comentarios de `pedirDocumentoParaPrompts`
-     e `irARevisionDePrompts`. -->
+<ProbarExtraccion
+	abierto={tipoEnPrueba !== null}
+	tipo={tipoEnPrueba}
+	archivosIniciales={pruebaDeId ? ejemplosDeTipo(pruebaDeId) : []}
+	onCerrar={() => (pruebaDeId = null)}
+/>
+
 <GenerarCamposDesdeDocumento
 	abierto={generarCamposAbierto}
 	nombreTipo={borrador.nombre}
 	descripcionTipo={borrador.descripcion}
-	instruccionesTipo={borrador.instrucciones}
 	existentes={borrador.campos.map((c) => c.nombre)}
+	ejemplosPrevios={ejemplosParaGenerar}
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
-/>
-
-<GenerarPrompts
-	abierto={tipoGenerandoPrompts !== null}
-	onCerrar={() => (tipoGenerandoPrompts = null)}
-	onGenerar={pedirDocumentoParaPrompts}
-/>
-
-<DocumentoParaPrompts
-	abierto={promptsPendientes !== null}
-	onContinuar={irARevisionDePrompts}
-	onCancelar={cancelarGeneracionDePrompts}
 />

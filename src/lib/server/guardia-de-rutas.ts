@@ -8,7 +8,9 @@
  *
  * Es el espejo de lo que ya exige nexus_back, ruta por ruta; no inventa permisos:
  *   · `administrar` — `roles.PUEDEN_ADMINISTRAR` (Administrador y Supervisor, y el administrador de plataforma): API Keys, webhooks, procesos,
- *     la biblioteca de tipos documentales, los tipos de expediente virtual, los grupos y todo lo de los procesadores de Document AI.
+ *     la biblioteca de tipos documentales y todo lo de los procesadores de Document AI. (Los tipos de expediente virtual tenían aquí su
+ *     regla; se quitaron con los expedientes virtuales el 2026-11-05 y `/api/tipos-expediente` ya no existe. Igual los grupos de
+ *     expedientes: se quitaron el 2026-11-06 y `/api/grupos` ya no existe.)
  *   · `organizar` — `roles.PUEDEN_ORGANIZAR` (además, Analista y Operador): crear expedientes, meter y sacar documentos, ejecutar procesos.
  *
  * LEER (GET) sigue abierto a todo el que opera en la organización, salvo en las rutas donde nexus_back también lo pide a quien administra
@@ -36,8 +38,6 @@ const REGLAS: readonly Regla[] = [
 	// Administrar — solo al escribir (leer lo abre el back a quien opera en la organización: el pipeline y las pantallas de uso lo necesitan).
 	{ patron: /^\/api\/procesos(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
 	{ patron: /^\/api\/tipos-documentales(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
-	{ patron: /^\/api\/tipos-expediente(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
-	{ patron: /^\/api\/grupos(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
 	// Organizar — solo al escribir.
 	{ patron: /^\/api\/expedientes(\/.*)?$/, metodos: 'escritura', exige: 'organizar' },
 	{ patron: /^\/api\/ejecuciones(\/.*)?$/, metodos: 'escritura', exige: 'organizar' }
@@ -66,8 +66,8 @@ const LIMITES: readonly { patron: RegExp; metodo: string; regla: ReglaDeLimite }
 	// Cada llamada a Document AI cuesta: subir varios documentos seguidos no debe toparse (cada documento son 2 o 3 llamadas).
 	{ patron: /^\/api\/pipeline\/(clasificar|extraer)$/, metodo: 'POST', regla: { nombre: 'pipeline', usuario: 120, ip: 600 } },
 	// Cada sugerencia es una llamada a Gemini (centavos): un clic compulsivo, o un script con una sesión robada, no debe volverse una factura. 20 por
-	// minuto por persona sobra para quien captura tipos a mano; la IP va holgada porque detrás del proxy puede ser la de toda la oficina.
-	{ patron: /^\/api\/tipos-documentales\/sugerir-descripcion$/, metodo: 'POST', regla: { nombre: 'sugerir-descripcion', usuario: 20, ip: 100 } },
+	// minuto por persona sobra para quien captura tipos a mano (con documentos, que cuesta más, comparte el mismo tope: 2026-11-07); la IP va holgada porque detrás del proxy puede ser la de toda la oficina.
+	{ patron: /^\/api\/tipos-documentales\/sugerir-descripcion(-con-documentos)?$/, metodo: 'POST', regla: { nombre: 'sugerir-descripcion', usuario: 20, ip: 100 } },
 	// El servidor le pega a una URL de un tercero (nexus_back ya limita por webhook; esto es el tope por persona).
 	{ patron: /^\/api\/webhooks\/[^/]+\/validar$/, metodo: 'POST', regla: { nombre: 'validar-webhook', usuario: 20, ip: 60 } },
 	// Cada reenvío es un correo.

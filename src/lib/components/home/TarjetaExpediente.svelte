@@ -22,7 +22,7 @@
 
 <script lang="ts">
 	/**
-	 * Una tarjeta de la rejilla de "Expedientes virtuales".
+	 * Una tarjeta de la rejilla del módulo "Expedientes" (`ExpedientesSheet`).
 	 *
 	 * Es un componente aparte y no un bloque del `{#each}` por una razón
 	 * concreta: la vista previa es una runa (`usarVistaPrevia`) y las runas no

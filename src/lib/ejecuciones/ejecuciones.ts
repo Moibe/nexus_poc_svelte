@@ -1,5 +1,5 @@
 /**
- * Lo que la pantalla de Ejecuciones sabe de una ejecución ya guardada (2026-11-03): sus tipos y cómo se escribe cada cosa. Lo que SALE de correr un
+ * Lo que el expediente sabe de una ejecución ya guardada (2026-11-03; antes lo sabía la pantalla de Ejecuciones, que se quitó el 2026-11-07): sus tipos y cómo se escribe cada cosa. Lo que SALE de correr un
  * proceso vive en `$lib/reglas/ejecutar`; esto es lo que nexus_back devuelve después de guardarlo (`GET /ejecuciones`) y cómo se enseña.
  */
 import type { CasoDelResultado } from '$lib/reglas/reglas';
@@ -11,7 +11,12 @@ export type EjecucionResumen = {
 	ejecutadaEn: string;
 	ejecutadaPor: { id: string; nombre: string | null };
 	expediente: { id: string; nombre: string };
-	virtual: { id: string; nombre: string; tipoNombre: string | null };
+	/**
+	 * El expediente virtual sobre el que se corrió, SOLO en las ejecuciones VIEJAS (de antes del 2026-11-05, cuando Moibe quitó los expedientes
+	 * virtuales); `null` en las nuevas, que se ejecutan sobre el expediente completo. Es un dato de la foto: el historial es inmutable y sigue
+	 * diciendo lo que se corrió, pero la pantalla del virtual ya no existe, así que solo se nombra, sin enlace.
+	 */
+	virtual: { id: string; nombre: string; tipoNombre: string | null } | null;
 	proceso: { id: string; nombre: string; revision: number };
 	resultado: { caso: CasoDelResultado; texto: string };
 	estado: 'completa' | 'incompleta';
@@ -25,6 +30,18 @@ export type EjecucionCompleta = EjecucionResumen & {
 };
 
 export type Historial = { ejecuciones: EjecucionResumen[]; total: number; hayMas: boolean };
+
+/** Un proceso activo de la organización: se puede ofrecer para correrlo sobre un expediente. `ejecutable` dice si trae su Resultado con una regla conectada. */
+export type ProcesoOfrecido = { id: string; nombre: string; ejecutable: boolean };
+
+/**
+ * Por qué un proceso ofrecido todavía no se puede ejecutar, con las palabras que se le dicen a la persona; `null` si sí se puede (o si no hay proceso elegido).
+ * Los procesos de antes de que el Resultado fuera obligatorio (2026-11-03) no lo traen —o lo traen sin ninguna regla conectada—: se siguen ofreciendo, pero no corren.
+ */
+export function motivoSinEjecutar(proceso: Pick<ProcesoOfrecido, 'nombre' | 'ejecutable'> | null | undefined): string | null {
+	if (!proceso || proceso.ejecutable) return null;
+	return `«${proceso.nombre}» todavía no se puede ejecutar: no tiene su nodo de Resultado, o su Resultado no tiene ninguna regla conectada. Ábrelo en el motor de reglas (Configuración › Procesos): agrega el Resultado o conéctale una regla para poder ejecutarlo.`;
+}
 
 /** Lo que contesta `POST /api/ejecuciones` cuando NO se ejecutó: por qué (`codigo`), cómo se le dice a la persona y, con duplicados, cuáles. */
 export type NoSeEjecuto = { mensaje: string; codigo?: string; duplicados?: Duplicado[] };
@@ -61,5 +78,3 @@ export function valorParaVer(f: Pick<ValorFinalDeCorrida, 'estado' | 'valor'>): 
 	return f.estado === 'sin_valores' ? 'Sin valor (faltó el dato)' : 'Sin conectar';
 }
 
-/** A dónde lleva el expediente virtual de una ejecución. */
-export const rutaDelVirtual = (expedienteId: string, virtualId: string) => `/expediente/${encodeURIComponent(expedienteId)}/virtual/${encodeURIComponent(virtualId)}`;

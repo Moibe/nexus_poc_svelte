@@ -21,18 +21,24 @@
 	 *   · El botón de abajo a la izquierda dice «Nueva plantilla documental» en el diseño (es el rótulo de la biblioteca, copiado): aquí
 	 *     dice «Nuevo proceso».
 	 *   · «Documentos configurados | N» cuenta los tipos documentales que el proceso trae como entradas.
-	 *   · Activar y desactivar SOLO marca el proceso (se guarda en el servidor): todavía no hay un motor que corra procesos sobre
-	 *     expedientes y lo respete. El aviso es el del diseño.
+	 *   · Activar y desactivar marca el proceso (se guarda en el servidor) y Ejecuciones solo ofrece los activos. El aviso es el del diseño.
+	 *   · Sin «Corre sobre: …» (2026-11-05, Moibe: quitar los expedientes virtuales): del 2026-10-29 al 2026-11-05 cada tarjeta decía sobre qué
+	 *     tipo de expediente virtual corría el proceso; un proceso corre sobre cualquier expediente de la organización y la tarjeta ya no lo dice.
 	 *
 	 * La tarjeta no se abre picando en su espacio vacío (misma regla que la biblioteca: se pidió así porque un clic en el vacío abría
 	 * cosas por accidente): se abre con su nombre, que es un enlace, o con el lápiz de su tarjeta (ya no hay menú ⋮, 2026-11-03).
 	 *
+	 * «Nuevo proceso» ya no va directo al lienzo (2026-11-06, Moibe: «en lugar de ir directo al canvas, haremos lo que dice este Figma»): abre en este
+	 * mismo panel el formulario de `NuevoProceso.svelte` (nombre y tipos documentales; los campos se eligen en el lienzo, no ahí) y es «Continuar» el que
+	 * lleva al lienzo de un proceso nuevo, que ya trae el nombre y un nodo por cada tipo elegido. La dirección `/motor-de-reglas/nuevo` sigue abriendo un
+	 * lienzo en blanco.
+	 *
 	 * Solo lo ve quien administra: el candado está en `+layout.server.ts`.
 	 */
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 
+	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Power from '@lucide/svelte/icons/power';
@@ -40,7 +46,9 @@
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import NuevoProceso from '$lib/components/reglas/NuevoProceso.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { direccionDeProcesoNuevo } from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
 	import {
 		cargarProcesos,
@@ -48,6 +56,7 @@
 		guardarProceso,
 		procesoActivo,
 		reiniciarProcesos,
+		resultadoConectadoDe,
 		tieneResultado,
 		tiposDelProceso,
 		type ProcesoGuardado
@@ -57,7 +66,10 @@
 	const procesos = $derived(estadoProcesos.lista);
 
 	const rutaDe = (id: string) => `/motor-de-reglas/${encodeURIComponent(id)}`;
-	const nuevo = () => void goto('/motor-de-reglas/nuevo');
+	/** Se está dando de alta un proceso: el panel de la derecha enseña el formulario en vez de la lista. */
+	let creando = $state(false);
+	const nuevo = () => (creando = true);
+	const continuarAlLienzo = (eleccion: { nombre: string; tipos: string[] }) => void goto(direccionDeProcesoNuevo(eleccion.nombre, eleccion.tipos));
 	const salir = () => void goto('/');
 
 	onMount(() => {
@@ -113,25 +125,33 @@
 
 	<div class="flex items-center gap-3 px-6 py-4">
 		<span class="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-			<Settings class="size-4" />
+			<!-- La carpeta con «+» del Figma al dar de alta (HUN5); el engrane el resto del tiempo. -->
+			{#if creando}<FolderPlus class="size-4" />{:else}<Settings class="size-4" />{/if}
 		</span>
 		<div class="min-w-0 flex-1">
-			<h2 class="text-lg font-medium text-foreground">Configura tus procesos documentales</h2>
-			<p class="text-sm text-muted-foreground">
-				Un proceso es un conjunto de reglas que corre sobre un expediente: elige los tipos documentales como entradas y combina operadores
-				para validarlos.
-			</p>
+			{#if creando}
+				<h2 class="text-lg font-medium text-foreground">Configura un nuevo proceso documental</h2>
+				<p class="text-sm text-muted-foreground">Elige los tipos documentales que componen el proceso; los campos y las reglas los defines en el lienzo.</p>
+			{:else}
+				<h2 class="text-lg font-medium text-foreground">Configura tus procesos documentales</h2>
+				<p class="text-sm text-muted-foreground">
+					Un proceso es un conjunto de reglas que corre sobre un expediente: elige los tipos documentales como entradas y combina operadores
+					para validarlos.
+				</p>
+			{/if}
 		</div>
 		<!-- Sin barra lateral (2026-11-03): sin ramas ni sección ya no tenía propósito, y «Nuevo proceso» pasó aquí, a la derecha del título (como «Agregar
 		     nuevo tipo documental» en la Biblioteca). Sin procesos, el acceso es «Crear proceso» del centro. -->
-		{#if estadoProcesos.cargada && procesos.length > 0}
+		{#if estadoProcesos.cargada && procesos.length > 0 && !creando}
 			<Button class="shrink-0" data-testid="nuevo-proceso" onclick={nuevo}>Nuevo proceso</Button>
 		{/if}
 	</div>
 
 	<div class="flex min-h-0 flex-1">
 		<div class="flex-1 overflow-y-auto border-t-2 border-muted p-8">
-			{#if !estadoProcesos.cargada}
+			{#if creando}
+				<NuevoProceso alCancelar={() => (creando = false)} alContinuar={continuarAlLienzo} />
+			{:else if !estadoProcesos.cargada}
 				<!-- La lista vive en el servidor (por organización) y todavía no llega: un «Crea tu proceso» ahora se leería como «no tienes
 				     ninguno». Con un error, la salida es reintentar. -->
 				{#if estadoProcesos.error}
@@ -162,7 +182,6 @@
 					{#each procesos as p (p.id)}
 						{@const activo = procesoActivo(p)}
 						{@const tipos = tiposDelProceso(p)}
-						{@const tipoVirtual = p.datos.tipoExpedienteVirtualId}
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
@@ -182,18 +201,15 @@
 											Documentos configurados | {tipos}
 										{/if}
 									</span>
-									<!-- El tipo de expediente virtual sobre el que corre (2026-10-29). -->
-									<span class="block truncate text-xs text-muted-foreground" data-testid="proceso-tipo-virtual-en-lista">
-										{#if tipoVirtual}
-											Corre sobre: {page.data.tiposVirtuales?.find((t: { id: string; nombre: string }) => t.id === tipoVirtual)?.nombre ?? 'un tipo de expediente virtual'}
-										{:else}
-											Sin tipo de expediente virtual
-										{/if}
-									</span>
 									<!-- Desde el 2026-11-03 el Resultado es obligatorio: los procesos de antes que no lo traen se siguen abriendo, pero no se pueden ejecutar. -->
 									{#if !tieneResultado(p)}
 										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-sin-resultado" title="Ábrelo y agrega el nodo «Resultado» para poder ejecutarlo">
 											Sin Resultado: ábrelo y agrégalo para poder ejecutarlo
+										</span>
+									{:else if !resultadoConectadoDe(p)}
+										<!-- Tiene el nodo pero ninguna regla llega a él (2026-11-06): tampoco se puede ejecutar, y con el alta nueva es fácil guardarlo así. -->
+										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-resultado-sin-regla" title="Ábrelo y conecta una regla a su «Resultado» para poder ejecutarlo">
+											Su Resultado no tiene ninguna regla conectada: ábrelo y conéctala para poder ejecutarlo
 										</span>
 									{/if}
 								</span>

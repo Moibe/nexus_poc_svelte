@@ -1,8 +1,8 @@
 <script lang="ts">
 	/**
 	 * El listado de expedientes COMO LISTA (2026-10-25, pedido de Moibe): una fila por expediente y una columna por cada cosa que se
-	 * quiere ver de él. (Hasta el 2026-10-29 llevaba también el TIPO de expediente; el expediente dejó de tenerlo ese día. Desde el
-	 * 2026-11-03 lleva su GRUPO: «Sin grupo» para los de antes de los grupos.)
+	 * quiere ver de él. (Hasta el 2026-10-29 llevaba también el TIPO de expediente; el expediente dejó de tenerlo ese día. Del 2026-11-03
+	 * al 2026-11-06 llevó su GRUPO; los grupos se quitaron «en aras de la simplicidad».)
 	 *
 	 * Cada encabezado es un botón que ordena por esa columna y, picado otra vez, invierte la dirección: `aria-sort` dice por cuál va
 	 * (para quien no ve la flecha). Qué orden sale de cada clic lo decide `ordenAlPicar`; aquí solo se pinta. La fila entera es un
@@ -35,10 +35,9 @@
 
 	/** Cuánto ocupa cada columna (la tabla es de ancho fijo para que un nombre largo se corte con «…» en vez de ensanchar la lista). */
 	const ANCHO: Record<ColumnaExpedientes, string> = {
-		nombre: 'w-[36%]',
-		grupo: 'w-[20%]',
-		archivos: 'w-[12%]',
-		peso: 'w-[12%]',
+		nombre: 'w-[52%]',
+		archivos: 'w-[14%]',
+		peso: 'w-[14%]',
 		creado: 'w-[20%]'
 	};
 </script>
@@ -93,15 +92,7 @@
 							</span>
 						</a>
 					</td>
-					<!-- Los de antes de los grupos no tienen: se dice, en vez de dejar la celda vacía. -->
-						<td class="py-3 pr-4" data-testid="expediente-grupo">
-							{#if expediente.grupo}
-								<span class="block truncate text-foreground" title={expediente.grupo.nombre}>{expediente.grupo.nombre}</span>
-							{:else}
-								<span class="text-xs text-muted-foreground">Sin grupo</span>
-							{/if}
-						</td>
-						<td class="py-3 pr-4 text-foreground tabular-nums" data-testid="expediente-archivos">{expediente.totalDocumentos}</td>
+					<td class="py-3 pr-4 text-foreground tabular-nums" data-testid="expediente-archivos">{expediente.totalDocumentos}</td>
 					<!-- Un servidor anterior al peso no lo manda: sin dato se calla, en vez de decir «0 MB» de algo que sí tiene documentos. -->
 					<td class="py-3 pr-4 text-foreground tabular-nums" data-testid="expediente-peso">
 						{expediente.tamanoBytes === undefined ? '—' : formatearTamano(expediente.tamanoBytes)}

@@ -20,12 +20,13 @@
 	 * se entera.
 	 *
 	 * **Clasificar al subir (2026-11-02, Moibe: «los dos clasifican»; sin confianza mínima: basta con ser de ese tipo).** nexus_back clasifica cada
-	 * archivo en la misma llamada con que lo sube (la fila dice «Subiendo y clasificando…») y, si el clasificador lo reconoce como de un tipo,
-	 * lo mete solo a los expedientes virtuales de este expediente que esperan ese tipo. Cada archivo subido dice qué pasó
-	 * (`lineaDeClasificacion`), y una nota fija sobre la lista dice la regla. Clasificar nunca tumba la subida: si no se pudo, el archivo queda subido y la fila lo dice.
+	 * archivo en la misma llamada con que lo sube (la fila dice «Subiendo y clasificando…») y guarda el tipo que reconoció: es lo que dice de qué
+	 * tipo es el documento y por lo que lo encuentran los procesos del motor de reglas. Cada archivo subido dice qué pasó
+	 * (`lineaDeClasificacion`), y una nota fija sobre la lista dice la regla. Clasificar nunca tumba la subida: si no se pudo, el archivo queda
+	 * subido y la fila lo dice. (Hasta el 2026-11-05 además lo metía solo a los expedientes virtuales que esperaban ese tipo; Moibe los quitó.)
 	 *
-	 * Mismo molde que «Nuevo expediente virtual» (`ExpedienteVirtualModal`): modal centrado de 684 px con cabecera, título con su ícono,
-	 * cuerpo y pie con «Cancelar» y el botón principal.
+	 * Mismo molde que «Nuevo expediente» (`ExpedienteModal`): modal centrado de 684 px con cabecera, título con su ícono, cuerpo y pie con
+	 * «Cancelar» y el botón principal.
 	 */
 	import { untrack } from 'svelte';
 	import { Dialog as DialogPrimitive } from 'bits-ui';
@@ -42,14 +43,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { formatearTamano } from '$lib/expedientes/expedientes';
 	import { huellaDe } from '$lib/expedientes/huella';
-	import {
-		leerClasificacion,
-		leerVirtualesDondeEntro,
-		lineaDeClasificacion,
-		notaDeSubida,
-		type ClasificacionDeSubida,
-		type VirtualDondeEntro
-	} from '$lib/expedientes/clasificador';
+	import { leerClasificacion, leerExtraccion, lineaDeClasificacion, lineaDeExtraccion, notaDeSubida, type ClasificacionDeSubida, type ExtraccionDeSubida } from '$lib/expedientes/clasificador';
 	import { ACEPTAR_ATRIBUTO, MAX_MB_SUBIDA, cuantosArchivos, duplicadoDe, motivoDeRechazo, textoDeDuplicado, type Huella } from '$lib/expedientes/subida';
 
 	/** `duplicado`: se marcó como repetido y NO se sube (a menos que la persona lo permita). */
@@ -68,8 +62,8 @@
 		permitirDuplicado: boolean;
 		/** Lo que dijo el clasificador al subirlo (`null` si el servidor no lo dijo). */
 		clasificacion: ClasificacionDeSubida | null;
-		/** A cuáles expedientes virtuales entró solo. */
-		virtuales: VirtualDondeEntro[];
+		/** Lo que pasó al extraer sus datos justo después de clasificarlo (`null` si el servidor no lo dijo). */
+		extraccion: ExtraccionDeSubida | null;
 	};
 
 	let {
@@ -83,11 +77,8 @@
 		expediente: { id: string; nombre: string };
 		/** Los documentos que YA están en el expediente (nombre y huella), para avisar de duplicados. */
 		existentes?: { nombre: string; sha256?: string }[];
-		/**
-		 * Se cierra la ventana y entró al menos un archivo: la página se pone al día y avisa. `omitidos` son los duplicados que no se subieron;
-		 * `colocados`, los archivos que el clasificador metió solo a algún expediente virtual.
-		 */
-		alTerminar: (resultado: { subidos: number; fallidos: number; omitidos: number; colocados: number }) => Promise<void> | void;
+		/** Se cierra la ventana y entró al menos un archivo: la página se pone al día y avisa. `omitidos` son los duplicados que no se subieron. */
+		alTerminar: (resultado: { subidos: number; fallidos: number; omitidos: number }) => Promise<void> | void;
 	} = $props();
 
 	let filas = $state<Fila[]>([]);
@@ -106,8 +97,6 @@
 	const conError = $derived(filas.filter((f) => f.estado === 'error').length);
 	const rechazados = $derived(filas.filter((f) => f.estado === 'rechazado').length);
 	const duplicados = $derived(filas.filter((f) => f.estado === 'duplicado').length);
-	/** Cuántos de los archivos subidos el clasificador metió solo a algún expediente virtual. */
-	const colocados = $derived(filas.filter((f) => f.estado === 'listo' && f.virtuales.length > 0).length);
 	/** La huella y el nombre de lo que ya estaba en el expediente. */
 	const huellasExistentes = $derived(existentes.filter((e): e is { nombre: string; sha256: string } => typeof e.sha256 === 'string' && e.sha256 !== '').map((e) => ({ nombre: e.nombre, sha256: e.sha256 })));
 	/** Cuántos van, para «Subiendo 2 de 5…». */
@@ -158,7 +147,7 @@
 				duplicado: '',
 				permitirDuplicado: false,
 				clasificacion: null,
-				virtuales: []
+				extraccion: null
 			});
 			if (motivo) continue;
 			// La fila reactiva (la que quedó en la lista), no el objeto suelto: es la que hay que mutar cuando termine la huella.
@@ -218,7 +207,7 @@
 					if (r.ok) {
 						// Lo que dijo el clasificador viaja en la misma respuesta; un servidor sin él deja la fila sin esa línea.
 						fila.clasificacion = leerClasificacion(datos?.clasificacion);
-						fila.virtuales = leerVirtualesDondeEntro(datos?.expedientesVirtuales);
+						fila.extraccion = leerExtraccion(datos?.extraccion);
 						fila.estado = 'listo';
 					} else {
 						fila.estado = 'error';
@@ -236,7 +225,7 @@
 
 	async function cerrar() {
 		if (subiendo) return;
-		const resultado = { subidos, fallidos: conError, omitidos: duplicados, colocados };
+		const resultado = { subidos, fallidos: conError, omitidos: duplicados };
 		open = false;
 		if (resultado.subidos > 0) await alTerminar(resultado);
 	}
@@ -249,7 +238,6 @@
 		if (filas.length === 0) return '';
 		const partes: string[] = [];
 		if (subidos > 0) partes.push(`${cuantosArchivos(subidos)} ${subidos === 1 ? 'subido' : 'subidos'}`);
-		if (colocados > 0) partes.push(`${cuantosArchivos(colocados)} ${colocados === 1 ? 'entró' : 'entraron'} a expedientes virtuales`);
 		if (conError > 0) partes.push(`${cuantosArchivos(conError)} sin subir`);
 		const pendientes = filas.filter((f) => f.estado === 'espera').length;
 		if (pendientes > 0) partes.push(`${cuantosArchivos(pendientes)} por subir`);
@@ -271,13 +259,13 @@
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
 			data-testid="modal-subir-archivos"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-lg"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[92vh] w-[92vw] max-w-171 -translate-x-1/2 -translate-y-1/2 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-3 border-b border-border">
 				<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">Expedientes / {expediente.nombre}</p>
 				<button
 					type="button"
-					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground disabled:opacity-40"
+					class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-300 disabled:opacity-40"
 					data-testid="cerrar-subir-archivos"
 					disabled={subiendo}
 					onclick={cerrar}
@@ -322,7 +310,7 @@
 					<span class="text-sm font-medium text-foreground">Arrastra y suelta tus archivos aquí o selecciónalos desde tu equipo</span>
 					<span class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max {MAX_MB_SUBIDA} MB</span>
 				</button>
-				<!-- La regla del clasificador, dicha donde se sube (2026-11-02): con el mínimo que fija nexus_back, que no se copia aquí. -->
+				<!-- Lo que hace el clasificador al subir, dicho donde se sube (2026-11-02). -->
 				<p class="flex items-start gap-2 text-xs text-muted-foreground" data-testid="nota-clasificacion">
 					<Sparkles class="mt-0.5 size-3.5 shrink-0 text-primary" />
 					<span>{notaDeSubida()}</span>
@@ -349,7 +337,7 @@
 									fila.estado === 'error' || fila.estado === 'rechazado'
 										? 'border-destructive/40 bg-background'
 										: fila.duplicado
-											? 'border-amber-300 bg-amber-50'
+											? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950'
 											: 'border-border bg-background'
 								]}
 							>
@@ -362,27 +350,40 @@
 									{#if fila.mensaje}
 										<p class="mt-0.5 text-xs text-destructive" data-testid="archivo-subida-mensaje">{fila.mensaje}</p>
 									{/if}
-									<!-- Lo que dijo el clasificador de un archivo ya subido: verde si entró a algún expediente virtual, ámbar si pide atención (no alcanzó el
-										     mínimo o no se pudo clasificar), gris si solo informa. -->
-										{#if fila.estado === 'listo' && fila.clasificacion}
-											{@const linea = lineaDeClasificacion(fila.clasificacion, fila.virtuales)}
+									<!-- Lo que dijo el clasificador de un archivo ya subido: verde si reconoció su tipo, ámbar si pide atención (no se pudo clasificar),
+									     gris si solo informa. -->
+									{#if fila.estado === 'listo' && fila.clasificacion}
+										{@const linea = lineaDeClasificacion(fila.clasificacion)}
+										<p
+											class={['mt-0.5 text-xs', linea.tono === 'bien' ? 'text-green-700 dark:text-green-400' : linea.tono === 'aviso' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground']}
+											data-testid="archivo-subida-clasificacion"
+											data-clasificacion={fila.clasificacion.estado}
+										>
+											{linea.texto}
+										</p>
+									{/if}
+									<!-- Y lo de la extracción de sus datos (2026-11-06), debajo: verde si se extrajeron, ámbar si no se pudo; sin tipo no dice nada. -->
+									{#if fila.estado === 'listo' && fila.extraccion}
+										{@const extraccion = lineaDeExtraccion(fila.extraccion)}
+										{#if extraccion}
 											<p
-												class={['mt-0.5 text-xs', linea.tono === 'bien' ? 'text-green-700' : linea.tono === 'aviso' ? 'text-amber-700' : 'text-muted-foreground']}
-												data-testid="archivo-subida-clasificacion"
-												data-clasificacion={fila.clasificacion.estado}
+												class={['mt-0.5 text-xs', extraccion.tono === 'bien' ? 'text-green-700 dark:text-green-400' : extraccion.tono === 'aviso' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground']}
+												data-testid="archivo-subida-extraccion"
+												data-extraccion={fila.extraccion.estado}
 											>
-												{linea.texto}
+												{extraccion.texto}
 											</p>
 										{/if}
-										<!-- Un duplicado se dice en ámbar (no es un error: el archivo está bien, solo que ya está) y, si no se permitió, ofrece subirlo igual. -->
+									{/if}
+									<!-- Un duplicado se dice en ámbar (no es un error: el archivo está bien, solo que ya está) y, si no se permitió, ofrece subirlo igual. -->
 									{#if fila.duplicado && fila.estado !== 'listo'}
-										<p class="mt-0.5 text-xs text-amber-700" data-testid="archivo-subida-duplicado">
+										<p class="mt-0.5 text-xs text-amber-700 dark:text-amber-400" data-testid="archivo-subida-duplicado">
 											{fila.duplicado}{fila.permitirDuplicado ? ' Se subirá de todos modos.' : ''}
 										</p>
 										{#if fila.estado === 'duplicado' && !subiendo}
 											<button
 												type="button"
-												class="mt-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
+												class="mt-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline dark:text-blue-300"
 												data-testid="subir-de-todos-modos"
 												onclick={() => permitir(fila.id)}
 											>
@@ -397,13 +398,13 @@
 										<span class="text-muted-foreground">Subiendo y clasificando…</span>
 									{:else if fila.estado === 'listo'}
 										<Check class="size-3.5 text-green-600" />
-										<span class="font-medium text-green-700">Subido</span>
+										<span class="font-medium text-green-700 dark:text-green-400">Subido</span>
 									{:else if fila.estado === 'error'}
 										<span class="font-medium text-destructive">No se subió</span>
 									{:else if fila.estado === 'rechazado'}
 										<span class="font-medium text-destructive">No válido</span>
 									{:else if fila.estado === 'duplicado'}
-										<span class="font-medium text-amber-700">Duplicado</span>
+										<span class="font-medium text-amber-700 dark:text-amber-400">Duplicado</span>
 									{:else}
 										<span class="text-muted-foreground">En espera</span>
 									{/if}
@@ -428,7 +429,7 @@
 			</div>
 
 			<div class="flex items-center justify-end gap-4 border-t border-border p-2.5">
-				<Button type="button" variant="link" class="h-9.5 px-4 text-destructive" data-testid="cancelar-subir-archivos" disabled={subiendo} onclick={cerrar}>
+				<Button type="button" variant="link" class="h-9.5 px-4 text-destructive dark:text-red-300" data-testid="cancelar-subir-archivos" disabled={subiendo} onclick={cerrar}>
 					{subidos > 0 ? 'Cerrar' : 'Cancelar'}
 				</Button>
 				{#if terminado}

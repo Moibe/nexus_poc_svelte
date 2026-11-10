@@ -6,8 +6,9 @@
 	 * Sale del encabezado del Figma del Sprint 5 (HUN2): migaja, título «Gestión de…» y una línea que dice para qué sirve la pantalla.
 	 *
 	 * **Sin pestañas desde el 2026-10-25.** Eran dos, «Tipos de expediente» y «Expedientes»; los tipos se mudaron al módulo de
-	 * configuración (`/configuracion/tipos-expediente`), que es donde se configura de qué están hechos los expedientes, y aquí quedó
-	 * solo el trabajo del día a día. Con una sola sección, una pestaña subrayada sola no dice nada: se quitó la barra entera.
+	 * configuración, y aquí quedó solo el trabajo del día a día. Con una sola sección, una pestaña subrayada sola no dice nada: se quitó la
+	 * barra entera. (Esos tipos, que desde el 2026-10-29 eran «de expediente virtual», se quitaron del todo el 2026-11-05 junto con los
+	 * expedientes virtuales.)
 	 */
 	let { children } = $props();
 </script>

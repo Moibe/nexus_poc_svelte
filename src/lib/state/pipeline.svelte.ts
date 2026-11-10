@@ -313,7 +313,7 @@ async function procesarUno(id: string) {
 	if (!mime) {
 		pasarA(doc, 'no_soportado');
 		doc.terminadoEn = new Date();
-		doc.error = `Document AI no procesa archivos ${doc.extension}. Se aceptan PDF, JPG, JPEG y TIFF.`;
+		doc.error = `Biblioratum no procesa archivos ${doc.extension}. Se aceptan PDF, JPG, JPEG y TIFF.`;
 		return;
 	}
 
@@ -352,10 +352,11 @@ async function procesarUno(id: string) {
 	// descubierto el 2026-09-07: en cuanto el front empezó a sincronizar el
 	// clasificador de verdad, ninguna categoría empató y TODO caía en el error
 	// "el front todavía no sabe a qué extractor mandarla".
-	// Ojo: estar activo alcanza para IDENTIFICARLO, pero ya no para procesarlo
-	// — desde el 2026-09-14 además hay que estar calibrado. Ese corte va más
-	// abajo, después de anotar `tipoDetectado`, para poder nombrar el tipo en
-	// el aviso en vez de mandarlo al cajón de los desconocidos.
+	// Estar activo alcanza para IDENTIFICARLO; para procesarlo además hace falta
+	// su procesador (el corte va más abajo, después de anotar `tipoDetectado`,
+	// para poder nombrar el tipo en el aviso en vez de mandarlo al cajón de los
+	// desconocidos). Del 2026-09-14 al 2026-11-06 también había que estar
+	// calibrado; la calibración se quitó.
 	const tipo =
 		categoria === CATEGORIA_OTRO
 			? undefined
@@ -407,32 +408,9 @@ async function procesarUno(id: string) {
 		return;
 	}
 
-	if (!tipo.calibradoEn) {
-		// Estar activo ya NO alcanza para procesar (2026-09-14, a pedido
-		// explícito): además hay que haber pasado la calibración de prompts.
-		// Activar solo crea el Custom Extractor en Document AI; hasta que la
-		// calibración termina, nadie ha comprobado que lo que extrae sea
-		// correcto, y mandarle documentos de producción sería confiar en un
-		// extractor sin verificar.
-		//
-		// Se corta AQUÍ y no en la búsqueda del tipo (arriba) a propósito. Si
-		// se filtrara ahí, un tipo sin calibrar caería en `no_configurado`
-		// junto con los desconocidos, y la pantalla diría "no hay tipo
-		// configurado que aplique" — falso: sí lo hay, está activo y el
-		// clasificador lo reconoció bien. Cortando aquí se conserva
-		// `tipoDetectado`, así que el renglón puede nombrar el tipo y decir
-		// exactamente qué le falta.
-		//
-		// Mismo desenlace que el caso de arriba —`pendiente_revision` y no
-		// `fallido`— por la misma razón: el documento SÍ se entendió, lo que
-		// falta es trabajo de configuración, y eso no se arregla reintentando.
-		pasarA(sigueVivo, 'pendiente_revision');
-		sigueVivo.terminadoEn = new Date();
-		// Corto a propósito: el renglón de la bandeja recorta a dos líneas, y
-		// la mitad accionable ("dónde se arregla") es justo la que se perdía.
-		sigueVivo.error = `Se identificó como "${tipo.nombre}", pero todavía no se ha calibrado. Calíbralo en el Módulo de configuración.`;
-		return;
-	}
+	// (Del 2026-09-14 al 2026-11-06 aquí había un segundo corte: el tipo, además de activo y con procesador, tenía que estar «calibrado»
+	// (`calibradoEn`), y si no el documento iba a `pendiente_revision` diciendo "todavía no se ha calibrado". Moibe quitó la calibración
+	// («ya no se requiere para activarlos»): un tipo activo con procesador extrae.)
 
 	// SIN excepciones por tipo: cada documento se extrae con el Custom
 	// Extractor que "Activar" le creó a SU tipo documental. Hubo por unas horas
@@ -488,7 +466,7 @@ function asegurarRegistro(id: string): Promise<Registro> {
 	const enCurso = registrosEnCurso.get(id);
 	if (enCurso) return enCurso;
 	const mime = MIME_POR_EXTENSION[doc.extension];
-	if (!mime) return Promise.resolve({ ok: false, mensaje: `Document AI no procesa archivos ${doc.extension}.` });
+	if (!mime) return Promise.resolve({ ok: false, mensaje: `Biblioratum no procesa archivos ${doc.extension}.` });
 	const promesa = registrarDocumentoManual(new File([doc.archivo], doc.nombre, { type: mime }))
 		.then((r) => {
 			const vivo = documentosEnPipeline.find((d) => d.id === id);
@@ -688,7 +666,7 @@ export const sePuedeQuitar = (doc: DocumentoEnPipeline) => !EN_CAMINO.includes(d
 
 /**
  * «Reintentar pipeline»: los documentos elegidos que terminaron mal vuelven a la cola, con su archivo, y el mismo worker los
- * procesa de nuevo de a uno (clasificar y extraer otra vez: si ya se configuró o calibró el tipo, ahora sí entra). Se limpia lo
+ * procesa de nuevo de a uno (clasificar y extraer otra vez: si ya se configuró o activó el tipo, ahora sí entra). Se limpia lo
  * del intento anterior (error, tipo detectado, resultado) y queda en su historia. Lo cargado a mano NO se registra dos veces: ya
  * trae su `documentoId` (ver `asegurarRegistro`).
  */

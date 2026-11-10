@@ -1,19 +1,17 @@
 /**
- * Un expediente como lo devuelve nexus_back (`/expedientes`): la carpeta de un cliente o de un caso, un RECEPTÁCULO de documentos. Desde
- * el 2026-10-29 (decisión de Moibe) no tiene tipo: lo que tiene tipo —y esquema— son sus EXPEDIENTES VIRTUALES, grupitos de sus
- * documentos («la solicitud de crédito de Juan Pérez») que usará el motor de reglas. Se llama por su `nombre`; no tiene folio. Aquí solo
- * viven los campos que las pantallas usan, más los formateadores de lo que se muestra de ellos (peso, fecha, formato del archivo): sin
- * dependencias, para poder probarlos sueltos (`node --experimental-strip-types`).
+ * Un expediente como lo devuelve nexus_back (`/expedientes`): la carpeta de un cliente o de un caso, un RECEPTÁCULO de documentos. No tiene
+ * tipo (desde el 2026-10-29) ni nada que lo subdivida: el 2026-11-05 Moibe quitó los expedientes virtuales («ahora podremos meter el
+ * expediente completo a la ejecución de un proceso»), así que el motor de reglas corre sobre el expediente entero y encuentra cada documento
+ * por su tipo documental. Tampoco lo agrupa nada: los grupos de expedientes (2026-11-03) se quitaron el 2026-11-06 «en aras de la
+ * simplicidad». Se llama por su `nombre`; no tiene folio. Aquí solo viven los campos que las pantallas usan, más los
+ * formateadores de lo que se muestra de ellos (peso, fecha, formato del archivo): sin dependencias, para poder probarlos sueltos
+ * (`node --experimental-strip-types`).
  */
-
-import type { GrupoDeExpediente } from './grupos';
 
 /** Lo que dice la lista de cada expediente. */
 export type Expediente = {
 	id: string;
 	nombre: string;
-	/** El grupo en que vive (2026-11-03). `null`: es de antes de los grupos y todavía no se le asigna uno. Puede faltar si el servidor es anterior. */
-	grupo?: GrupoDeExpediente | null;
 	creadoPor: string | null;
 	creadoEn: string | null;
 	/** Cuántos documentos tiene. */
@@ -33,22 +31,56 @@ export type DocumentoDeExpediente = {
 	recibidoEn: string | null;
 	/** La huella SHA-256 de sus bytes, la que guarda nexus_back. Sirve para avisar de duplicados al subir (2026-11-02). */
 	sha256?: string;
+	/** Dónde está el archivo en el almacén (`{organización}/{aa}/{bb}/{sha256}`): con ella se pide a `/api/archivos/<ruta>`. La tarjeta del expediente ya no ofrece verlo (2026-11-06: se quiere el PDF de los resultados, no el archivo); queda por si se necesita. Puede faltar en un servidor anterior. */
+	rutaRelativa?: string;
 	/** Qué tipo documental es, según lo que se guardó al procesarlo (migración 0007): el de su última extracción o, si no se extrajo, el
 	 *  de su última clasificación. `null` si nunca se procesó desde que se guarda o el clasificador dijo «otro». */
 	tipoDocumental?: TipoDeDocumento | null;
-	/** Solo dentro de un expediente virtual (2026-11-02): lo metió el clasificador y no una persona. Se saca como cualquier otro. */
-	agregadoPorClasificador?: boolean;
 	/**
-	 * Solo dentro de un expediente virtual (2026-11-03): hay otro documento del MISMO tipo documental en él, así que no se sabe cuál es «el INE» y un
-	 * proceso que usa ese tipo no se puede ejecutar sobre ese virtual (Moibe). Se calcula al leer: sacar uno quita la marca de los dos.
+	 * **TIPO DOCUMENTAL REPETIDO** (en pantalla; en el contrato con nexus_back se sigue llamando `duplicado`, y no es el archivo repetido: eso es
+	 * `archivosRepetidos`). Solo al ver UN expediente (2026-11-03; desde el 2026-11-05 la marca es del expediente entero): hay otro documento del
+	 * MISMO tipo documental en él, así que no se sabe cuál es «el INE» y un proceso que usa ese tipo no se puede ejecutar sobre el expediente
+	 * (Moibe). Se calcula al leer, no se guarda: sacar uno quita la marca de los dos. La lista de todos los documentos de la organización no la trae.
+	 *
+	 * Moibe, 2026-11-06: «el concepto de duplicado debería ser "Tipo Documental Repetido" porque el duplicado es cuando está duplicado por ser archivo
+	 * idéntico por hash, debe de poder marcar las dos cosas». Por eso el nombre del cable no se tocó (renombrarlo obligaría a cambiar el back y las
+	 * pruebas de los dos lados por una palabra): lo que cambió son los textos, y «Duplicado» ahora dice otra cosa (ver `archivosRepetidos`).
 	 */
 	duplicado?: boolean;
-	/** Solo al ver el EXPEDIENTE (2026-11-03): en qué expedientes virtuales de él este documento está duplicado, y de qué tipo. */
-	duplicadoEn?: { id: string; nombre: string; tipoNombre: string | null }[];
 };
 
-/** Un tipo documental del que un expediente virtual trae DOS O MÁS documentos, con esos documentos. */
-export type DuplicadoDeVirtual = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
+/** Un tipo documental del que un expediente trae DOS O MÁS documentos, con esos documentos (nexus_back lo llama `duplicados`; en pantalla, «tipo documental repetido»). */
+export type DuplicadoDeTipo = { tipoId: string; tipoNombre: string | null; documentos: { id: string; nombre: string | null }[] };
+
+/** Un archivo que está DOS O MÁS veces en un expediente: mismos bytes, misma huella SHA-256 (aunque se llamen distinto). Es el «Duplicado» de verdad. */
+export type ArchivoRepetido = { sha256: string; documentos: { id: string; nombre: string | null }[] };
+
+/**
+ * Los archivos que el expediente trae más de una vez, por su CONTENIDO (SHA-256) y no por su nombre ni su tipo: «acta.pdf» y «copia.pdf» con los
+ * mismos bytes son un duplicado, y dos INE distintos (otro contenido) no lo son aunque sean del mismo tipo (eso es un tipo documental repetido).
+ * Un documento sin huella (un servidor anterior no la mandaba) no cuenta. Se calcula al leer: sacar una copia quita la marca de las demás.
+ *
+ * Devuelve un grupo por huella repetida, en el orden en que aparece su primer documento, con los documentos en el orden en que vienen.
+ */
+export function archivosRepetidos(documentos: readonly Pick<DocumentoDeExpediente, 'id' | 'nombreOriginal' | 'sha256'>[]): ArchivoRepetido[] {
+	const porHuella = new Map<string, ArchivoRepetido>();
+	for (const d of documentos) {
+		const huella = typeof d.sha256 === 'string' ? d.sha256.trim().toLowerCase() : '';
+		if (!huella) continue;
+		const grupo = porHuella.get(huella) ?? { sha256: huella, documentos: [] };
+		grupo.documentos.push({ id: d.id, nombre: d.nombreOriginal ?? null });
+		porHuella.set(huella, grupo);
+	}
+	return [...porHuella.values()].filter((g) => g.documentos.length >= 2);
+}
+
+/** Cómo se dice un archivo repetido: «INE.jpg — 2 copias» si todas se llaman igual; si no, los nombres juntos, porque lo que cuenta es que son el mismo contenido. */
+export function textoDeArchivoRepetido(g: ArchivoRepetido): { nombre: string; detalle: string } {
+	const nombres = g.documentos.map((d) => d.nombre ?? 'sin nombre');
+	const distintos = [...new Set(nombres)];
+	if (distintos.length === 1) return { nombre: distintos[0], detalle: `${g.documentos.length} copias` };
+	return { nombre: nombres.join(', '), detalle: 'mismo contenido con distinto nombre' };
+}
 
 export type TipoDeDocumento = {
 	id: string;
@@ -60,66 +92,16 @@ export type TipoDeDocumento = {
 };
 
 /**
- * Un expediente virtual tal como viene dentro de su expediente: su tipo (un tipo de expediente virtual de la organización) y los ids de
- * sus documentos, que son SIEMPRE documentos de ese expediente (lo cuida la base).
+ * El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y los tipos documentales de los que trae
+ * DOS O MÁS (`duplicados` en el cable; vacío si ninguno; en pantalla, «tipos documentales repetidos»). Los documentos de esos tipos llevan además `duplicado`.
  */
-export type ExpedienteVirtualResumen = {
-	id: string;
-	nombre: string;
-	tipo: { id: string; nombre: string };
-	creadoPor: string | null;
-	creadoEn: string | null;
-	documentos: string[];
-	totalDocumentos: number;
-	/** Los tipos de los que trae documentos duplicados (2026-11-03); vacío si ninguno. Puede faltar si el servidor es anterior a esto. */
-	duplicados?: DuplicadoDeVirtual[];
-};
-
-/**
- * Un expediente virtual tal como viene en la lista de los de UN tipo (`/tipos-expediente/{id}/virtuales`, 2026-10-30): como esa lista cruza
- * todos los expedientes de la organización, cada uno dice a cuál pertenece y cuántos documentos tiene ese expediente, para poder escribir
- * «2 de 3 documentos» sin pedir cada expediente.
- */
-export type ExpedienteVirtualDeTipo = {
-	id: string;
-	nombre: string;
-	expediente: { id: string; nombre: string; totalDocumentos: number };
-	/** Cuántos de los documentos del expediente forman este virtual. */
-	totalDocumentos: number;
-	creadoPor: string | null;
-	creadoEn: string | null;
-};
-
-/** Un expediente virtual abierto (`/expedientes/{id}/virtuales/{vid}`): su tipo con el esquema, su expediente y sus documentos completos. */
-export type ExpedienteVirtual = {
-	id: string;
-	nombre: string;
-	/** Cada tipo documental del esquema con los documentos del virtual que lo cubren (por su tipo guardado; vacío = falta). */
-	tipo: { id: string; nombre: string; tiposDocumentales: { id: string; nombre: string; documentos?: string[] }[] };
-	expediente: { id: string; nombre: string };
-	creadoPor: string | null;
-	creadoEn: string | null;
-	totalDocumentos: number;
-	documentos: DocumentoDeExpediente[];
-	/** Los procesos del motor de reglas ligados a su tipo: los que le aplican. `ejecutable`: trae su Resultado con una regla conectada (2026-11-03). */
-	procesos?: { id: string; nombre: string; activo: boolean; ejecutable?: boolean }[];
-	/** Los tipos de los que este virtual trae documentos duplicados (2026-11-03). Con alguno, un proceso que usa ese tipo no se ejecuta sobre él. */
-	duplicados?: DuplicadoDeVirtual[];
-};
-
-/** El expediente abierto: lo mismo que en la lista, sus documentos (en el orden en que se agregaron) y sus expedientes virtuales. */
 export type ExpedienteConDocumentos = Expediente & {
 	documentos: DocumentoDeExpediente[];
-	expedientesVirtuales: ExpedienteVirtualResumen[];
+	duplicados: DuplicadoDeTipo[];
 };
 
-/** El tope del nombre: el mismo que impone nexus_back (`servicios/expedientes.py` y `servicios/expedientes_virtuales.py`). */
+/** El tope del nombre: el mismo que impone nexus_back (`servicios/expedientes.py`). */
 export const MAX_NOMBRE_EXPEDIENTE = 200;
-
-/** «0 de 3 documentos», «1 de 1 documento»: cuántos de los documentos del expediente forman el virtual. */
-export function documentosDelVirtual(enVirtual: number, enExpediente: number): string {
-	return `${enVirtual} de ${enExpediente} ${enExpediente === 1 ? 'documento' : 'documentos'}`;
-}
 
 const UNIDADES = ['B', 'KB', 'MB', 'GB'];
 
@@ -197,8 +179,6 @@ export type OrdenExpedientes =
 	| 'antiguos'
 	| 'nombre'
 	| 'nombre-desc'
-	| 'grupo'
-	| 'grupo-desc'
 	| 'archivos'
 	| 'archivos-asc'
 	| 'peso'
@@ -211,8 +191,6 @@ export const OPCIONES_ORDEN_EXPEDIENTES: { valor: OrdenExpedientes; etiqueta: st
 	{ valor: 'antiguos', etiqueta: 'Más antiguos primero' },
 	{ valor: 'nombre', etiqueta: 'Nombre (A-Z)' },
 	{ valor: 'nombre-desc', etiqueta: 'Nombre (Z-A)' },
-	{ valor: 'grupo', etiqueta: 'Grupo (A-Z)' },
-	{ valor: 'grupo-desc', etiqueta: 'Grupo (Z-A)' },
 	{ valor: 'archivos', etiqueta: 'Más archivos primero' },
 	{ valor: 'archivos-asc', etiqueta: 'Menos archivos primero' },
 	{ valor: 'peso', etiqueta: 'Más pesados primero' },
@@ -232,7 +210,6 @@ const comparar = (a: number, b: number) => (a < b ? -1 : a > b ? 1 : 0);
 /** Lo mínimo que hace falta de un expediente para ordenarlo (un `Expediente` de verdad lo cumple). */
 type Ordenable = {
 	nombre: string;
-	grupo?: GrupoDeExpediente | null;
 	totalDocumentos?: number;
 	tamanoBytes?: number;
 	creadoEn?: string | null;
@@ -255,12 +232,6 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 	const filas = lista.map((e, i) => ({ e, i }));
 	type Fila = (typeof filas)[number];
 	const nombre = (a: Fila, b: Fila) => porNombre(a.e.nombre, b.e.nombre) || a.i - b.i;
-	const porGrupo = (a: Fila, b: Fila, sentido: 1 | -1) => {
-		const ga = a.e.grupo?.nombre ?? null;
-		const gb = b.e.grupo?.nombre ?? null;
-		if (ga === null || gb === null) return ga === gb ? 0 : ga === null ? 1 : -1;
-		return sentido * porNombre(ga, gb);
-	};
 	const archivos = (a: Fila) => a.e.totalDocumentos ?? 0;
 	const peso = (a: Fila) => a.e.tamanoBytes ?? 0;
 	const criterios: Record<OrdenExpedientes, (a: Fila, b: Fila) => number> = {
@@ -268,9 +239,6 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 		antiguos: (a, b) => comparar(cuando(a.e), cuando(b.e)) || a.i - b.i,
 		nombre,
 		'nombre-desc': (a, b) => porNombre(b.e.nombre, a.e.nombre) || a.i - b.i,
-		// Los que no tienen grupo van SIEMPRE al final, en las dos direcciones: «sin grupo» no es un grupo que ordenar entre los demás.
-		grupo: (a, b) => porGrupo(a, b, 1) || nombre(a, b),
-		'grupo-desc': (a, b) => porGrupo(a, b, -1) || nombre(a, b),
 		archivos: (a, b) => comparar(archivos(b), archivos(a)) || nombre(a, b),
 		'archivos-asc': (a, b) => comparar(archivos(a), archivos(b)) || nombre(a, b),
 		peso: (a, b) => comparar(peso(b), peso(a)) || nombre(a, b),
@@ -280,7 +248,7 @@ export function ordenarExpedientes<T extends Ordenable>(lista: T[], orden: Orden
 }
 
 /** Las columnas de la lista, de izquierda a derecha, y el orden de cada una en cada dirección. */
-export type ColumnaExpedientes = 'nombre' | 'grupo' | 'archivos' | 'peso' | 'creado';
+export type ColumnaExpedientes = 'nombre' | 'archivos' | 'peso' | 'creado';
 
 export const COLUMNAS_EXPEDIENTES: {
 	columna: ColumnaExpedientes;
@@ -291,7 +259,6 @@ export const COLUMNAS_EXPEDIENTES: {
 	primera: 'asc' | 'desc';
 }[] = [
 	{ columna: 'nombre', etiqueta: 'Expediente', asc: 'nombre', desc: 'nombre-desc', primera: 'asc' },
-	{ columna: 'grupo', etiqueta: 'Grupo', asc: 'grupo', desc: 'grupo-desc', primera: 'asc' },
 	{ columna: 'archivos', etiqueta: 'Archivos', asc: 'archivos-asc', desc: 'archivos', primera: 'desc' },
 	{ columna: 'peso', etiqueta: 'Peso', asc: 'peso-asc', desc: 'peso', primera: 'desc' },
 	{ columna: 'creado', etiqueta: 'Fecha de creación', asc: 'antiguos', desc: 'recientes', primera: 'desc' }
@@ -324,24 +291,20 @@ export const OPCIONES_FILTRO_DOCUMENTOS: { valor: FiltroDocumentos; etiqueta: st
 	{ valor: 'sin', etiqueta: 'Sin documentos' }
 ];
 
-/** Lo que vale «Sin grupo» en el filtro de grupos: los expedientes de antes de los grupos, que todavía no tienen. */
-export const FILTRO_SIN_GRUPO = 'sin-grupo';
-
 /**
- * Lo que el listado puede filtrar: el texto (el nombre, sin importar mayúsculas ni acentos), el grupo (los ids de los grupos elegidos,
- * más «Sin grupo»; elegir varios es «cualquiera de ellos»), si tienen o no documentos y el rango de fechas en que se crearon (extremos
- * incluidos, en la hora de quien mira; solo se aplica con los dos extremos, como el calendario del resto de la app). Desde el 2026-10-29 el
- * expediente no tiene tipo, así que ya no se filtra por tipo; desde el 2026-11-03 sí por grupo.
+ * Lo que el listado puede filtrar: el texto (el nombre, sin importar mayúsculas ni acentos), si tienen o no documentos y el rango de
+ * fechas en que se crearon (extremos incluidos, en la hora de quien mira; solo se aplica con los dos extremos, como el calendario del
+ * resto de la app). Desde el 2026-10-29 el expediente no tiene tipo, así que ya no se filtra por tipo; del 2026-11-03 al 2026-11-06 se
+ * filtró por grupo, y los grupos se quitaron.
  */
 export type FiltrosExpedientes = {
 	texto: string;
-	grupos: string[];
 	documentos: FiltroDocumentos[];
 	desde: Date | null;
 	hasta: Date | null;
 };
 
-export const SIN_FILTROS: FiltrosExpedientes = { texto: '', grupos: [], documentos: [], desde: null, hasta: null };
+export const SIN_FILTROS: FiltrosExpedientes = { texto: '', documentos: [], desde: null, hasta: null };
 
 type Filtrable = Ordenable;
 
@@ -350,7 +313,7 @@ const finDelDia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate
 
 /** ¿Hay algún filtro puesto, además del texto? Los dos «con/sin documentos» juntos o un rango a medias no filtran nada. */
 function hayFiltrosAparte(f: FiltrosExpedientes): boolean {
-	return filtraDocumentos(f) !== null || f.grupos.length > 0 || (f.desde !== null && f.hasta !== null);
+	return filtraDocumentos(f) !== null || (f.desde !== null && f.hasta !== null);
 }
 
 /** ¿Hay algo filtrando? Un texto de solo espacios cuenta como ningún texto. */
@@ -379,7 +342,6 @@ export function filtrarExpedientes<T extends Filtrable>(lista: T[], f: FiltrosEx
 	const rango = f.desde && f.hasta ? { de: inicioDelDia(f.desde), a: finDelDia(f.hasta) } : null;
 	return lista.filter((e) => {
 		if (q && !normalizar(e.nombre).includes(q)) return false;
-		if (f.grupos.length > 0 && !(e.grupo ? f.grupos.includes(e.grupo.id) : f.grupos.includes(FILTRO_SIN_GRUPO))) return false;
 		if (documentos === 'con' && !((e.totalDocumentos ?? 0) > 0)) return false;
 		if (documentos === 'sin' && (e.totalDocumentos ?? 0) > 0) return false;
 		if (rango) {

@@ -174,8 +174,6 @@ export type CampoBorrador = {
 	cardinalidadSugerida?: boolean;
 };
 
-/** Largo máximo de las «instrucciones para la extracción»; el servidor (`MAX_INSTRUCCIONES` en nexus_back) las rechaza si pasan. */
-export const MAX_INSTRUCCIONES = 1000;
 
 export type BorradorTipoDocumental = {
 	nombre: string;
@@ -309,6 +307,8 @@ const CLAVES_DE_LA_PERSONA = [LLAVE, 'nexusdoc:tipos-documentales:v1', 'nexusdoc
  * no es un motivo para que el cierre de sesión falle.
  */
 export function limpiarDatosLocalesDeLaPersona(): void {
+	ejemplosEnMemoria.clear(); // los documentos de ejemplo de la persona que se va no se quedan en la pestaña
+	ejemplosDelPaso1 = [];
 	const store = almacen();
 	if (!store) return;
 	for (const clave of CLAVES_DE_LA_PERSONA) {
@@ -318,6 +318,47 @@ export function limpiarDatosLocalesDeLaPersona(): void {
 			/* sin permiso para borrar: no hay nada más que hacer */
 		}
 	}
+}
+
+/**
+ * Los documentos de ejemplo con que se generaron los campos de un tipo (2026-11-07, «Generar a partir de VARIOS documentos»), para poder PROBAR la extracción con
+ * ellos en cuanto el tipo se active (`ProbarExtraccion`). Viven SOLO en la memoria de esta pestaña, por tipo: no se guardan en el navegador (son documentos
+ * reales, y `localStorage` los dejaría ahí para quien use el equipo después), ni en el servidor, ni llegan a Google más que para leerlos. Si se recarga la página
+ * se pierden, y la prueba se hace eligiendo los archivos otra vez. Se borran al cerrar sesión y al borrar el tipo.
+ */
+const ejemplosEnMemoria = new Map<string, File[]>();
+
+/**
+ * Los documentos que se dieron en el PASO 1, para «Sugerir descripción» con documentos (2026-11-07): todavía no hay tipo (se crea al salir del paso 1), así que
+ * esperan aquí, en la memoria de la pestaña, y el paso 2 los ofrece para generar los campos sin pedirlos otra vez. Al salir del paso 1 pasan a ser los del tipo
+ * (`recordarEjemplos`). Se borran con el borrador, al cerrar sesión y al reemplazarlos.
+ */
+let ejemplosDelPaso1: File[] = [];
+
+/** Fija los documentos del paso 1 (reemplaza los anteriores). */
+export function fijarEjemplosDelPaso1(archivos: File[]): void {
+	ejemplosDelPaso1 = [...archivos];
+}
+
+/** Los documentos del paso 1 (una copia). */
+export function ejemplosDelPaso1Actuales(): File[] {
+	return [...ejemplosDelPaso1];
+}
+
+/** Recuerda los ejemplos de un tipo (reemplaza los anteriores). Sin archivos, los olvida. */
+export function recordarEjemplos(idTipo: string, archivos: File[]): void {
+	if (archivos.length === 0) ejemplosEnMemoria.delete(idTipo);
+	else ejemplosEnMemoria.set(idTipo, [...archivos]);
+}
+
+/** Los ejemplos que se recuerdan de un tipo (una copia: quien los use no toca la lista guardada). */
+export function ejemplosDeTipo(idTipo: string): File[] {
+	return [...(ejemplosEnMemoria.get(idTipo) ?? [])];
+}
+
+/** Olvida los ejemplos de un tipo. */
+export function olvidarEjemplos(idTipo: string): void {
+	ejemplosEnMemoria.delete(idTipo);
 }
 
 /** Normaliza un subcampo de un grupo. `null` si no es ni un objeto. */
@@ -432,7 +473,6 @@ export function hayBorrador(): boolean {
 	return (
 		borradorTipoDocumental.nombre.trim() !== '' ||
 		borradorTipoDocumental.descripcion.trim() !== '' ||
-		borradorTipoDocumental.instrucciones.trim() !== '' ||
 		borradorTipoDocumental.vertical !== '' ||
 		borradorTipoDocumental.campos.length > 0 ||
 		!campoIntacto(borradorTipoDocumental.campoEnCaptura)
@@ -485,6 +525,11 @@ export type CampoPropuesto = {
 	cardinalidad: string;
 	valoresLista: string[];
 	subcampos: { nombre: string; tipoDato: string; descripcion: string; obligatorio: boolean }[];
+	/**
+	 * Solo con VARIOS documentos de ejemplo (`unirPropuestas`): el campo no salió en todos, así que se agrega como OPCIONAL: un documento válido que no lo trae
+	 * no debe fallar por eso. Sin esto (un solo documento, o el campo salió en todos) nace obligatorio, como siempre.
+	 */
+	opcionalSugerido?: boolean;
 };
 
 /**
@@ -495,7 +540,7 @@ export type CampoPropuesto = {
  *
  * Nacen OBLIGATORIOS (también sus subcampos), igual que un campo capturado a mano (`campoVacio`), sin importar lo que diga Google:
  * en todas las pruebas del 2026-10-29 propuso todo como opcional, y eso dejaba lo generado con un criterio distinto de lo manual
- * (Moibe, 2026-10-29). La cardinalidad sí se toma de la propuesta, marcada como sugerida para revisarla en el paso 3.
+ * (Moibe, 2026-10-29). La excepción es el que salió en solo ALGUNOS de varios documentos de ejemplo (`opcionalSugerido`, 2026-11-07): ese nace opcional. La cardinalidad sí se toma de la propuesta, marcada como sugerida para revisarla en el paso 3.
  */
 export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregados: number; omitidos: string[] } {
 	const omitidos: string[] = [];
@@ -512,7 +557,7 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 			nombre,
 			tipoDato: tipo,
 			descripcion: p.descripcion.trim() || nombre,
-			obligatorio: true,
+			obligatorio: p.opcionalSugerido !== true,
 			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
 			cardinalidadSugerida: true,
 			valoresLista: tipo === 'lista' ? [...p.valoresLista] : [],
@@ -642,6 +687,7 @@ export function guardarBorrador() {
 
 export function limpiarBorrador() {
 	Object.assign(borradorTipoDocumental, vacio());
+	ejemplosDelPaso1 = []; // los documentos del borrador que se descarta no se quedan en la pestaña
 	const store = almacen();
 	if (!store) return;
 	try {
@@ -834,12 +880,6 @@ export type VersionPublicada = {
 	procesadorVersion: string;
 	/** ISO-8601 de cuándo se publicó ESTA versión (no cuándo se reemplazó). */
 	publicadoEn: string;
-	/** Si ESTA versión llegó a calibrarse, y cuándo. Lo necesita
-	 *  `cancelarNuevaVersion` para devolver el tipo tal como estaba si la
-	 *  edición se abandona sin tocar nada: sin este dato, cancelar dejaría sin
-	 *  calibrar a un tipo que sí lo estaba, y eso ya no es cosmético — un tipo
-	 *  sin calibrar deja de extraer (ver `pipeline.svelte.ts`). */
-	calibradoEn: string | null;
 	campos: CampoBorrador[];
 };
 
@@ -861,11 +901,12 @@ export type TipoDocumentalGuardado = {
 	 *  campos requeridos tengan mapeo, que es la regla de integridad #3 de la
 	 *  sección 2.6 del diccionario — esa validación necesita el back.
 	 *
-	 *  `archivado` lo pone `archivarTipoDocumental()`: es la alternativa NO
-	 *  destructiva a "Borrar" para un modelo activo — no toca Document AI, solo
-	 *  saca el tipo de la Biblioteca. Todavía no hay pantalla de "Archivados"
-	 *  para verlos ni un camino de vuelta; el registro simplemente deja de
-	 *  listarse en el árbol y en las tarjetas. */
+	 *  `archivado` es un estado VIEJO: lo ponía `archivarTipoDocumental()`, que se
+	 *  quitó el 2026-11-07 (Moibe: «como ya podemos borrar libremente, en realidad
+	 *  Archivar ya no es necesario»). Ningún camino nuevo lo escribe, pero los tipos
+	 *  que ya se habían archivado siguen guardados así: no se listan en la Biblioteca,
+	 *  no entran al clasificador, no ocupan nombre y un proceso que los use los ve
+	 *  marcados como archivados. Nunca hubo pantalla de «Archivados» ni camino de vuelta. */
 	estado: 'borrador' | 'activo' | 'archivado';
 	/** Cuántas veces se ha PUBLICADO esta configuración a Document AI. 0 = nunca.
 	 *  Es el precursor de `config_version.version_no` del diccionario, y por eso
@@ -881,13 +922,6 @@ export type TipoDocumentalGuardado = {
 	 *  FIJARLA en cada extracción: la default de Google cambia sin aviso y la
 	 *  reproducibilidad ya nos mordió una vez. */
 	procesadorVersion: string;
-	/** El nombre VISIBLE del procesador en la consola de Document AI (algo como
-	 *  `nexusdoc--tipo-abc--v2--ine`), tal como lo devolvió Google al activar —
-	 *  no se recalcula de este lado. Existe solo para que una persona pueda
-	 *  casar el tipo documental de NexusDoc con el procesador que ve en GCP.
-	 *  Vacío en los tipos activados ANTES del 2026-09-08, que no lo recibieron:
-	 *  ahí la ficha cae al `procesadorId`, que igual lo identifica. */
-	procesadorDisplayName: string;
 	/** El interruptor "Ejemplo documental" del menú de la tarjeta. Todavía no
 	 *  hace nada más que recordarse: no hay ejemplo que adjuntar ni a dónde
 	 *  mandarlo. Se persiste para que el interruptor no mienta al reabrir. */
@@ -897,29 +931,10 @@ export type TipoDocumentalGuardado = {
 	 *  versión se reemplace por una nueva. `null` mientras nunca se ha
 	 *  publicado, o si el tipo se guardó antes de que este campo existiera. */
 	activadoEn: string | null;
-	/** ISO-8601 de cuándo TERMINÓ la calibración de prompts de la versión
-	 *  vigente, o `null` si todavía no se ha calibrado. Es lo que distingue,
-	 *  en la tarjeta de la Biblioteca, entre ofrecer "Calibrar" y mostrar
-	 *  "Activado".
-	 *
-	 *  Desde el 2026-09-14 también es REQUISITO para procesar: el pipeline
-	 *  exige `estado === 'activo'` **y** `calibradoEn`. Un tipo activo sin
-	 *  calibrar clasifica bien pero no extrae — su documento se va a
-	 *  `pendiente_revision` diciendo qué le falta (ver `pipeline.svelte.ts`).
-	 *  Activar solo crea el Custom Extractor; hasta que la calibración
-	 *  termina, nadie ha comprobado que lo que extrae sea correcto.
-	 *
-	 *  Sigue siendo un campo aparte y NO un valor más de `estado`, aunque
-	 *  ahora los dos hagan falta: `estado` describe qué se publicó a Document
-	 *  AI y `calibradoEn` si se verificó, que son dos hechos distintos y con
-	 *  ciclos de vida distintos (republicar una versión conserva el estado y
-	 *  tira la calibración). Fundirlos obligaría a inventar un orden entre
-	 *  ellos que el dominio no tiene.
-	 *
-	 *  Se BORRA en `crearNuevaVersion`: lo que se calibró fue la versión
-	 *  anterior, y arrastrar la marca haría pasar por calibrada a una
-	 *  configuración que nadie probó. */
-	calibradoEn: string | null;
+	/* Hasta el 2026-11-06 aquí vivía `calibradoEn`: cuándo TERMINÓ la «calibración de prompts» de la versión vigente. Desde el 2026-09-14 era además
+	 * REQUISITO para procesar (el pipeline pedía `estado === 'activo'` y `calibradoEn`), y la tarjeta ofrecía «Calibrar» hasta que existía. Moibe quitó
+	 * el paso («ya no se requiere para activarlos»): activar ya basta para extraer. Los tipos guardados antes todavía traen el campo en su JSON; se
+	 * ignora al leerlo y desaparece la próxima vez que el tipo se guarda. */
 	/** Versiones anteriores a la vigente, más reciente primero. Detrás de
 	 *  "Listar versiones anteriores" en la Biblioteca. Vacío para cualquier
 	 *  tipo que nunca se haya re-publicado. */
@@ -1026,11 +1041,6 @@ function leerVersionPublicada(v: unknown): VersionPublicada | null {
 		procesadorId: d.procesadorId,
 		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
 		publicadoEn: typeof d.publicadoEn === 'string' ? d.publicadoEn : new Date(0).toISOString(),
-		// Lo guardado antes de que existiera este campo cae en null, o sea "esa
-		// versión no constaba como calibrada". Es el lado seguro: si se cancela
-		// una edición vieja, el tipo pide calibrarse otra vez en vez de darse
-		// por bueno sin que nadie lo haya comprobado.
-		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 		campos: Array.isArray(d.campos) ? (d.campos.map(leerCampo).filter(Boolean) as CampoBorrador[]) : []
 	};
 }
@@ -1170,11 +1180,8 @@ function leerTipoGuardado(crudo: unknown): TipoDocumentalGuardado | null {
 		version: Number.isInteger(d.version) && (d.version as number) >= 0 ? (d.version as number) : d.estado === 'activo' ? 1 : 0,
 		procesadorId: typeof d.procesadorId === 'string' ? d.procesadorId : '',
 		procesadorVersion: typeof d.procesadorVersion === 'string' ? d.procesadorVersion : '',
-		procesadorDisplayName: typeof d.procesadorDisplayName === 'string' ? d.procesadorDisplayName : '',
 		ejemploDocumental: d.ejemploDocumental === true,
 		activadoEn: typeof d.activadoEn === 'string' ? d.activadoEn : null,
-		// Sin el dato, "sin calibrar": darlo por calibrado sin que nadie lo hiciera sería afirmar algo que no ocurrió.
-		calibradoEn: typeof d.calibradoEn === 'string' ? d.calibradoEn : null,
 		historialVersiones: Array.isArray(d.historialVersiones)
 			? (d.historialVersiones.map(leerVersionPublicada).filter(Boolean) as VersionPublicada[])
 			: [],
@@ -1634,8 +1641,8 @@ export function etiquetaVersion(version: number): string {
 
 /**
  * Con qué se compara el nombre de un tipo documental para saber si choca con otro: sin espacios de más y sin distinguir
- * mayúsculas. Es la regla del servidor (`clave_de_nombre` en `tipos_documentales_comun.py`), la misma de procesos, grupos y tipos de
- * expediente: «Cédula  profesional » y «CÉDULA PROFESIONAL» chocan; «Cedula profesional», sin acento, no.
+ * mayúsculas. Es la regla del servidor (`clave_de_nombre` en `tipos_documentales_comun.py`), la misma de los procesos: «Cédula
+ * profesional » y «CÉDULA PROFESIONAL» chocan; «Cedula profesional», sin acento, no.
  */
 export function claveDeNombreTipo(nombre: string): string {
 	return nombre.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
@@ -1691,10 +1698,8 @@ export function guardarTipoDocumental(): string | null {
 			version: 0,
 			procesadorId: '',
 			procesadorVersion: '',
-			procesadorDisplayName: '',
 			ejemploDocumental: false,
 			activadoEn: null,
-			calibradoEn: null,
 			historialVersiones: [],
 			versionEnEdicion: null,
 			documentosEjemplo: [],
@@ -1745,71 +1750,17 @@ export function normalizarCategoria(valor: string): string {
 		.slice(0, 64);
 }
 
-/** Tipos cuyo nombre de procesador ya se intentó leer en esta sesión, para no
- *  volver a preguntar por cada vez que se despliega la ficha. Incluye los
- *  intentos FALLIDOS a propósito: si el procesador ya no existe en Google, o
- *  la API no respondió, insistir en cada clic solo agrega ruido — se
- *  reintenta al recargar la página, que es cuando algo pudo haber cambiado. */
-const nombreProcesadorPedido = new Set<string>();
-
-/**
- * Rellena `procesadorDisplayName` leyéndolo de Document AI, para los tipos
- * que se activaron ANTES de que "Activar" empezara a devolverlo (2026-09-08).
- *
- * Por qué leerlo y no obligar a republicar: cada publicación crea un Custom
- * Extractor NUEVO en GCP, así que "reactiva para ver el nombre" sale
- * carísimo para un dato de solo lectura. `processors.get` no cobra — la
- * facturación de Document AI es por página PROCESADA — y además devuelve la
- * verdad de Google, no una copia local que pudo quedar vieja.
- *
- * No hace nada si el tipo ya tiene el nombre, si no tiene procesador, o si ya
- * se preguntó en esta sesión. Es silenciosa por diseño: si falla, la ficha se
- * queda mostrando el id, que es exactamente lo que mostraba antes — no vale
- * un mensaje de error por un dato accesorio que la persona no pidió.
- */
-export async function completarNombreProcesador(idTipo: string): Promise<void> {
-	const tipo = tiposDocumentales.find((t) => t.id === idTipo);
-	if (!tipo || !tipo.procesadorId || tipo.procesadorDisplayName) return;
-	if (nombreProcesadorPedido.has(tipo.procesadorId)) return;
-	nombreProcesadorPedido.add(tipo.procesadorId);
-
-	let respuesta: Response;
-	try {
-		respuesta = await fetch(`/api/procesadores/${encodeURIComponent(tipo.procesadorId)}`);
-	} catch {
-		return;
-	}
-	if (!respuesta.ok) return;
-
-	let datos: Record<string, unknown> = {};
-	try {
-		datos = await respuesta.json();
-	} catch {
-		return;
-	}
-
-	const nombre = typeof datos.procesadorDisplayName === 'string' ? datos.procesadorDisplayName : '';
-	if (!nombre) return;
-
-	// Se vuelve a buscar: entre la petición y la respuesta el tipo pudo
-	// borrarse o archivarse.
-	const vigente = tiposDocumentales.find((t) => t.id === idTipo);
-	if (!vigente || vigente.procesadorId !== tipo.procesadorId) return;
-	vigente.procesadorDisplayName = nombre;
-	guardarBiblioteca();
-}
-
 /**
  * Sincroniza el Classifier de Document AI DE LA ORGANIZACIÓN (`POST /procesadores/clasificador/sincronizar`).
  *
  * Desde el 2026-10-15 NO manda la lista de tipos: nexus_back arma las categorías con los tipos ACTIVOS de la organización,
  * leídos de su propio registro. Antes los mandaba cada navegador, y el último que sincronizaba pisaba a los demás. Desde el
  * 2026-10-26 cada organización tiene SU clasificador (antes era uno para todo el sistema, con los tipos de todas). Por eso,
- * ANTES de llamar se espera a que lo que cambió aquí (activar, archivar, borrar) esté guardado en el servidor: si el guardado
+ * ANTES de llamar se espera a que lo que cambió aquí (activar, borrar) esté guardado en el servidor: si el guardado
  * no llegó, sincronizar usaría el estado viejo, y se avisa en vez de hacerlo.
  *
  * Se llama automáticamente después de cada mutación que puede cambiar el conjunto de activos (`activarTipoDocumental`,
- * `archivarTipoDocumental`, `eliminarTipoDocumental`), nunca a mano desde la UI. Si la organización no tiene NINGÚN tipo
+ * `eliminarTipoDocumental`), nunca a mano desde la UI. Si la organización no tiene NINGÚN tipo
  * activo, el servidor responde 422 y aquí eso es un "no hay nada que sincronizar", no un error.
  */
 export async function sincronizarClasificador(): Promise<{ ok: boolean; mensaje: string }> {
@@ -1862,9 +1813,11 @@ export async function asegurarClasificadorAlDia(): Promise<void> {
 /**
  * Activa un modelo: crea (o adopta) su Custom Extractor en Document AI, vía el
  * back, y solo si Google respondió marca el estado local. Es el botón
- * "Activar" de la tarjeta (HU038; desde el 2026-10-30 el rótulo es
- * "Confirmar configuración"), y es LA operación del sistema: convierte la
- * configuración capturada en un extractor zero-shot utilizable.
+ * "Activar" de la tarjeta (HU038; del 2026-10-30 al 2026-11-06 el rótulo fue
+ * "Confirmar configuración", porque faltaba «Calibrar» para poder usar el
+ * tipo), y es LA operación del sistema: convierte la configuración capturada
+ * en un extractor zero-shot utilizable, y desde que no hay calibración es lo
+ * único que hace falta para que el tipo extraiga.
  *
  * El orden importa: primero el procesador, después el estado. Al revés
  * quedaría un tipo "activo" apuntando a nada si la llamada falla.
@@ -1937,8 +1890,6 @@ export async function activarTipoDocumental(
 	tipo.procesadorId = typeof datos.procesadorId === 'string' ? datos.procesadorId : '';
 	tipo.procesadorVersion =
 		typeof datos.versionDefault === 'string' ? datos.versionDefault : '';
-	tipo.procesadorDisplayName =
-		typeof datos.procesadorDisplayName === 'string' ? datos.procesadorDisplayName : '';
 	tipo.activadoEn = new Date().toISOString();
 	guardarBiblioteca();
 
@@ -1981,31 +1932,26 @@ export function crearNuevaVersion(id: string): boolean {
 		procesadorId: tipo.procesadorId,
 		procesadorVersion: tipo.procesadorVersion,
 		publicadoEn: tipo.activadoEn ?? tipo.guardadoEn,
-		// Se guarda ANTES de limpiarlo abajo: es lo único que permite devolver
-		// el tipo a como estaba si la edición se abandona sin tocar nada.
-		calibradoEn: tipo.calibradoEn,
 		campos: $state.snapshot(tipo.campos) as CampoBorrador[]
 	};
 	tipo.estado = 'borrador';
-	// Lo calibrado fue la versión de la que se acaba de tomar la foto. La
-	// nueva todavía no se prueba, así que vuelve a nacer sin calibrar.
-	tipo.calibradoEn = null;
 	guardarBiblioteca();
 	return true;
 }
 
 /**
  * Deshace `crearNuevaVersion` cuando la edición se abandona sin haber tocado
- * nada: devuelve el tipo a `activo`, le regresa su `calibradoEn` y tira la
- * foto. Es el reverso exacto, y por eso lee de `versionEnEdicion` en vez de
- * adivinar: ahí está justo lo que había antes de empezar.
+ * nada: devuelve el tipo a `activo` y tira la foto. Es el reverso exacto, y
+ * por eso lee de `versionEnEdicion` en vez de adivinar: ahí está justo lo que
+ * había antes de empezar.
  *
  * POR QUÉ HACE FALTA (bug reportado el 2026-09-22). `crearNuevaVersion` muta
  * el registro en el acto, pero salir del asistente con el tache solo cambiaba
  * de vista. El tipo se quedaba en `borrador` para siempre: la tarjeta volvía a
  * ofrecer "Activar" pese a que su procesador seguía publicado y vivo en
- * Document AI, y —desde que calibrar es requisito— además dejaba de extraer.
- * O sea que abrir una pantalla y cerrarla apagaba un tipo en producción.
+ * Document AI, y además dejaba de extraer (en `borrador` el pipeline no lo
+ * encuentra). O sea que abrir una pantalla y cerrarla apagaba un tipo en
+ * producción.
  *
  * Quien decide si la edición está "intacta" es el componente, que es el que
  * conoce el borrador; aquí solo se restaura. Si el usuario SÍ editó algo, no
@@ -2018,36 +1964,19 @@ export function cancelarNuevaVersion(id: string): boolean {
 	// ya se publicó (`activarTipoDocumental` la consume y la deja en null).
 	if (!tipo || !foto || tipo.estado !== 'borrador') return false;
 	tipo.estado = 'activo';
-	tipo.calibradoEn = foto.calibradoEn;
 	tipo.versionEnEdicion = null;
 	guardarBiblioteca();
 	return true;
 }
 
 /**
- * Cierra la calibración de prompts: marca el tipo como calibrado, que es lo
- * que hace que su tarjeta cambie el botón "Calibrar" por el rótulo "Activado".
+ * (Hasta el 2026-11-06 aquí vivía `marcarCalibrado`, que cerraba la «calibración de prompts» y era lo que dejaba la tarjeta en «Activado» y al tipo
+ * en condiciones de extraer. Se quitó con el paso «Calibrar»: ver `ModuloConfiguracion.svelte`.)
  *
- * Lo llama el ÚLTIMO "Continuar" de la pantalla de revisión, y solo cuando al
- * menos un prompt alcanzó el umbral — el caso en que ninguno lo alcanza tiene
- * su propio pie ("Calibrar nuevamente" / "Cargar documento") y no llega aquí.
- *
- * No toca `estado` ni Document AI: el procesador ya existía desde "Activar".
- * Lo único que cambia es que ahora consta que su configuración se probó.
- */
-export function marcarCalibrado(id: string): boolean {
-	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo || tipo.estado !== 'activo') return false;
-	tipo.calibradoEn = new Date().toISOString();
-	guardarBiblioteca();
-	return true;
-}
-
-/**
  * El switch "Ejemplo documental" del menú `⋮` — vuelve a estar en uso desde
  * el 2026-09-03, con un significado nuevo: "estoy listo" (una marca local,
  * reversible, del usuario). Picar el texto/ícono del renglón sigue abriendo
- * Calibración (`abrirCalibracion`); el switch en sí NO dispara ningún envío
+ * la pantalla de ejemplos (`abrirCalibracion`); el switch en sí NO dispara ningún envío
  * todavía — eso es a propósito, queda pendiente de que se defina qué lo va
  * a provocar. Apagarlo NO deshace nada que se haya enviado a Document AI
  * (cuando exista ese envío): es solo la marca local la que se quita.
@@ -2059,35 +1988,11 @@ export function alternarEjemploDocumental(id: string, valor: boolean) {
 	guardarBiblioteca();
 }
 
-/**
- * Archiva un tipo documental ACTIVO: lo saca de la Biblioteca sin tocar
- * Document AI. A diferencia de `eliminarTipoDocumental`, no borra nada — ni
- * el registro local ni el Custom Extractor, que sigue viviendo en Google
- * exactamente como estaba. Es la alternativa NO destructiva a "Borrar" para
- * un modelo activo, a pedido explícito: el registro se queda en
- * el servidor, solo deja de listarse en el árbol y en las tarjetas.
- *
- * No hay todavía una pantalla de "Archivados" para verlos ni un
- * `desarchivarTipoDocumental()` para volver — se agregan cuando se pidan.
- *
- * Async desde que archivar también sincroniza el Classifier (2026-09-07): un
- * tipo archivado debe dejar de ser una categoría clasificable, aunque su
- * Custom Extractor se quede vivo sin tocarse. `ok` sigue siendo `true`
- * siempre que el tipo exista —archivar en sí es puramente local, no puede
- * fallar contra Google— así que un problema sincronizando llega SOLO por
- * `avisoClasificador`, nunca convirtiendo esto en un error.
+/*
+ * (Hasta el 2026-11-07 aquí vivía `archivarTipoDocumental`, la alternativa no destructiva a «Borrar» para un modelo activo: lo sacaba de la Biblioteca y del
+ * clasificador sin tocar su Custom Extractor. Se quitó: Moibe, «como ya podemos borrar libremente, en realidad Archivar ya no es necesario». Para recuperarla:
+ * `git show 185a92f:src/lib/state/configuracion.svelte.ts`.)
  */
-export async function archivarTipoDocumental(
-	id: string
-): Promise<{ ok: boolean; avisoClasificador?: string }> {
-	const tipo = tiposDocumentales.find((t) => t.id === id);
-	if (!tipo) return { ok: false };
-	tipo.estado = 'archivado';
-	guardarBiblioteca();
-
-	const sync = await sincronizarClasificador();
-	return { ok: true, avisoClasificador: sync.ok ? undefined : sync.mensaje };
-}
 
 /**
  * "Guardar" de `CargarDocumentoEjemplo.svelte`: agrega una instancia MÁS al
@@ -2245,9 +2150,12 @@ export async function eliminarTipoDocumental(
 
 	const i = tiposDocumentales.findIndex((tp) => tp.id === id);
 	if (i !== -1) tiposDocumentales.splice(i, 1);
-	// Si se borró el que el borrador tenía asociado, se desliga para que un
-	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
-	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;
+	olvidarEjemplos(id); // sus documentos de ejemplo en memoria ya no tienen a qué tipo servir
+	// Si se borró el que el borrador tenía abierto, el borrador se DESCARTA entero (2026-11-10, Moibe: «a pesar de que ya había borrado
+	// el tipo documental INE, aquí me marcó como que todavía existe»). Antes solo se desligaba (`idGuardado = null`) y se quedaba con el
+	// nombre, la descripción y los campos: el siguiente «Agregar nuevo tipo documental» lo guardaba como un tipo NUEVO con otro id, así que
+	// el tipo borrado reaparecía en la biblioteca y su nombre seguía ocupado.
+	if (borradorTipoDocumental.idGuardado === id) limpiarBorrador();
 	guardarBiblioteca();
 
 	// Solo si ERA activo: un borrador o un archivado ya no contaban como
@@ -2354,6 +2262,7 @@ export function colorParaCampo(nombreCampo: string): (typeof PALETA_COLORES_CAMP
 export function cargarTipoDocumental(id: string): boolean {
 	const tipo = tiposDocumentales.find((tp) => tp.id === id);
 	if (!tipo) return false;
+	ejemplosDelPaso1 = []; // el borrador pasa a ser OTRO tipo: los documentos del paso 1 de uno anterior no le corresponden
 	Object.assign(borradorTipoDocumental, {
 		nombre: tipo.nombre,
 		descripcion: tipo.descripcion,

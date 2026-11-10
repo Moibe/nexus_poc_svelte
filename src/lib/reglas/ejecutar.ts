@@ -2,7 +2,9 @@
  * Ejecutar un proceso del motor de reglas con DATOS REALES (2026-11-03, Moibe: «adelante, házlo»), sin nada de pantalla ni de red.
  *
  * El lienzo ya sabe correr un proceso con valores de EJEMPLO escritos en cada regla (`evaluar`, en `reglas.ts`); una ejecución es lo mismo pero con
- * lo que dijeron los documentos del expediente virtual. En vez de escribir otra implementación de qué significa «igual» (texto sin mayúsculas, números
+ * lo que dijeron los documentos del EXPEDIENTE. Hasta el 2026-11-05 se ejecutaba sobre un expediente virtual (un subconjunto de sus documentos);
+ * Moibe los quitó: ahora el expediente entero entra a la ejecución, y lo que el proceso pone en el lienzo es el delineador de cuáles documentos
+ * necesita de él. En vez de escribir otra implementación de qué significa «igual» (texto sin mayúsculas, números
  * con símbolo de moneda, fechas escritas de tres maneras, las tres posibilidades de «Y»…), aquí se reemplazan los valores de ejemplo por los reales y
  * se llama a la MISMA `evaluar`: lo que el lienzo enseña probando y lo que una ejecución decide no pueden discrepar. Es lo que corre el servidor del
  * front (el BFF `/api/ejecuciones`); nexus_back prepara los datos (`GET /ejecuciones/preparar`) y guarda lo que sale (`POST /ejecuciones`).
@@ -12,10 +14,11 @@
  *
  * ## Qué hace
  *
- *  1. Si el expediente virtual trae DOS O MÁS documentos de un tipo que el proceso usa (`duplicados`), NO corre: no se sabe cuál es «el INE» (Moibe).
+ *  1. Si el expediente trae DOS O MÁS documentos de un tipo que el proceso usa (`duplicados`), NO corre: no se sabe cuál es «el INE» (Moibe). Quien
+ *     calcula `duplicados` es nexus_back y solo cuenta los tipos que el proceso usa: un tipo que el proceso NO usa puede repetirse sin estorbar.
  *  2. Reemplaza el ejemplo de cada entrada que viene de un campo por su valor real: un campo suelto es su valor; uno «1 a N» o la columna de un grupo que
  *     se repite, sus elementos (un renglón cada uno); las filas de un grupo, un renglón por fila; el punto «Documento» de un tipo es «sí» si el
- *     expediente virtual lo trae. Un campo que el documento no trae (o un tipo sin documento) deja el ejemplo vacío: la regla dirá «sin valores».
+ *     expediente lo trae. Un campo que el documento no trae (o un tipo sin documento) deja el ejemplo vacío: la regla dirá «sin valores».
  *  3. Evalúa. El Resultado dice con qué palabra termina: la de «se cumple», la de «no se cumple» o la de «faltan datos» (la corrida queda INCOMPLETA).
  *  4. Arma lo que se guarda: la palabra, la lista de valores finales (nombre, valor y de dónde salió) y la foto de cómo salió cada regla y de qué
  *     documento y campo se tomó cada dato (la evidencia), con lo que faltó.
@@ -48,7 +51,7 @@ import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
 /** Los valores de un campo de un documento: un valor, una lista (en el orden del documento) o las filas de un grupo que se repite (solo cuántas). */
 export type ValoresDeCampo = { forma: 'valor' | 'lista' | 'filas'; valores: string[]; confianza: number | null; pagina: number | null };
 
-/** Un tipo documental del proceso y lo que el expediente virtual trae de él. `valores` solo hay si es UN documento; por el nombre de cada punto del lienzo. */
+/** Un tipo documental del proceso y lo que el expediente trae de él. `valores` solo hay si es UN documento; por el nombre de cada punto del lienzo. */
 export type DocumentoDeTipo = {
 	tipoId: string;
 	tipoNombre: string;
@@ -58,9 +61,9 @@ export type DocumentoDeTipo = {
 
 export type Duplicado = { tipoId: string; tipoNombre: string; documentos: { id: string; nombre: string | null }[] };
 
+/** Lo que `GET /ejecuciones/preparar` entrega para un expediente y un proceso. Sin expediente virtual (Moibe, 2026-11-05): los documentos salen del expediente completo. */
 export type Preparacion = {
 	expediente: { id: string; nombre: string };
-	virtual: { id: string; nombre: string; tipo: { id: string; nombre: string } };
 	proceso: { id: string; revision: number; nombre: string; datos: { nodos?: unknown; aristas?: unknown } };
 	/** Los tipos documentales que el proceso usa, con sus campos como están en la biblioteca. */
 	tipos: { id: string; nombre: string; campos: unknown[] }[];
@@ -101,7 +104,7 @@ export type DetalleDeCorrida = {
 	evidencia: EvidenciaDeCorrida[];
 	/** El veredicto de la regla conectada al Resultado, del que sale la palabra. */
 	condicion: Veredicto;
-	/** Lo que faltó, en palabras: un documento que el expediente virtual no trae o un campo que el documento no tiene. */
+	/** Lo que faltó, en palabras: un documento que el expediente no trae o un campo que el documento no tiene. */
 	faltantes: string[];
 };
 
@@ -120,10 +123,10 @@ export type Salida = { corre: true; corrida: Corrida } | { corre: false; motivo:
 
 // ── Cómo se escribe lo que se avisa ──────────────────────────────────────────
 
-/** El aviso de duplicados: cuáles son y qué hacer. Lo usa quien ejecuta y la pantalla. */
+/** El aviso de tipos documentales repetidos (en el cable, `duplicados`; Moibe, 2026-11-06: «Duplicado» es solo el archivo idéntico): cuáles son y qué hacer. Lo usa quien ejecuta y la pantalla. */
 export function avisoDeDuplicados(duplicados: readonly Duplicado[]): string {
 	const partes = duplicados.map((d) => `«${d.tipoNombre}» (${d.documentos.map((x) => x.nombre ?? 'sin nombre').join(', ')})`);
-	return `El expediente virtual trae documentos duplicados de ${partes.join('; ')}: no se sabe cuál usar, así que el proceso no se ejecutó. Deja uno de cada tipo en el expediente virtual y vuelve a ejecutar.`;
+	return `El expediente trae tipos documentales repetidos: ${partes.join('; ')}. No se sabe cuál usar, así que el proceso no se ejecutó. Deja uno de cada tipo en el expediente y vuelve a ejecutar.`;
 }
 
 // ── Valores reales en lugar de los de ejemplo ────────────────────────────────
@@ -254,7 +257,7 @@ export function correr(prep: Preparacion): Salida {
 		const encontrado = doc?.encontrados[0] ?? null;
 		const usados = [...new Set(aristas.filter((a) => a.source === n.id && a.sourceHandle && a.sourceHandle !== HANDLE_DOCUMENTO).map((a) => a.sourceHandle as string))];
 		const usaDocumento = aristas.some((a) => a.source === n.id && a.sourceHandle === HANDLE_DOCUMENTO);
-		if (!encontrado && (usados.length > 0 || usaDocumento)) faltantes.push(`${tipo.nombre}: el expediente virtual no trae el documento`);
+		if (!encontrado && (usados.length > 0 || usaDocumento)) faltantes.push(`${tipo.nombre}: el expediente no trae el documento`);
 		const campos = usados.map((punto) => {
 			const v = doc?.valores?.[punto];
 			if (encontrado && v && v.valores.length === 0) faltantes.push(`${tipo.nombre} · ${punto}: el documento no trae el dato`);

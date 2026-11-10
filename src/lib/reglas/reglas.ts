@@ -3,8 +3,10 @@
  * cuándo dos valores son «iguales» y cómo se evalúa una cadena de reglas. Vive aparte de los componentes para poder probarla sola
  * (`verificar-reglas.mjs`): por eso aquí solo se importan TIPOS, nunca código.
  *
- * El modelo: un PROCESO es un conjunto de reglas y corre sobre un EXPEDIENTE (un conjunto de documentos). Los tipos documentales
- * son sus entradas; por cada conexión viaja un CAMPO (no el documento entero) y su tipo de dato decide qué se puede comparar.
+ * El modelo: un PROCESO es un conjunto de reglas y corre sobre un EXPEDIENTE (un conjunto de documentos): cualquiera de la organización, sin
+ * limitarse a nada (Moibe, 2026-11-05: se quitaron los expedientes virtuales, y con ellos el «tipo sobre el que corre» el proceso). Los tipos
+ * documentales son sus entradas —lo que se pone en el lienzo es el delineador de qué documentos necesita el proceso del expediente—; por cada
+ * conexión viaja un CAMPO (no el documento entero) y su tipo de dato decide qué se puede comparar.
  *
  * Por un cable puede viajar:
  *   · un VALOR: un campo suelto, un valor fijo escrito en el lienzo, o el número que entrega una regla (`Cantidad`, `Suma`);
@@ -118,12 +120,6 @@ export const HANDLE_DOCUMENTO = '@documento';
 
 /** Con qué llave el lienzo le ofrece a sus nodos lo que evaluó (`getContext`). */
 export const CLAVE_VEREDICTOS = 'nexusdoc-veredictos';
-
-/**
- * La clave del contexto con que el lienzo dice a sus nodos de tipo documental si SU tipo está fuera del esquema del tipo de expediente virtual
- * sobre el que corre el proceso (2026-11-03): `{ fuera(tipoId): boolean, nombre: string | null }`. Un nodo fuera del esquema se marca en ámbar.
- */
-export const CLAVE_ESQUEMA = 'nexusdoc-esquema-del-proceso';
 
 /**
  * Un proceso corre sobre un expediente, o sea un conjunto de documentos, así que cada tipo documental aparece UNA vez: el nodo
@@ -1234,4 +1230,105 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 		if (vf) valoresFinalesPuestos = Math.max(valoresFinalesPuestos, Number(vf[1]));
 	}
 	return { nodes, edges, operadoresPuestos, constantesPuestas, valoresFinalesPuestos };
+}
+
+// ── Abrir, guardar y saber si hay cambios por guardar ────────────────────────
+
+/**
+ * Lo que se recuerda de un proceso al abrirlo o guardarlo para saber si hay cambios sin guardar: la huella de su dibujo y su nombre sin espacios
+ * de más. NADA MÁS. Un proceso guardado antes del 2026-11-05 trae además `tipoExpedienteVirtualId` en sus `datos` (el tipo de expediente virtual
+ * sobre el que corría); desde que se quitaron los expedientes virtuales (Moibe) ese campo se IGNORA: no entra aquí, así que abrir uno de esos
+ * procesos no lo deja con «cambios sin guardar», y tampoco se reenvía al guardar (`guardarProceso`).
+ */
+export type FotoDeProceso = { huella: string; nombre: string };
+
+/**
+ * Lo que sale de abrir un proceso del servidor: su dibujo, para el lienzo (`hidratarDibujo`), y la foto con la que se sabrá si después hay cambios.
+ * La foto se saca de lo que QUEDÓ en el lienzo y no de lo que mandó el servidor: si algo no se pudo abrir (un operador que ya no existe), el proceso
+ * no debe aparecer con cambios sin que nadie los haya hecho.
+ */
+export function abrirProceso(datos: { nombre?: unknown; nodos?: unknown; aristas?: unknown }): { dibujo: ReturnType<typeof hidratarDibujo>; foto: FotoDeProceso } {
+	const dibujo = hidratarDibujo(datos);
+	const nombre = typeof datos.nombre === 'string' ? datos.nombre.trim() : '';
+	return { dibujo, foto: { huella: huellaDelDibujo(serializarDibujo(dibujo.nodes, dibujo.edges)), nombre } };
+}
+
+/**
+ * ¿Hay algo que guardar? De un proceso que ya existe en el servidor, si su dibujo o su nombre difieren de la foto (mover un nodo y devolverlo, o
+ * escribir un valor y borrarlo, deja el proceso como estaba); de uno que todavía no existe, si la persona ya puso algo: un nodo, un cable o un nombre.
+ */
+export function hayCambiosSinGuardar(existe: boolean, ahora: { huella: string; nombre: string; hayDibujo: boolean }, foto: FotoDeProceso): boolean {
+	return existe ? ahora.huella !== foto.huella || ahora.nombre.trim() !== foto.nombre : ahora.hayDibujo || ahora.nombre.trim() !== '';
+}
+
+/**
+ * Qué le falta a un proceso para poder guardarse, en el orden en que se le dice a la persona; `null` si no le falta nada (sin contar si hay cambios).
+ * «Guardar» exige:
+ *   · un NOMBRE;
+ *   · al menos un TIPO DOCUMENTAL en el lienzo (NEX-529): son las entradas, la declaración de qué documentos necesita el proceso del expediente;
+ *   · que NINGUNO de los tipos del lienzo haya dejado de estar activo (2026-11-05, Moibe: «no deberíamos poder usar en el canvas los tipos documentales
+ *     que no estén activos»);
+ *   · el nodo del RESULTADO (2026-11-03, Moibe): sin la palabra con la que termina no hay con qué contestar cuando se ejecute.
+ * Desde el 2026-11-05 YA NO exige un tipo de expediente virtual (Moibe: «voy a quitar los expedientes virtuales»): un proceso corre sobre cualquier
+ * expediente de la organización. Es una regla de la pantalla: el back no exige nada de esto (activar o desactivar desde la lista guarda el proceso
+ * entero y no debe fallar con los procesos de antes).
+ */
+export type FaltaParaGuardar = 'nombre' | 'documento' | 'inactivos' | 'resultado';
+export function faltaParaGuardar(proceso: { nombre: string; hayTipoDocumental: boolean; tiposNoActivos: number; hayResultado: boolean }): FaltaParaGuardar | null {
+	if (proceso.nombre.trim() === '') return 'nombre';
+	if (!proceso.hayTipoDocumental) return 'documento';
+	if (proceso.tiposNoActivos > 0) return 'inactivos';
+	if (!proceso.hayResultado) return 'resultado';
+	return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────── el alta de un proceso (2026-11-06)
+
+/**
+ * ¿Su Resultado tiene una regla conectada? Es lo que hace EJECUTABLE a un proceso (espejo de `procesos.resultado_conectado` de nexus_back): un nodo de
+ * Resultado cuya entrada «a» viene de un operador. Guardar solo exige que el nodo exista; con el alta nueva (que deja el Resultado suelto hasta que se
+ * conecta) es fácil guardar uno que todavía no se puede ejecutar, y la pantalla lo dice (2026-11-06).
+ */
+export function resultadoConectado(dibujo: { nodos: readonly unknown[]; aristas: readonly unknown[] }): boolean {
+	const tipos = new Map<unknown, unknown>();
+	for (const n of dibujo.nodos) if (n && typeof n === 'object') tipos.set((n as { id?: unknown }).id, (n as { type?: unknown }).type);
+	return dibujo.aristas.some((a) => {
+		if (!a || typeof a !== 'object') return false;
+		const { source, target, targetHandle } = a as { source?: unknown; target?: unknown; targetHandle?: unknown };
+		return tipos.get(target) === NODO_RESULTADO && targetHandle === 'a' && tipos.get(source) === NODO_OPERADOR;
+	});
+}
+
+/** El tope del nombre de un proceso: el del campo del lienzo y el que impone nexus_back. */
+export const MAX_NOMBRE_PROCESO = 200;
+/** Cuántos tipos documentales se aceptan de la dirección del alta (la biblioteca de una organización no llega ni cerca; es solo un tope contra direcciones absurdas). */
+const MAX_TIPOS_DEL_ALTA = 50;
+
+/**
+ * La dirección del lienzo de un proceso NUEVO con lo que se eligió en el alta (Moibe, 2026-11-06, Figma HUN5 «Crear proceso»: antes de llegar al lienzo se
+ * pone el nombre y se eligen los TIPOS DOCUMENTALES del proceso; los campos de cada uno se eligen ya en el lienzo). Va en la dirección y no en un estado
+ * guardado aparte para que recargar la página no pierda el borrador. Sin nombre ni tipos es la de siempre: un lienzo en blanco.
+ */
+export function direccionDeProcesoNuevo(nombre: string, tipos: readonly string[]): string {
+	const p = new URLSearchParams();
+	const limpio = nombre.trim().slice(0, MAX_NOMBRE_PROCESO);
+	if (limpio) p.set('nombre', limpio);
+	for (const t of new Set(tipos)) if (t) p.append('tipo', t);
+	const consulta = p.toString();
+	return consulta ? `/motor-de-reglas/nuevo?${consulta}` : '/motor-de-reglas/nuevo';
+}
+
+/**
+ * Lo que el lienzo de un proceso nuevo lee de su dirección (lo contrario de `direccionDeProcesoNuevo`): el nombre sin espacios de más y los ids de los
+ * tipos documentales, sin repetir y en el orden en que vienen. Es lo que viene de la barra de direcciones, así que se desconfía: lo que no es un id
+ * razonable se descarta (el lienzo igual los comprueba contra la biblioteca antes de ponerlos).
+ */
+export function entradasDeProcesoNuevo(params: URLSearchParams): { nombre: string; tipos: string[] } {
+	const nombre = (params.get('nombre') ?? '').trim().slice(0, MAX_NOMBRE_PROCESO);
+	const tipos: string[] = [];
+	for (const crudo of params.getAll('tipo')) {
+		const id = crudo.trim();
+		if (id && id.length <= 100 && !tipos.includes(id)) tipos.push(id);
+	}
+	return { nombre, tipos: tipos.slice(0, MAX_TIPOS_DEL_ALTA) };
 }

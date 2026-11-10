@@ -31,7 +31,7 @@ type Aviso = {
  *
  *   · `pendiente_revision` se avisa como FALLIDO, `tipo_sin_configurar`, cuando
  *     se llega DIRECTO: el documento sí se reconoció, pero su tipo no tiene
- *     extractor o no está calibrado. Es del lado de NexusDoc, no del archivo, y
+ *     extractor (hasta el 2026-11-06 también si no estaba calibrado). Es del lado de NexusDoc, no del archivo, y
  *     reenviarlo cuando quede configurado sí serviría. Si se llega desde
  *     `no_configurado` ("Continuar sin configuración"), ese ya avisó y no se
  *     repite.
