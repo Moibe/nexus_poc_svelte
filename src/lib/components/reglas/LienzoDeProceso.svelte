@@ -102,6 +102,7 @@
 		abrirProceso,
 		entradasDeProcesoNuevo,
 		evaluar,
+		fechaDeHoy,
 		llaveDeParecido,
 		type MedidaDeParecido,
 		faltaParaGuardar,
@@ -166,7 +167,9 @@
 	// una vez para todo el grafo: una regla que depende de otra tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
 	/** Los parecidos que ya midió la IA, por par («Parecido a»; ver abajo). */
 	let medidos = $state<Record<string, MedidaDeParecido>>({});
-	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales, medidos));
+	/** «Antigüedad contra hoy» (2026-11-10): en el lienzo se prueba contra la fecha de hoy, salvo que el nodo traiga otra escrita para probar. */
+	const hoy = fechaDeHoy();
+	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales, medidos, hoy));
 
 	// ── «Parecido a» (2026-11-10): el parecido lo mide la IA (Gemini, vía nexus_back). `evaluar` no pregunta: dice qué pares le faltan
 	// (`pendientes`) y aquí se piden, con una pausa tras la última tecla para no preguntar a cada letra. Lo medido se recuerda mientras la
@@ -248,7 +251,11 @@
 		get erroresDeParecido() {
 			return erroresDeParecido;
 		},
-		reintentarParecido
+		reintentarParecido,
+		get antiguedades() {
+			return evaluacion.antiguedades;
+		},
+		hoy
 	});
 
 	/** Los tipos que ya tienen su nodo. */

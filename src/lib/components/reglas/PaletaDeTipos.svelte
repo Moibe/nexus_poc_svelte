@@ -4,8 +4,8 @@
 	 * operadores, que son las reglas, los valores fijos y las salidas del proceso (valores finales y resultado).
 	 *
 	 * Va en MENÚS RETRAÍBLES, uno por grupo (2026-10-21): con quince operadores la lista era tan larga que la paleta pedía desplazarse
-	 * un buen rato. Son siete menús independientes —los tipos, los cuatro grupos de operadores, los valores y, desde el 2026-11-03, las salidas
-	 * del proceso (el «Valor final» y el «Resultado»)—, abrir uno no cierra los demás, y TODOS arrancan retraídos: hay que abrir un grupo para ver lo que trae. Cada encabezado dice cuántos elementos tiene,
+	 * un buen rato. Son ocho menús independientes —los tipos, los cinco grupos de operadores (desde el 2026-11-10 también «Fechas»), los valores y,
+	 * desde el 2026-11-03, las salidas del proceso (el «Valor final» y el «Resultado»)—, abrir uno no cierra los demás, y TODOS arrancan retraídos: hay que abrir un grupo para ver lo que trae. Cada encabezado dice cuántos elementos tiene,
 	 * para que se sepa qué hay detrás sin abrirlo. Lo abierto no se recuerda al salir de la página.
 	 *
 	 * Los tipos que se ofrecen son TODOS los tipos documentales ACTIVOS de la organización (2026-11-05, Moibe: «en el canvas desplegaremos todos los
@@ -28,6 +28,7 @@
 	import { tick } from 'svelte';
 
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
+	import SimboloDeOperador from '$lib/components/reglas/SimboloDeOperador.svelte';
 	import {
 		GRUPOS_DE_OPERADORES,
 		MIME_CONSTANTE,
@@ -197,7 +198,7 @@
 				</Accordion.Content>
 			</Accordion.Item>
 
-			<!-- Los operadores: las reglas. Esto NO es un menú: solo presenta a los cuatro grupos de abajo, y por eso se ve como una
+			<!-- Los operadores: las reglas. Esto NO es un menú: solo presenta a los grupos de abajo, y por eso se ve como una
 			     etiqueta de sección (chica, en mayúsculas y sobre una franja) y no como los encabezados que se pulsan. -->
 			<div class="border-b border-border bg-muted/40 px-4 py-2.5">
 				<h2 class="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Operadores</h2>
@@ -222,7 +223,7 @@
 										onclick={() => alAgregarOperador(operador.clave)}
 									>
 										<GripVertical class="size-4 shrink-0 text-muted-foreground/60" />
-										<span class="flex size-5 shrink-0 items-center justify-center rounded bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{operador.simbolo}</span>
+										<SimboloDeOperador {operador} />
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-sm font-medium text-foreground">{operador.etiqueta}</span>
 											<span class="block text-xs text-muted-foreground">{operador.descripcion}</span>

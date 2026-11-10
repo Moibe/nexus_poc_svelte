@@ -30,21 +30,27 @@ import {
 	NODO_RESULTADO,
 	NODO_TIPO,
 	NODO_VALOR_FINAL,
+	cuantoTiempo,
 	evaluar,
+	fechaDeHoy,
 	hidratarDibujo,
 	lineasDeEjemplo,
 	llaveDeParecido,
+	maximoDeAntiguedad,
 	nombreDeValorFinal,
 	numeroDeOperador,
 	operadorDe,
 	salidaDeCampo,
+	textoDeAntiguedad,
 	textoDeParecido,
+	unidadDeAntiguedad,
 	type CasoDelResultado,
 	type ClaveOperador,
 	type DatosNodoOperador,
 	type DatosNodoTipo,
 	type Estado,
 	type Familia,
+	type MedidaDeAntiguedad,
 	type MedidaDeParecido,
 	type Parecidos,
 	type Veredicto
@@ -116,7 +122,12 @@ export type ReglaDeCorrida = {
 	texto: string;
 	/** Solo de un «Parecido a» ya medido: lo que dijo la IA (porcentaje y razón) y el mínimo con que se decidió. Queda escrito en el historial. */
 	parecido?: { porcentaje: number; razon: string; minimo: number; sinIA?: true };
-	/** Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. */
+	/** Solo de una «Antigüedad contra hoy» ya decidida (2026-11-10): con qué hoy, máximo y unidad, y cuánto tenía la fecha. Queda escrito en el historial. */
+	antiguedad?: MedidaDeAntiguedad;
+	/**
+	 * Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. A una «Antigüedad contra hoy» se le suman dos
+	 * renglones que no son entradas pero también se compararon: su «Máximo» y el «Hoy» de la ejecución.
+	 */
 	entradas?: EntradaDeCorrida[];
 };
 
@@ -277,7 +288,7 @@ export function parecidosMedidos(pares: readonly { a: string; b: string }[], med
  * Corre el proceso con los datos de `prep` y arma lo que se guarda. Si no hay con qué decidir (duplicados, sin Resultado, una regla incompleta) NO
  * corre y dice por qué: eso no es una corrida y no se guarda.
  */
-export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
+export function correr(prep: Preparacion, medidos: Parecidos = {}, hoy: string = fechaDeHoy()): Salida {
 	if (prep.duplicados.length > 0) return { corre: false, motivo: { codigo: 'duplicados', mensaje: avisoDeDuplicados(prep.duplicados), duplicados: prep.duplicados } };
 
 	const dibujo = hidratarDibujo(prep.proceso.datos);
@@ -285,7 +296,8 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
 	const nodos = conValoresReales(dibujo.nodes, aristas, prep.documentos);
 	// Los tipos llegan como `{id, nombre, campos}`: es lo único que `evaluar` lee de ellos.
 	const tipos = prep.tipos as unknown as TipoDocumentalGuardado[];
-	const ev = evaluar(nodos, aristas, tipos, medidos);
+	// «Antigüedad contra hoy» se cuenta hasta el día en que se ejecuta (en México): el dibujo guardado no trae ningún hoy de ejemplo.
+	const ev = evaluar(nodos, aristas, tipos, medidos, hoy);
 
 	const nodoResultado = nodos.find((n) => n.type === NODO_RESULTADO);
 	if (!nodoResultado || !ev.resultado) {
@@ -326,9 +338,23 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}): Salida {
 		const estado = ev.estados[n.id] ?? 'sin_conexion';
 		const valor = ev.valores[n.id] ?? null;
 		const parecido = ev.parecidos[n.id];
-		const entradas = entradasDe(n, aristas, nodos, tipos, ev);
+		const antiguedad = ev.antiguedades[n.id];
+		const entradas = [
+			...entradasDe(n, aristas, nodos, tipos, ev),
+			// «Antigüedad contra hoy»: su máximo y el hoy de la ejecución no llegan por cable, pero también se compararon.
+			...(def.clave === 'antiguedad'
+				? [
+						{ etiqueta: 'Máximo', origen: 'En la regla', valor: cuantoTiempo(maximoDeAntiguedad(n.data), unidadDeAntiguedad(n.data)) },
+						{ etiqueta: 'Hoy', origen: 'Día de la ejecución', valor: hoy }
+					]
+				: [])
+		];
 		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
 			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });
+			continue;
+		}
+		if (antiguedad && (estado === 'pasa' || estado === 'no_pasa')) {
+			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeAntiguedad(estado, antiguedad), antiguedad: { ...antiguedad }, entradas });
 			continue;
 		}
 		reglas.push({
