@@ -1940,6 +1940,22 @@ export function crearNuevaVersion(id: string): boolean {
 }
 
 /**
+ * «Desactivar» del menú ⋮ (Moibe, 2026-11-10: «para no tener que crear nuevas versiones, quiero que sí exista la posibilidad de Desactivar por ahora»).
+ * El tipo vuelve a `borrador` (deja de clasificarse y extraerse, y se puede «Editar») SIN foto ni historial, y su número de versión baja uno: así, al
+ * volver a «Activar», el back publica la MISMA versión y adopta el Custom Extractor que ya existe (le sube el esquema editado) en vez de crear otro.
+ * Después se sincroniza el clasificador para que deje de proponerlo.
+ */
+export async function desactivarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo || tipo.estado !== 'activo') return { ok: false, mensaje: 'Ese tipo documental no está activo.' };
+	tipo.estado = 'borrador';
+	tipo.version = Math.max(0, tipo.version - 1);
+	tipo.versionEnEdicion = null;
+	guardarBiblioteca();
+	return sincronizarClasificador();
+}
+
+/**
  * Deshace `crearNuevaVersion` cuando la edición se abandona sin haber tocado
  * nada: devuelve el tipo a `activo` y tira la foto. Es el reverso exacto, y
  * por eso lee de `versionEnEdicion` en vez de adivinar: ahí está justo lo que

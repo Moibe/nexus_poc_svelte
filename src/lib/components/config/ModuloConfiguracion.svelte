@@ -49,6 +49,7 @@
 	import Clock from '@lucide/svelte/icons/clock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import PowerOff from '@lucide/svelte/icons/power-off';
 	import Scissors from '@lucide/svelte/icons/scissors';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
@@ -91,6 +92,7 @@
 		activarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
+		desactivarTipoDocumental,
 		paginaDeRecorte,
 		esPdfSinOriginal,
 		estadoBiblioteca,
@@ -867,6 +869,15 @@
 		if (cancelarNuevaVersion(enCurso.id)) limpiarBorrador();
 	}
 
+	async function desactivar(id: string) {
+		errorActivacion = '';
+		const r = await desactivarTipoDocumental(id);
+		if (!r.ok) {
+			tituloError = 'El modelo se desactivó, pero el clasificador no se pudo actualizar.';
+			errorActivacion = r.mensaje;
+		}
+	}
+
 	function iniciarNuevaVersion(id: string) {
 		if (crearNuevaVersion(id) && cargarTipoDocumental(id)) {
 			avisoExito = false;
@@ -1603,6 +1614,18 @@
 												<Plus class="size-4 text-muted-foreground" />
 												<span>Crear nueva versión</span>
 											</DropdownMenu.Item>
+
+											<!-- «Desactivar» (2026-11-10): vuelve el tipo a borrador para editarlo sin crear versión nueva; al reactivarlo se reutiliza su extractor. -->
+											{#if tipo.estado === 'activo'}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													data-testid="desactivar-tipo"
+													onSelect={() => desactivar(tipo.id)}
+												>
+													<PowerOff class="size-4 text-muted-foreground" />
+													<span>Desactivar</span>
+												</DropdownMenu.Item>
+											{/if}
 
 											<!-- «Probar con documentos» (2026-11-07): ver qué extrae el tipo de hasta 3 documentos, sin guardar nada. Solo un tipo activo con su procesador. -->
 											<DropdownMenu.Item
@@ -2449,7 +2472,7 @@
 									</span>
 								{/if}
 							</span>
-						</div>
+						</div>
 						{#if errorSugerencia}
 							<p class="text-xs text-destructive" role="alert" data-testid="sugerencia-error">{errorSugerencia}</p>
 						{/if}
