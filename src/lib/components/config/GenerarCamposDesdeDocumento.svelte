@@ -24,7 +24,7 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
-	import { sugeridoPorOmision, textoDeApariciones, unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
+	import { unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
 	import { TIPOS_DE_DATO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
 	const MAX_MB = 20;
@@ -190,7 +190,8 @@
 		// Los nombres que se muestran son los de los que SÍ dieron propuesta (los que fallaron se dicen aparte).
 		nombresArchivos = leidos.map((a) => a.name);
 		propuestos = unirPropuestas(propuestasPorDocumento);
-		elegidos = propuestos.map((c) => !yaExiste(c.nombre) && sugeridoPorOmision(c));
+		// Todos marcados de entrada (2026-11-10, Moibe: «que todos aparezcan seleccionados por default»), menos los que ya existen.
+		elegidos = propuestos.map((c) => !yaExiste(c.nombre));
 		fase = 'propuesta';
 	}
 
@@ -358,6 +359,7 @@
 						</p>
 					{/if}
 
+					<!-- Cada renglón: solo el campo y su tipo (2026-11-10, Moibe: «hay demasiado texto… evita la descripción y en cuántos documentos apareció»). La descripción se sigue agregando al campo. -->
 					<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
 						{#each propuestos as campo, i (i)}
 							<li class={['flex items-start gap-3 px-4 py-3', !disponibles[i] && 'opacity-60']} data-testid="campo-propuesto">
@@ -376,31 +378,12 @@
 										{#if campo.cardinalidad === 'multiple'}
 											<span class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300">Se repite</span>
 										{/if}
-										<!-- Con varios documentos: en cuántos salió. Un campo que no salió en todos se agrega como opcional. -->
-										{#if campo.total > 1}
-											<span
-												class={[
-													'rounded-md px-1.5 py-0.5 text-xs',
-													campo.apariciones === campo.total ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400' : 'bg-muted text-muted-foreground'
-												]}
-												data-testid="campo-propuesto-apariciones"
-												data-apariciones={campo.apariciones}
-											>
-												{textoDeApariciones(campo)}
-											</span>
-											{#if campo.opcionalSugerido}
-												<span class="text-xs text-muted-foreground" data-testid="campo-propuesto-opcional">· se agrega como opcional</span>
-											{/if}
-										{/if}
 										{#if !disponibles[i]}
 											<span class="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-testid="campo-propuesto-existe">
 												Ya existe un campo con este nombre
 											</span>
 										{/if}
 									</span>
-									{#if campo.descripcion}
-										<span class="mt-0.5 block text-xs text-muted-foreground">{campo.descripcion}</span>
-									{/if}
 									{#if campo.tipoDato === 'grupo' && campo.subcampos.length}
 										<span class="mt-1 block text-xs text-muted-foreground">
 											Campos del grupo: {campo.subcampos.map((s) => `${s.nombre} (${etiquetaTipo(s.tipoDato)})`).join(' · ')}
