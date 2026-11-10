@@ -5,12 +5,15 @@
 	 *
 	 * Se aparta del diseño en que la tarjeta lleva el NOMBRE del expediente y no un folio (`EXP-2026-00011`). (Hasta el 2026-10-29
 	 * llevaba también el tipo del expediente; ese día dejó de tenerlo. Del 2026-11-03 al 2026-11-06 llevó su grupo; los grupos se quitaron.)
-	 * El menú de tres puntos del diseño no está: todavía no hay nada que hacer desde él (no se renombra ni se borra un expediente).
+	 * El menú de tres puntos del diseño no está. Con `alBorrar` (solo quien organiza, 2026-11-10) lleva un bote de basura en la esquina de arriba,
+	 * hermano del enlace (un botón no puede ir dentro de un `<a>`), que pide borrar el expediente.
 	 */
 	import CarpetaIlustracion from '$lib/components/icons/CarpetaIlustracion.svelte';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+
 	import { etiquetaDeArchivos, formatearTamano, type Expediente } from '$lib/expedientes/expedientes';
 
-	let { expediente }: { expediente: Expediente } = $props();
+	let { expediente, alBorrar }: { expediente: Expediente; alBorrar?: (expediente: Expediente) => void } = $props();
 
 	// Un servidor anterior al peso no lo manda: sin dato se calla, en vez de decir «0 MB» de algo que sí tiene documentos.
 	const resumen = $derived(
@@ -20,6 +23,7 @@
 	);
 </script>
 
+<div class="relative">
 <a
 	href={`/expediente/${expediente.id}`}
 	data-testid="tarjeta-expediente"
@@ -35,3 +39,16 @@
 		<p class="text-xs font-medium text-muted-foreground" data-testid="expediente-resumen">{resumen}</p>
 	</div>
 </a>
+{#if alBorrar}
+<button
+	type="button"
+	data-testid="borrar-expediente"
+	aria-label="Borrar «{expediente.nombre}»"
+	title="Borrar expediente"
+	class="absolute top-4 right-4 bg-card/90 flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
+	onclick={() => alBorrar?.(expediente)}
+>
+	<Trash2 class="size-4" />
+</button>
+{/if}
+</div>
