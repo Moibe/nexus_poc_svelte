@@ -2715,29 +2715,21 @@
 									</div>
 									<div class="space-y-2">
 										<Label for="agregado-tipo-{campo.id}">Tipo de dato</Label>
-										{#if altaEnCurso}
-											<Input
-												id="agregado-tipo-{campo.id}"
-												value={etiquetaTipo(campo.tipoDato) ?? campo.tipoDato}
-												readonly
-												class="bg-muted text-muted-foreground"
-											/>
-										{:else}
-											<Select.Root
-												type="single"
-												value={campo.tipoDato}
-												onValueChange={(v) => alCambiarTipoDato(campo, v)}
-											>
-												<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
-													{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
-												</Select.Trigger>
-												<Select.Content>
-													{#each TIPOS_DE_DATO as tipo (tipo.value)}
-														<Select.Item value={tipo.value} label={tipo.label} />
-													{/each}
-												</Select.Content>
-											</Select.Root>
-										{/if}
+										<!-- El tipo de un campo ya agregado se puede cambiar también en un alta nueva (2026-11-10, Moibe: «en ésta etapa quiero poder cambiar el tipo de dato»). -->
+										<Select.Root
+											type="single"
+											value={campo.tipoDato}
+											onValueChange={(v) => alCambiarTipoDato(campo, v)}
+										>
+											<Select.Trigger id="agregado-tipo-{campo.id}" class="w-full">
+												{etiquetaTipo(campo.tipoDato) ?? 'Selecciona un tipo de campo'}
+											</Select.Trigger>
+											<Select.Content>
+												{#each TIPOS_DE_DATO as tipo (tipo.value)}
+													<Select.Item value={tipo.value} label={tipo.label} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
 									</div>
 								</div>
 
@@ -2752,7 +2744,7 @@
 							</div>
 							{#if campo.tipoDato === 'grupo'}
 								<!-- En una alta nueva los campos ya agregados no se editan (igual que el resto): solo se ven. En modo edición o «Crear nueva versión» sí. -->
-								<div class="-mt-2"><SubcamposGrupo {campo} soloLectura={altaEnCurso} /></div>
+								<div class="-mt-2"><SubcamposGrupo {campo} /></div>
 							{/if}
 						{/each}
 					</div>
