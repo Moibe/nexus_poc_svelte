@@ -115,6 +115,7 @@
 		posicionLibre,
 		resultadoConectado,
 		serializarDibujo,
+		usaTerceraEntrada,
 		usosDeNodo,
 		type ClaveOperador,
 		type Conexion,
@@ -328,7 +329,7 @@
 			id: `operador-${operadoresPuestos}`,
 			type: NODO_OPERADOR,
 			position: libre(posicion),
-			data: { operador: operador.clave as ClaveOperador, a: '', b: '' }
+			data: { operador: operador.clave as ClaveOperador, a: '', b: '', ...(usaTerceraEntrada(operador.clave) ? { c: '' } : {}) }
 		};
 		nodes = [...nodes, nuevo];
 	}

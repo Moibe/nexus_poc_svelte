@@ -3,8 +3,8 @@
 	 * Un OPERADOR en el lienzo del motor de reglas (2026-10-20): una regla. Todos se dibujan igual y cambian en su catálogo
 	 * (`OPERADORES`):
 	 *
-	 *   · de COMPARACIÓN (igual, distinto, contiene, mayor, menor): sus entradas reciben VALORES: un campo de un documento, un valor
-	 *     fijo, o el número que entrega `Cantidad` o `Suma`. Dan pasa / no pasa.
+	 *   · de COMPARACIÓN (igual, distinto, contiene, parecido, mayor, menor y sus «o igual», entre): sus entradas reciben VALORES: un campo de
+	 *     un documento, un valor fijo, o el número que entrega `Cantidad` o `Suma`. Dan pasa / no pasa. «Entre» tiene tres (Valor, Desde, Hasta).
 	 *   · de LISTAS (cantidad, suma, alguno, todos, unicos): reciben una LISTA (un campo «1 a N» o una columna de un grupo que se repite;
 	 *     «Cantidad» también las filas de un grupo). `Cantidad` y `Suma` entregan un número; los demás, pasa / no pasa.
 	 *   · LÓGICOS (Y, O, No, Implica): sus entradas reciben el pasa / no pasa de OTRAS reglas. Así se encadenan. «Implica» tiene una
@@ -47,8 +47,8 @@
 
 	const { deleteElements, updateNodeData } = useSvelteFlow();
 	const evaluado = getContext<EvaluadoDelLienzo>(CLAVE_VEREDICTOS);
-	/** Lo que llega a cada entrada (un campo, un valor fijo o una regla); lo comparte con los nodos finales. */
-	const origenDe = usarOrigenes(['a', 'b']);
+	/** Lo que llega a cada entrada (un campo, un valor fijo o una regla); lo comparte con los nodos finales. `c` solo existe en «Entre». */
+	const origenDe = usarOrigenes(['a', 'b', 'c']);
 
 	const def = $derived(operadorDe(data.operador));
 	const estado = $derived<Estado>(evaluado.todos[id] ?? 'sin_conexion');
@@ -104,7 +104,8 @@
 				if (esParecido && errorDelPar) return errorDelPar;
 				const mala = lineaQueNoEsNumero();
 				if (mala !== null) return `«${mala}» no es un número`;
-				return def.grupo === 'lista' ? 'Escribe los valores de ejemplo (uno por renglón)' : 'Escribe un valor de ejemplo en cada lado';
+				if (def.grupo === 'lista') return 'Escribe los valores de ejemplo (uno por renglón)';
+				return def.entradas.length > 2 ? 'Escribe un valor de ejemplo en cada entrada' : 'Escribe un valor de ejemplo en cada lado';
 			}
 			default:
 				if (esDocumento) return 'Conecta el documento de un tipo documental';

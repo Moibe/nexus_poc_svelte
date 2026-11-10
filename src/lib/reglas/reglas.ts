@@ -16,7 +16,8 @@
  *   · el DOCUMENTO entero (el punto «Documento» de un tipo documental): no es ningún dato, solo sirve para preguntar si el
  *     expediente lo trae (`Existe documento`).
  *
- * Los operadores de COMPARACIÓN (igual, distinto, contiene, mayor, menor) reciben dos valores y dan un veredicto. Los de LISTAS
+ * Los operadores de COMPARACIÓN (igual, distinto, contiene, parecido, mayor, mayor o igual, menor, menor o igual) reciben dos valores y dan un
+ * veredicto; «Entre» (2026-11-10) recibe TRES —el valor y sus dos límites— y es el único con una tercera entrada (`c`). Los de LISTAS
  * (cantidad, suma, alguno, todos, unicos) reciben una lista: `cantidad` y `suma` entregan un valor (que se puede comparar) y los demás,
  * un veredicto. `Existe documento` recibe un documento entero y dice si el expediente lo trae. Los LÓGICOS (Y, O, No, Implica) reciben
  * veredictos de otras reglas, y así se encadenan: `Implica` es el «si… entonces…» (si la primera regla pasa, la segunda también debe
@@ -56,9 +57,10 @@ export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado
 /**
  * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
  * prueba la regla (uno por entrada: el lienzo aún no corre sobre un expediente de verdad). Si lo que entra es una LISTA, el ejemplo
- * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`.
+ * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`. `c` es el ejemplo de la tercera entrada y solo lo lleva un
+ * operador que la tiene («Entre»: Valor, Desde y Hasta; ver `usaTerceraEntrada`).
  */
-export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string; minimo?: number };
+export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string; c?: string; minimo?: number };
 
 /** «Parecido a» (2026-11-10): el porcentaje mínimo de parecido para que pase, cuando el nodo no trae otro. El back usa el mismo (`MINIMO_PARECIDO`). */
 export const MINIMO_PARECIDO = 90;
@@ -275,6 +277,7 @@ export type ClaveOperador =
 	| 'mayor_igual'
 	| 'menor'
 	| 'menor_igual'
+	| 'entre'
 	| 'cantidad'
 	| 'suma'
 	| 'alguno'
@@ -285,7 +288,7 @@ export type ClaveOperador =
 	| 'o'
 	| 'no'
 	| 'implica';
-export type Entrada = 'a' | 'b';
+export type Entrada = 'a' | 'b' | 'c';
 
 /** Lo que una entrada acepta que le llegue: un valor suelto, una lista de valores, el veredicto de otra regla o un documento entero. */
 export type Acepta = 'valor' | 'lista' | 'veredicto' | 'documento';
@@ -426,6 +429,24 @@ export const OPERADORES: readonly DefOperador[] = [
 		textoNoPasa: 'No pasa: el primer valor es mayor'
 	},
 	{
+		// «Entre» (2026-11-10, Moibe): el valor y sus dos límites, los dos incluidos. Es la única regla con TRES entradas: la tercera es `c`, y su
+		// ejemplo se guarda en `c` (ver `usaTerceraEntrada`). Se decide en `evaluarEntre`.
+		clave: 'entre',
+		etiqueta: 'Entre',
+		simbolo: '↔',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si un valor o fecha está entre dos límites, incluyéndolos.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Desde', acepta: 'valor' },
+			{ id: 'c', etiqueta: 'Hasta', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: está dentro del rango',
+		textoNoPasa: 'No pasa: está fuera del rango'
+	},
+	{
 		clave: 'cantidad',
 		etiqueta: 'Cantidad',
 		simbolo: '#',
@@ -542,6 +563,9 @@ export const GRUPOS_DE_OPERADORES = [
 ] as const;
 
 export const operadorDe = (clave: string): DefOperador | undefined => OPERADORES.find((o) => o.clave === clave);
+
+/** ¿El operador tiene una TERCERA entrada (`c`)? Hoy solo «Entre». Solo esos guardan el ejemplo `c`: los demás siguen guardándose como siempre. */
+export const usaTerceraEntrada = (clave: string): boolean => operadorDe(clave)?.entradas.some((e) => e.id === 'c') ?? false;
 
 // ── De dónde sale un dato: la salida de un campo ─────────────────────────────
 
@@ -757,20 +781,20 @@ export function motivoDeRechazo(
 		return `«${def.etiqueta}» solo trabaja con ${def.familias.map((f) => PLURAL_DE_FAMILIA[f]).join(' y ')}.`;
 	}
 
-	// 2 · el otro lado del operador, si ya tiene algo: manda sobre lo que se puede poner en éste.
-	const otroLado = def.entradas.find((e) => e.id !== c.targetHandle);
-	const aristaOtra = otroLado && aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
-	if (aristaOtra) {
+	// 2 · lo que ya llega a las OTRAS entradas del operador manda sobre lo que se puede poner en ésta (todas: «Entre» tiene tres).
+	for (const otroLado of def.entradas) {
+		if (otroLado.id === c.targetHandle) continue;
+		const aristaOtra = aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
+		if (!aristaOtra) continue;
 		const suya = fuenteDeConexion(aristaOtra, nodos, tipos);
-		if (typeof suya !== 'string') {
-			if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
-				if (origen.type === NODO_TIPO) return 'Las dos entradas serían el mismo campo: no habría nada que comparar.';
-				if (origen.type === NODO_CONSTANTE) return 'Las dos entradas serían el mismo valor fijo: no habría nada que comparar.';
-				return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
-			}
-			if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
-				return `No se puede comparar ${NOMBRE_DE_FAMILIA[fuente.familia]} con ${NOMBRE_DE_FAMILIA[suya.familia]}.`;
-			}
+		if (typeof suya === 'string') continue;
+		if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
+			if (origen.type === NODO_TIPO) return 'Las dos entradas serían el mismo campo: no habría nada que comparar.';
+			if (origen.type === NODO_CONSTANTE) return 'Las dos entradas serían el mismo valor fijo: no habría nada que comparar.';
+			return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
+		}
+		if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
+			return `No se puede comparar ${NOMBRE_DE_FAMILIA[fuente.familia]} con ${NOMBRE_DE_FAMILIA[suya.familia]}.`;
 		}
 	}
 
@@ -930,6 +954,18 @@ export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: st
 		default:
 			return 'sin_conexion';
 	}
+}
+
+/**
+ * El veredicto de «Entre»: pasa si `valor` queda entre `desde` y `hasta`, los dos incluidos. Los límites van en su orden: si «Desde» queda después
+ * de «Hasta» no hay nada entre ellos y no pasa (no se voltean solos: un rango al revés en los datos es un error que conviene que se vea). Como en
+ * las demás comparaciones, un valor que no se entiende no está dentro de nada.
+ */
+export function evaluarEntre(familia: Familia, valor: string, desde: string, hasta: string): Veredicto {
+	if (!valor.trim() || !desde.trim() || !hasta.trim()) return 'sin_valores';
+	const conDesde = ordenar(familia, valor, desde);
+	const conHasta = ordenar(familia, valor, hasta);
+	return conDesde !== null && conHasta !== null && conDesde >= 0 && conHasta <= 0 ? 'pasa' : 'no_pasa';
 }
 
 /**
@@ -1145,6 +1181,9 @@ export function evaluar(
 					parecidos[id] = { ...medida, minimo };
 					estado = medida.porcentaje >= minimo ? 'pasa' : 'no_pasa';
 				}
+			} else if (def.clave === 'entre') {
+				const familia = (llegan[0].fuente as Fuente).familia;
+				estado = familia ? evaluarEntre(familia, llegan[0].muestra, llegan[1].muestra, llegan[2].muestra) : 'sin_conexion';
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
 				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
@@ -1244,7 +1283,18 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 			});
 		} else if (n.type === NODO_OPERADOR) {
 			const d = n.data as DatosNodoOperador;
-			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '', ...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {}) } });
+			nodos.push({
+				id: n.id,
+				type: NODO_OPERADOR,
+				position,
+				data: {
+					operador: d.operador,
+					a: d.a ?? '',
+					b: d.b ?? '',
+					...(usaTerceraEntrada(d.operador) ? { c: d.c ?? '' } : {}),
+					...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {})
+				}
+			});
 		} else if (n.type === NODO_CONSTANTE) {
 			const d = n.data as DatosNodoConstante;
 			nodos.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: esFamilia(d.familia) ? d.familia : 'texto', valor: d.valor ?? '' } });
@@ -1310,6 +1360,7 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 					operador: n.data.operador,
 					a: typeof n.data.a === 'string' ? n.data.a : '',
 					b: typeof n.data.b === 'string' ? n.data.b : '',
+					...(usaTerceraEntrada(n.data.operador) ? { c: typeof n.data.c === 'string' ? n.data.c : '' } : {}),
 					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {})
 				}
 			});
