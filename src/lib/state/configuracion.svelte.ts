@@ -2151,9 +2151,11 @@ export async function eliminarTipoDocumental(
 	const i = tiposDocumentales.findIndex((tp) => tp.id === id);
 	if (i !== -1) tiposDocumentales.splice(i, 1);
 	olvidarEjemplos(id); // sus documentos de ejemplo en memoria ya no tienen a qué tipo servir
-	// Si se borró el que el borrador tenía asociado, se desliga para que un
-	// próximo guardado cree una entrada nueva en vez de buscar una que ya no está.
-	if (borradorTipoDocumental.idGuardado === id) borradorTipoDocumental.idGuardado = null;
+	// Si se borró el que el borrador tenía abierto, el borrador se DESCARTA entero (2026-11-10, Moibe: «a pesar de que ya había borrado
+	// el tipo documental INE, aquí me marcó como que todavía existe»). Antes solo se desligaba (`idGuardado = null`) y se quedaba con el
+	// nombre, la descripción y los campos: el siguiente «Agregar nuevo tipo documental» lo guardaba como un tipo NUEVO con otro id, así que
+	// el tipo borrado reaparecía en la biblioteca y su nombre seguía ocupado.
+	if (borradorTipoDocumental.idGuardado === id) limpiarBorrador();
 	guardarBiblioteca();
 
 	// Solo si ERA activo: un borrador o un archivado ya no contaban como

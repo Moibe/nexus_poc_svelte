@@ -103,7 +103,6 @@
 		etiquetaVertical,
 		colorParaCampo,
 		guardarTipoDocumental,
-		hayBorrador,
 		irAPaso,
 		pasoNavegable,
 		pedidoDeConfiguracion,
@@ -760,17 +759,11 @@
 	/** "Nuevo tipo documental": SIEMPRE en blanco. Retomar uno existente se hace
 	 *  picando su tarjeta en la lista, que es donde el usuario lo busca. */
 	function nuevoTipoDocumental() {
-		// RESCATE antes de limpiar. El diseño se apoya en un invariante: "todo lo
-		// capturado ya viajó a la biblioteca, así que limpiar no pierde nada". Eso
-		// es cierto para datos nuevos —el tipo se guarda al salir del paso 1— pero
-		// NO para un borrador escrito por una versión anterior a que existiera la
-		// biblioteca: ese llega con `idGuardado` en null y sin tarjeta que lo abra,
-		// así que este botón era su única affordance visible... y lo destruía. En
-		// la versión que escribió ese dato, este mismo botón era el que lo RETOMABA.
-		//
-		// `guardarTipoDocumental` no hace nada si no hay nombre, así que un
-		// borrador vacío se limpia como siempre.
-		if (!borrador.idGuardado && hayBorrador()) guardarTipoDocumental();
+		// Ya NO hay «rescate» (2026-11-10). Guardaba como tipo NUEVO cualquier borrador sin `idGuardado` que tuviera algo escrito. Nació
+		// para los borradores de antes de que existiera la biblioteca (esa época terminó: desde el 2026-10-15 el catálogo vive en el
+		// servidor), y en la práctica hacía dos cosas que nadie pidió: RESUCITAR con otro id un tipo recién borrado (al borrarlo, el
+		// borrador se desligaba pero conservaba su nombre; Moibe lo vio como «ya existe un tipo con este nombre» tras borrar INE) y meter
+		// a la biblioteca un alta abandonada en el paso 1. Un tipo entra a la biblioteca solo con «Continuar» del paso 1.
 		limpiarBorrador();
 		// Un alta nueva no hereda los documentos del paso 1 de la anterior (si esa se dejó sin salir del paso 1, `idGuardado` seguía en null y nada más los reiniciaba).
 		documentosDelPaso1 = [];
