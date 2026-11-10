@@ -272,7 +272,9 @@ export type ClaveOperador =
 	| 'contiene'
 	| 'parecido'
 	| 'mayor'
+	| 'mayor_igual'
 	| 'menor'
+	| 'menor_igual'
 	| 'cantidad'
 	| 'suma'
 	| 'alguno'
@@ -378,6 +380,22 @@ export const OPERADORES: readonly DefOperador[] = [
 		textoNoPasa: 'No pasa: el primer valor no es mayor'
 	},
 	{
+		// Las inclusivas (2026-11-10, Moibe: «también necesito los inclusivos, que son Mayor o igual y Menor o igual»).
+		clave: 'mayor_igual',
+		etiqueta: 'Mayor o igual',
+		simbolo: '≥',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si el primer valor es mayor o igual que el segundo.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Mayor o igual que', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: el primer valor es mayor o igual',
+		textoNoPasa: 'No pasa: el primer valor es menor'
+	},
+	{
 		clave: 'menor',
 		etiqueta: 'Menor que',
 		simbolo: '<',
@@ -391,6 +409,21 @@ export const OPERADORES: readonly DefOperador[] = [
 		familias: ['numero', 'fecha'],
 		textoPasa: 'Pasa: el primer valor es menor',
 		textoNoPasa: 'No pasa: el primer valor no es menor'
+	},
+	{
+		clave: 'menor_igual',
+		etiqueta: 'Menor o igual',
+		simbolo: '≤',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si el primer valor es menor o igual que el segundo.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Menor o igual que', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: el primer valor es menor o igual',
+		textoNoPasa: 'No pasa: el primer valor es mayor'
 	},
 	{
 		clave: 'cantidad',
@@ -885,6 +918,14 @@ export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: st
 		case 'menor': {
 			const o = ordenar(familia, a, b);
 			return si(o !== null && o < 0);
+		}
+		case 'mayor_igual': {
+			const o = ordenar(familia, a, b);
+			return si(o !== null && o >= 0);
+		}
+		case 'menor_igual': {
+			const o = ordenar(familia, a, b);
+			return si(o !== null && o <= 0);
 		}
 		default:
 			return 'sin_conexion';
