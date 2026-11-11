@@ -27,6 +27,11 @@
 	 * si aparece). Mientras está abierto, su recuadro se mueve, cambia de tamaño, se dibuja de nuevo o se quita (`DocumentoConCampos`); eso solo
 	 * ayuda a ver qué es el campo: no se guarda ni cambia lo que extraerá el procesador. Lo puesto a mano no lo pisa ninguna búsqueda.
 	 *
+	 * **El recuadro sugiere la descripción (2026-11-11, Moibe preguntó si editar los recuadros ayuda a formar el esquema —no: lo que lee el extractor es
+	 * la descripción— y eligió que el recuadro la reescriba).** Al ajustar a mano el recuadro del campo que se edita (o con «Sugerir descripción con su
+	 * recuadro»), Gemini mira esa zona (`/api/procesadores/describir-campo`) y propone una descripción que sirva para cualquier documento del tipo, sin
+	 * datos de este. Se enseña junto con lo que se lee dentro del recuadro; la persona la usa o la descarta. Nada se aplica solo.
+	 *
 	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
 	 */
@@ -147,7 +152,73 @@
 		if (formulario) fInput?.focus();
 	});
 
+	// ── Sugerir la descripción con el recuadro (2026-11-11, Moibe: «sí, excelente, por favor la 1») ──
+	// El recuadro no llega al esquema; la descripción sí. Al ajustar a mano el recuadro del campo que se edita (o con el botón), Gemini mira esa zona y
+	// PROPONE una descripción que sirva para cualquier documento del tipo; la persona la usa o no. Se pide sobre el documento que se está viendo.
+	/** Cuánto se espera tras el último ajuste antes de pedir la sugerencia: arrastrar o usar las flechas son muchos ajustes seguidos. */
+	const ESPERA_SUGERENCIA_MS = 1200;
+	let documentoVisible = $state(0);
+	type Sugerencia = { fase: 'pensando' } | { fase: 'lista'; descripcion: string; valor: string } | { fase: 'error'; mensaje: string };
+	let sugerencia = $state<Sugerencia | null>(null);
+	let turnoSugerencia = 0;
+	let esperaSugerencia: ReturnType<typeof setTimeout> | null = null;
+	const marcaEditando = $derived(editando !== null ? marcas[documentoVisible]?.[editando] : undefined);
+
+	function olvidarSugerencia() {
+		turnoSugerencia += 1;
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = null;
+		sugerencia = null;
+	}
+
+	function programarSugerencia() {
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = setTimeout(() => {
+			esperaSugerencia = null;
+			void sugerirDescripcion();
+		}, ESPERA_SUGERENCIA_MS);
+	}
+
+	/** Pide la descripción para el campo que se edita, con su recuadro en el documento que se está viendo. Nunca lanza. */
+	async function sugerirDescripcion() {
+		const indice = editando;
+		const archivo = documentosVista[documentoVisible];
+		const marca = marcaEditando;
+		if (indice === null || !archivo || !marca) return;
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = null;
+		const mio = ++turnoSugerencia;
+		sugerencia = { fase: 'pensando' };
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		// Lo que hay escrito en el formulario (aún sin guardar) es el mejor contexto: es lo que la persona quiere que sea el campo.
+		cuerpo.append('campo', JSON.stringify({ nombre: fNombre.trim() || propuestos[indice].nombre, tipoDato: fTipo, descripcion: fDescripcion.trim() }));
+		cuerpo.append('pagina', String(marca.pagina));
+		cuerpo.append('caja', JSON.stringify(marca.caja));
+		if (nombreTipo.trim()) cuerpo.append('nombreTipo', nombreTipo.trim());
+		if (descripcionTipo.trim()) cuerpo.append('descripcionTipo', descripcionTipo.trim());
+		let nueva: Sugerencia;
+		try {
+			const r = await fetch('/api/procesadores/describir-campo', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			nueva =
+				r.ok && typeof datos?.descripcion === 'string' && datos.descripcion.trim()
+					? { fase: 'lista', descripcion: datos.descripcion.trim(), valor: typeof datos.valor === 'string' ? datos.valor : '' }
+					: { fase: 'error', mensaje: r.status === 429 ? 'Hay muchas solicitudes a la vez. Intenta de nuevo en un momento.' : 'No se pudo sugerir una descripción con este recuadro.' };
+		} catch {
+			nueva = { fase: 'error', mensaje: 'No se pudo contactar al servidor para sugerir la descripción.' };
+		}
+		if (mio === turnoSugerencia) sugerencia = nueva;
+	}
+
+	function usarSugerencia() {
+		if (sugerencia?.fase !== 'lista') return;
+		fDescripcion = sugerencia.descripcion.slice(0, 200);
+		sugerencia = null;
+	}
+
 	function cerrarFormulario() {
+		olvidarSugerencia();
 		formulario = null;
 		fNombre = '';
 		fTipo = 'texto';
@@ -163,6 +234,7 @@
 	function abrirEdicion(indice: number) {
 		const campo = propuestos[indice];
 		if (!campo) return;
+		olvidarSugerencia();
 		formulario = { modo: 'editar', indice };
 		fNombre = campo.nombre;
 		fTipo = campo.tipoDato;
@@ -284,6 +356,12 @@
 		const antes = marcas[cambio.documento][indice];
 		marcas[cambio.documento][indice] = { pagina: cambio.pagina, caja: cambio.caja, valor: cambio.modo === 'ajustar' ? (antes?.valor ?? '') : '' };
 		aMano[llaveMarca(cambio.documento, indice)] = true;
+		// El recuadro del campo que se edita cambió a mano: lo que hay dentro puede describir mejor al campo.
+		if (indice === editando) {
+			turnoSugerencia += 1;
+			sugerencia = { fase: 'pensando' };
+			programarSugerencia();
+		}
 	}
 
 	function quitarCaja(documento: number, nombre: string) {
@@ -292,6 +370,7 @@
 		nuevoTurno(documento, indice);
 		delete marcas[documento][indice];
 		aMano[llaveMarca(documento, indice)] = true;
+		if (indice === editando) olvidarSugerencia();
 	}
 	let arrastrando = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -326,6 +405,7 @@
 		propuestos = [];
 		elegidos = [];
 		documentosVista = [];
+		documentoVisible = 0;
 		marcas = [];
 		turnosMarca = {};
 		aMano = {};
@@ -522,8 +602,48 @@
 			data-testid="{prefijo}-descripcion"
 		/>
 		{#if editar && documentosVista.some((a) => sePuedeMarcar(a))}
+			<!-- La descripción es lo que usa la extracción; el recuadro solo guía (2026-11-11, Moibe: «¿en realidad ayuda a la formación de lo que será mi esquema?»). -->
+			{#if sugerencia?.fase === 'lista'}
+				<div class="flex flex-col gap-2 rounded-md border border-primary/25 bg-primary/5 p-3" data-testid="sugerencia-descripcion" aria-live="polite">
+					<p class="flex items-center gap-1.5 text-xs font-medium text-primary dark:text-blue-300">
+						<Sparkles class="size-3.5" /> Descripción sugerida con su recuadro
+					</p>
+					<p class="text-sm text-foreground" data-testid="sugerencia-descripcion-texto">{sugerencia.descripcion}</p>
+					{#if sugerencia.valor}
+						<p class="line-clamp-2 text-xs break-all text-muted-foreground" data-testid="sugerencia-descripcion-valor">
+							En el recuadro se lee: «{sugerencia.valor}»
+						</p>
+					{/if}
+					<div class="flex justify-end gap-2">
+						<Button type="button" variant="ghost" size="sm" data-testid="sugerencia-descripcion-descartar" onclick={() => (sugerencia = null)}>Descartar</Button>
+						<Button type="button" variant="outline" size="sm" data-testid="sugerencia-descripcion-usar" onclick={usarSugerencia}>Usar esta descripción</Button>
+					</div>
+				</div>
+			{:else if sugerencia?.fase === 'pensando'}
+				<p class="flex items-center gap-2 text-xs text-muted-foreground" data-testid="sugerencia-descripcion-pensando" aria-live="polite">
+					<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo su recuadro para sugerir una descripción…
+				</p>
+			{:else}
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={!marcaEditando}
+						data-testid="sugerir-descripcion"
+						onclick={() => void sugerirDescripcion()}
+					>
+						<Sparkles class="size-3.5" /> Sugerir descripción con su recuadro
+					</Button>
+					{#if sugerencia?.fase === 'error'}
+						<span class="text-xs text-destructive" role="alert" data-testid="sugerencia-descripcion-error">{sugerencia.mensaje}</span>
+					{:else if !marcaEditando}
+						<span class="text-xs text-muted-foreground">Primero marca su recuadro en el documento.</span>
+					{/if}
+				</div>
+			{/if}
 			<p class="text-xs text-muted-foreground">
-				Su recuadro está resaltado en el documento: arrástralo, cambia su tamaño o dibújalo de nuevo. Si cambias el nombre o la descripción, se vuelve a buscar.
+				La extracción usa el nombre y la descripción; el recuadro solo sirve de guía. Al moverlo o dibujarlo, se sugiere una descripción con lo que hay dentro.
 			</p>
 		{/if}
 		{#if fError}
@@ -671,6 +791,7 @@
 						{#if documentosVista.length > 0}
 							<div class="lg:sticky lg:top-0">
 								<DocumentoConCampos
+									bind:indice={documentoVisible}
 									documentos={documentosVista}
 									estados={estadosUbicacion}
 									ubicaciones={ubicacionesVista}

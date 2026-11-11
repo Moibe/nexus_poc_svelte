@@ -45,7 +45,8 @@
 		onResaltar,
 		onElegir,
 		onCaja,
-		onQuitar
+		onQuitar,
+		indice = $bindable(0)
 	}: {
 		documentos: File[];
 		/** Uno por documento, en el mismo orden. */
@@ -62,9 +63,10 @@
 		onElegir?: (campo: string) => void;
 		onCaja?: (cambio: CambioDeCaja) => void;
 		onQuitar?: (documento: number, campo: string) => void;
+		/** El documento que se está enseñando (la pestaña elegida). */
+		indice?: number;
 	} = $props();
 
-	let indice = $state(0);
 	let pagina = $state(1);
 	let numPaginas = $state(1);
 	let urlPagina = $state<string | null>(null);
