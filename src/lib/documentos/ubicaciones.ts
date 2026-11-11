@@ -21,6 +21,37 @@ export function sePuedeMarcar(archivo: Pick<File, 'name' | 'type'>): boolean {
 
 export const esPdf = (archivo: Pick<File, 'name' | 'type'>) => archivo.type === 'application/pdf' || archivo.name.toLowerCase().endsWith('.pdf');
 
+/** El lado más largo, en píxeles, de la imagen que se manda a ubicar (y se enseña). Más no mejora la ubicación y pesa más. */
+export const LADO_MAXIMO_PX = 2400;
+
+/**
+ * La foto ENDEREZADA, para ubicar y para enseñar (2026-11-11). Una foto de celular suele guardarse de lado con una etiqueta EXIF que dice cómo
+ * girarla: el navegador la enseña derecha, pero Gemini la recibía sin girar y sus cajas caían en otro marco (en la prueba con un pasaporte
+ * guardado así: los valores bien leídos y las cajas en cualquier lado; la MRZ salía como una franja vertical). Aquí se pinta en un canvas ya
+ * girada (`imageOrientation: 'from-image'`) y se exporta sin EXIF, reducida a `LADO_MAXIMO_PX`: lo que ve Gemini y lo que se pinta debajo de
+ * las marcas son los MISMOS píxeles. Un PDF se devuelve tal cual. Si el navegador no puede, se devuelve el original.
+ */
+export async function imagenDerecha(archivo: File): Promise<File> {
+	if (esPdf(archivo) || !sePuedeMarcar(archivo)) return archivo;
+	try {
+		const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
+		const escala = Math.min(1, LADO_MAXIMO_PX / Math.max(bitmap.width, bitmap.height));
+		const canvas = document.createElement('canvas');
+		canvas.width = Math.round(bitmap.width * escala);
+		canvas.height = Math.round(bitmap.height * escala);
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return archivo;
+		ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+		bitmap.close();
+		const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.9));
+		if (!blob) return archivo;
+		// Mismo nombre (es el que se enseña en las pestañas); el tipo dice la verdad: ahora es JPEG.
+		return new File([blob], archivo.name, { type: 'image/jpeg' });
+	} catch {
+		return archivo;
+	}
+}
+
 /** La caja como `top/left/width/height` en porcentaje de la página. */
 export function cajaEnPorcentaje([ymin, xmin, ymax, xmax]: Ubicacion['caja']) {
 	return { top: ymin / 10, left: xmin / 10, width: (xmax - xmin) / 10, height: (ymax - ymin) / 10 };

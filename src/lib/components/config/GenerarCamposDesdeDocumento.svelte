@@ -31,7 +31,7 @@
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import { unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
-	import { leerUbicaciones, sePuedeMarcar } from '$lib/documentos/ubicaciones';
+	import { imagenDerecha, leerUbicaciones, sePuedeMarcar } from '$lib/documentos/ubicaciones';
 	import DocumentoConCampos, { type EstadoUbicacion } from './DocumentoConCampos.svelte';
 	import { TIPOS_DE_DATO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
@@ -211,10 +211,13 @@
 		elegidos = propuestos.map((c) => !yaExiste(c.nombre));
 		fase = 'propuesta';
 		// El documento a un lado, y en cada uno se buscan los campos (en paralelo; no se espera: la lista ya sirve).
-		documentosVista = [...leidos];
+		// Las fotos van ENDEREZADAS (`imagenDerecha`): lo que ve Gemini y lo que se pinta debajo de las marcas son los mismos píxeles.
 		estadosUbicacion = leidos.map((a) => (sePuedeMarcar(a) ? { fase: 'cargando' } : { fase: 'no-soportado' }));
+		const derechas = await Promise.all(leidos.map((a) => imagenDerecha(a)));
+		if (turno !== vigente) return;
+		documentosVista = derechas;
 		const pedidos = JSON.stringify(propuestos.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion })));
-		leidos.forEach((a, i) => {
+		derechas.forEach((a, i) => {
 			if (sePuedeMarcar(a)) void ubicar(a, i, pedidos, turno);
 		});
 	}
