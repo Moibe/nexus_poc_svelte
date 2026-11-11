@@ -530,6 +530,8 @@ export type CampoPropuesto = {
 	 * no debe fallar por eso. Sin esto (un solo documento, o el campo salió en todos) nace obligatorio, como siempre.
 	 */
 	opcionalSugerido?: boolean;
+	/** Lo escribió la persona en «Agregar otro campo» (2026-11-11), no lo propuso el documento: su cardinalidad no es «sugerida por el documento». */
+	manual?: boolean;
 };
 
 /**
@@ -559,7 +561,7 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 			descripcion: p.descripcion.trim() || nombre,
 			obligatorio: p.opcionalSugerido !== true,
 			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
-			cardinalidadSugerida: true,
+			cardinalidadSugerida: p.manual !== true,
 			valoresLista: tipo === 'lista' ? [...p.valoresLista] : [],
 			subcampos:
 				tipo === 'grupo'

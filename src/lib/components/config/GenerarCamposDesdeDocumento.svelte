@@ -17,6 +17,10 @@
 	 * los campos ELEGIDOS se marcan con un recuadro y su nombre, y pasar el puntero por un renglón resalta su recuadro. Si ubicar falla, la propuesta
 	 * sirve igual y el documento se enseña sin marcas. Se pregunta una vez por documento con TODOS los propuestos: marcar y desmarcar no vuelve a llamar.
 	 *
+	 * **«Agregar otro campo» (2026-11-11, Moibe: «sí, dale a la versión sencilla»).** Al final de la lista, la persona escribe un campo que la propuesta no
+	 * trajo (nombre, tipo y una descripción opcional). Entra marcado y se busca SOLO ese campo en cada documento (una llamada corta a ubicar): si aparece,
+	 * se marca como los demás; si no, el resumen lo cuenta como no encontrado, lo que también avisa que el nombre o la descripción no son claros.
+	 *
 	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
 	 */
@@ -30,10 +34,13 @@
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
-	import { unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
-	import { imagenDerecha, leerUbicaciones, sePuedeMarcar } from '$lib/documentos/ubicaciones';
+	import { llaveDeCampo, unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
+	import { imagenDerecha, leerUbicaciones, sePuedeMarcar, type Ubicacion } from '$lib/documentos/ubicaciones';
+	import Plus from '@lucide/svelte/icons/plus';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import DocumentoConCampos, { type EstadoUbicacion } from './DocumentoConCampos.svelte';
-	import { TIPOS_DE_DATO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
+	import { TIPOS_DE_DATO, TIPOS_DE_SUBCAMPO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
 	const MAX_MB = 20;
 	/** Cuántos documentos de ejemplo se leen a la vez: con 3 ya se ve qué se repite, y cada lectura tarda hasta un minuto y cuenta como una llamada a Google. */
@@ -82,6 +89,85 @@
 	/** El campo que se resalta en el documento (el renglón o el recuadro bajo el puntero). */
 	let resaltado = $state<string | null>(null);
 	const visibles = $derived(propuestos.filter((_, i) => elegidos[i] && disponibles[i]).map((c) => c.nombre));
+
+	// «Agregar otro campo»: el formulario, y lo que se encontró de los campos agregados así (por documento), que se suma a lo de la primera búsqueda.
+	let nuevoAbierto = $state(false);
+	let nuevoNombre = $state('');
+	let nuevoTipo = $state('texto');
+	let nuevoDescripcion = $state('');
+	let errorNuevo = $state('');
+	let nuevoInput = $state<HTMLInputElement | null>(null);
+	let extras = $state<Ubicacion[][]>([]);
+	/** Cuántas búsquedas siguen en curso por campo agregado, y cuáles no se pudieron hacer. */
+	let buscando = $state<Record<string, number>>({});
+	let sinBuscar = $state<string[]>([]);
+	const estadosVista = $derived(
+		estadosUbicacion.map((e, i): EstadoUbicacion => (e.fase === 'listo' ? { fase: 'listo', ubicaciones: [...e.ubicaciones, ...(extras[i] ?? [])] } : e))
+	);
+	const etiquetaSubtipo = (valor: string) => TIPOS_DE_SUBCAMPO.find((t) => t.value === valor)?.label ?? 'Texto';
+
+	$effect(() => {
+		if (nuevoAbierto) nuevoInput?.focus();
+	});
+
+	function cerrarNuevo() {
+		nuevoAbierto = false;
+		nuevoNombre = '';
+		nuevoTipo = 'texto';
+		nuevoDescripcion = '';
+		errorNuevo = '';
+	}
+
+	function agregarOtro() {
+		const nombre = nuevoNombre.trim().replace(/\s+/g, ' ');
+		if (!nombre) {
+			errorNuevo = 'Escribe el nombre del campo.';
+			return;
+		}
+		if (yaExiste(nombre) || propuestos.some((p) => llaveDeCampo(p.nombre) === llaveDeCampo(nombre))) {
+			errorNuevo = 'Ya hay un campo con ese nombre.';
+			return;
+		}
+		const campo: CampoUnido = {
+			nombre,
+			tipoDato: nuevoTipo,
+			descripcion: nuevoDescripcion.trim(),
+			obligatorio: true,
+			cardinalidad: 'unico',
+			valoresLista: [],
+			subcampos: [],
+			apariciones: 0,
+			total: nombresArchivos.length,
+			opcionalSugerido: false,
+			manual: true
+		};
+		propuestos = [...propuestos, campo];
+		elegidos = [...elegidos, true];
+		cerrarNuevo();
+		const pedido = JSON.stringify([{ nombre: campo.nombre, descripcion: campo.descripcion }]);
+		documentosVista.forEach((a, i) => {
+			if (sePuedeMarcar(a)) void buscarAgregado(a, i, campo.nombre, pedido, vigente);
+		});
+	}
+
+	/** Busca UN campo agregado a mano en un documento y suma su ubicación a las demás. Nunca lanza. */
+	async function buscarAgregado(archivo: File, i: number, nombre: string, pedido: string, turno: number) {
+		buscando[nombre] = (buscando[nombre] ?? 0) + 1;
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		cuerpo.append('campos', pedido);
+		try {
+			const r = await fetch('/api/procesadores/ubicar-campos', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			if (turno !== vigente) return;
+			if (r.ok) extras[i] = [...(extras[i] ?? []), ...leerUbicaciones(datos)];
+			else if (!sinBuscar.includes(nombre)) sinBuscar = [...sinBuscar, nombre];
+		} catch {
+			if (turno === vigente && !sinBuscar.includes(nombre)) sinBuscar = [...sinBuscar, nombre];
+		} finally {
+			if (turno === vigente) buscando[nombre] = Math.max(0, (buscando[nombre] ?? 1) - 1);
+		}
+	}
 	let arrastrando = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	// Cada generación se numera: si se cierra el modal o se elige otro documento mientras Google lee, la respuesta vieja ya es de
@@ -115,6 +201,10 @@
 		propuestos = [];
 		elegidos = [];
 		documentosVista = [];
+		extras = [];
+		buscando = {};
+		sinBuscar = [];
+		cerrarNuevo();
 		estadosUbicacion = [];
 		resaltado = null;
 	}
@@ -378,7 +468,7 @@
 							<div class="lg:sticky lg:top-0">
 								<DocumentoConCampos
 									documentos={documentosVista}
-									estados={estadosUbicacion}
+									estados={estadosVista}
 									{visibles}
 									{resaltado}
 									onResaltar={(campo) => (resaltado = campo)}
@@ -446,6 +536,16 @@
 												{#if campo.cardinalidad === 'multiple'}
 													<span class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300">Se repite</span>
 												{/if}
+												{#if campo.manual}
+													<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="campo-propuesto-manual">Agregado por ti</span>
+													{#if (buscando[campo.nombre] ?? 0) > 0}
+														<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-buscando">
+															<LoaderCircle class="size-3 animate-spin text-primary" /> Buscándolo en el documento…
+														</span>
+													{:else if sinBuscar.includes(campo.nombre)}
+														<span class="text-xs text-muted-foreground" data-testid="campo-propuesto-sin-buscar">No se pudo buscar en el documento</span>
+													{/if}
+												{/if}
 												{#if !disponibles[i]}
 													<span class="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-testid="campo-propuesto-existe">
 														Ya existe un campo con este nombre
@@ -464,6 +564,57 @@
 									</li>
 								{/each}
 							</ul>
+							{#if nuevoAbierto}
+								<form
+									class="-mt-2 flex flex-col gap-3 rounded-lg border border-dashed border-border p-4"
+									data-testid="nuevo-campo"
+									onsubmit={(e) => {
+										e.preventDefault();
+										agregarOtro();
+									}}
+								>
+									<p class="text-sm font-medium text-foreground">Otro campo</p>
+									<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+										<Input
+											bind:ref={nuevoInput}
+											bind:value={nuevoNombre}
+											placeholder="Nombre del campo"
+											aria-label="Nombre del campo"
+											aria-invalid={errorNuevo !== ''}
+											maxlength={80}
+											data-testid="nuevo-campo-nombre"
+											oninput={() => (errorNuevo = '')}
+										/>
+										<Select.Root type="single" value={nuevoTipo} onValueChange={(v) => (nuevoTipo = v)}>
+											<Select.Trigger class="w-full" aria-label="Tipo de dato" data-testid="nuevo-campo-tipo">{etiquetaSubtipo(nuevoTipo)}</Select.Trigger>
+											<!-- z-70: por encima del modal (z-60); el menú vive en un portal. -->
+											<Select.Content class="z-70">
+												{#each TIPOS_DE_SUBCAMPO as tipo (tipo.value)}
+													<Select.Item value={tipo.value} label={tipo.label} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
+									</div>
+									<Input
+										bind:value={nuevoDescripcion}
+										placeholder="Descripción (opcional): ayuda a encontrarlo en el documento"
+										aria-label="Descripción del campo"
+										maxlength={200}
+										data-testid="nuevo-campo-descripcion"
+									/>
+									{#if errorNuevo}
+										<p class="text-xs text-destructive" role="alert" data-testid="nuevo-campo-error">{errorNuevo}</p>
+									{/if}
+									<div class="flex justify-end gap-3">
+										<Button type="button" variant="ghost" size="sm" onclick={cerrarNuevo}>Cancelar</Button>
+										<Button type="submit" size="sm" data-testid="nuevo-campo-agregar">Agregar a la lista</Button>
+									</div>
+								</form>
+							{:else}
+								<Button variant="outline" size="sm" class="-mt-2 self-start" data-testid="agregar-otro-campo" onclick={() => (nuevoAbierto = true)}>
+									<Plus class="size-4" /> Agregar otro campo
+								</Button>
+							{/if}
 						</div>
 					</div>
 				{/if}
