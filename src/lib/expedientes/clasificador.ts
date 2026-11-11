@@ -57,10 +57,10 @@ export function leerClasificacion(valor: unknown): ClasificacionDeSubida | null 
  */
 export type ExtraccionDeSubida = {
 	/** `extraido`, `no_reconocido` (Document AI no reconoció los campos), `sin_tipo` (no hay tipo con qué extraer), `sin_procesador` (el tipo está a medias), `error` o `no_extraido` (tardó demasiado o no se pudo guardar). */
-	estado: 'extraido' | 'no_reconocido' | 'sin_tipo' | 'sin_procesador' | 'error' | 'no_extraido';
+	estado: 'extraido' | 'no_reconocido' | 'sin_tipo' | 'tipo_no_activo' | 'sin_procesador' | 'error' | 'no_extraido';
 };
 
-const ESTADOS_DE_EXTRACCION: readonly string[] = ['extraido', 'no_reconocido', 'sin_tipo', 'sin_procesador', 'error', 'no_extraido'];
+const ESTADOS_DE_EXTRACCION: readonly string[] = ['extraido', 'no_reconocido', 'sin_tipo', 'tipo_no_activo', 'sin_procesador', 'error', 'no_extraido'];
 
 /** Lee `extraccion` de la respuesta sin fiarse de su forma: un servidor más viejo (sin extracción) o algo raro dan `null` y la pantalla no dice nada. */
 export function leerExtraccion(valor: unknown): ExtraccionDeSubida | null {
@@ -76,6 +76,9 @@ export function lineaDeExtraccion(e: ExtraccionDeSubida): LineaDeClasificacion |
 			return { tono: 'bien', texto: 'Datos extraídos.' };
 		case 'no_reconocido':
 			return { tono: 'aviso', texto: 'Se intentó extraer sus datos, pero Biblioratum no reconoció los campos del tipo.' };
+		case 'tipo_no_activo':
+			// 2026-11-10 (Moibe): el clasificador lo reconoció, pero el tipo está desactivado o en edición.
+			return { tono: 'aviso', texto: 'No se extrajeron sus datos: ese tipo documental no está activo. Actívalo en Configuración › Tipos documentales y vuelve a subir el archivo.' };
 		case 'sin_procesador':
 			return { tono: 'aviso', texto: 'No se extrajeron sus datos: ese tipo documental no tiene un procesador de extracción. Vuelve a activarlo en Configuración › Tipos documentales.' };
 		case 'error':

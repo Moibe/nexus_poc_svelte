@@ -16,7 +16,9 @@
  *   · el DOCUMENTO entero (el punto «Documento» de un tipo documental): no es ningún dato, solo sirve para preguntar si el
  *     expediente lo trae (`Existe documento`).
  *
- * Los operadores de COMPARACIÓN (igual, distinto, contiene, mayor, menor) reciben dos valores y dan un veredicto. Los de LISTAS
+ * Los operadores de COMPARACIÓN (igual, distinto, contiene, parecido, mayor, mayor o igual, menor, menor o igual) reciben dos valores y dan un
+ * veredicto; «Entre» (2026-11-10) recibe TRES —el valor y sus dos límites— y es el único con una tercera entrada (`c`). El de FECHAS,
+ * «Antigüedad contra hoy» (2026-11-10), recibe UNA fecha y la mide contra el día de hoy con el máximo de su nodo («3 meses»). Los de LISTAS
  * (cantidad, suma, alguno, todos, unicos) reciben una lista: `cantidad` y `suma` entregan un valor (que se puede comparar) y los demás,
  * un veredicto. `Existe documento` recibe un documento entero y dice si el expediente lo trae. Los LÓGICOS (Y, O, No, Implica) reciben
  * veredictos de otras reglas, y así se encadenan: `Implica` es el «si… entonces…» (si la primera regla pasa, la segunda también debe
@@ -56,9 +58,125 @@ export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado
 /**
  * Lo que lleva un nodo operador: cuál es y, para los que reciben datos de un documento, los valores de EJEMPLO con los que se
  * prueba la regla (uno por entrada: el lienzo aún no corre sobre un expediente de verdad). Si lo que entra es una LISTA, el ejemplo
- * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`.
+ * son varios renglones, uno por elemento. Los operadores lógicos no usan `a` ni `b`. `c` es el ejemplo de la tercera entrada y solo lo lleva un
+ * operador que la tiene («Entre»: Valor, Desde y Hasta; ver `usaTerceraEntrada`).
+ *
+ * «Antigüedad contra hoy» (2026-11-10) lleva además su `maximo` y su `unidad` («3 meses»), que son parte de la regla y se guardan, y `hoy`: la fecha de
+ * hoy de EJEMPLO que se escribe en el lienzo para probarla. `hoy` NO se guarda (ni `serializarDibujo` lo escribe ni `hidratarDibujo` lo lee): sin
+ * él, la regla se decide con la fecha del día, que es lo que hace una ejecución.
  */
-export type DatosNodoOperador = { operador: ClaveOperador; a: string; b: string };
+export type DatosNodoOperador = {
+	operador: ClaveOperador;
+	a: string;
+	b: string;
+	c?: string;
+	minimo?: number;
+	maximo?: number;
+	unidad?: UnidadDeTiempo;
+	hoy?: string;
+};
+
+/** «Parecido a» (2026-11-10): el porcentaje mínimo de parecido para que pase, cuando el nodo no trae otro. El back usa el mismo (`MINIMO_PARECIDO`). */
+export const MINIMO_PARECIDO = 90;
+
+/** Lo que dice un «Parecido a» ya medido: «Pasa: se parecen 96 %» o «No pasa: se parecen 40 % (mínimo 90 %)». Lo usan el nodo y el historial de ejecuciones. */
+export function textoDeParecido(estado: 'pasa' | 'no_pasa', medida: { porcentaje: number; minimo: number }): string {
+	return estado === 'pasa' ? `Pasa: se parecen ${medida.porcentaje} %` : `No pasa: se parecen ${medida.porcentaje} % (mínimo ${medida.minimo} %)`;
+}
+
+/** El mínimo de un nodo «Parecido a»: un entero de 1 a 100; cualquier otra cosa es el de siempre. */
+export function minimoDeParecido(datos: { minimo?: unknown } | null | undefined): number {
+	const m = datos?.minimo;
+	return typeof m === 'number' && Number.isInteger(m) && m >= 1 && m <= 100 ? m : MINIMO_PARECIDO;
+}
+
+/** En qué se cuenta el máximo de «Antigüedad contra hoy». La llave va sin ñ (`anios`) porque es lo que se guarda; la persona lee `plural`. */
+export type UnidadDeTiempo = 'dias' | 'meses' | 'anios';
+export const UNIDADES_DE_TIEMPO: readonly { valor: UnidadDeTiempo; singular: string; plural: string }[] = [
+	{ valor: 'dias', singular: 'día', plural: 'días' },
+	{ valor: 'meses', singular: 'mes', plural: 'meses' },
+	{ valor: 'anios', singular: 'año', plural: 'años' }
+];
+/** Lo que trae un nodo nuevo de «Antigüedad contra hoy»: 3 meses, como el comprobante «no mayor a tres meses» del diseño. El back usa los mismos. */
+export const MAXIMO_ANTIGUEDAD = 3;
+export const UNIDAD_ANTIGUEDAD: UnidadDeTiempo = 'meses';
+/** El tope del máximo (el back pone el mismo): 9999 de cualquier unidad ya es más de lo que pide una regla. */
+export const TOPE_MAXIMO_ANTIGUEDAD = 9999;
+
+/** El máximo de un nodo «Antigüedad contra hoy»: un entero de 1 a 9999; cualquier otra cosa es el de siempre. */
+export function maximoDeAntiguedad(datos: { maximo?: unknown } | null | undefined): number {
+	const m = datos?.maximo;
+	return typeof m === 'number' && Number.isInteger(m) && m >= 1 && m <= TOPE_MAXIMO_ANTIGUEDAD ? m : MAXIMO_ANTIGUEDAD;
+}
+
+/** La unidad de un nodo «Antigüedad contra hoy»: días, meses o años; cualquier otra cosa es la de siempre. */
+export function unidadDeAntiguedad(datos: { unidad?: unknown } | null | undefined): UnidadDeTiempo {
+	const u = datos?.unidad;
+	return UNIDADES_DE_TIEMPO.some((x) => x.valor === u) ? (u as UnidadDeTiempo) : UNIDAD_ANTIGUEDAD;
+}
+
+/** «1 mes», «3 meses», «1 año», «12 días». */
+export function cuantoTiempo(n: number, unidad: UnidadDeTiempo): string {
+	const u = UNIDADES_DE_TIEMPO.find((x) => x.valor === unidad) ?? UNIDADES_DE_TIEMPO[1];
+	return `${n} ${n === 1 ? u.singular : u.plural}`;
+}
+
+/** La zona en la que se cuenta «hoy»: las organizaciones de Biblioratum están en México, y el servidor no necesariamente lo está. */
+export const ZONA_DE_HOY = 'America/Mexico_City';
+
+/** La fecha de hoy (aaaa-mm-dd) en `ZONA_DE_HOY`: a las 7 de la noche en México ya es mañana en UTC, y eso no debe cambiar una antigüedad. */
+export function fechaDeHoy(ahora: Date = new Date(), zona: string = ZONA_DE_HOY): string {
+	const partes = new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(ahora);
+	const de = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? '';
+	return `${de('year')}-${de('month')}-${de('day')}`;
+}
+
+/**
+ * Lo que salió de una «Antigüedad contra hoy» ya decidida: con qué hoy, máximo y unidad se decidió y cuánto tiene la fecha (`edad`: «tiene 1 mes»,
+ * «tiene 3 meses y 4 días», «es de hoy»). Si no hubo edad que medir, `motivo` dice por qué no pasó: la fecha (o el hoy de ejemplo) no se entiende, o la
+ * fecha es posterior a hoy.
+ */
+export type MedidaDeAntiguedad = {
+	hoy: string;
+	maximo: number;
+	unidad: UnidadDeTiempo;
+	edad?: string;
+	motivo?: 'fecha_ilegible' | 'hoy_ilegible' | 'futura';
+};
+
+/** Lo que dice una «Antigüedad contra hoy» ya decidida: «Pasa: tiene 1 mes» o «No pasa: tiene 4 meses y 2 días (máximo 3 meses)». Lo usan el nodo y el historial. */
+export function textoDeAntiguedad(estado: 'pasa' | 'no_pasa', m: MedidaDeAntiguedad): string {
+	if (m.motivo === 'futura') return 'No pasa: la fecha es posterior a hoy';
+	if (m.motivo === 'fecha_ilegible') return 'No pasa: la fecha no se entiende';
+	if (m.motivo === 'hoy_ilegible') return 'No pasa: la fecha de hoy no se entiende';
+	return estado === 'pasa' ? `Pasa: ${m.edad ?? ''}` : `No pasa: ${m.edad ?? ''} (máximo ${cuantoTiempo(m.maximo, m.unidad)})`;
+}
+
+/**
+ * Lo que dijo la IA de un par de textos (`POST /procesos/parecido` de nexus_back): `porcentaje` de 0 a 100 y la `razon` en una frase. Se guardan por
+ * `llaveDeParecido`, la misma llave que usa el back. `sinIA` marca la medida que no vino de la IA (`MISMO_TEXTO`): ahí la pantalla no dice «IA:».
+ */
+export type MedidaDeParecido = { porcentaje: number; razon: string; sinIA?: true };
+export type Parecidos = Readonly<Record<string, MedidaDeParecido>>;
+
+/**
+ * Cómo se comparan los textos de un «Parecido a»: en mayúsculas, sin acentos (ni la tilde de la ñ) y sin espacios de más. «Pérez  lópez» → «PEREZ LOPEZ».
+ * Existe porque la forma de escribir le cambiaba la respuesta a la IA (2026-11-10, Moibe: «KEYSI» contra «KEISY» no pasaba y «Keysi» contra «KEISY»
+ * sí): el back le pregunta SIEMPRE con los textos así (`parecido.comparable`, la misma regla), y aquí sirve para que las variantes compartan la medida.
+ */
+export function textoComparable(texto: string): string {
+	return texto.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().split(/\s+/).filter(Boolean).join(' ');
+}
+
+/** El par visto como se compara: simétrico («A ~ B» es «B ~ A») y sin importar mayúsculas, acentos ni espacios. */
+export function llaveDeParecido(a: string, b: string): string {
+	const x = textoComparable(a);
+	const y = textoComparable(b);
+	return JSON.stringify(x <= y ? [x, y] : [y, x]);
+}
+
+/** Dos textos que solo se escriben distinto (mayúsculas, acentos, espacios) son el mismo texto: 100 sin preguntarle a la IA. El back contesta igual. */
+export const MISMO_TEXTO: MedidaDeParecido = { porcentaje: 100, razon: 'Es el mismo texto: solo cambian mayúsculas, acentos o espacios.', sinIA: true };
 
 /** Lo que lleva un nodo de valor fijo: de qué clase es y el valor. A diferencia de un ejemplo, éste es parte de la regla. */
 export type DatosNodoConstante = { familia: Familia; valor: string };
@@ -244,8 +362,13 @@ export type ClaveOperador =
 	| 'igual'
 	| 'distinto'
 	| 'contiene'
+	| 'parecido'
 	| 'mayor'
+	| 'mayor_igual'
 	| 'menor'
+	| 'menor_igual'
+	| 'entre'
+	| 'antiguedad'
 	| 'cantidad'
 	| 'suma'
 	| 'alguno'
@@ -256,7 +379,7 @@ export type ClaveOperador =
 	| 'o'
 	| 'no'
 	| 'implica';
-export type Entrada = 'a' | 'b';
+export type Entrada = 'a' | 'b' | 'c';
 
 /** Lo que una entrada acepta que le llegue: un valor suelto, una lista de valores, el veredicto de otra regla o un documento entero. */
 export type Acepta = 'valor' | 'lista' | 'veredicto' | 'documento';
@@ -264,10 +387,13 @@ export type Acepta = 'valor' | 'lista' | 'veredicto' | 'documento';
 export type DefOperador = {
 	clave: ClaveOperador;
 	etiqueta: string;
+	/** Lo que dice la paleta y, si no trae `descripcionEnNodo`, también el nodo. */
 	descripcion: string;
-	/** Lo que se dibuja en el nodo y en la paleta. */
+	/** Una descripción más corta para el nodo, cuando el nodo ya enseña lo que la de la paleta explica (la unidad de «Antigüedad contra hoy»). */
+	descripcionEnNodo?: string;
+	/** Lo que se dibuja en el nodo y en la paleta (si el operador no tiene ícono propio, ver `SimboloDeOperador.svelte`). */
 	simbolo: string;
-	grupo: 'comparacion' | 'lista' | 'documento' | 'logico';
+	grupo: 'comparacion' | 'fecha' | 'lista' | 'documento' | 'logico';
 	/** Lo que entrega: un pasa / no pasa, o un VALOR (un número) que otra regla puede comparar. */
 	salida: 'veredicto' | 'valor';
 	entradas: readonly { id: Entrada; etiqueta: string; acepta: Acepta }[];
@@ -321,6 +447,21 @@ export const OPERADORES: readonly DefOperador[] = [
 		textoNoPasa: 'No pasa: el texto no contiene el fragmento'
 	},
 	{
+		// «Parecido a» (2026-11-10, Moibe: «vamos directo con la 3», la IA): pasa si los dos textos se parecen al menos el mínimo del nodo. Quien mide
+		// el parecido es Gemini (vía nexus_back), porque una distancia entre letras no sabe que «S.A. de C.V.» es «Sociedad Anónima de Capital Variable».
+		// `evaluar` NO pregunta: recibe los parecidos ya medidos (`Parecidos`) y dice cuáles le faltan (`pendientes`); quien llama los pide y vuelve a evaluar.
+		clave: 'parecido',
+		etiqueta: 'Parecido a',
+		simbolo: '≈',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si los dos textos se parecen al menos el porcentaje indicado.',
+		entradas: ENTRADAS_AB,
+		familias: ['texto'],
+		textoPasa: 'Pasa: los textos se parecen',
+		textoNoPasa: 'No pasa: los textos no se parecen lo suficiente'
+	},
+	{
 		clave: 'mayor',
 		etiqueta: 'Mayor que',
 		simbolo: '>',
@@ -336,6 +477,22 @@ export const OPERADORES: readonly DefOperador[] = [
 		textoNoPasa: 'No pasa: el primer valor no es mayor'
 	},
 	{
+		// Las inclusivas (2026-11-10, Moibe: «también necesito los inclusivos, que son Mayor o igual y Menor o igual»).
+		clave: 'mayor_igual',
+		etiqueta: 'Mayor o igual',
+		simbolo: '≥',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si el primer valor es mayor o igual que el segundo.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Mayor o igual que', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: el primer valor es mayor o igual',
+		textoNoPasa: 'No pasa: el primer valor es menor'
+	},
+	{
 		clave: 'menor',
 		etiqueta: 'Menor que',
 		simbolo: '<',
@@ -349,6 +506,55 @@ export const OPERADORES: readonly DefOperador[] = [
 		familias: ['numero', 'fecha'],
 		textoPasa: 'Pasa: el primer valor es menor',
 		textoNoPasa: 'No pasa: el primer valor no es menor'
+	},
+	{
+		clave: 'menor_igual',
+		etiqueta: 'Menor o igual',
+		simbolo: '≤',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si el primer valor es menor o igual que el segundo.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Menor o igual que', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: el primer valor es menor o igual',
+		textoNoPasa: 'No pasa: el primer valor es mayor'
+	},
+	{
+		// «Entre» (2026-11-10, Moibe): el valor y sus dos límites, los dos incluidos. Es la única regla con TRES entradas: la tercera es `c`, y su
+		// ejemplo se guarda en `c` (ver `usaTerceraEntrada`). Se decide en `evaluarEntre`.
+		clave: 'entre',
+		etiqueta: 'Entre',
+		simbolo: '↔',
+		grupo: 'comparacion',
+		salida: 'veredicto',
+		descripcion: 'Pasa si un valor o fecha está entre dos límites, incluyéndolos.',
+		entradas: [
+			{ id: 'a', etiqueta: 'Valor', acepta: 'valor' },
+			{ id: 'b', etiqueta: 'Desde', acepta: 'valor' },
+			{ id: 'c', etiqueta: 'Hasta', acepta: 'valor' }
+		],
+		familias: ['numero', 'fecha'],
+		textoPasa: 'Pasa: está dentro del rango',
+		textoNoPasa: 'No pasa: está fuera del rango'
+	},
+	{
+		// «Antigüedad contra hoy» (2026-11-10, Moibe, con su diseño): ¿la fecha tiene como máximo N días, meses o años, contados hasta hoy? El caso
+		// de siempre es el comprobante «no mayor a tres meses». Recibe UNA fecha; el máximo y la unidad viven en el nodo (como el mínimo de «Parecido
+		// a») y «hoy» es el día en que se ejecuta. Se decide en `evaluarAntiguedad`.
+		clave: 'antiguedad',
+		etiqueta: 'Antigüedad contra hoy',
+		simbolo: '◷',
+		grupo: 'fecha',
+		salida: 'veredicto',
+		descripcion: 'Pasa si la fecha tiene como máximo los días, meses o años indicados, contados hasta hoy.',
+		descripcionEnNodo: 'Pasa si la fecha tiene como máximo el tiempo indicado, contado hasta hoy.',
+		entradas: [{ id: 'a', etiqueta: 'Fecha', acepta: 'valor' }],
+		familias: ['fecha'],
+		textoPasa: 'Pasa: la fecha no rebasa la antigüedad máxima',
+		textoNoPasa: 'No pasa: la fecha rebasa la antigüedad máxima'
 	},
 	{
 		clave: 'cantidad',
@@ -461,12 +667,16 @@ export const OPERADORES: readonly DefOperador[] = [
 /** Los grupos de la paleta, en orden. */
 export const GRUPOS_DE_OPERADORES = [
 	{ clave: 'comparacion', titulo: 'Comparan valores' },
+	{ clave: 'fecha', titulo: 'Fechas' },
 	{ clave: 'lista', titulo: 'Operan listas' },
 	{ clave: 'documento', titulo: 'Revisan el expediente' },
 	{ clave: 'logico', titulo: 'Combinan reglas' }
 ] as const;
 
 export const operadorDe = (clave: string): DefOperador | undefined => OPERADORES.find((o) => o.clave === clave);
+
+/** ¿El operador tiene una TERCERA entrada (`c`)? Hoy solo «Entre». Solo esos guardan el ejemplo `c`: los demás siguen guardándose como siempre. */
+export const usaTerceraEntrada = (clave: string): boolean => operadorDe(clave)?.entradas.some((e) => e.id === 'c') ?? false;
 
 // ── De dónde sale un dato: la salida de un campo ─────────────────────────────
 
@@ -682,20 +892,20 @@ export function motivoDeRechazo(
 		return `«${def.etiqueta}» solo trabaja con ${def.familias.map((f) => PLURAL_DE_FAMILIA[f]).join(' y ')}.`;
 	}
 
-	// 2 · el otro lado del operador, si ya tiene algo: manda sobre lo que se puede poner en éste.
-	const otroLado = def.entradas.find((e) => e.id !== c.targetHandle);
-	const aristaOtra = otroLado && aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
-	if (aristaOtra) {
+	// 2 · lo que ya llega a las OTRAS entradas del operador manda sobre lo que se puede poner en ésta (todas: «Entre» tiene tres).
+	for (const otroLado of def.entradas) {
+		if (otroLado.id === c.targetHandle) continue;
+		const aristaOtra = aristas.find((e) => e.target === c.target && e.targetHandle === otroLado.id);
+		if (!aristaOtra) continue;
 		const suya = fuenteDeConexion(aristaOtra, nodos, tipos);
-		if (typeof suya !== 'string') {
-			if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
-				if (origen.type === NODO_TIPO) return 'Las dos entradas serían el mismo campo: no habría nada que comparar.';
-				if (origen.type === NODO_CONSTANTE) return 'Las dos entradas serían el mismo valor fijo: no habría nada que comparar.';
-				return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
-			}
-			if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
-				return `No se puede comparar ${NOMBRE_DE_FAMILIA[fuente.familia]} con ${NOMBRE_DE_FAMILIA[suya.familia]}.`;
-			}
+		if (typeof suya === 'string') continue;
+		if (aristaOtra.source === c.source && (aristaOtra.sourceHandle ?? '') === (c.sourceHandle ?? '')) {
+			if (origen.type === NODO_TIPO) return 'Las dos entradas serían el mismo campo: no habría nada que comparar.';
+			if (origen.type === NODO_CONSTANTE) return 'Las dos entradas serían el mismo valor fijo: no habría nada que comparar.';
+			return 'Las dos entradas serían la misma regla: no habría nada que combinar.';
+		}
+		if (fuente.familia && suya.familia && fuente.familia !== suya.familia) {
+			return `No se puede comparar ${NOMBRE_DE_FAMILIA[fuente.familia]} con ${NOMBRE_DE_FAMILIA[suya.familia]}.`;
 		}
 	}
 
@@ -844,9 +1054,102 @@ export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: st
 			const o = ordenar(familia, a, b);
 			return si(o !== null && o < 0);
 		}
+		case 'mayor_igual': {
+			const o = ordenar(familia, a, b);
+			return si(o !== null && o >= 0);
+		}
+		case 'menor_igual': {
+			const o = ordenar(familia, a, b);
+			return si(o !== null && o <= 0);
+		}
 		default:
 			return 'sin_conexion';
 	}
+}
+
+/**
+ * El veredicto de «Entre»: pasa si `valor` queda entre `desde` y `hasta`, los dos incluidos. Los límites van en su orden: si «Desde» queda después
+ * de «Hasta» no hay nada entre ellos y no pasa (no se voltean solos: un rango al revés en los datos es un error que conviene que se vea). Como en
+ * las demás comparaciones, un valor que no se entiende no está dentro de nada.
+ */
+export function evaluarEntre(familia: Familia, valor: string, desde: string, hasta: string): Veredicto {
+	if (!valor.trim() || !desde.trim() || !hasta.trim()) return 'sin_valores';
+	const conDesde = ordenar(familia, valor, desde);
+	const conHasta = ordenar(familia, valor, hasta);
+	return conDesde !== null && conHasta !== null && conDesde >= 0 && conHasta <= 0 ? 'pasa' : 'no_pasa';
+}
+
+/** Un día del calendario: año, mes (1 a 12) y día. */
+type Dia = { a: number; m: number; d: number };
+
+/** El día que dice un texto (como `aFecha`: ISO, dd/mm/aaaa o «15 de marzo de 2020»), si existe en el calendario: el 31 de abril no. */
+function diaDe(s: string): Dia | null {
+	const iso = aFecha(s);
+	if (!iso) return null;
+	const [a, m, d] = iso.split('-').map(Number);
+	const t = new Date(Date.UTC(a, m - 1, d));
+	return t.getUTCFullYear() === a && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? { a, m, d } : null;
+}
+
+const MS_POR_DIA = 86_400_000;
+const numeroDeDia = (x: Dia) => Date.UTC(x.a, x.m - 1, x.d) / MS_POR_DIA;
+const diasDelMes = (a: number, m: number) => new Date(Date.UTC(a, m, 0)).getUTCDate();
+
+/** `x` más `n` meses. Si ese día no existe en el mes al que se llega, el último de ese mes: 31 de enero + 1 mes = 28 (o 29) de febrero. */
+function sumarMeses(x: Dia, n: number): Dia {
+	const total = x.a * 12 + (x.m - 1) + n;
+	const a = Math.floor(total / 12);
+	const m = total - a * 12 + 1;
+	return { a, m, d: Math.min(x.d, diasDelMes(a, m)) };
+}
+
+/** Cuántos meses COMPLETOS hay de `desde` a `hasta` (que no va antes): los que se le pueden sumar a `desde` sin pasarse de `hasta`. */
+function mesesCompletos(desde: Dia, hasta: Dia): number {
+	let n = (hasta.a - desde.a) * 12 + (hasta.m - desde.m);
+	while (n > 0 && numeroDeDia(sumarMeses(desde, n)) > numeroDeDia(hasta)) n--;
+	return n;
+}
+
+/**
+ * Cuánto tiene una fecha a la fecha `hoy`, en palabras y en la unidad de la regla: «tiene 1 mes», «tiene 2 años», «tiene 12 días» (menos de una
+ * unidad se dice en días; menos de un año, en meses), «es de hoy». Se cuentan unidades COMPLETAS: del 10 de septiembre al 4 de noviembre «tiene 1 mes».
+ * Con `preciso` (cuando no pasa) se dice también lo que sobra, porque «tiene 3 meses (máximo 3 meses)» no explicaría por qué no pasó: «tiene 3 meses y 4 días».
+ */
+function edadEnPalabras(fecha: Dia, hoy: Dia, unidad: UnidadDeTiempo, preciso: boolean): string {
+	const dias = numeroDeDia(hoy) - numeroDeDia(fecha);
+	if (dias === 0) return 'es de hoy';
+	if (unidad === 'dias') return `tiene ${cuantoTiempo(dias, 'dias')}`;
+	const meses = mesesCompletos(fecha, hoy);
+	const diasDeMas = numeroDeDia(hoy) - numeroDeDia(sumarMeses(fecha, meses));
+	const conResto = (base: string, resto: string | null) => `tiene ${base}${preciso && resto ? ` y ${resto}` : ''}`;
+	if (unidad === 'anios' && meses >= 12) {
+		const anios = Math.floor(meses / 12);
+		const mesesDeMas = meses - anios * 12;
+		return conResto(cuantoTiempo(anios, 'anios'), mesesDeMas > 0 ? cuantoTiempo(mesesDeMas, 'meses') : diasDeMas > 0 ? cuantoTiempo(diasDeMas, 'dias') : null);
+	}
+	if (meses >= 1) return conResto(cuantoTiempo(meses, 'meses'), diasDeMas > 0 ? cuantoTiempo(diasDeMas, 'dias') : null);
+	return `tiene ${cuantoTiempo(dias, 'dias')}`;
+}
+
+/**
+ * El veredicto de «Antigüedad contra hoy»: pasa si de `fecha` a `hoy` no han pasado más de `maximo` días, meses o años. El límite se incluye (una
+ * fecha de hace exactamente 3 meses pasa con «máximo 3 meses») y los meses y años son de calendario, no de 30 o 365 días: se le suma el máximo a la
+ * fecha y pasa si `hoy` no va después.
+ *
+ * Una fecha POSTERIOR a hoy no pasa: no tiene antigüedad, y un documento fechado en el futuro es un dato que conviene que se vea (como los límites al
+ * revés de «Entre»). Como en las demás comparaciones, una fecha que no se entiende no cumple. Sin fecha (o sin hoy), `sin_valores`.
+ */
+export function evaluarAntiguedad(fecha: string, maximo: number, unidad: UnidadDeTiempo, hoy: string): { estado: Veredicto; medida?: MedidaDeAntiguedad } {
+	if (!fecha.trim() || !hoy.trim()) return { estado: 'sin_valores' };
+	const base = { hoy: hoy.trim(), maximo, unidad };
+	const f = diaDe(fecha);
+	const h = diaDe(hoy);
+	if (!f) return { estado: 'no_pasa', medida: { ...base, motivo: 'fecha_ilegible' } };
+	if (!h) return { estado: 'no_pasa', medida: { ...base, motivo: 'hoy_ilegible' } };
+	if (numeroDeDia(f) > numeroDeDia(h)) return { estado: 'no_pasa', medida: { ...base, motivo: 'futura' } };
+	const limite = unidad === 'dias' ? numeroDeDia(f) + maximo : numeroDeDia(sumarMeses(f, unidad === 'anios' ? maximo * 12 : maximo));
+	const estado: Veredicto = numeroDeDia(h) <= limite ? 'pasa' : 'no_pasa';
+	return { estado, medida: { ...base, edad: edadEnPalabras(f, h, unidad, estado === 'no_pasa') } };
 }
 
 /**
@@ -954,6 +1257,14 @@ export type Evaluacion = {
 	finales: Record<string, EvaluacionDeValorFinal>;
 	/** `null` si el lienzo no tiene nodo de resultado. */
 	resultado: EvaluacionDelResultado | null;
+	/** Por cada «Parecido a» que ya tiene su medida: el porcentaje, la razón de la IA y el mínimo con que se decidió. */
+	parecidos: Record<string, MedidaDeParecido & { minimo: number }>;
+	/** Los pares de textos que algún «Parecido a» necesita medir y todavía no tiene (sin repetir): quien llama los pide y vuelve a evaluar. */
+	pendientes: { a: string; b: string }[];
+	/** Qué par (su `llaveDeParecido`) le toca a cada «Parecido a» que ya tiene sus dos textos: así el nodo sabe si el suyo se está midiendo o falló. */
+	llavesDeParecido: Record<string, string>;
+	/** Por cada «Antigüedad contra hoy» ya decidida: con qué hoy, máximo y unidad, y cuánto tiene la fecha (o por qué no se pudo medir). */
+	antiguedades: Record<string, MedidaDeAntiguedad>;
 };
 
 /** Lo que el lienzo les ofrece a sus nodos por contexto (`CLAVE_VEREDICTOS`): lo evaluado para todo el grafo. */
@@ -962,6 +1273,16 @@ export type EvaluadoDelLienzo = {
 	readonly valores: Record<string, string>;
 	readonly finales: Record<string, EvaluacionDeValorFinal>;
 	readonly resultado: EvaluacionDelResultado | null;
+	readonly parecidos: Record<string, MedidaDeParecido & { minimo: number }>;
+	/** Los «Parecido a» cuyo par se está midiendo AHORA (el lienzo lo pidió y no ha vuelto), y los que no se pudieron medir, con el porqué. */
+	readonly llavesDeParecido: Record<string, string>;
+	readonly midiendo: ReadonlySet<string>;
+	readonly erroresDeParecido: Readonly<Record<string, string>>;
+	/** Olvida el fallo de un par (su llave) para que el lienzo lo vuelva a pedir. */
+	reintentarParecido(llave: string): void;
+	readonly antiguedades: Record<string, MedidaDeAntiguedad>;
+	/** La fecha de hoy con la que el lienzo prueba «Antigüedad contra hoy» mientras el nodo no traiga otra escrita. */
+	readonly hoy: string;
 };
 
 /** Lo que llega a una entrada de un nodo: un campo, un valor fijo o la regla de la que viene. */
@@ -984,10 +1305,23 @@ export function valoresFinalesRepetidos(nodos: readonly NodoMinimo[]): Set<strin
 /**
  * El estado de CADA operador del lienzo, siguiendo los cables: las comparaciones y las listas leen sus campos con sus valores de
  * ejemplo, los valores fijos y lo que entregan `Cantidad` y `Suma`; las lógicas leen a las reglas que les llegan.
+ *
+ * `hoy` es la fecha contra la que se cuenta «Antigüedad contra hoy» cuando el nodo no trae una de ejemplo (`datos.hoy`): la del día en México, si no
+ * se dice otra. Una ejecución no la pasa y así usa la del día en que corre (el dibujo guardado nunca trae `datos.hoy`).
  */
-export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion[], tipos: readonly TipoDocumentalGuardado[]): Evaluacion {
+export function evaluar(
+	nodos: readonly NodoMinimo[],
+	aristas: readonly Conexion[],
+	tipos: readonly TipoDocumentalGuardado[],
+	medidos: Parecidos = {},
+	hoy: string = fechaDeHoy()
+): Evaluacion {
 	const estados: Record<string, Estado> = {};
 	const valores: Record<string, string> = {};
+	const parecidos: Record<string, MedidaDeParecido & { minimo: number }> = {};
+	const pendientes = new Map<string, { a: string; b: string }>();
+	const llavesDeParecido: Record<string, string> = {};
+	const antiguedades: Record<string, MedidaDeAntiguedad> = {};
 
 	/** Lo que llega por una entrada: qué es, el texto de ejemplo y —si viene de otra regla— el estado de ésa. */
 	type Llega = { fuente: Fuente | null; muestra: string; estadoOrigen?: Estado };
@@ -1027,6 +1361,28 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 			} else if (llegan.some((l) => l.estadoOrigen !== undefined && l.estadoOrigen !== 'listo')) {
 				// Un valor que viene de otra regla que todavía no lo tiene.
 				estado = 'sin_valores';
+			} else if (def.clave === 'parecido') {
+				const [a, b] = [llegan[0].muestra.trim(), llegan[1].muestra.trim()];
+				// Escritos igual salvo mayúsculas, acentos o espacios: el mismo texto, sin preguntar (y sin esperar a la red, también al ejecutar).
+				const medida = a && b ? (textoComparable(a) === textoComparable(b) ? MISMO_TEXTO : medidos[llaveDeParecido(a, b)]) : undefined;
+				if (a && b) llavesDeParecido[id] = llaveDeParecido(a, b);
+				if (!a || !b) estado = 'sin_valores';
+				else if (!medida) {
+					// Falta medirlo: no se sabe todavía. Quien llama lo pide a la IA y vuelve a evaluar.
+					pendientes.set(llaveDeParecido(a, b), { a, b });
+					estado = 'sin_valores';
+				} else {
+					const minimo = minimoDeParecido(datos);
+					parecidos[id] = { ...medida, minimo };
+					estado = medida.porcentaje >= minimo ? 'pasa' : 'no_pasa';
+				}
+			} else if (def.clave === 'entre') {
+				const familia = (llegan[0].fuente as Fuente).familia;
+				estado = familia ? evaluarEntre(familia, llegan[0].muestra, llegan[1].muestra, llegan[2].muestra) : 'sin_conexion';
+			} else if (def.clave === 'antiguedad') {
+				const r = evaluarAntiguedad(llegan[0].muestra, maximoDeAntiguedad(datos), unidadDeAntiguedad(datos), typeof datos.hoy === 'string' ? datos.hoy : hoy);
+				estado = r.estado;
+				if (r.medida) antiguedades[id] = r.medida;
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
 				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
@@ -1086,7 +1442,7 @@ export function evaluar(nodos: readonly NodoMinimo[], aristas: readonly Conexion
 		const caso: CasoDelResultado | null = condicion === 'pasa' ? 'si' : condicion === 'no_pasa' ? 'no' : condicion === 'sin_valores' ? 'sin' : null;
 		resultado = { condicion, caso, texto: caso ? textosDelResultado(nodoResultado.data)[caso] : null };
 	}
-	return { estados, valores, finales, resultado };
+	return { estados, valores, finales, resultado, parecidos, pendientes: [...pendientes.values()], llavesDeParecido, antiguedades };
 }
 
 // ── Guardar el dibujo y volver a abrirlo ─────────────────────────────────────
@@ -1126,7 +1482,20 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 			});
 		} else if (n.type === NODO_OPERADOR) {
 			const d = n.data as DatosNodoOperador;
-			nodos.push({ id: n.id, type: NODO_OPERADOR, position, data: { operador: d.operador, a: d.a ?? '', b: d.b ?? '' } });
+			nodos.push({
+				id: n.id,
+				type: NODO_OPERADOR,
+				position,
+				data: {
+					operador: d.operador,
+					a: d.a ?? '',
+					b: d.b ?? '',
+					...(usaTerceraEntrada(d.operador) ? { c: d.c ?? '' } : {}),
+					...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {}),
+					// «Antigüedad contra hoy»: el máximo y su unidad son parte de la regla. Su `hoy` de ejemplo NO se guarda.
+					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {})
+				}
+			});
 		} else if (n.type === NODO_CONSTANTE) {
 			const d = n.data as DatosNodoConstante;
 			nodos.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: esFamilia(d.familia) ? d.familia : 'texto', valor: d.valor ?? '' } });
@@ -1188,7 +1557,14 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 				id: n.id,
 				type: NODO_OPERADOR,
 				position,
-				data: { operador: n.data.operador, a: typeof n.data.a === 'string' ? n.data.a : '', b: typeof n.data.b === 'string' ? n.data.b : '' }
+				data: {
+					operador: n.data.operador,
+					a: typeof n.data.a === 'string' ? n.data.a : '',
+					b: typeof n.data.b === 'string' ? n.data.b : '',
+					...(usaTerceraEntrada(n.data.operador) ? { c: typeof n.data.c === 'string' ? n.data.c : '' } : {}),
+					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {}),
+					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {})
+				}
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {
 			nodes.push({ id: n.id, type: NODO_CONSTANTE, position, data: { familia: n.data.familia, valor: typeof n.data.valor === 'string' ? n.data.valor : '' } });

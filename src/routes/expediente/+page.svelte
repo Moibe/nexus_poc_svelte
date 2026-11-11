@@ -23,7 +23,11 @@
 	 * La vista se recuerda en una cookie que lee `+page.server.ts` (así no hay destello de la otra al cargar); el orden y los filtros
 	 * se quedan en la pantalla, no se recuerdan.
 	 *
-	 * Quién puede crear lo decide nexus_back; aquí `puedeOrganizar` solo decide qué se OFRECE. Todos los roles ven la lista.
+	 * Borrar (2026-11-10, Moibe: «que pueda borrar un expediente completo con un iconito de bote de basura»): quien organiza tiene un bote de basura
+	 * en cada fila y en cada carpeta; pregunta con la confirmación de la casa (`ConfirmarAccion`). Los archivos NO se borran: siguen en Archivos
+	 * procesados (y en los otros expedientes donde estén).
+	 *
+	 * Quién puede crear o borrar lo decide nexus_back; aquí `puedeOrganizar` solo decide qué se OFRECE. Todos los roles ven la lista.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
@@ -39,6 +43,8 @@
 	import TarjetaExpediente from '$lib/components/expedientes/TarjetaExpediente.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import {
 		COOKIE_VISTA_EXPEDIENTES,
 		filtrarExpedientes,
@@ -50,6 +56,7 @@
 		SIN_FILTROS,
 		type ColumnaExpedientes,
 		type FiltrosExpedientes,
+		type Expediente,
 		type OrdenExpedientes,
 		type VistaExpedientes
 	} from '$lib/expedientes/expedientes';
@@ -89,6 +96,40 @@
 		aviso = null;
 		expedienteAbierto = true;
 	}
+
+	/** El expediente que se va a borrar, mientras la confirmación está abierta. */
+	let aBorrar = $state<Expediente | null>(null);
+	let borrando = $state(false);
+	let error = $state('');
+	const alBorrar = $derived(data.puedeOrganizar ? (expediente: Expediente) => (aBorrar = expediente) : undefined);
+
+	async function borrar(expediente: Expediente) {
+		if (borrando) return;
+		borrando = true;
+		aviso = null;
+		error = '';
+		try {
+			const r = await fetch(`/api/expedientes/${encodeURIComponent(expediente.id)}`, { method: 'DELETE' });
+			const datos = await r.json().catch(() => null);
+			if (!r.ok) {
+				error = `No se pudo borrar «${expediente.nombre}»: ${mensajeDeFallo(datos, r.status, 'al borrar')}`;
+				// Si ya no existía (otra persona lo borró), la lista se pone al día para que deje de mostrarlo.
+				if (r.status === 404) await invalidateAll();
+				return;
+			}
+			// YA se borró: el aviso se pone antes de recargar, y si recargar fallara seguiría siendo verdad.
+			aviso = {
+				testid: 'expediente-borrado-aviso',
+				titulo: 'Expediente borrado',
+				cuerpo: `«${expediente.nombre}» se borró. Sus archivos no se borraron: siguen en Archivos procesados.`
+			};
+			await invalidateAll();
+		} catch {
+			error = 'No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.';
+		} finally {
+			borrando = false;
+		}
+	}
 </script>
 
 <svelte:head><title>Biblioratum — Expedientes</title></svelte:head>
@@ -100,6 +141,9 @@
 		<AvisoVerde testid={aviso.testid} titulo={aviso.titulo} cuerpo={aviso.cuerpo} />
 	{/if}
 </div>
+{#if error}
+	<p class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert" data-testid="expediente-borrar-error">{error}</p>
+{/if}
 
 {#if expedientes.length === 0}
 	<div class="flex flex-col items-center gap-6 rounded-2xl border-2 border-border bg-card py-24 text-center" data-testid="expedientes-vacio">
@@ -191,16 +235,36 @@
 		{#if visibles.length === 0}
 			<p class="py-16 text-center text-sm text-muted-foreground" data-testid="expedientes-sin-resultados">{mensajeSinResultados(filtros)}</p>
 		{:else if vista === 'lista'}
-			<TablaExpedientes expedientes={visibles} {orden} alPicar={picarColumna} />
+			<TablaExpedientes expedientes={visibles} {orden} alPicar={picarColumna} {alBorrar} />
 		{:else}
 			<ul class="mt-3 flex flex-wrap gap-3" data-testid="mosaico-expedientes">
 				{#each visibles as expediente (expediente.id)}
-					<li><TarjetaExpediente {expediente} /></li>
+					<li><TarjetaExpediente {expediente} {alBorrar} /></li>
 				{/each}
 			</ul>
 		{/if}
 	</div>
 {/if}
+
+<ConfirmarAccion
+	abierto={aBorrar !== null}
+	titulo="Borrar el expediente"
+	mensaje={aBorrar
+		? `«${aBorrar.nombre}» se borrará. ${
+				aBorrar.totalDocumentos === 0
+					? ''
+					: aBorrar.totalDocumentos === 1
+						? 'Su archivo no se borra: sigue en Archivos procesados. '
+						: `Sus ${aBorrar.totalDocumentos} archivos no se borran: siguen en Archivos procesados. `
+			}No se puede deshacer.`
+		: ''}
+	etiquetaConfirmar="Borrar"
+	onConfirmar={() => {
+		const expediente = aBorrar;
+		if (expediente) void borrar(expediente);
+	}}
+	onCerrar={() => (aBorrar = null)}
+/>
 
 <ExpedienteModal
 	bind:open={expedienteAbierto}

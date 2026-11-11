@@ -30,18 +30,29 @@ import {
 	NODO_RESULTADO,
 	NODO_TIPO,
 	NODO_VALOR_FINAL,
+	cuantoTiempo,
 	evaluar,
+	fechaDeHoy,
 	hidratarDibujo,
+	lineasDeEjemplo,
+	llaveDeParecido,
+	maximoDeAntiguedad,
 	nombreDeValorFinal,
 	numeroDeOperador,
 	operadorDe,
 	salidaDeCampo,
+	textoDeAntiguedad,
+	textoDeParecido,
+	unidadDeAntiguedad,
 	type CasoDelResultado,
 	type ClaveOperador,
 	type DatosNodoOperador,
 	type DatosNodoTipo,
 	type Estado,
 	type Familia,
+	type MedidaDeAntiguedad,
+	type MedidaDeParecido,
+	type Parecidos,
 	type Veredicto
 } from './reglas';
 import type { TipoDocumentalGuardado } from '$lib/state/configuracion.svelte';
@@ -85,8 +96,40 @@ export type ValorFinalDeCorrida = {
 	origen: string | null;
 };
 
+/**
+ * Lo que le llegó a UNA entrada de una regla al correr (2026-11-10, Moibe: «en los detalles de por qué fue rechazado no incluyes ese valor fijo, y eso
+ * sería de utilidad»): de dónde vino y qué valor traía, para ver de un vistazo QUÉ se comparó.
+ */
+export type EntradaDeCorrida = {
+	/** El rótulo de la entrada, como en el nodo: «Entrada A», «Valor», «Desde», «Lista», «Regla A», «Si (condición)», «Documento»… */
+	etiqueta: string;
+	/** De dónde vino: «Nombre · INE», «Valor fijo #1», «Igual a #2»; `null` si no tenía nada conectado. */
+	origen: string | null;
+	/**
+	 * Lo que traía, como se lee: el valor; los elementos de una lista, separados por comas; «N filas» de un grupo; «Pasa» o «No pasa» de una regla (o
+	 * el número que calculó); «Lo trae» o «No lo trae» de un documento. `null` si no traía nada (el documento no tenía ese dato, o no hay cable).
+	 */
+	valor: string | null;
+};
+
 /** Cómo salió una regla. */
-export type ReglaDeCorrida = { id: string; etiqueta: string; operador: ClaveOperador; estado: Estado; valor: string | null; texto: string };
+export type ReglaDeCorrida = {
+	id: string;
+	etiqueta: string;
+	operador: ClaveOperador;
+	estado: Estado;
+	valor: string | null;
+	texto: string;
+	/** Solo de un «Parecido a» ya medido: lo que dijo la IA (porcentaje y razón) y el mínimo con que se decidió. Queda escrito en el historial. */
+	parecido?: { porcentaje: number; razon: string; minimo: number; sinIA?: true };
+	/** Solo de una «Antigüedad contra hoy» ya decidida (2026-11-10): con qué hoy, máximo y unidad, y cuánto tenía la fecha. Queda escrito en el historial. */
+	antiguedad?: MedidaDeAntiguedad;
+	/**
+	 * Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. A una «Antigüedad contra hoy» se le suman dos
+	 * renglones que no son entradas pero también se compararon: su «Máximo» y el «Hoy» de la ejecución.
+	 */
+	entradas?: EntradaDeCorrida[];
+};
 
 /** De qué documento se tomó lo de un tipo documental y qué campos del proceso se leyeron. */
 export type EvidenciaDeCorrida = {
@@ -180,13 +223,72 @@ function origenDe(cable: CableDeLienzo | undefined, nodos: readonly NodoDeLienzo
 const TEXTO_SIN_VALORES = 'Faltan valores para decidirla';
 const TEXTO_INCOMPLETA = 'Le falta algo conectado';
 
+/** Lo que dice el historial de una regla que llega a otra: su veredicto en palabras (igual que la insignia del lienzo). */
+const ESTADO_EN_PALABRAS: Record<Estado, string> = { pasa: 'Pasa', no_pasa: 'No pasa', listo: 'Listo', sin_valores: 'Sin valores', sin_conexion: 'Incompleta' };
+/** Hasta cuánto se guarda de lo que llegó a una entrada: una lista larga no debe engordar el historial (lo completo está en «De dónde salieron los datos»). */
+export const TOPE_VALOR_DE_ENTRADA = 300;
+const recortar = (t: string) => (t.length > TOPE_VALOR_DE_ENTRADA ? `${t.slice(0, TOPE_VALOR_DE_ENTRADA - 1)}…` : t);
+
+/**
+ * Lo que le llegó a cada entrada de la regla `n` (con los valores REALES ya puestos por `conValoresReales`): de un campo, su valor (o los elementos de
+ * su lista, o cuántas filas); de un valor fijo, su valor; de otra regla, su veredicto o el número que calculó; del documento entero, si el expediente lo
+ * trae. Es lo mismo que leyó `evaluar`, puesto en palabras.
+ */
+function entradasDe(n: NodoDeLienzo, cables: readonly CableDeLienzo[], nodos: readonly NodoDeLienzo[], tipos: readonly TipoDocumentalGuardado[], ev: ReturnType<typeof evaluar>): EntradaDeCorrida[] {
+	const def = operadorDe(String((n.data as DatosNodoOperador).operador));
+	if (!def) return [];
+	return def.entradas.map((e): EntradaDeCorrida => {
+		const cable = cables.find((a) => a.target === n.id && a.targetHandle === e.id);
+		const origen = cable && nodos.find((x) => x.id === cable.source);
+		if (!cable || !origen) return { etiqueta: e.etiqueta, origen: null, valor: null };
+		let valor: string | null = null;
+		if (origen.type === NODO_TIPO) {
+			const muestra = String(n.data[e.id] ?? '');
+			if (cable.sourceHandle === HANDLE_DOCUMENTO) {
+				valor = muestra === 'si' ? 'Lo trae' : muestra === 'no' ? 'No lo trae' : null;
+			} else {
+				const lineas = lineasDeEjemplo(muestra);
+				const forma = salidaDeCampo(tipos, (origen.data as DatosNodoTipo).tipoId, cable.sourceHandle ?? '')?.forma;
+				valor = lineas.length === 0 ? null : forma === 'filas' ? `${lineas.length} fila${lineas.length === 1 ? '' : 's'}` : lineas.join(', ');
+			}
+		} else if (origen.type === NODO_CONSTANTE) {
+			valor = String(origen.data.valor ?? '').trim() || null;
+		} else if (origen.type === NODO_OPERADOR) {
+			const otro = operadorDe(String((origen.data as DatosNodoOperador).operador));
+			const estado = ev.estados[origen.id] ?? 'sin_conexion';
+			valor = otro?.salida === 'valor' && estado === 'listo' ? (ev.valores[origen.id] ?? null) : ESTADO_EN_PALABRAS[estado];
+		}
+		return { etiqueta: e.etiqueta, origen: origenDe(cable, nodos, tipos), valor: valor === null ? null : recortar(valor) };
+	});
+}
+
 // ── Correr ───────────────────────────────────────────────────────────────────
+
+/**
+ * Los pares de textos REALES que los «Parecido a» del proceso necesitan medir con IA antes de correr (vacío si no hay o no aplica). Quien ejecuta los
+ * mide (`POST /procesos/parecido`), arma el mapa con `parecidosMedidos` y llama a `correr` con él. Con duplicados no corre: no hay nada que medir.
+ */
+export function paresPorMedir(prep: Preparacion): { a: string; b: string }[] {
+	if (prep.duplicados.length > 0) return [];
+	const dibujo = hidratarDibujo(prep.proceso.datos);
+	const nodos = conValoresReales(dibujo.nodes, dibujo.edges, prep.documentos);
+	return evaluar(nodos, dibujo.edges, prep.tipos as unknown as TipoDocumentalGuardado[]).pendientes;
+}
+
+/** El mapa que recibe `correr`: cada par con lo que dijo la IA, en el mismo orden en que se pidieron. */
+export function parecidosMedidos(pares: readonly { a: string; b: string }[], medidas: readonly MedidaDeParecido[]): Parecidos {
+	const mapa: Record<string, MedidaDeParecido> = {};
+	pares.forEach((p, i) => {
+		if (medidas[i]) mapa[llaveDeParecido(p.a, p.b)] = medidas[i];
+	});
+	return mapa;
+}
 
 /**
  * Corre el proceso con los datos de `prep` y arma lo que se guarda. Si no hay con qué decidir (duplicados, sin Resultado, una regla incompleta) NO
  * corre y dice por qué: eso no es una corrida y no se guarda.
  */
-export function correr(prep: Preparacion): Salida {
+export function correr(prep: Preparacion, medidos: Parecidos = {}, hoy: string = fechaDeHoy()): Salida {
 	if (prep.duplicados.length > 0) return { corre: false, motivo: { codigo: 'duplicados', mensaje: avisoDeDuplicados(prep.duplicados), duplicados: prep.duplicados } };
 
 	const dibujo = hidratarDibujo(prep.proceso.datos);
@@ -194,7 +296,8 @@ export function correr(prep: Preparacion): Salida {
 	const nodos = conValoresReales(dibujo.nodes, aristas, prep.documentos);
 	// Los tipos llegan como `{id, nombre, campos}`: es lo único que `evaluar` lee de ellos.
 	const tipos = prep.tipos as unknown as TipoDocumentalGuardado[];
-	const ev = evaluar(nodos, aristas, tipos);
+	// «Antigüedad contra hoy» se cuenta hasta el día en que se ejecuta (en México): el dibujo guardado no trae ningún hoy de ejemplo.
+	const ev = evaluar(nodos, aristas, tipos, medidos, hoy);
 
 	const nodoResultado = nodos.find((n) => n.type === NODO_RESULTADO);
 	if (!nodoResultado || !ev.resultado) {
@@ -234,6 +337,26 @@ export function correr(prep: Preparacion): Salida {
 		if (!def) continue;
 		const estado = ev.estados[n.id] ?? 'sin_conexion';
 		const valor = ev.valores[n.id] ?? null;
+		const parecido = ev.parecidos[n.id];
+		const antiguedad = ev.antiguedades[n.id];
+		const entradas = [
+			...entradasDe(n, aristas, nodos, tipos, ev),
+			// «Antigüedad contra hoy»: su máximo y el hoy de la ejecución no llegan por cable, pero también se compararon.
+			...(def.clave === 'antiguedad'
+				? [
+						{ etiqueta: 'Máximo', origen: 'En la regla', valor: cuantoTiempo(maximoDeAntiguedad(n.data), unidadDeAntiguedad(n.data)) },
+						{ etiqueta: 'Hoy', origen: 'Día de la ejecución', valor: hoy }
+					]
+				: [])
+		];
+		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
+			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });
+			continue;
+		}
+		if (antiguedad && (estado === 'pasa' || estado === 'no_pasa')) {
+			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeAntiguedad(estado, antiguedad), antiguedad: { ...antiguedad }, entradas });
+			continue;
+		}
 		reglas.push({
 			id: n.id,
 			etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`,
@@ -241,7 +364,8 @@ export function correr(prep: Preparacion): Salida {
 			estado,
 			valor,
 			texto:
-				estado === 'pasa' ? def.textoPasa : estado === 'no_pasa' ? def.textoNoPasa : estado === 'listo' ? `Resultado: ${valor ?? ''}` : estado === 'sin_valores' ? TEXTO_SIN_VALORES : TEXTO_INCOMPLETA
+				estado === 'pasa' ? def.textoPasa : estado === 'no_pasa' ? def.textoNoPasa : estado === 'listo' ? `Resultado: ${valor ?? ''}` : estado === 'sin_valores' ? TEXTO_SIN_VALORES : TEXTO_INCOMPLETA,
+			entradas
 		});
 	}
 

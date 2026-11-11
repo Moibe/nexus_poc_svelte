@@ -5,7 +5,7 @@
 	 * el porcentaje solo no dice si el tipo sirve: lo que sirve es VER, documento por documento, qué valor salió en cada campo y qué campo no apareció.
 	 *
 	 * Se abre de dos maneras: (1) justo después de activar un tipo cuyos campos se generaron con documentos de ejemplo (`ejemplosDeTipo`): vienen elegidos ya
-	 * y solo falta el «Probar»; (2) desde el menú ⋮ de cualquier tipo activo, donde se eligen hasta 3 archivos. Nunca corre sola: cada documento es una
+	 * y solo falta el «Probar»; (2) desde el menú ⋮ de cualquier tipo activo, donde se elige un archivo (de 1 en 1 desde el 2026-11-10, Moibe). Nunca corre sola: cada documento es una
 	 * extracción más, así que pide la confirmación de un botón.
 	 *
 	 * NO guarda nada: llama a `/api/pipeline/extraer` SIN `documento`, que es la extracción en seco (no crea documento, ni corrida, ni aparece en ninguna bandeja
@@ -25,7 +25,7 @@
 	import { calidadDe, camposDe, textoDeAusentes, type ResultadoIne } from '$lib/types/ine';
 
 	const MAX_MB = 20;
-	const MAX_DOCUMENTOS = 3;
+	const MAX_DOCUMENTOS = 1;
 	const EXTENSIONES = ['pdf', 'jpg', 'jpeg', 'png', 'tif', 'tiff'];
 
 	let {
@@ -98,7 +98,7 @@
 			else aceptados.push(f);
 		}
 		const lugar = MAX_DOCUMENTOS - archivos.length;
-		if (aceptados.length > lugar) avisos.push(`Solo caben ${MAX_DOCUMENTOS} documentos: ${lugar === 0 ? 'quita uno para agregar otro' : `se agregaron los primeros ${lugar}`}.`);
+		if (aceptados.length > lugar) avisos.push(lugar === 0 ? 'Se prueba un documento a la vez: quita el que está para elegir otro.' : 'Se prueba un documento a la vez: se tomó el primero.');
 		archivos = [...archivos, ...aceptados.slice(0, Math.max(lugar, 0))];
 		avisoDeArchivos = avisos.join(' ');
 	}
@@ -193,7 +193,7 @@
 					<div class="min-w-0 flex-1">
 						<DialogPrimitive.Title class="text-xl font-bold text-foreground">Probar con documentos</DialogPrimitive.Title>
 						<DialogPrimitive.Description class="mt-1 text-sm text-muted-foreground">
-							Mira qué extrae «{tipo?.nombre ?? ''}» de hasta {MAX_DOCUMENTOS} documentos de ejemplo y compáralo con el documento. Esta prueba no guarda nada:
+							Mira qué extrae «{tipo?.nombre ?? ''}» de un documento de ejemplo y compáralo con el original. Esta prueba no guarda nada:
 							los archivos no quedan en ninguna bandeja ni expediente.
 						</DialogPrimitive.Description>
 					</div>
@@ -240,16 +240,16 @@
 							ondrop={alSoltar}
 						>
 							<p class="text-sm font-medium text-foreground">
-								{archivos.length === 0 ? 'Arrastra y suelta tus documentos aquí o selecciona archivos' : 'Agregar otro documento'}
+								{archivos.length === 0 ? 'Arrastra y suelta tu documento aquí o selecciona un archivo' : 'Agregar otro documento'}
 							</p>
-							<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max {MAX_MB} MB cada uno | hasta {MAX_DOCUMENTOS}</p>
+							<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max {MAX_MB} MB</p>
 						</button>
 					{/if}
-					<input bind:this={fileInput} data-testid="probar-archivo-entrada" type="file" multiple class="hidden" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" onchange={alElegir} />
+					<input bind:this={fileInput} data-testid="probar-archivo-entrada" type="file" class="hidden" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" onchange={alElegir} />
 					{#if avisoDeArchivos}
 						<p class="text-xs text-amber-700 dark:text-amber-400" role="status" data-testid="probar-aviso">{avisoDeArchivos}</p>
 					{/if}
-					<p class="text-xs text-muted-foreground" data-testid="probar-aviso-costo">Cada documento cuenta como una extracción.</p>
+					<p class="text-xs text-muted-foreground" data-testid="probar-aviso-costo">La prueba cuenta como una extracción.</p>
 				{:else if fase === 'probando'}
 					<div class="flex h-48 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/40 p-4 text-center" data-testid="probar-leyendo" aria-live="polite">
 						<LoaderCircle class="size-7 animate-spin text-primary dark:text-blue-300" />
@@ -319,7 +319,7 @@
 
 			<div class="flex items-center justify-between gap-4 border-t border-border px-6 py-4">
 				{#if fase === 'resultado'}
-					<Button variant="link" class="h-auto p-0 dark:text-blue-300" data-testid="probar-otra-vez" onclick={() => (fase = 'elegir')}>Probar con otros documentos</Button>
+					<Button variant="link" class="h-auto p-0 dark:text-blue-300" data-testid="probar-otra-vez" onclick={() => { archivos = []; avisoDeArchivos = ''; fase = 'elegir'; }}>Probar con otro documento</Button>
 				{:else}
 					<span></span>
 				{/if}
@@ -329,7 +329,7 @@
 					</Button>
 					{#if fase === 'elegir'}
 						<Button size="lg" data-testid="probar-ejecutar" disabled={archivos.length === 0} onclick={probar}>
-							{archivos.length === 1 ? 'Probar con 1 documento' : `Probar con ${archivos.length} documentos`}
+							Probar
 						</Button>
 					{/if}
 				</div>

@@ -149,12 +149,32 @@
 					{:else}
 						<ul class="mt-1.5 divide-y divide-border rounded-lg border border-border">
 							{#each ejecucion.detalle.reglas as r (r.id)}
-								<li class="flex items-center gap-3 px-3 py-2 text-sm" data-testid="regla-de-corrida" data-regla={r.id} data-estado={r.estado}>
-									<span class="min-w-0 flex-1">
-										<span class="block font-medium text-foreground">{r.etiqueta}</span>
-										<span class="block text-xs text-muted-foreground">{r.texto}</span>
-									</span>
-									<span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium {ESTADO_DE_REGLA[r.estado]?.clase ?? 'bg-muted text-muted-foreground'}">{ESTADO_DE_REGLA[r.estado]?.texto ?? r.estado}</span>
+								<li class="px-3 py-2 text-sm" data-testid="regla-de-corrida" data-regla={r.id} data-estado={r.estado}>
+									<div class="flex items-center gap-3">
+										<span class="min-w-0 flex-1">
+											<span class="block font-medium text-foreground">{r.etiqueta}</span>
+											<span class="block text-xs text-muted-foreground">{r.texto}</span>
+											<!-- «Parecido a»: por qué lo decidió la IA (ya se guardaba; el detalle no lo enseñaba). -->
+											{#if r.parecido?.razon}
+												<span class="block text-xs text-muted-foreground" data-testid="regla-razon-ia">{r.parecido.sinIA ? '' : 'IA: '}{r.parecido.razon}</span>
+											{/if}
+										</span>
+										<span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium {ESTADO_DE_REGLA[r.estado]?.clase ?? 'bg-muted text-muted-foreground'}">{ESTADO_DE_REGLA[r.estado]?.texto ?? r.estado}</span>
+									</div>
+									<!-- Qué se comparó (2026-11-10, Moibe: incluir el valor fijo): lo que llegó a cada entrada y de dónde. Las ejecuciones de antes no lo traen. -->
+									{#if r.entradas && r.entradas.length > 0}
+										<table class="mt-1.5 w-full table-fixed text-left text-xs" data-testid="entradas-de-regla">
+											<tbody>
+												{#each r.entradas as e, i (i)}
+													<tr class="border-t border-border" data-testid="entrada-de-regla">
+														<td class="w-1/4 py-1 pr-3 align-top text-muted-foreground">{e.etiqueta}</td>
+														<td class="py-1 pr-3 align-top break-words {e.valor === null ? 'text-muted-foreground italic' : 'font-medium text-foreground'}" data-testid="entrada-valor">{e.valor ?? 'sin dato'}</td>
+														<td class="w-1/3 py-1 align-top break-words text-muted-foreground" data-testid="entrada-origen">{e.origen ?? 'sin conectar'}</td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+									{/if}
 								</li>
 							{/each}
 						</ul>

@@ -102,6 +102,9 @@
 		abrirProceso,
 		entradasDeProcesoNuevo,
 		evaluar,
+		fechaDeHoy,
+		llaveDeParecido,
+		type MedidaDeParecido,
 		faltaParaGuardar,
 		hayCambiosSinGuardar,
 		huellaDelDibujo,
@@ -113,6 +116,7 @@
 		posicionLibre,
 		resultadoConectado,
 		serializarDibujo,
+		usaTerceraEntrada,
 		usosDeNodo,
 		type ClaveOperador,
 		type Conexion,
@@ -161,7 +165,67 @@
 
 	// El estado de CADA regla y el valor de las que entregan uno, lo que entrega cada valor final y con qué palabra termina el proceso, calculados
 	// una vez para todo el grafo: una regla que depende de otra tiene que ver lo actual de ésa, y cada nodo no puede recorrer el grafo por su cuenta.
-	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales));
+	/** Los parecidos que ya midió la IA, por par («Parecido a»; ver abajo). */
+	let medidos = $state<Record<string, MedidaDeParecido>>({});
+	/** «Antigüedad contra hoy» (2026-11-10): en el lienzo se prueba contra la fecha de hoy, salvo que el nodo traiga otra escrita para probar. */
+	const hoy = fechaDeHoy();
+	const evaluacion = $derived(evaluar(nodes, edges, tiposDocumentales, medidos, hoy));
+
+	// ── «Parecido a» (2026-11-10): el parecido lo mide la IA (Gemini, vía nexus_back). `evaluar` no pregunta: dice qué pares le faltan
+	// (`pendientes`) y aquí se piden, con una pausa tras la última tecla para no preguntar a cada letra. Lo medido se recuerda mientras la
+	// pantalla esté abierta: volver a un ejemplo ya medido no vuelve a preguntar. Un par que falló no se reintenta solo (se avisa en el nodo);
+	// cambiar el ejemplo es otra pregunta.
+	let midiendo = $state<Set<string>>(new Set());
+	let erroresDeParecido = $state<Record<string, string>>({});
+	const PAUSA_PARECIDO_MS = 700;
+	let esperaParecido: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		const faltan = evaluacion.pendientes.filter((p) => {
+			const llave = llaveDeParecido(p.a, p.b);
+			return !untrack(() => midiendo.has(llave)) && !untrack(() => llave in erroresDeParecido);
+		});
+		clearTimeout(esperaParecido);
+		if (faltan.length === 0) return;
+		esperaParecido = setTimeout(() => void medirPendientes(faltan), PAUSA_PARECIDO_MS);
+		return () => clearTimeout(esperaParecido);
+	});
+	async function medirPendientes(pares: { a: string; b: string }[]) {
+		const llaves = pares.map((p) => llaveDeParecido(p.a, p.b));
+		midiendo = new Set([...midiendo, ...llaves]);
+		let mensaje = '';
+		try {
+			const r = await fetch('/api/procesos/parecido', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ pares })
+			});
+			const cuerpo = await r.json().catch(() => null);
+			if (r.ok && Array.isArray(cuerpo?.resultados) && cuerpo.resultados.length === pares.length) {
+				const nuevos = { ...medidos };
+				llaves.forEach((l, i) => (nuevos[l] = cuerpo.resultados[i] as MedidaDeParecido));
+				medidos = nuevos;
+			} else {
+				mensaje = typeof cuerpo?.mensaje === 'string' ? cuerpo.mensaje : 'No se pudo medir el parecido con IA.';
+			}
+		} catch {
+			mensaje = 'No se pudo medir el parecido con IA: el servidor no respondió.';
+		}
+		if (mensaje) {
+			const nuevos = { ...erroresDeParecido };
+			for (const l of llaves) nuevos[l] = mensaje;
+			erroresDeParecido = nuevos;
+		}
+		const quedan = new Set(midiendo);
+		for (const l of llaves) quedan.delete(l);
+		midiendo = quedan;
+	}
+	/** «Reintentar» del nodo: olvida el fallo de su par y lo vuelve a pedir. */
+	function reintentarParecido(llave: string) {
+		const nuevos = { ...erroresDeParecido };
+		delete nuevos[llave];
+		erroresDeParecido = nuevos;
+	}
+
 	setContext(CLAVE_VEREDICTOS, {
 		get todos() {
 			return evaluacion.estados;
@@ -174,7 +238,24 @@
 		},
 		get resultado() {
 			return evaluacion.resultado;
-		}
+		},
+		get parecidos() {
+			return evaluacion.parecidos;
+		},
+		get llavesDeParecido() {
+			return evaluacion.llavesDeParecido;
+		},
+		get midiendo() {
+			return midiendo;
+		},
+		get erroresDeParecido() {
+			return erroresDeParecido;
+		},
+		reintentarParecido,
+		get antiguedades() {
+			return evaluacion.antiguedades;
+		},
+		hoy
 	});
 
 	/** Los tipos que ya tienen su nodo. */
@@ -255,7 +336,7 @@
 			id: `operador-${operadoresPuestos}`,
 			type: NODO_OPERADOR,
 			position: libre(posicion),
-			data: { operador: operador.clave as ClaveOperador, a: '', b: '' }
+			data: { operador: operador.clave as ClaveOperador, a: '', b: '', ...(usaTerceraEntrada(operador.clave) ? { c: '' } : {}) }
 		};
 		nodes = [...nodes, nuevo];
 	}

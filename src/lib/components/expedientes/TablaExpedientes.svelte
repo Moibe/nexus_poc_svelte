@@ -9,11 +9,15 @@
 	 * enlace al detalle —el del nombre, estirado sobre toda la fila—, así que también se abre con el teclado, con clic medio y con
 	 * «abrir en una pestaña nueva».
 	 *
+	 * Con `alBorrar` (solo quien organiza, 2026-11-10) cada fila lleva al final un bote de basura que pide borrar el expediente; va por encima del
+	 * enlace estirado de la fila, así que picarlo no abre el expediente.
+	 *
 	 * Recibe los expedientes YA filtrados y ordenados. «Creado por» no es una columna: el servidor solo guarda el id de quien lo creó.
 	 */
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 
 	import {
 		COLUMNAS_EXPEDIENTES,
@@ -28,8 +32,15 @@
 	let {
 		expedientes,
 		orden,
-		alPicar
-	}: { expedientes: Expediente[]; orden: OrdenExpedientes; alPicar: (columna: ColumnaExpedientes) => void } = $props();
+		alPicar,
+		alBorrar
+	}: {
+		expedientes: Expediente[];
+		orden: OrdenExpedientes;
+		alPicar: (columna: ColumnaExpedientes) => void;
+		/** Pedir borrar un expediente (abre la confirmación). Sin esto no hay bote de basura. */
+		alBorrar?: (expediente: Expediente) => void;
+	} = $props();
 
 	const activa = $derived(columnaDeOrden(orden));
 
@@ -74,6 +85,9 @@
 						</button>
 					</th>
 				{/each}
+				{#if alBorrar}
+					<th scope="col" class="w-12 py-1.5"><span class="sr-only">Acciones</span></th>
+				{/if}
 			</tr>
 		</thead>
 		<tbody data-testid="filas-expedientes">
@@ -98,6 +112,20 @@
 						{expediente.tamanoBytes === undefined ? '—' : formatearTamano(expediente.tamanoBytes)}
 					</td>
 					<td class="py-3 pr-2 text-xs text-muted-foreground" data-testid="expediente-creado">{fechaCorta(expediente.creadoEn)}</td>
+					{#if alBorrar}
+						<td class="py-1.5 pr-2">
+							<button
+								type="button"
+								data-testid="borrar-expediente"
+								aria-label="Borrar «{expediente.nombre}»"
+								title="Borrar expediente"
+								class="relative z-10 ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
+								onclick={() => alBorrar?.(expediente)}
+							>
+								<Trash2 class="size-4" />
+							</button>
+						</td>
+					{/if}
 				</tr>
 			{/each}
 		</tbody>

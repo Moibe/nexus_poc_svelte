@@ -24,9 +24,11 @@
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { correr, type Preparacion } from '$lib/reglas/ejecutar';
+import { correr, paresPorMedir, parecidosMedidos, type Preparacion } from '$lib/reglas/ejecutar';
+import type { Parecidos } from '$lib/reglas/reglas';
 import { codigoDe } from '$lib/server/expediente';
 import { mensajeDeError, tenantDe, urlNexus } from '$lib/server/nexus';
+import { medirParecidos } from '$lib/server/parecido';
 import { cabecerasConSesion } from '$lib/server/sesion';
 
 const ESPERA_MS = 60_000;
@@ -52,10 +54,25 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	const preparacion = await preparada.json().catch(() => null);
 	if (!preparada.ok) return json({ mensaje: mensajeDeError(preparacion, preparada.status), codigo: codigoDe(preparacion) }, { status: preparada.status });
 
-	// 2 · Correr: la lógica del lienzo con los valores reales.
+	// 2 · Medir con IA los «Parecido a» (2026-11-10): con los valores REALES, antes de correr. Si la IA no responde NO se ejecuta: guardar la corrida como
+	// «faltan datos» culparía a los documentos de algo que no les falta.
+	let medidos: Parecidos = {};
+	try {
+		const pares = paresPorMedir(preparacion as Preparacion);
+		if (pares.length > 0) {
+			const m = await medirParecidos(cookies, tenant, pares);
+			if (!m.ok) return json({ mensaje: `No se ejecutó: ${m.mensaje}`, codigo: 'parecido_no_disponible' }, { status: m.status === 429 ? 429 : 502 });
+			medidos = parecidosMedidos(pares, m.resultados);
+		}
+	} catch (e) {
+		console.error('No se pudieron preparar los «Parecido a» del proceso', e);
+		return json({ mensaje: 'No se pudo ejecutar el proceso: lo que entregó nexus_back no se entiende.' }, { status: 502 });
+	}
+
+	// 3 · Correr: la lógica del lienzo con los valores reales.
 	let salida: ReturnType<typeof correr>;
 	try {
-		salida = correr(preparacion as Preparacion);
+		salida = correr(preparacion as Preparacion, medidos);
 	} catch (e) {
 		console.error('No se pudo correr el proceso', e);
 		return json({ mensaje: 'No se pudo ejecutar el proceso: lo que entregó nexus_back no se entiende.' }, { status: 502 });
@@ -65,7 +82,7 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 		return json({ mensaje, codigo, ...(salida.motivo.codigo === 'duplicados' ? { duplicados: salida.motivo.duplicados } : {}) }, { status: 409 });
 	}
 
-	// 3 · Guardar en el historial.
+	// 4 · Guardar en el historial.
 	let guardada: Response;
 	try {
 		guardada = await fetch(urlNexus('/ejecuciones/'), {

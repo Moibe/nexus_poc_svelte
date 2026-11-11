@@ -530,6 +530,8 @@ export type CampoPropuesto = {
 	 * no debe fallar por eso. Sin esto (un solo documento, o el campo salió en todos) nace obligatorio, como siempre.
 	 */
 	opcionalSugerido?: boolean;
+	/** Lo escribió la persona en «Agregar otro campo» (2026-11-11), no lo propuso el documento: su cardinalidad no es «sugerida por el documento». */
+	manual?: boolean;
 };
 
 /**
@@ -559,7 +561,7 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 			descripcion: p.descripcion.trim() || nombre,
 			obligatorio: p.opcionalSugerido !== true,
 			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
-			cardinalidadSugerida: true,
+			cardinalidadSugerida: p.manual !== true,
 			valoresLista: tipo === 'lista' ? [...p.valoresLista] : [],
 			subcampos:
 				tipo === 'grupo'
@@ -580,6 +582,24 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 export function quitarCampo(id: string) {
 	const i = borradorTipoDocumental.campos.findIndex((c) => c.id === id);
 	if (i !== -1) borradorTipoDocumental.campos.splice(i, 1);
+}
+
+/**
+ * Mueve un campo del paso 2 justo antes de otro (o justo después, con `despues`): lo que hace soltarlo al arrastrarlo de su asa
+ * (2026-11-10, Moibe: «los campos en el paso 2, pueden ser reordenados con arrastrarlos»). Mismo cálculo que `reordenarTipoDocumental`:
+ * el destino se busca DESPUÉS de sacar el arrastrado, así sirve igual hacia arriba que hacia abajo. No guarda nada por su cuenta: el
+ * `$effect` del asistente recorre el borrador entero y el nuevo orden viaja al tipo como cualquier otro cambio. El orden es el que ven
+ * el paso 3, la Biblioteca y los datos extraídos, y con el que se publican los campos al activar.
+ */
+export function reordenarCampo(idArrastrado: string, idDestino: string, despues = false): boolean {
+	if (idArrastrado === idDestino) return false;
+	const campos = borradorTipoDocumental.campos;
+	const desde = campos.findIndex((c) => c.id === idArrastrado);
+	if (desde === -1 || !campos.some((c) => c.id === idDestino)) return false;
+	const [movido] = campos.splice(desde, 1);
+	const hacia = campos.findIndex((c) => c.id === idDestino);
+	campos.splice(hacia + (despues ? 1 : 0), 0, movido);
+	return true;
 }
 
 /** Un subcampo está completo cuando tiene nombre y tipo (la descripción es opcional: ayuda al modelo, pero no se exige). */
@@ -1937,6 +1957,22 @@ export function crearNuevaVersion(id: string): boolean {
 	tipo.estado = 'borrador';
 	guardarBiblioteca();
 	return true;
+}
+
+/**
+ * «Desactivar» del menú ⋮ (Moibe, 2026-11-10: «para no tener que crear nuevas versiones, quiero que sí exista la posibilidad de Desactivar por ahora»).
+ * El tipo vuelve a `borrador` (deja de clasificarse y extraerse, y se puede «Editar») SIN foto ni historial, y su número de versión baja uno: así, al
+ * volver a «Activar», el back publica la MISMA versión y adopta el Custom Extractor que ya existe (le sube el esquema editado) en vez de crear otro.
+ * Después se sincroniza el clasificador para que deje de proponerlo.
+ */
+export async function desactivarTipoDocumental(id: string): Promise<{ ok: boolean; mensaje: string }> {
+	const tipo = tiposDocumentales.find((t) => t.id === id);
+	if (!tipo || tipo.estado !== 'activo') return { ok: false, mensaje: 'Ese tipo documental no está activo.' };
+	tipo.estado = 'borrador';
+	tipo.version = Math.max(0, tipo.version - 1);
+	tipo.versionEnEdicion = null;
+	guardarBiblioteca();
+	return sincronizarClasificador();
 }
 
 /**
