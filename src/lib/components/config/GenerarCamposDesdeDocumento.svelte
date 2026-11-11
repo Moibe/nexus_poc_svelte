@@ -11,6 +11,12 @@
 	 * todos se agrega como OPCIONAL (un documento válido que no lo trae no debe fallar). Si un documento no se puede leer, los demás siguen y se dice cuál falló.
 	 * Los documentos leídos se entregan a quien abrió el modal (`onAgregar`) para que pueda PROBAR la extracción con ellos al activar el tipo; aquí no se guardan.
 	 *
+	 * **El documento a un lado, con los campos marcados (2026-11-11, Moibe: «que a un lado mostremos el documento y marcados etiquetados los campos
+	 * seleccionados»).** Al llegar la propuesta, el modal se ensancha: a la izquierda el documento (`DocumentoConCampos`, con pestañas si son varios) y
+	 * a la derecha la lista. Por cada documento se pregunta, en paralelo, dónde está cada campo propuesto (`/api/procesadores/ubicar-campos`, Gemini);
+	 * los campos ELEGIDOS se marcan con un recuadro y su nombre, y pasar el puntero por un renglón resalta su recuadro. Si ubicar falla, la propuesta
+	 * sirve igual y el documento se enseña sin marcas. Se pregunta una vez por documento con TODOS los propuestos: marcar y desmarcar no vuelve a llamar.
+	 *
 	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
 	 */
@@ -25,6 +31,8 @@
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import { unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
+	import { leerUbicaciones, sePuedeMarcar } from '$lib/documentos/ubicaciones';
+	import DocumentoConCampos, { type EstadoUbicacion } from './DocumentoConCampos.svelte';
 	import { TIPOS_DE_DATO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
 	const MAX_MB = 20;
@@ -68,6 +76,12 @@
 	let error = $state('');
 	let propuestos = $state<CampoUnido[]>([]);
 	let elegidos = $state<boolean[]>([]);
+	/** Los documentos que se enseñan a un lado de la propuesta (los leídos) y, de cada uno, cómo va la ubicación de los campos. */
+	let documentosVista = $state<File[]>([]);
+	let estadosUbicacion = $state<EstadoUbicacion[]>([]);
+	/** El campo que se resalta en el documento (el renglón o el recuadro bajo el puntero). */
+	let resaltado = $state<string | null>(null);
+	const visibles = $derived(propuestos.filter((_, i) => elegidos[i] && disponibles[i]).map((c) => c.nombre));
 	let arrastrando = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	// Cada generación se numera: si se cierra el modal o se elige otro documento mientras Google lee, la respuesta vieja ya es de
@@ -100,6 +114,9 @@
 		error = '';
 		propuestos = [];
 		elegidos = [];
+		documentosVista = [];
+		estadosUbicacion = [];
+		resaltado = null;
 	}
 
 	function cerrar() {
@@ -193,6 +210,32 @@
 		// Todos marcados de entrada (2026-11-10, Moibe: «que todos aparezcan seleccionados por default»), menos los que ya existen.
 		elegidos = propuestos.map((c) => !yaExiste(c.nombre));
 		fase = 'propuesta';
+		// El documento a un lado, y en cada uno se buscan los campos (en paralelo; no se espera: la lista ya sirve).
+		documentosVista = [...leidos];
+		estadosUbicacion = leidos.map((a) => (sePuedeMarcar(a) ? { fase: 'cargando' } : { fase: 'no-soportado' }));
+		const pedidos = JSON.stringify(propuestos.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion })));
+		leidos.forEach((a, i) => {
+			if (sePuedeMarcar(a)) void ubicar(a, i, pedidos, turno);
+		});
+	}
+
+	/** Pregunta dónde está cada campo propuesto en UN documento. Nunca lanza: un fallo deja el documento sin marcas y lo dice. */
+	async function ubicar(archivo: File, i: number, campos: string, turno: number) {
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		cuerpo.append('campos', campos);
+		let estado: EstadoUbicacion;
+		try {
+			const r = await fetch('/api/procesadores/ubicar-campos', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			// El detalle técnico no le sirve a nadie aquí: la propuesta ya está y lo único que falló es la guía visual.
+			estado = r.ok
+				? { fase: 'listo', ubicaciones: leerUbicaciones(datos) }
+				: { fase: 'error', mensaje: r.status === 429 ? 'Hay muchas solicitudes a la vez y no se marcaron los campos.' : 'No se pudieron marcar los campos sobre este documento.' };
+		} catch {
+			estado = { fase: 'error', mensaje: 'No se pudo contactar al servidor para marcar los campos.' };
+		}
+		if (turno === vigente) estadosUbicacion[i] = estado;
 	}
 
 	function alternarTodos(marcar: boolean) {
@@ -217,7 +260,7 @@
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
 			data-testid="modal-generar-campos"
-			class="fixed top-1/2 left-1/2 z-60 flex max-h-[90vh] w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-background shadow-[0_10px_10px_-5px_rgba(0,0,0,0.04),0_20px_25px_-5px_rgba(0,0,0,0.1)]"
+			class="fixed top-1/2 left-1/2 z-60 flex max-h-[90vh] w-[92vw] {fase === 'propuesta' && documentosVista.length > 0 ? 'max-w-6xl' : 'max-w-2xl'} -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-background shadow-[0_10px_10px_-5px_rgba(0,0,0,0.04),0_20px_25px_-5px_rgba(0,0,0,0.1)]"
 		>
 			<div class="flex items-center gap-3 border-b border-border px-6 py-4">
 				<span class="min-w-0 flex-1 text-sm text-muted-foreground">Campos de extracción</span>
@@ -327,75 +370,99 @@
 						</div>
 					</div>
 				{:else}
-					<div class="flex items-center justify-between gap-3">
-						<p class="text-sm text-muted-foreground" data-testid="generar-campos-resumen">
-							{propuestos.length === 1 ? 'Se propuso 1 campo' : `Se propusieron ${propuestos.length} campos`} a partir de
-							{nombresEntreComillas}.
-						</p>
-						<label class="flex shrink-0 items-center gap-2 text-sm text-foreground">
-							<Checkbox
-								data-testid="generar-campos-todos"
-								checked={todosElegidos}
-								disabled={!disponibles.some(Boolean)}
-								onCheckedChange={(v) => alternarTodos(v === true)}
-							/>
-							Seleccionar todos
-						</label>
-					</div>
-					<!-- Lo que no se pudo leer, o lo que sobró, se dice: sin esto la propuesta parecería hecha con todos los documentos. -->
-					{#if fallos.length > 0}
-						<div class="-mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="generar-campos-fallos" role="status">
-							<p class="font-medium">{fallos.length === 1 ? 'Un documento no se pudo leer y no cuenta en la propuesta:' : `${fallos.length} documentos no se pudieron leer y no cuentan en la propuesta:`}</p>
-							<ul class="mt-1 list-disc pl-5">
-								{#each fallos as f (f.nombre)}
-									<li><span class="font-medium">{f.nombre}</span>: {f.mensaje}</li>
+					<div class={documentosVista.length > 0 ? 'grid items-start gap-6 lg:grid-cols-2' : 'contents'}>
+						{#if documentosVista.length > 0}
+							<div class="lg:sticky lg:top-0">
+								<DocumentoConCampos
+									documentos={documentosVista}
+									estados={estadosUbicacion}
+									{visibles}
+									{resaltado}
+									onResaltar={(campo) => (resaltado = campo)}
+								/>
+							</div>
+						{/if}
+						<div class="flex min-w-0 flex-col gap-5">
+							<div class="flex items-center justify-between gap-3">
+								<p class="text-sm text-muted-foreground" data-testid="generar-campos-resumen">
+									{propuestos.length === 1 ? 'Se propuso 1 campo' : `Se propusieron ${propuestos.length} campos`} a partir de
+									{nombresEntreComillas}.
+								</p>
+								<label class="flex shrink-0 items-center gap-2 text-sm text-foreground">
+									<Checkbox
+										data-testid="generar-campos-todos"
+										checked={todosElegidos}
+										disabled={!disponibles.some(Boolean)}
+										onCheckedChange={(v) => alternarTodos(v === true)}
+									/>
+									Seleccionar todos
+								</label>
+							</div>
+							<!-- Lo que no se pudo leer, o lo que sobró, se dice: sin esto la propuesta parecería hecha con todos los documentos. -->
+							{#if fallos.length > 0}
+								<div class="-mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="generar-campos-fallos" role="status">
+									<p class="font-medium">{fallos.length === 1 ? 'Un documento no se pudo leer y no cuenta en la propuesta:' : `${fallos.length} documentos no se pudieron leer y no cuentan en la propuesta:`}</p>
+									<ul class="mt-1 list-disc pl-5">
+										{#each fallos as f (f.nombre)}
+											<li><span class="font-medium">{f.nombre}</span>: {f.mensaje}</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
+							{#if sobrantes > 0}
+								<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-sobrantes">
+									Solo se leyeron los primeros {MAX_DOCUMENTOS} archivos; {sobrantes === 1 ? 'el otro se dejó fuera' : `los otros ${sobrantes} se dejaron fuera`}.
+								</p>
+							{/if}
+
+							<!-- Cada renglón: solo el campo y su tipo (2026-11-10, Moibe: «hay demasiado texto… evita la descripción y en cuántos documentos apareció»). La descripción se sigue agregando al campo. -->
+							<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
+								{#each propuestos as campo, i (i)}
+									<li
+										class={[
+											'flex items-start gap-3 px-4 py-3 transition-colors',
+											!disponibles[i] && 'opacity-60',
+											resaltado === campo.nombre && elegidos[i] && 'bg-amber-50 dark:bg-amber-950/40'
+										]}
+										data-testid="campo-propuesto"
+										onpointerenter={() => (resaltado = campo.nombre)}
+										onpointerleave={() => (resaltado = null)}
+									>
+										<Checkbox
+											id="propuesto-{i}"
+											class="mt-0.5"
+											checked={elegidos[i] && disponibles[i]}
+											disabled={!disponibles[i]}
+											onCheckedChange={(v) => (elegidos[i] = v === true)}
+											aria-label="Agregar {campo.nombre}"
+										/>
+										<label for="propuesto-{i}" class="min-w-0 flex-1 cursor-pointer">
+											<span class="flex flex-wrap items-center gap-2">
+												<span class="text-sm font-medium text-foreground" data-testid="campo-propuesto-nombre">{campo.nombre}</span>
+												<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{etiquetaTipo(campo.tipoDato)}</span>
+												{#if campo.cardinalidad === 'multiple'}
+													<span class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300">Se repite</span>
+												{/if}
+												{#if !disponibles[i]}
+													<span class="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-testid="campo-propuesto-existe">
+														Ya existe un campo con este nombre
+													</span>
+												{/if}
+											</span>
+											{#if campo.tipoDato === 'grupo' && campo.subcampos.length}
+												<span class="mt-1 block text-xs text-muted-foreground">
+													Campos del grupo: {campo.subcampos.map((s) => `${s.nombre} (${etiquetaTipo(s.tipoDato)})`).join(' · ')}
+												</span>
+											{/if}
+											{#if campo.tipoDato === 'lista' && campo.valoresLista.length}
+												<span class="mt-1 block text-xs text-muted-foreground">Valores: {campo.valoresLista.join(' · ')}</span>
+											{/if}
+										</label>
+									</li>
 								{/each}
 							</ul>
 						</div>
-					{/if}
-					{#if sobrantes > 0}
-						<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-sobrantes">
-							Solo se leyeron los primeros {MAX_DOCUMENTOS} archivos; {sobrantes === 1 ? 'el otro se dejó fuera' : `los otros ${sobrantes} se dejaron fuera`}.
-						</p>
-					{/if}
-
-					<!-- Cada renglón: solo el campo y su tipo (2026-11-10, Moibe: «hay demasiado texto… evita la descripción y en cuántos documentos apareció»). La descripción se sigue agregando al campo. -->
-					<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
-						{#each propuestos as campo, i (i)}
-							<li class={['flex items-start gap-3 px-4 py-3', !disponibles[i] && 'opacity-60']} data-testid="campo-propuesto">
-								<Checkbox
-									id="propuesto-{i}"
-									class="mt-0.5"
-									checked={elegidos[i] && disponibles[i]}
-									disabled={!disponibles[i]}
-									onCheckedChange={(v) => (elegidos[i] = v === true)}
-									aria-label="Agregar {campo.nombre}"
-								/>
-								<label for="propuesto-{i}" class="min-w-0 flex-1 cursor-pointer">
-									<span class="flex flex-wrap items-center gap-2">
-										<span class="text-sm font-medium text-foreground" data-testid="campo-propuesto-nombre">{campo.nombre}</span>
-										<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{etiquetaTipo(campo.tipoDato)}</span>
-										{#if campo.cardinalidad === 'multiple'}
-											<span class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300">Se repite</span>
-										{/if}
-										{#if !disponibles[i]}
-											<span class="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-testid="campo-propuesto-existe">
-												Ya existe un campo con este nombre
-											</span>
-										{/if}
-									</span>
-									{#if campo.tipoDato === 'grupo' && campo.subcampos.length}
-										<span class="mt-1 block text-xs text-muted-foreground">
-											Campos del grupo: {campo.subcampos.map((s) => `${s.nombre} (${etiquetaTipo(s.tipoDato)})`).join(' · ')}
-										</span>
-									{/if}
-									{#if campo.tipoDato === 'lista' && campo.valoresLista.length}
-										<span class="mt-1 block text-xs text-muted-foreground">Valores: {campo.valoresLista.join(' · ')}</span>
-									{/if}
-								</label>
-							</li>
-						{/each}
-					</ul>
+					</div>
 				{/if}
 			</div>
 
