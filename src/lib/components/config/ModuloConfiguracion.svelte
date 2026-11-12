@@ -267,6 +267,9 @@
 	// Replegado de origen (2026-11-12, Moibe: «en el paso 2 que esto aparezca replegado de origen»): el paso 2 abre con «Agregar campos manualmente» y
 	// «Generar a partir de un documento» a la vista; el formulario sale al pedirlo. Solo arranca abierto si trae un campo a medio capturar.
 	let mostrarFormularioCampo = $state(false);
+	/** Las dos maneras de llenar el paso 2 —«Generar a partir de un documento» y «Agregar campos manualmente»— con el mismo molde y ancho, para que se lean como equivalentes (2026-11-12). */
+	const TARJETA_CAMINO =
+		'flex w-full items-center gap-3 rounded-xl border border-dashed border-border px-6 py-2.5 text-left transition-colors outline-none hover:border-primary hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50 sm:w-80';
 
 	/** "Guardar" del formulario de captura del paso 2: guarda el campo Y
 	 *  oculta el formulario (ver `mostrarFormularioCampo`). `agregarCampoEnCaptura`
@@ -2558,18 +2561,22 @@
 				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
 				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. Va después de
 				     -->
-				<Button
-					variant="outline"
-					class="mt-4 gap-2"
+				<!-- Mismo molde que «Agregar campos manualmente» (2026-11-12, Moibe: «que tengan más o menos el mismo tamaño para que se sepa que son
+				     equivalentes»): dos caminos para lo mismo, del mismo ancho y alto (`TARJETA_CAMINO`). -->
+				<button
+					type="button"
+					class="mt-6 {TARJETA_CAMINO}"
 					data-testid="abrir-generar-campos"
 					onclick={() => {
 						ejemplosParaGenerar = ejemplosDelPaso1Actuales();
 						generarCamposAbierto = true;
 					}}
 				>
-					<Sparkles class="size-4 text-primary" />
-					Generar a partir de un documento
-				</Button>
+					<span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+						<Sparkles class="size-4" />
+					</span>
+					<span class="text-sm font-medium text-foreground">Generar a partir de un documento</span>
+				</button>
 
 				{#if mostrarFormularioCampo}
 					<!-- El formulario de alta. Ya NO queda siempre visible (cambio del
@@ -2705,7 +2712,8 @@
 					     campo MÁS después del primero. -->
 					<button
 						type="button"
-						class="mt-8 flex max-w-3xl items-center gap-3 rounded-xl border border-dashed border-border px-6 py-2.5 text-left transition-colors hover:border-primary hover:bg-primary/5"
+						class="mt-3 {TARJETA_CAMINO}"
+						data-testid="agregar-campos-manualmente"
 						onclick={() => (mostrarFormularioCampo = true)}
 					>
 						<span
