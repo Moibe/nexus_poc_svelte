@@ -27,10 +27,17 @@
 	 * si aparece). Mientras está abierto, su recuadro se mueve, cambia de tamaño, se dibuja de nuevo o se quita (`DocumentoConCampos`); eso solo
 	 * ayuda a ver qué es el campo: no se guarda ni cambia lo que extraerá el procesador. Lo puesto a mano no lo pisa ninguna búsqueda.
 	 *
-	 * **El recuadro sugiere la descripción (2026-11-11, Moibe preguntó si editar los recuadros ayuda a formar el esquema —no: lo que lee el extractor es
-	 * la descripción— y eligió que el recuadro la reescriba).** Al ajustar a mano el recuadro del campo que se edita (o con «Sugerir descripción con su
-	 * recuadro»), Gemini mira esa zona (`/api/procesadores/describir-campo`) y propone una descripción que sirva para cualquier documento del tipo, sin
-	 * datos de este. Se enseña junto con lo que se lee dentro del recuadro; la persona la usa o la descarta. Nada se aplica solo.
+	 * **El recuadro completa el campo (2026-11-12, Moibe: «quiero que ese etiquetado sí sirva para definir el schema»; eligió «El recuadro completa el
+	 * campo» y «Dibujar crea el campo»).** El recuadro no viaja a Google: el extractor lee el nombre, el tipo, la descripción y el valor de estructura
+	 * de cada campo. El 2026-11-11 el recuadro solo SUGERÍA la descripción del campo que se editaba; ahora, en cuanto llegan las marcas, Gemini lee lo
+	 * que hay dentro de cada recuadro (`/api/procesadores/describir-campos`, una llamada por documento) y escribe en cada campo su descripción (zona,
+	 * rótulo, forma), el tipo que corresponde a lo que se lee y un ejemplo INVENTADO de su forma; el renglón lo dice («Desde su recuadro»). Mover o
+	 * dibujar un recuadro lo vuelve a leer (`/api/procesadores/describir-campo`, tras 1.2 s quieto). Lo que escribió la persona NUNCA lo cambia un
+	 * recuadro (`origenes`): si la descripción es suya, el recuadro solo se la sugiere.
+	 *
+	 * **Dibujar un campo (2026-11-12).** Un recuadro sobre un dato que no está en la lista: Gemini propone el campo con su nombre
+	 * (`/api/procesadores/proponer-campo`), el formulario se llena con eso y la persona lo revisa antes de agregarlo. Si ese dato ya es un campo de la
+	 * lista, se ofrece ponerle ese recuadro en vez de duplicarlo.
 	 *
 	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
@@ -49,6 +56,8 @@
 	import { imagenDerecha, leerUbicaciones, sePuedeMarcar, type Ubicacion } from '$lib/documentos/ubicaciones';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import ScanText from '@lucide/svelte/icons/scan-text';
+	import SquareDashedMousePointer from '@lucide/svelte/icons/square-dashed-mouse-pointer';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import DocumentoConCampos, { type CambioDeCaja, type EstadoUbicacion } from './DocumentoConCampos.svelte';
@@ -104,7 +113,7 @@
 
 	/**
 	 * Los recuadros: por documento, el de cada campo según su LUGAR en `propuestos` (los campos nunca se quitan de la lista, así que el lugar no
-	 * cambia aunque se edite el nombre). Llegan de la búsqueda (`ubicar`, `buscarCampo`) o de la persona (`cambiarCaja`).
+	 * cambia aunque se edite el nombre). Llegan de la búsqueda (`ubicar`, `buscarCampo`) o de la persona (`cambiarCaja`, «Dibujar un campo»).
 	 */
 	type Marca = { pagina: number; caja: Ubicacion['caja']; valor: string };
 	let marcas = $state<Record<number, Marca>[]>([]);
@@ -126,11 +135,222 @@
 	let buscando = $state<Record<number, number>>({});
 	let sinBuscar = $state<number[]>([]);
 
+	// ── El recuadro completa el campo (2026-11-12, Moibe: «quiero que ese etiquetado sí sirva para definir el schema») ──
+	// Lo que hay dentro de cada recuadro se convierte en lo que el extractor sí lee: la descripción, el tipo y el valor de estructura de su campo.
+	type Dato = 'descripcion' | 'tipoDato' | 'valorEstructura';
+	type Origen = 'recuadro' | 'mano';
+	/**
+	 * De dónde salió cada dato de cada campo (por su LUGAR en `propuestos`): `recuadro` = lo escribió Biblioratum mirando su recuadro; `mano` = la
+	 * persona. Sin entrada, lo propuso el documento. Un recuadro NUNCA cambia lo que es `mano`: si la descripción es de la persona, solo la sugiere.
+	 */
+	let origenes = $state<Record<number, Partial<Record<Dato, Origen>>>>({});
+	const desdeRecuadro = (k: number) => Object.values(origenes[k] ?? {}).includes('recuadro');
+	/** Cuánto se espera tras el último ajuste a mano de un recuadro antes de leerlo: arrastrar o usar las flechas son muchos ajustes seguidos. */
+	const ESPERA_COMPLETAR_MS = 1200;
+	/** El turno de la última lectura pedida por campo: una respuesta que llega tarde no pisa una más nueva. */
+	let turnosCompletado: Record<number, number> = {};
+	let contadorCompletado = 0;
+	let esperasCompletado: Record<number, ReturnType<typeof setTimeout>> = {};
+	/** El documento donde la persona marcó el campo la última vez: de ahí se lee. */
+	let documentoPreferido: Record<number, number> = {};
+	/** El recuadro con el que se escribió cada campo la última vez (documento, página y caja): el mismo recuadro no se vuelve a leer. */
+	let leidoCon: Record<number, string> = {};
+	/** Los campos que hay que leer aunque su recuadro no haya cambiado («Volver a leer», o se renombró). */
+	let forzarLectura: Record<number, boolean> = {};
+	/** Los campos cuyo recuadro se está leyendo (o se va a leer en cuanto quede quieto). */
+	let completando = $state<Record<number, boolean>>({});
+	/** La primera lectura de todos los recuadros, al llegar las marcas, y si falló. */
+	let completandoTodos = $state(false);
+	let errorCompletado = $state('');
+	/** Lo último que se leyó del campo que se edita: qué cambió, qué se lee en su recuadro, o por qué no se pudo (se dice en su formulario). */
+	let ultimaLectura = $state<{ indice: number; cambios: string[]; valor: string; error?: string } | null>(null);
+
+	type Completado = { nombre: string; descripcion: string; tipoDato: string | null; valorEstructura: string; valor: string };
+	/** Los tipos que se deducen de un valor (lista y grupo no: dependen de todos los valores o de cómo está armado el documento). */
+	const TIPOS_DEDUCIBLES = ['texto', 'numero', 'fecha', 'moneda', 'booleano'];
+	function leerCompletado(x: unknown, nombre?: string): Completado | null {
+		const o = (x ?? null) as Record<string, unknown> | null;
+		const descripcion = typeof o?.descripcion === 'string' ? o.descripcion.trim() : '';
+		const n = typeof o?.nombre === 'string' && o.nombre.trim() ? o.nombre.trim() : nombre;
+		if (!descripcion || !n) return null;
+		return {
+			nombre: n,
+			descripcion: descripcion.slice(0, 200),
+			tipoDato: typeof o?.tipoDato === 'string' && TIPOS_DEDUCIBLES.includes(o.tipoDato) ? o.tipoDato : null,
+			valorEstructura: typeof o?.valorEstructura === 'string' ? o.valorEstructura.trim().slice(0, 120) : '',
+			valor: typeof o?.valor === 'string' ? o.valor : ''
+		};
+	}
+	const llaveLectura = (documento: number, k: number) => {
+		const m = marcas[documento]?.[k];
+		return m ? `${documento}:${m.pagina}:${m.caja.join(',')}` : '';
+	};
+
+	/** El documento del que se lee un campo: donde la persona lo marcó la última vez, o el primero donde está marcado. */
+	function documentoDe(k: number): number | null {
+		const preferido = documentoPreferido[k];
+		if (preferido !== undefined && marcas[preferido]?.[k]) return preferido;
+		const d = marcas.findIndex((m) => !!m[k]);
+		return d >= 0 ? d : null;
+	}
+
+	/** ¿Le queda a este campo algo que un recuadro pueda escribir? (todo de la persona: no hace falta leerlo) */
+	function porCompletar(k: number): boolean {
+		const c = propuestos[k];
+		if (!c) return false;
+		const o = origenes[k] ?? {};
+		const datos: Dato[] = c.tipoDato === 'grupo' ? ['descripcion'] : c.tipoDato === 'lista' ? ['descripcion', 'valorEstructura'] : ['descripcion', 'tipoDato', 'valorEstructura'];
+		return datos.some((d) => o[d] !== 'mano');
+	}
+
+	/**
+	 * Escribe en el campo lo que se leyó en su recuadro, menos lo que es de la persona. Si el campo está abierto, también en lo que la persona todavía no
+	 * tocó del formulario (lo que sí tocó se queda: al guardar, gana lo suyo). Una descripción que es de la persona solo se SUGIERE.
+	 */
+	function aplicarCompletado(k: number, x: Completado, documento: number) {
+		const c = propuestos[k];
+		if (!c) return;
+		const o = { ...(origenes[k] ?? {}) };
+		const nuevo = { ...c };
+		const abierto = editando === k;
+		const cambios: string[] = [];
+		if (o.descripcion !== 'mano') {
+			if (abierto && fDescripcion === c.descripcion) fDescripcion = x.descripcion;
+			if (x.descripcion !== c.descripcion) cambios.push('la descripción');
+			nuevo.descripcion = x.descripcion;
+			o.descripcion = 'recuadro';
+		} else if (abierto && x.descripcion !== fDescripcion.trim()) {
+			sugerencia = { descripcion: x.descripcion, valor: x.valor };
+		}
+		if (o.tipoDato !== 'mano' && x.tipoDato && c.tipoDato !== 'lista' && c.tipoDato !== 'grupo') {
+			if (abierto && fTipo === c.tipoDato) fTipo = x.tipoDato;
+			if (x.tipoDato !== c.tipoDato) cambios.push('el tipo');
+			nuevo.tipoDato = x.tipoDato;
+			o.tipoDato = 'recuadro';
+		}
+		if (o.valorEstructura !== 'mano' && c.tipoDato !== 'grupo' && (x.valorEstructura || o.valorEstructura === 'recuadro')) {
+			if (abierto && fEstructura === (c.valorEstructura ?? '')) fEstructura = x.valorEstructura;
+			if (x.valorEstructura !== (c.valorEstructura ?? '')) cambios.push('la estructura');
+			nuevo.valorEstructura = x.valorEstructura;
+			o.valorEstructura = 'recuadro';
+		}
+		propuestos[k] = nuevo;
+		origenes[k] = o;
+		// Lo que se leyó es también el valor de su recuadro (se enseña al pasar el puntero).
+		const m = marcas[documento]?.[k];
+		if (m && x.valor) marcas[documento][k] = { ...m, valor: x.valor };
+		if (abierto) ultimaLectura = { indice: k, cambios, valor: x.valor };
+	}
+
+	/**
+	 * Lee los recuadros de esos campos en UN documento (uno solo con `/describir-campo`, varios con `/describir-campos`) y escribe en cada campo lo que
+	 * salga. Devuelve el mensaje de error, o `''`. Nunca lanza.
+	 */
+	async function completarEn(documento: number, indices: number[], turno: number): Promise<string> {
+		const archivo = documentosVista[documento];
+		const conCaja = indices.filter((k) => propuestos[k] && marcas[documento]?.[k]);
+		if (!archivo || conCaja.length === 0) return '';
+		const mios = conCaja.map((k) => (turnosCompletado[k] = ++contadorCompletado));
+		const versiones = conCaja.map((k) => llaveLectura(documento, k));
+		conCaja.forEach((k) => (completando[k] = true));
+		// Cada respuesta vuelve a su campo por el nombre que se MANDÓ (mientras tanto la persona pudo renombrarlo).
+		const enviados = conCaja.map((k) => propuestos[k].nombre);
+		const campos = conCaja.map((k) => {
+			const c = propuestos[k];
+			const m = marcas[documento][k];
+			return { nombre: c.nombre, tipoDato: c.tipoDato, descripcion: c.descripcion, pagina: m.pagina, caja: m.caja };
+		});
+		const uno = campos.length === 1;
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		if (uno) {
+			cuerpo.append('campo', JSON.stringify({ nombre: campos[0].nombre, tipoDato: campos[0].tipoDato, descripcion: campos[0].descripcion }));
+			cuerpo.append('pagina', String(campos[0].pagina));
+			cuerpo.append('caja', JSON.stringify(campos[0].caja));
+		} else {
+			cuerpo.append('campos', JSON.stringify(campos));
+		}
+		if (nombreTipo.trim()) cuerpo.append('nombreTipo', nombreTipo.trim());
+		if (descripcionTipo.trim()) cuerpo.append('descripcionTipo', descripcionTipo.trim());
+		let completados: Completado[] = [];
+		let mensaje = '';
+		try {
+			const r = await fetch(uno ? '/api/procesadores/describir-campo' : '/api/procesadores/describir-campos', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			if (r.ok) {
+				const crudos: unknown[] = uno ? [datos] : Array.isArray(datos?.campos) ? datos.campos : [];
+				completados = crudos.map((x) => leerCompletado(x, uno ? enviados[0] : undefined)).filter((x): x is Completado => x !== null);
+			} else {
+				mensaje = r.status === 429 ? 'Hay muchas solicitudes a la vez: no se pudieron leer los recuadros.' : 'No se pudieron leer los recuadros para completar los campos.';
+			}
+		} catch {
+			mensaje = 'No se pudo contactar al servidor para leer los recuadros.';
+		}
+		if (turno !== vigente) return '';
+		conCaja.forEach((k, i) => {
+			if (turnosCompletado[k] === mios[i]) completando[k] = false;
+		});
+		for (const x of completados) {
+			const i = enviados.indexOf(x.nombre);
+			if (i < 0 || turnosCompletado[conCaja[i]] !== mios[i]) continue;
+			aplicarCompletado(conCaja[i], x, documento);
+			leidoCon[conCaja[i]] = versiones[i];
+		}
+		if (uno && mensaje && editando === conCaja[0] && turnosCompletado[conCaja[0]] === mios[0]) {
+			ultimaLectura = { indice: conCaja[0], cambios: [], valor: '', error: 'No se pudo leer su recuadro.' };
+		}
+		return mensaje;
+	}
+
+	/**
+	 * Vuelve a leer el recuadro de UN campo cuando lleva `espera` ms sin cambios (cada cambio reinicia la espera). `documento` es donde la persona lo
+	 * acaba de marcar (o `null`: el de siempre). Sin `forzar`, un recuadro que ya se leyó tal cual no se vuelve a leer.
+	 */
+	function programarCompletado(k: number, documento: number | null, espera = ESPERA_COMPLETAR_MS, forzar = false) {
+		if (!porCompletar(k) && editando !== k) return;
+		if (documento !== null) documentoPreferido[k] = documento;
+		// Un «forzar» pendiente no lo borra otro aviso que llegue después (la búsqueda que termina tras renombrar).
+		if (forzar) forzarLectura[k] = true;
+		turnosCompletado[k] = ++contadorCompletado; // lo que esté en camino ya es viejo
+		completando[k] = true;
+		clearTimeout(esperasCompletado[k]);
+		const turno = vigente;
+		esperasCompletado[k] = setTimeout(() => {
+			delete esperasCompletado[k];
+			const forzada = forzarLectura[k] === true;
+			delete forzarLectura[k];
+			const d = documentoDe(k);
+			if (turno !== vigente || d === null || (!forzada && leidoCon[k] === llaveLectura(d, k))) {
+				completando[k] = false;
+				return;
+			}
+			void completarEn(d, [k], turno);
+		}, espera);
+	}
+
+	/** La primera lectura: todos los campos marcados que se pueden agregar, UNA llamada por documento (cada campo, del primero donde está marcado). */
+	async function completarTodos(turno: number) {
+		const porDocumento = new Map<number, number[]>();
+		propuestos.forEach((_, k) => {
+			if (!disponibles[k] || !porCompletar(k)) return;
+			const d = documentoDe(k);
+			if (d !== null) porDocumento.set(d, [...(porDocumento.get(d) ?? []), k]);
+		});
+		if (porDocumento.size === 0) return;
+		completandoTodos = true;
+		errorCompletado = '';
+		const mensajes = await Promise.all([...porDocumento].map(([d, ks]) => completarEn(d, ks, turno)));
+		if (turno !== vigente) return;
+		completandoTodos = false;
+		errorCompletado = mensajes.find(Boolean) ?? '';
+	}
+
 	// El formulario de un campo: «Agregar otro campo» (al final) o «Editar» uno de la lista (en su renglón). Solo uno abierto a la vez.
 	let formulario = $state<{ modo: 'nuevo' } | { modo: 'editar'; indice: number } | null>(null);
 	let fNombre = $state('');
 	let fTipo = $state('texto');
 	let fDescripcion = $state('');
+	let fEstructura = $state('');
 	let fError = $state('');
 	let fInput = $state<HTMLInputElement | null>(null);
 	const editando = $derived(formulario?.modo === 'editar' ? formulario.indice : null);
@@ -142,104 +362,156 @@
 		return extra ? [...TIPOS_DE_SUBCAMPO, extra] : [...TIPOS_DE_SUBCAMPO];
 	});
 
-	/** Si ya se cambió algo del nombre, tipo o descripción del campo que se edita (los cambios al recuadro se aplican al momento). */
+	/** Si ya se cambió algo del nombre, tipo, descripción o estructura del campo que se edita (los cambios al recuadro se aplican al momento). */
 	const editoDatos = $derived.by(() => {
 		const c = editando !== null ? propuestos[editando] : undefined;
-		return !!c && (fNombre !== c.nombre || fTipo !== c.tipoDato || fDescripcion !== c.descripcion);
+		return !!c && (fNombre !== c.nombre || fTipo !== c.tipoDato || fDescripcion !== c.descripcion || fEstructura !== (c.valorEstructura ?? ''));
 	});
+	/** ¿El campo que se edita tiene recuadro en algún documento? (sin recuadro no hay qué leer) */
+	const conRecuadro = $derived(editando !== null && marcas.some((m) => !!m[editando]));
 
 	$effect(() => {
 		if (formulario) fInput?.focus();
 	});
 
-	// ── Sugerir la descripción con el recuadro (2026-11-11, Moibe: «sí, excelente, por favor la 1») ──
-	// El recuadro no llega al esquema; la descripción sí. Al ajustar a mano el recuadro del campo que se edita (o con el botón), Gemini mira esa zona y
-	// PROPONE una descripción que sirva para cualquier documento del tipo; la persona la usa o no. Se pide sobre el documento que se está viendo.
-	/** Cuánto se espera tras el último ajuste antes de pedir la sugerencia: arrastrar o usar las flechas son muchos ajustes seguidos. */
-	const ESPERA_SUGERENCIA_MS = 1200;
+	/** El documento que se está viendo a un lado (la pestaña elegida). */
 	let documentoVisible = $state(0);
-	type Sugerencia = { fase: 'pensando' } | { fase: 'lista'; descripcion: string; valor: string } | { fase: 'error'; mensaje: string };
-	let sugerencia = $state<Sugerencia | null>(null);
-	let turnoSugerencia = 0;
-	let esperaSugerencia: ReturnType<typeof setTimeout> | null = null;
-	const marcaEditando = $derived(editando !== null ? marcas[documentoVisible]?.[editando] : undefined);
-
-	function olvidarSugerencia() {
-		turnoSugerencia += 1;
-		if (esperaSugerencia) clearTimeout(esperaSugerencia);
-		esperaSugerencia = null;
-		sugerencia = null;
-	}
-
-	function programarSugerencia() {
-		if (esperaSugerencia) clearTimeout(esperaSugerencia);
-		esperaSugerencia = setTimeout(() => {
-			esperaSugerencia = null;
-			void sugerirDescripcion();
-		}, ESPERA_SUGERENCIA_MS);
-	}
-
-	/** Pide la descripción para el campo que se edita, con su recuadro en el documento que se está viendo. Nunca lanza. */
-	async function sugerirDescripcion() {
-		const indice = editando;
-		const archivo = documentosVista[documentoVisible];
-		const marca = marcaEditando;
-		if (indice === null || !archivo || !marca) return;
-		if (esperaSugerencia) clearTimeout(esperaSugerencia);
-		esperaSugerencia = null;
-		const mio = ++turnoSugerencia;
-		sugerencia = { fase: 'pensando' };
-		const cuerpo = new FormData();
-		cuerpo.append('archivo', archivo, archivo.name);
-		// Lo que hay escrito en el formulario (aún sin guardar) es el mejor contexto: es lo que la persona quiere que sea el campo.
-		cuerpo.append('campo', JSON.stringify({ nombre: fNombre.trim() || propuestos[indice].nombre, tipoDato: fTipo, descripcion: fDescripcion.trim() }));
-		cuerpo.append('pagina', String(marca.pagina));
-		cuerpo.append('caja', JSON.stringify(marca.caja));
-		if (nombreTipo.trim()) cuerpo.append('nombreTipo', nombreTipo.trim());
-		if (descripcionTipo.trim()) cuerpo.append('descripcionTipo', descripcionTipo.trim());
-		let nueva: Sugerencia;
-		try {
-			const r = await fetch('/api/procesadores/describir-campo', { method: 'POST', body: cuerpo });
-			const datos = await r.json().catch(() => null);
-			nueva =
-				r.ok && typeof datos?.descripcion === 'string' && datos.descripcion.trim()
-					? { fase: 'lista', descripcion: datos.descripcion.trim(), valor: typeof datos.valor === 'string' ? datos.valor : '' }
-					: { fase: 'error', mensaje: r.status === 429 ? 'Hay muchas solicitudes a la vez. Intenta de nuevo en un momento.' : 'No se pudo sugerir una descripción con este recuadro.' };
-		} catch {
-			nueva = { fase: 'error', mensaje: 'No se pudo contactar al servidor para sugerir la descripción.' };
-		}
-		if (mio === turnoSugerencia) sugerencia = nueva;
-	}
+	/** Una descripción leída en el recuadro de un campo cuya descripción escribió la persona: no se le aplica, se le sugiere. */
+	let sugerencia = $state<{ descripcion: string; valor: string } | null>(null);
+	/** La descripción que la persona tomó de la sugerencia: al guardar, sigue siendo «del recuadro» (un recuadro nuevo la puede reescribir). */
+	let aceptadaDelRecuadro: string | null = null;
 
 	function usarSugerencia() {
-		if (sugerencia?.fase !== 'lista') return;
+		if (!sugerencia) return;
 		fDescripcion = sugerencia.descripcion.slice(0, 200);
+		aceptadaDelRecuadro = fDescripcion;
 		sugerencia = null;
+	}
+
+	/** «Volver a leer su recuadro»: el del documento que se ve si ahí está marcado; si no, el de siempre. */
+	function volverALeer() {
+		if (editando === null) return;
+		sugerencia = null;
+		ultimaLectura = null;
+		programarCompletado(editando, marcas[documentoVisible]?.[editando] ? documentoVisible : null, 0, true);
+	}
+
+	// ── «Dibujar un campo» (2026-11-12, Moibe eligió «Dibujar crea el campo») ──
+	// Un recuadro sobre un dato que no está en la lista: Biblioratum lee lo que hay dentro y propone el campo (nombre, tipo, descripción y estructura).
+	let dibujandoNuevo = $state(false);
+	let dibujo = $state<{ documento: number; pagina: number; caja: Ubicacion['caja'] } | null>(null);
+	type Propuesta =
+		| { fase: 'pensando' }
+		| { fase: 'lista'; nombre: string; tipoDato: string | null; descripcion: string; valorEstructura: string; valor: string }
+		| { fase: 'error'; mensaje: string };
+	let propuesta = $state<Propuesta | null>(null);
+	let turnoPropuesta = 0;
+	/** Con un recuadro dibujado: el campo de la lista que ya se llama así (el dato ya era un campo), o -1. */
+	const repetido = $derived(dibujo && fNombre.trim() ? propuestos.findIndex((p) => llaveDeCampo(p.nombre) === llaveDeCampo(fNombre.trim())) : -1);
+
+	function empezarDibujo() {
+		cerrarFormulario();
+		resaltado = null;
+		dibujandoNuevo = true;
+	}
+
+	function cancelarDibujo() {
+		dibujandoNuevo = false;
+	}
+
+	function alDibujarNuevo(n: { documento: number; pagina: number; caja: Ubicacion['caja'] }) {
+		dibujandoNuevo = false;
+		abrirNuevo();
+		dibujo = n;
+		void proponerCampo(n);
+	}
+
+	/** Pide el campo que sería el recuadro dibujado y llena con él lo que la persona todavía no escribió. Nunca lanza. */
+	async function proponerCampo(n: { documento: number; pagina: number; caja: Ubicacion['caja'] }) {
+		const archivo = documentosVista[n.documento];
+		if (!archivo) return;
+		const mio = ++turnoPropuesta;
+		propuesta = { fase: 'pensando' };
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		cuerpo.append('pagina', String(n.pagina));
+		cuerpo.append('caja', JSON.stringify(n.caja));
+		// Para que, si el dato ya es un campo, lo diga con ese mismo nombre.
+		cuerpo.append('existentes', JSON.stringify([...propuestos.map((p) => p.nombre), ...existentes].slice(0, 200)));
+		if (nombreTipo.trim()) cuerpo.append('nombreTipo', nombreTipo.trim());
+		if (descripcionTipo.trim()) cuerpo.append('descripcionTipo', descripcionTipo.trim());
+		let nueva: Propuesta;
+		try {
+			const r = await fetch('/api/procesadores/proponer-campo', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			const leida = r.ok ? leerCompletado(datos) : null;
+			nueva = leida
+				? { fase: 'lista', ...leida }
+				: {
+						fase: 'error',
+						mensaje:
+							r.status === 429
+								? 'Hay muchas solicitudes a la vez y no se pudo leer el recuadro. Escribe el campo a mano; el recuadro se queda marcado.'
+								: 'No se pudo leer el recuadro. Escribe el campo a mano; el recuadro se queda marcado.'
+					};
+		} catch {
+			nueva = { fase: 'error', mensaje: 'No se pudo contactar al servidor para leer el recuadro. Escribe el campo a mano; el recuadro se queda marcado.' };
+		}
+		if (mio !== turnoPropuesta || formulario?.modo !== 'nuevo') return;
+		propuesta = nueva;
+		if (nueva.fase === 'lista') {
+			// Lo propuesto llena lo que la persona no ha escrito todavía.
+			if (!fNombre.trim()) fNombre = nueva.nombre.slice(0, 80);
+			if (!fDescripcion.trim()) fDescripcion = nueva.descripcion;
+			if (!fEstructura.trim()) fEstructura = nueva.valorEstructura;
+			if (fTipo === 'texto' && nueva.tipoDato) fTipo = nueva.tipoDato;
+			fError = '';
+		}
+	}
+
+	/** El dato dibujado ya es un campo de la lista: en vez de crear otro, se le pone ese recuadro (y se vuelve a leer). */
+	function ponerRecuadroA(k: number) {
+		const d = dibujo;
+		if (!d || !propuestos[k] || !marcas[d.documento]) return;
+		cerrarFormulario();
+		nuevoTurno(d.documento, k);
+		marcas[d.documento][k] = { pagina: d.pagina, caja: d.caja, valor: '' };
+		aMano[llaveMarca(d.documento, k)] = true;
+		if (disponibles[k]) elegidos[k] = true;
+		programarCompletado(k, d.documento, 0);
 	}
 
 	function cerrarFormulario() {
-		olvidarSugerencia();
+		sugerencia = null;
+		aceptadaDelRecuadro = null;
+		ultimaLectura = null;
+		turnoPropuesta += 1;
+		propuesta = null;
+		dibujo = null;
 		formulario = null;
 		fNombre = '';
 		fTipo = 'texto';
 		fDescripcion = '';
+		fEstructura = '';
 		fError = '';
 	}
 
 	function abrirNuevo() {
 		cerrarFormulario();
+		dibujandoNuevo = false;
 		formulario = { modo: 'nuevo' };
 	}
 
 	function abrirEdicion(indice: number) {
 		const campo = propuestos[indice];
 		if (!campo) return;
-		olvidarSugerencia();
+		cerrarFormulario();
+		dibujandoNuevo = false;
 		formulario = { modo: 'editar', indice };
 		fNombre = campo.nombre;
 		fTipo = campo.tipoDato;
 		fDescripcion = campo.descripcion;
-		fError = '';
+		fEstructura = campo.valorEstructura ?? '';
 	}
 
 	/** El nombre escrito, o `null` y el error dicho si está vacío o choca con otro (sin contar el campo que se edita). */
@@ -263,13 +535,29 @@
 		else guardarEdicion(formulario.indice);
 	}
 
+	/** Sin las entradas vacías (un dato sin origen es «lo que propuso el documento»). */
+	const soloDefinidos = (o: Partial<Record<Dato, Origen | undefined>>) =>
+		Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<Record<Dato, Origen>>;
+
 	function agregarOtro() {
 		const nombre = nombreValido(null);
 		if (!nombre) return;
+		const descripcion = fDescripcion.trim();
+		const estructura = fTipo === 'grupo' ? '' : fEstructura.trim();
+		const p = propuesta?.fase === 'lista' ? propuesta : null;
+		// De dónde sale cada dato: lo que quedó igual a lo que propuso el recuadro es «del recuadro»; lo demás que se escribió, de la persona; lo vacío
+		// (y el tipo «texto» que nadie eligió) queda libre para que lo escriba su recuadro.
+		const tipoPropuesto = p?.tipoDato ?? null;
+		const origen = soloDefinidos({
+			descripcion: descripcion === '' ? undefined : p && descripcion === p.descripcion ? 'recuadro' : 'mano',
+			tipoDato: tipoPropuesto && fTipo === tipoPropuesto ? 'recuadro' : tipoPropuesto || fTipo !== 'texto' ? 'mano' : undefined,
+			valorEstructura: estructura === '' ? undefined : p && estructura === p.valorEstructura ? 'recuadro' : 'mano'
+		});
 		const campo: CampoUnido = {
 			nombre,
 			tipoDato: fTipo,
-			descripcion: fDescripcion.trim(),
+			descripcion,
+			valorEstructura: estructura,
 			obligatorio: true,
 			cardinalidad: 'unico',
 			valoresLista: [],
@@ -279,36 +567,62 @@
 			opcionalSugerido: false,
 			manual: true
 		};
+		const k = propuestos.length;
+		const d = dibujo;
+		const valorLeido = p?.valor ?? '';
 		propuestos = [...propuestos, campo];
 		elegidos = [...elegidos, true];
+		origenes[k] = origen;
 		cerrarFormulario();
-		buscarEnTodos(propuestos.length - 1);
+		if (d && marcas[d.documento]) {
+			// Dibujado: su recuadro es el que se dibujó, y lo propuesto ya es la lectura de ese recuadro. En los demás documentos se busca.
+			nuevoTurno(d.documento, k);
+			marcas[d.documento][k] = { pagina: d.pagina, caja: d.caja, valor: valorLeido };
+			aMano[llaveMarca(d.documento, k)] = true;
+			documentoPreferido[k] = d.documento;
+			if (p) leidoCon[k] = llaveLectura(d.documento, k);
+			else programarCompletado(k, d.documento, 0);
+			documentosVista.forEach((a, j) => {
+				if (j !== d.documento && sePuedeMarcar(a)) void buscarCampo(j, k, vigente);
+			});
+		} else {
+			buscarEnTodos(k);
+		}
 	}
 
 	/**
 	 * Guarda lo editado de un campo de la lista. Si cambió el nombre o la descripción, se vuelve a buscar en cada documento (menos donde la persona
-	 * puso el recuadro a mano): si aparece, su recuadro se mueve ahí; si no, se queda el que tenía.
+	 * puso el recuadro a mano): si aparece, su recuadro se mueve ahí; si no, se queda el que tenía. Lo que la persona cambió queda como suyo.
 	 */
 	function guardarEdicion(indice: number) {
 		const campo = propuestos[indice];
 		const nombre = nombreValido(indice);
 		if (!campo || !nombre) return;
 		const descripcion = fDescripcion.trim();
+		const estructura = fTipo === 'grupo' ? '' : fEstructura.trim();
 		const buscarOtraVez = nombre !== campo.nombre || descripcion !== campo.descripcion;
 		const noEstabaDisponible = yaExiste(campo.nombre);
+		const o = { ...(origenes[indice] ?? {}) };
+		if (descripcion !== campo.descripcion) o.descripcion = descripcion === '' ? undefined : descripcion === aceptadaDelRecuadro ? 'recuadro' : 'mano';
+		if (fTipo !== campo.tipoDato) o.tipoDato = 'mano';
+		if (estructura !== (campo.valorEstructura ?? '')) o.valorEstructura = estructura === '' ? undefined : 'mano';
 		propuestos[indice] = {
 			...campo,
 			nombre,
 			tipoDato: fTipo,
 			descripcion,
+			valorEstructura: estructura,
 			subcampos: fTipo === 'grupo' ? campo.subcampos : [],
 			valoresLista: fTipo === 'lista' ? campo.valoresLista : []
 		};
+		origenes[indice] = soloDefinidos(o);
 		// Uno que chocaba con un campo que el tipo ya tiene y ahora tiene otro nombre: ya se puede agregar, y se marca.
 		if (noEstabaDisponible && !yaExiste(nombre)) elegidos[indice] = true;
 		resaltado = null;
 		cerrarFormulario();
 		if (buscarOtraVez) buscarEnTodos(indice, true);
+		// Con otro nombre, lo que se escribió con su recuadro puede quedarse corto: se vuelve a leer (lo de la persona no se toca).
+		if (nombre !== campo.nombre && descripcion !== '' && origenes[indice]?.descripcion !== 'mano') programarCompletado(indice, null, ESPERA_COMPLETAR_MS, true);
 	}
 
 	function buscarEnTodos(indice: number, respetarAMano = false) {
@@ -317,7 +631,7 @@
 		});
 	}
 
-	/** Busca UN campo en un documento y pone (o mueve) su recuadro. Si no aparece, se queda el que tenía. Nunca lanza. */
+	/** Busca UN campo en un documento y pone (o mueve) su recuadro; con el recuadro nuevo, el campo se completa. Si no aparece, se queda el que tenía. Nunca lanza. */
 	async function buscarCampo(documento: number, indice: number, turno: number) {
 		const archivo = documentosVista[documento];
 		const campo = propuestos[indice];
@@ -340,6 +654,8 @@
 			if (u && turnosMarca[llaveMarca(documento, indice)] === mio) {
 				marcas[documento][indice] = { pagina: u.pagina, caja: u.caja, valor: u.valor };
 				aMano[llaveMarca(documento, indice)] = false;
+				// Varias búsquedas (una por documento) terminan casi juntas: se espera un poco para leer UNA vez.
+				programarCompletado(indice, null, 300);
 			}
 		} catch {
 			if (turno === vigente && !sinBuscar.includes(indice)) sinBuscar = [...sinBuscar, indice];
@@ -348,7 +664,7 @@
 		}
 	}
 
-	/** La persona movió, cambió de tamaño o dibujó un recuadro: manda sobre cualquier búsqueda que siga en camino. */
+	/** La persona movió, cambió de tamaño o dibujó un recuadro: manda sobre cualquier búsqueda que siga en camino, y su campo se vuelve a completar. */
 	function cambiarCaja(cambio: CambioDeCaja) {
 		const indice = propuestos.findIndex((p) => p.nombre === cambio.campo);
 		if (indice < 0 || !marcas[cambio.documento]) return;
@@ -356,12 +672,11 @@
 		const antes = marcas[cambio.documento][indice];
 		marcas[cambio.documento][indice] = { pagina: cambio.pagina, caja: cambio.caja, valor: cambio.modo === 'ajustar' ? (antes?.valor ?? '') : '' };
 		aMano[llaveMarca(cambio.documento, indice)] = true;
-		// El recuadro del campo que se edita cambió a mano: lo que hay dentro puede describir mejor al campo.
 		if (indice === editando) {
-			turnoSugerencia += 1;
-			sugerencia = { fase: 'pensando' };
-			programarSugerencia();
+			sugerencia = null;
+			ultimaLectura = null;
 		}
+		programarCompletado(indice, cambio.documento);
 	}
 
 	function quitarCaja(documento: number, nombre: string) {
@@ -370,7 +685,10 @@
 		nuevoTurno(documento, indice);
 		delete marcas[documento][indice];
 		aMano[llaveMarca(documento, indice)] = true;
-		if (indice === editando) olvidarSugerencia();
+		if (indice === editando) {
+			sugerencia = null;
+			ultimaLectura = null;
+		}
 	}
 	let arrastrando = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -411,6 +729,17 @@
 		aMano = {};
 		buscando = {};
 		sinBuscar = [];
+		Object.values(esperasCompletado).forEach((t) => clearTimeout(t));
+		esperasCompletado = {};
+		origenes = {};
+		turnosCompletado = {};
+		documentoPreferido = {};
+		leidoCon = {};
+		forzarLectura = {};
+		completando = {};
+		completandoTodos = false;
+		errorCompletado = '';
+		dibujandoNuevo = false;
 		cerrarFormulario();
 		estadosUbicacion = [];
 		resaltado = null;
@@ -514,9 +843,10 @@
 		const derechas = await Promise.all(leidos.map((a) => imagenDerecha(a)));
 		if (turno !== vigente) return;
 		documentosVista = derechas;
-		derechas.forEach((a, i) => {
-			if (sePuedeMarcar(a)) void ubicar(a, i, turno);
-		});
+		await Promise.all(derechas.map((a, i) => (sePuedeMarcar(a) ? ubicar(a, i, turno) : Promise.resolve())));
+		if (turno !== vigente) return;
+		// Con los recuadros puestos, cada campo se completa con lo que hay dentro del suyo (2026-11-12).
+		await completarTodos(turno);
 	}
 
 	/** Pregunta dónde está cada campo de la lista en UN documento. Nunca lanza: un fallo deja el documento sin marcas y lo dice. */
@@ -561,18 +891,51 @@
 	}
 </script>
 
-<!-- El formulario de un campo: «Otro campo» (al final de la lista) o «Editar campo» (en el renglón del campo). -->
+<!-- El formulario de un campo: «Otro campo» (al final de la lista; también el de un recuadro dibujado) o «Editar campo» (en el renglón del campo). -->
 {#snippet formularioCampo(editar: boolean)}
 	{@const prefijo = editar ? 'editar-campo' : 'nuevo-campo'}
 	<form
-		class={['flex flex-col gap-3 rounded-lg p-4', editar ? 'border border-amber-300 bg-background dark:border-amber-800' : 'border border-dashed border-border']}
+		class={[
+			'flex flex-col gap-3 rounded-lg p-4',
+			editar || dibujo ? 'border border-amber-300 bg-background dark:border-amber-800' : 'border border-dashed border-border'
+		]}
 		data-testid={prefijo}
+		data-dibujado={!editar && dibujo ? '' : undefined}
 		onsubmit={(e) => {
 			e.preventDefault();
 			guardarFormulario();
 		}}
 	>
-		<p class="text-sm font-medium text-foreground">{editar ? 'Editar campo' : 'Otro campo'}</p>
+		<p class="text-sm font-medium text-foreground">{editar ? 'Editar campo' : dibujo ? 'Campo nuevo desde tu recuadro' : 'Otro campo'}</p>
+		{#if !editar && dibujo}
+			<!-- Lo que Biblioratum leyó en el recuadro dibujado (2026-11-12). -->
+			{#if propuesta?.fase === 'pensando'}
+				<p class="flex items-center gap-2 text-xs text-muted-foreground" data-testid="proponiendo-campo" aria-live="polite">
+					<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo el recuadro para proponer el campo…
+				</p>
+			{:else if propuesta?.fase === 'lista'}
+				<p class="text-xs text-muted-foreground" data-testid="propuesta-recuadro" aria-live="polite">
+					Biblioratum lo propuso con lo que hay en tu recuadro; revísalo antes de agregarlo.
+					{#if propuesta.valor}
+						<span class="break-words" data-testid="propuesta-recuadro-valor">En el recuadro se lee: «{propuesta.valor}».</span>
+					{/if}
+				</p>
+			{:else if propuesta?.fase === 'error'}
+				<p class="text-xs text-destructive" role="alert" data-testid="propuesta-error">{propuesta.mensaje}</p>
+			{/if}
+			{#if repetido >= 0}
+				<div
+					class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+					data-testid="propuesta-repetida"
+					role="status"
+				>
+					<span class="min-w-0 flex-1">Ese dato ya es el campo <span class="font-medium">«{propuestos[repetido].nombre}»</span> de la lista.</span>
+					<Button type="button" variant="outline" size="sm" data-testid="poner-recuadro-existente" onclick={() => ponerRecuadroA(repetido)}>
+						Ponerle este recuadro
+					</Button>
+				</div>
+			{/if}
+		{/if}
 		<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
 			<Input
 				bind:ref={fInput}
@@ -601,49 +964,72 @@
 			maxlength={200}
 			data-testid="{prefijo}-descripcion"
 		/>
+		{#if fTipo !== 'grupo'}
+			<!-- El «Valor de estructura» del paso 2 (2026-11-12): un ejemplo de la forma del dato; va al esquema dentro de la descripción. -->
+			<Input
+				bind:value={fEstructura}
+				placeholder="Valor de estructura (opcional): un ejemplo inventado de su forma"
+				aria-label="Valor de estructura"
+				maxlength={120}
+				data-testid="{prefijo}-estructura"
+			/>
+		{/if}
 		{#if editar && documentosVista.some((a) => sePuedeMarcar(a))}
-			<!-- La descripción es lo que usa la extracción; el recuadro solo guía (2026-11-11, Moibe: «¿en realidad ayuda a la formación de lo que será mi esquema?»). -->
-			{#if sugerencia?.fase === 'lista'}
+			<!-- Lo que se leyó en su recuadro (2026-11-12): qué cambió, o la descripción sugerida si la descripción es de la persona. -->
+			{#if editando !== null && completando[editando]}
+				<p class="flex items-center gap-2 text-xs text-muted-foreground" data-testid="leyendo-recuadro" aria-live="polite">
+					<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo su recuadro…
+				</p>
+			{:else if ultimaLectura && ultimaLectura.indice === editando && ultimaLectura.error}
+				<p class="text-xs text-destructive" role="alert" data-testid="leer-recuadro-error">{ultimaLectura.error}</p>
+			{:else if ultimaLectura && ultimaLectura.indice === editando && !(sugerencia && ultimaLectura.cambios.length === 0)}
+				<!-- Con una sugerencia a la vista y nada más cambiado, la tarjeta ya lo dice todo (y «no cambió nada» la contradecía). -->
+				<p class="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="leido-recuadro" aria-live="polite">
+					<ScanText class="mt-px size-3.5 shrink-0 text-primary dark:text-blue-300" />
+					<span>
+						{ultimaLectura.cambios.length > 0 ? `Con su recuadro se actualizó ${lista(ultimaLectura.cambios)}.` : 'Su recuadro no cambió nada.'}
+						{#if ultimaLectura.valor}
+							<span class="break-words" data-testid="leido-recuadro-valor">En el recuadro se lee: «{ultimaLectura.valor}».</span>
+						{/if}
+					</span>
+				</p>
+			{/if}
+			{#if sugerencia}
 				<div class="flex flex-col gap-2 rounded-md border border-primary/25 bg-primary/5 p-3" data-testid="sugerencia-descripcion" aria-live="polite">
 					<p class="flex items-center gap-1.5 text-xs font-medium text-primary dark:text-blue-300">
 						<Sparkles class="size-3.5" /> Descripción sugerida con su recuadro
 					</p>
 					<p class="text-sm text-foreground" data-testid="sugerencia-descripcion-texto">{sugerencia.descripcion}</p>
 					{#if sugerencia.valor}
-						<p class="line-clamp-2 text-xs break-all text-muted-foreground" data-testid="sugerencia-descripcion-valor">
+						<p class="line-clamp-2 text-xs break-words text-muted-foreground" data-testid="sugerencia-descripcion-valor">
 							En el recuadro se lee: «{sugerencia.valor}»
 						</p>
 					{/if}
+					<p class="text-xs text-muted-foreground">La descripción de este campo la escribiste tú, así que no se cambió sola.</p>
 					<div class="flex justify-end gap-2">
 						<Button type="button" variant="ghost" size="sm" data-testid="sugerencia-descripcion-descartar" onclick={() => (sugerencia = null)}>Descartar</Button>
 						<Button type="button" variant="outline" size="sm" data-testid="sugerencia-descripcion-usar" onclick={usarSugerencia}>Usar esta descripción</Button>
 					</div>
 				</div>
-			{:else if sugerencia?.fase === 'pensando'}
-				<p class="flex items-center gap-2 text-xs text-muted-foreground" data-testid="sugerencia-descripcion-pensando" aria-live="polite">
-					<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo su recuadro para sugerir una descripción…
-				</p>
-			{:else}
-				<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={!marcaEditando}
-						data-testid="sugerir-descripcion"
-						onclick={() => void sugerirDescripcion()}
-					>
-						<Sparkles class="size-3.5" /> Sugerir descripción con su recuadro
-					</Button>
-					{#if sugerencia?.fase === 'error'}
-						<span class="text-xs text-destructive" role="alert" data-testid="sugerencia-descripcion-error">{sugerencia.mensaje}</span>
-					{:else if !marcaEditando}
-						<span class="text-xs text-muted-foreground">Primero marca su recuadro en el documento.</span>
-					{/if}
-				</div>
 			{/if}
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					disabled={!conRecuadro || (editando !== null && completando[editando])}
+					data-testid="volver-a-leer-recuadro"
+					onclick={volverALeer}
+				>
+					<ScanText class="size-3.5" /> Volver a leer su recuadro
+				</Button>
+				{#if !conRecuadro}
+					<span class="text-xs text-muted-foreground">Primero marca su recuadro en el documento.</span>
+				{/if}
+			</div>
 			<p class="text-xs text-muted-foreground">
-				La extracción usa el nombre y la descripción; el recuadro solo sirve de guía. Al moverlo o dibujarlo, se sugiere una descripción con lo que hay dentro.
+				Al mover o dibujar su recuadro, Biblioratum vuelve a escribir su descripción, su tipo y su estructura con lo que hay dentro. Lo que escribas tú se
+				respeta.
 			</p>
 		{/if}
 		{#if fError}
@@ -671,8 +1057,11 @@
 		<DialogPrimitive.Content
 			data-testid="modal-generar-campos"
 			onEscapeKeydown={(e) => {
-				// Con un campo abierto, Escape cierra ese formulario y no el modal entero (se perdería la propuesta).
-				if (formulario) {
+				// Dibujando un campo, o con un campo abierto, Escape deja de dibujar o cierra ese formulario, y no el modal entero (se perdería la propuesta).
+				if (dibujandoNuevo) {
+					e.preventDefault();
+					cancelarDibujo();
+				} else if (formulario) {
 					e.preventDefault();
 					cerrarFormulario();
 				}
@@ -805,6 +1194,10 @@
 									}}
 									onCaja={cambiarCaja}
 									onQuitar={quitarCaja}
+									dibujarNuevo={dibujandoNuevo}
+									nuevo={dibujo && formulario?.modo === 'nuevo' ? { ...dibujo, etiqueta: fNombre.trim() || 'Campo nuevo' } : null}
+									onNuevo={alDibujarNuevo}
+									onCancelarDibujo={cancelarDibujo}
 								/>
 							</div>
 						{/if}
@@ -840,6 +1233,19 @@
 									Solo se leyeron los primeros {MAX_DOCUMENTOS} archivos; {sobrantes === 1 ? 'el otro se dejó fuera' : `los otros ${sobrantes} se dejaron fuera`}.
 								</p>
 							{/if}
+							<!-- La primera lectura de los recuadros (2026-11-12): mientras dura, y si falló (la propuesta sirve igual, como la dio el documento). -->
+							{#if completandoTodos}
+								<p class="-mt-2 flex items-center gap-2 text-xs text-muted-foreground" data-testid="completando-campos" aria-live="polite">
+									<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo los recuadros para completar cada campo…
+								</p>
+							{:else if errorCompletado}
+								<div class="-mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-testid="completar-error" role="status">
+									<span class="text-destructive">{errorCompletado} Los campos se quedan como los propuso el documento.</span>
+									<Button variant="link" size="sm" class="h-auto p-0 text-xs" data-testid="completar-reintentar" onclick={() => void completarTodos(vigente)}>
+										Reintentar
+									</Button>
+								</div>
+							{/if}
 
 							<!-- Cada renglón: solo el campo y su tipo (2026-11-10, Moibe: «hay demasiado texto… evita la descripción y en cuántos documentos apareció»). La descripción se sigue agregando al campo. -->
 							<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
@@ -870,12 +1276,27 @@
 										<label for="propuesto-{i}" class="min-w-0 flex-1 cursor-pointer">
 											<span class="flex flex-wrap items-center gap-2">
 												<span class="text-sm font-medium text-foreground" data-testid="campo-propuesto-nombre">{campo.nombre}</span>
-												<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{etiquetaTipo(campo.tipoDato)}</span>
+												<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="campo-propuesto-tipo">{etiquetaTipo(campo.tipoDato)}</span>
 												{#if campo.cardinalidad === 'multiple'}
 													<span class="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300">Se repite</span>
 												{/if}
 												{#if campo.manual}
 													<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="campo-propuesto-manual">Agregado por ti</span>
+												{/if}
+												{#if desdeRecuadro(i)}
+													<!-- Lo que el extractor leerá de este campo salió de su recuadro (2026-11-12). -->
+													<span
+														class="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300"
+														data-testid="campo-propuesto-recuadro"
+														title="Biblioratum escribió su descripción, su tipo y su estructura con lo que hay dentro de su recuadro. Edítalo para cambiarlos."
+													>
+														<ScanText class="size-3" /> Desde su recuadro
+													</span>
+												{/if}
+												{#if completando[i] && !completandoTodos}
+													<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-leyendo">
+														<LoaderCircle class="size-3 animate-spin text-primary" /> Leyendo su recuadro…
+													</span>
 												{/if}
 												{#if (buscando[i] ?? 0) > 0}
 													<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-buscando">
@@ -917,9 +1338,24 @@
 							{#if formulario?.modo === 'nuevo'}
 								<div class="-mt-2">{@render formularioCampo(false)}</div>
 							{:else}
-								<Button variant="outline" size="sm" class="-mt-2 self-start" data-testid="agregar-otro-campo" onclick={abrirNuevo}>
-									<Plus class="size-4" /> Agregar otro campo
-								</Button>
+								<div class="-mt-2 flex flex-wrap items-center gap-2">
+									<Button variant="outline" size="sm" data-testid="agregar-otro-campo" onclick={abrirNuevo}>
+										<Plus class="size-4" /> Agregar otro campo
+									</Button>
+									{#if documentosVista.some((a) => sePuedeMarcar(a))}
+										<!-- «Dibujar un campo» (2026-11-12): un recuadro sobre un dato que no está en la lista propone el campo. -->
+										<Button
+											variant={dibujandoNuevo ? 'secondary' : 'outline'}
+											size="sm"
+											aria-pressed={dibujandoNuevo}
+											data-testid="dibujar-campo"
+											onclick={() => (dibujandoNuevo ? cancelarDibujo() : empezarDibujo())}
+										>
+											<SquareDashedMousePointer class="size-4" />
+											{dibujandoNuevo ? 'Dibujando en el documento…' : 'Dibujar un campo'}
+										</Button>
+									{/if}
+								</div>
 							{/if}
 						</div>
 					</div>

@@ -532,6 +532,11 @@ export type CampoPropuesto = {
 	opcionalSugerido?: boolean;
 	/** Lo escribió la persona en «Agregar otro campo» (2026-11-11), no lo propuso el documento: su cardinalidad no es «sugerida por el documento». */
 	manual?: boolean;
+	/**
+	 * Un ejemplo INVENTADO con la forma del dato (2026-11-12): lo escribe Biblioratum mirando el recuadro del campo sobre el documento de ejemplo, o la
+	 * persona. Es el «Valor de estructura» del paso 2: viaja dentro de la descripción del esquema (`esquema._descripcion_de` en nexus_back).
+	 */
+	valorEstructura?: string;
 };
 
 /**
@@ -559,6 +564,8 @@ export function agregarCamposPropuestos(propuestos: CampoPropuesto[]): { agregad
 			nombre,
 			tipoDato: tipo,
 			descripcion: p.descripcion.trim() || nombre,
+			// Un grupo no tiene «valor de estructura» (es un ejemplo de UN valor; lo suyo son los campos de cada fila).
+			valorEstructura: tipo === 'grupo' ? '' : (p.valorEstructura ?? '').trim(),
 			obligatorio: p.opcionalSugerido !== true,
 			cardinalidad: p.cardinalidad === 'multiple' ? 'multiple' : 'unico',
 			cardinalidadSugerida: p.manual !== true,
