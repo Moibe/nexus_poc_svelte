@@ -5,7 +5,7 @@
 	 * (`/api/procesadores/generar-campos`), y aquí se revisan: cada propuesta trae casilla y solo se agregan las elegidas. Lo
 	 * agregado cae en «Campos agregados» y se edita como cualquier otro campo.
 	 *
-	 * **Hasta 3 documentos de ejemplo (2026-11-07, Moibe: «sí, me gusta esa propuesta, hazla así»).** Con uno solo la propuesta de Google cambia de corrida a
+	 * **Hasta 3 documentos de ejemplo (2026-11-07, Moibe: «sí, me gusta esa propuesta, hazla así»); desde el 2026-11-12, UNO solo (Moibe: «solo quiero agregar 1»; ver `MAX_DOCUMENTOS`).** Con uno solo la propuesta de Google cambia de corrida a
 	 * corrida y juzga todo desde ese ejemplo; con dos o tres se lee cada uno por separado (en paralelo) y se UNEN las propuestas (`unirPropuestas`): cada campo
 	 * dice en cuántos documentos salió; los que salieron en más de la mitad vienen marcados y los que salieron en pocos, sin marcar, y todo el que no salió en
 	 * todos se agrega como OPCIONAL (un documento válido que no lo trae no debe fallar). Si un documento no se puede leer, los demás siguen y se dice cuál falló.
@@ -64,8 +64,11 @@
 	import { TIPOS_DE_DATO, TIPOS_DE_SUBCAMPO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
 	const MAX_MB = 20;
-	/** Cuántos documentos de ejemplo se leen a la vez: con 3 ya se ve qué se repite, y cada lectura tarda hasta un minuto y cuenta como una llamada a Google. */
-	const MAX_DOCUMENTOS = 3;
+	/**
+	 * Cuántos documentos de ejemplo se leen. Fueron 3 (2026-11-07, para ver qué campos se repiten); desde el 2026-11-12 es UNO (Moibe: «no quiero
+	 * agregar hasta 3, solo quiero agregar 1»). La unión de propuestas (`unirPropuestas`) y las pestañas siguen sirviendo igual con uno.
+	 */
+	const MAX_DOCUMENTOS = 1;
 	const EXTENSIONES = ['pdf', 'jpg', 'jpeg', 'png', 'tif', 'tiff'];
 
 	let {
@@ -917,7 +920,7 @@
 				<p class="text-xs text-muted-foreground" data-testid="propuesta-recuadro" aria-live="polite">
 					Biblioratum lo propuso con lo que hay en tu recuadro; revísalo antes de agregarlo.
 					{#if propuesta.valor}
-						<span class="break-words" data-testid="propuesta-recuadro-valor">En el recuadro se lee: «{propuesta.valor}».</span>
+						<span class="wrap-break-word" data-testid="propuesta-recuadro-valor">En el recuadro se lee: «{propuesta.valor}».</span>
 					{/if}
 				</p>
 			{:else if propuesta?.fase === 'error'}
@@ -989,7 +992,7 @@
 					<span>
 						{ultimaLectura.cambios.length > 0 ? `Con su recuadro se actualizó ${lista(ultimaLectura.cambios)}.` : 'Su recuadro no cambió nada.'}
 						{#if ultimaLectura.valor}
-							<span class="break-words" data-testid="leido-recuadro-valor">En el recuadro se lee: «{ultimaLectura.valor}».</span>
+							<span class="wrap-break-word" data-testid="leido-recuadro-valor">En el recuadro se lee: «{ultimaLectura.valor}».</span>
 						{/if}
 					</span>
 				</p>
@@ -1001,7 +1004,7 @@
 					</p>
 					<p class="text-sm text-foreground" data-testid="sugerencia-descripcion-texto">{sugerencia.descripcion}</p>
 					{#if sugerencia.valor}
-						<p class="line-clamp-2 text-xs break-words text-muted-foreground" data-testid="sugerencia-descripcion-valor">
+						<p class="line-clamp-2 text-xs wrap-break-word text-muted-foreground" data-testid="sugerencia-descripcion-valor">
 							En el recuadro se lee: «{sugerencia.valor}»
 						</p>
 					{/if}
@@ -1085,8 +1088,8 @@
 							Generar a partir de un documento
 						</DialogPrimitive.Title>
 						<DialogPrimitive.Description class="mt-1 text-sm text-muted-foreground">
-							Sube hasta {MAX_DOCUMENTOS} documentos de ejemplo y Biblioratum propondrá los campos a extraer. Con dos o tres se ve qué
-							campos se repiten en todos y cuáles no. Tú eliges cuáles agregar; los que después no te sirvan, los puedes quitar.
+							Sube un documento de ejemplo y Biblioratum propondrá los campos a extraer. Tú eliges cuáles agregar; los que después no
+							te sirvan, los puedes quitar.
 						</DialogPrimitive.Description>
 					</div>
 				</div>
@@ -1095,13 +1098,20 @@
 					<!-- Los documentos del paso 1 (2026-11-07): ya se leyeron para sugerir la descripción; aquí se pueden reutilizar en vez de pedirlos otra vez. -->
 					{#if ejemplosPrevios.length > 0}
 						<div class="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3" data-testid="generar-campos-previos">
-							<p class="min-w-0 flex-1 text-sm text-foreground">
-								Ya elegiste {ejemplosPrevios.length === 1 ? 'un documento' : `${ejemplosPrevios.length} documentos`} en el paso 1:
-								<span class="text-muted-foreground">{lista(ejemplosPrevios.map((a) => `«${a.name}»`))}</span>.
-							</p>
-							<Button size="sm" data-testid="generar-campos-usar-previos" onclick={() => void generar([...ejemplosPrevios])}>
-								Usar {ejemplosPrevios.length === 1 ? 'este documento' : 'estos documentos'}
-							</Button>
+							{#if ejemplosPrevios.length === 1}
+								<p class="min-w-0 flex-1 text-sm text-foreground">
+									Ya elegiste un documento en el paso 1: <span class="text-muted-foreground">«{ejemplosPrevios[0].name}»</span>.
+								</p>
+								<Button size="sm" data-testid="generar-campos-usar-previos" onclick={() => void generar([ejemplosPrevios[0]])}>Usar este documento</Button>
+							{:else}
+								<!-- Con un solo documento por vez (2026-11-12), de los del paso 1 se elige cuál. -->
+								<p class="w-full text-sm text-foreground">Ya elegiste {ejemplosPrevios.length} documentos en el paso 1. Usa uno:</p>
+								{#each ejemplosPrevios as previo, i (i)}
+									<Button size="sm" variant="outline" class="max-w-full" data-testid="generar-campos-usar-previos" onclick={() => void generar([previo])}>
+										<span class="truncate">Usar «{previo.name}»</span>
+									</Button>
+								{/each}
+							{/if}
 						</div>
 					{/if}
 					<button
@@ -1124,9 +1134,9 @@
 						</span>
 						<div class="flex flex-col items-center gap-0.5 text-center">
 							<p class="text-sm font-medium text-foreground">
-								Arrastra y suelta tus documentos de ejemplo aquí o selecciona hasta {MAX_DOCUMENTOS} archivos
+								Arrastra y suelta tu documento de ejemplo aquí o selecciónalo
 							</p>
-							<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max {MAX_MB} MB cada uno</p>
+							<p class="text-xs text-muted-foreground">PDF, JPG, JPEG, PNG, TIFF | Max {MAX_MB} MB</p>
 						</div>
 						<span class="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-secondary-foreground">
 							Buscar archivo
@@ -1136,7 +1146,6 @@
 						bind:this={fileInput}
 						data-testid="generar-campos-archivo"
 						type="file"
-						multiple
 						class="hidden"
 						accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
 						onchange={alElegir}
@@ -1230,7 +1239,7 @@
 							{/if}
 							{#if sobrantes > 0}
 								<p class="-mt-2 text-xs text-muted-foreground" data-testid="generar-campos-sobrantes">
-									Solo se leyeron los primeros {MAX_DOCUMENTOS} archivos; {sobrantes === 1 ? 'el otro se dejó fuera' : `los otros ${sobrantes} se dejaron fuera`}.
+									Se lee un documento a la vez: se usó «{nombresArchivos[0]}» y {sobrantes === 1 ? 'el otro se dejó fuera' : `los otros ${sobrantes} se dejaron fuera`}.
 								</p>
 							{/if}
 							<!-- La primera lectura de los recuadros (2026-11-12): mientras dura, y si falló (la propuesta sirve igual, como la dio el documento). -->
