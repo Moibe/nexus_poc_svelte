@@ -21,6 +21,17 @@
 	 * trajo (nombre, tipo y una descripción opcional). Entra marcado y se busca SOLO ese campo en cada documento (una llamada corta a ubicar): si aparece,
 	 * se marca como los demás; si no, el resumen lo cuenta como no encontrado, lo que también avisa que el nombre o la descripción no son claros.
 	 *
+	 * **Editar un campo de la lista, datos y recuadro (2026-11-11, Moibe: «quiero poder también editar los campos… la herramienta de dibujo me tiene
+	 * que permitir editar campos existentes»; eligió «sus datos y su recuadro»).** El lápiz de cada renglón, o un clic en su recuadro sobre el
+	 * documento, abre el mismo formulario ya lleno en su renglón. Si cambia el nombre o la descripción, se vuelve a buscar (y el recuadro se mueve
+	 * si aparece). Mientras está abierto, su recuadro se mueve, cambia de tamaño, se dibuja de nuevo o se quita (`DocumentoConCampos`); eso solo
+	 * ayuda a ver qué es el campo: no se guarda ni cambia lo que extraerá el procesador. Lo puesto a mano no lo pisa ninguna búsqueda.
+	 *
+	 * **El recuadro sugiere la descripción (2026-11-11, Moibe preguntó si editar los recuadros ayuda a formar el esquema —no: lo que lee el extractor es
+	 * la descripción— y eligió que el recuadro la reescriba).** Al ajustar a mano el recuadro del campo que se edita (o con «Sugerir descripción con su
+	 * recuadro»), Gemini mira esa zona (`/api/procesadores/describir-campo`) y propone una descripción que sirva para cualquier documento del tipo, sin
+	 * datos de este. Se enseña junto con lo que se lee dentro del recuadro; la persona la usa o la descarta. Nada se aplica solo.
+	 *
 	 * Es un `Dialog` normal (como lo era `GenerarPrompts.svelte`, quitado el 2026-11-06 con «Calibrar») y no `ConfirmarAccion`: no se destruye nada, así que Escape y el clic
 	 * fuera cierran. Si se cierra mientras Google está leyendo, la respuesta que llegue después se descarta.
 	 */
@@ -37,9 +48,10 @@
 	import { llaveDeCampo, unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
 	import { imagenDerecha, leerUbicaciones, sePuedeMarcar, type Ubicacion } from '$lib/documentos/ubicaciones';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import DocumentoConCampos, { type EstadoUbicacion } from './DocumentoConCampos.svelte';
+	import DocumentoConCampos, { type CambioDeCaja, type EstadoUbicacion } from './DocumentoConCampos.svelte';
 	import { TIPOS_DE_DATO, TIPOS_DE_SUBCAMPO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
 
 	const MAX_MB = 20;
@@ -90,48 +102,174 @@
 	let resaltado = $state<string | null>(null);
 	const visibles = $derived(propuestos.filter((_, i) => elegidos[i] && disponibles[i]).map((c) => c.nombre));
 
-	// «Agregar otro campo»: el formulario, y lo que se encontró de los campos agregados así (por documento), que se suma a lo de la primera búsqueda.
-	let nuevoAbierto = $state(false);
-	let nuevoNombre = $state('');
-	let nuevoTipo = $state('texto');
-	let nuevoDescripcion = $state('');
-	let errorNuevo = $state('');
-	let nuevoInput = $state<HTMLInputElement | null>(null);
-	let extras = $state<Ubicacion[][]>([]);
-	/** Cuántas búsquedas siguen en curso por campo agregado, y cuáles no se pudieron hacer. */
-	let buscando = $state<Record<string, number>>({});
-	let sinBuscar = $state<string[]>([]);
-	const estadosVista = $derived(
-		estadosUbicacion.map((e, i): EstadoUbicacion => (e.fase === 'listo' ? { fase: 'listo', ubicaciones: [...e.ubicaciones, ...(extras[i] ?? [])] } : e))
+	/**
+	 * Los recuadros: por documento, el de cada campo según su LUGAR en `propuestos` (los campos nunca se quitan de la lista, así que el lugar no
+	 * cambia aunque se edite el nombre). Llegan de la búsqueda (`ubicar`, `buscarCampo`) o de la persona (`cambiarCaja`).
+	 */
+	type Marca = { pagina: number; caja: Ubicacion['caja']; valor: string };
+	let marcas = $state<Record<number, Marca>[]>([]);
+	/** El turno del último cambio de cada recuadro («documento:campo»): una búsqueda que llega tarde no pisa algo más nuevo, como un recuadro dibujado. */
+	let turnosMarca: Record<string, number> = {};
+	let contadorMarca = 0;
+	/** Los recuadros que puso la persona: si después edita el nombre o la descripción, ahí no se vuelve a buscar. */
+	let aMano: Record<string, boolean> = {};
+	const llaveMarca = (documento: number, campo: number) => `${documento}:${campo}`;
+	function nuevoTurno(documento: number, campo: number) {
+		contadorMarca += 1;
+		turnosMarca[llaveMarca(documento, campo)] = contadorMarca;
+		return contadorMarca;
+	}
+	const ubicacionesVista = $derived(
+		marcas.map((m) => Object.entries(m).flatMap(([k, v]) => (propuestos[+k] ? [{ campo: propuestos[+k].nombre, ...v }] : [])))
 	);
-	const etiquetaSubtipo = (valor: string) => TIPOS_DE_SUBCAMPO.find((t) => t.value === valor)?.label ?? 'Texto';
+	/** Cuántas búsquedas siguen en curso por campo (su lugar en la lista), y cuáles no se pudieron hacer. */
+	let buscando = $state<Record<number, number>>({});
+	let sinBuscar = $state<number[]>([]);
 
-	$effect(() => {
-		if (nuevoAbierto) nuevoInput?.focus();
+	// El formulario de un campo: «Agregar otro campo» (al final) o «Editar» uno de la lista (en su renglón). Solo uno abierto a la vez.
+	let formulario = $state<{ modo: 'nuevo' } | { modo: 'editar'; indice: number } | null>(null);
+	let fNombre = $state('');
+	let fTipo = $state('texto');
+	let fDescripcion = $state('');
+	let fError = $state('');
+	let fInput = $state<HTMLInputElement | null>(null);
+	const editando = $derived(formulario?.modo === 'editar' ? formulario.indice : null);
+	const nombreEditando = $derived(editando !== null ? (propuestos[editando]?.nombre ?? null) : null);
+	/** Los tipos que se pueden elegir: los sencillos, y el que ya trae el campo si es lista o grupo (para poder dejarlo como está). */
+	const opcionesTipo = $derived.by(() => {
+		const actual = editando !== null ? propuestos[editando]?.tipoDato : undefined;
+		const extra = TIPOS_DE_DATO.find((t) => t.value === actual && !TIPOS_DE_SUBCAMPO.some((s) => s.value === t.value));
+		return extra ? [...TIPOS_DE_SUBCAMPO, extra] : [...TIPOS_DE_SUBCAMPO];
 	});
 
-	function cerrarNuevo() {
-		nuevoAbierto = false;
-		nuevoNombre = '';
-		nuevoTipo = 'texto';
-		nuevoDescripcion = '';
-		errorNuevo = '';
+	/** Si ya se cambió algo del nombre, tipo o descripción del campo que se edita (los cambios al recuadro se aplican al momento). */
+	const editoDatos = $derived.by(() => {
+		const c = editando !== null ? propuestos[editando] : undefined;
+		return !!c && (fNombre !== c.nombre || fTipo !== c.tipoDato || fDescripcion !== c.descripcion);
+	});
+
+	$effect(() => {
+		if (formulario) fInput?.focus();
+	});
+
+	// ── Sugerir la descripción con el recuadro (2026-11-11, Moibe: «sí, excelente, por favor la 1») ──
+	// El recuadro no llega al esquema; la descripción sí. Al ajustar a mano el recuadro del campo que se edita (o con el botón), Gemini mira esa zona y
+	// PROPONE una descripción que sirva para cualquier documento del tipo; la persona la usa o no. Se pide sobre el documento que se está viendo.
+	/** Cuánto se espera tras el último ajuste antes de pedir la sugerencia: arrastrar o usar las flechas son muchos ajustes seguidos. */
+	const ESPERA_SUGERENCIA_MS = 1200;
+	let documentoVisible = $state(0);
+	type Sugerencia = { fase: 'pensando' } | { fase: 'lista'; descripcion: string; valor: string } | { fase: 'error'; mensaje: string };
+	let sugerencia = $state<Sugerencia | null>(null);
+	let turnoSugerencia = 0;
+	let esperaSugerencia: ReturnType<typeof setTimeout> | null = null;
+	const marcaEditando = $derived(editando !== null ? marcas[documentoVisible]?.[editando] : undefined);
+
+	function olvidarSugerencia() {
+		turnoSugerencia += 1;
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = null;
+		sugerencia = null;
+	}
+
+	function programarSugerencia() {
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = setTimeout(() => {
+			esperaSugerencia = null;
+			void sugerirDescripcion();
+		}, ESPERA_SUGERENCIA_MS);
+	}
+
+	/** Pide la descripción para el campo que se edita, con su recuadro en el documento que se está viendo. Nunca lanza. */
+	async function sugerirDescripcion() {
+		const indice = editando;
+		const archivo = documentosVista[documentoVisible];
+		const marca = marcaEditando;
+		if (indice === null || !archivo || !marca) return;
+		if (esperaSugerencia) clearTimeout(esperaSugerencia);
+		esperaSugerencia = null;
+		const mio = ++turnoSugerencia;
+		sugerencia = { fase: 'pensando' };
+		const cuerpo = new FormData();
+		cuerpo.append('archivo', archivo, archivo.name);
+		// Lo que hay escrito en el formulario (aún sin guardar) es el mejor contexto: es lo que la persona quiere que sea el campo.
+		cuerpo.append('campo', JSON.stringify({ nombre: fNombre.trim() || propuestos[indice].nombre, tipoDato: fTipo, descripcion: fDescripcion.trim() }));
+		cuerpo.append('pagina', String(marca.pagina));
+		cuerpo.append('caja', JSON.stringify(marca.caja));
+		if (nombreTipo.trim()) cuerpo.append('nombreTipo', nombreTipo.trim());
+		if (descripcionTipo.trim()) cuerpo.append('descripcionTipo', descripcionTipo.trim());
+		let nueva: Sugerencia;
+		try {
+			const r = await fetch('/api/procesadores/describir-campo', { method: 'POST', body: cuerpo });
+			const datos = await r.json().catch(() => null);
+			nueva =
+				r.ok && typeof datos?.descripcion === 'string' && datos.descripcion.trim()
+					? { fase: 'lista', descripcion: datos.descripcion.trim(), valor: typeof datos.valor === 'string' ? datos.valor : '' }
+					: { fase: 'error', mensaje: r.status === 429 ? 'Hay muchas solicitudes a la vez. Intenta de nuevo en un momento.' : 'No se pudo sugerir una descripción con este recuadro.' };
+		} catch {
+			nueva = { fase: 'error', mensaje: 'No se pudo contactar al servidor para sugerir la descripción.' };
+		}
+		if (mio === turnoSugerencia) sugerencia = nueva;
+	}
+
+	function usarSugerencia() {
+		if (sugerencia?.fase !== 'lista') return;
+		fDescripcion = sugerencia.descripcion.slice(0, 200);
+		sugerencia = null;
+	}
+
+	function cerrarFormulario() {
+		olvidarSugerencia();
+		formulario = null;
+		fNombre = '';
+		fTipo = 'texto';
+		fDescripcion = '';
+		fError = '';
+	}
+
+	function abrirNuevo() {
+		cerrarFormulario();
+		formulario = { modo: 'nuevo' };
+	}
+
+	function abrirEdicion(indice: number) {
+		const campo = propuestos[indice];
+		if (!campo) return;
+		olvidarSugerencia();
+		formulario = { modo: 'editar', indice };
+		fNombre = campo.nombre;
+		fTipo = campo.tipoDato;
+		fDescripcion = campo.descripcion;
+		fError = '';
+	}
+
+	/** El nombre escrito, o `null` y el error dicho si está vacío o choca con otro (sin contar el campo que se edita). */
+	function nombreValido(propio: number | null): string | null {
+		const nombre = fNombre.trim().replace(/\s+/g, ' ');
+		if (!nombre) {
+			fError = 'Escribe el nombre del campo.';
+			return null;
+		}
+		const mismo = propio !== null && llaveDeCampo(propuestos[propio].nombre) === llaveDeCampo(nombre);
+		if (!mismo && (yaExiste(nombre) || propuestos.some((p, k) => k !== propio && llaveDeCampo(p.nombre) === llaveDeCampo(nombre)))) {
+			fError = 'Ya hay un campo con ese nombre.';
+			return null;
+		}
+		return nombre;
+	}
+
+	function guardarFormulario() {
+		if (!formulario) return;
+		if (formulario.modo === 'nuevo') agregarOtro();
+		else guardarEdicion(formulario.indice);
 	}
 
 	function agregarOtro() {
-		const nombre = nuevoNombre.trim().replace(/\s+/g, ' ');
-		if (!nombre) {
-			errorNuevo = 'Escribe el nombre del campo.';
-			return;
-		}
-		if (yaExiste(nombre) || propuestos.some((p) => llaveDeCampo(p.nombre) === llaveDeCampo(nombre))) {
-			errorNuevo = 'Ya hay un campo con ese nombre.';
-			return;
-		}
+		const nombre = nombreValido(null);
+		if (!nombre) return;
 		const campo: CampoUnido = {
 			nombre,
-			tipoDato: nuevoTipo,
-			descripcion: nuevoDescripcion.trim(),
+			tipoDato: fTipo,
+			descripcion: fDescripcion.trim(),
 			obligatorio: true,
 			cardinalidad: 'unico',
 			valoresLista: [],
@@ -143,30 +281,96 @@
 		};
 		propuestos = [...propuestos, campo];
 		elegidos = [...elegidos, true];
-		cerrarNuevo();
-		const pedido = JSON.stringify([{ nombre: campo.nombre, descripcion: campo.descripcion }]);
-		documentosVista.forEach((a, i) => {
-			if (sePuedeMarcar(a)) void buscarAgregado(a, i, campo.nombre, pedido, vigente);
+		cerrarFormulario();
+		buscarEnTodos(propuestos.length - 1);
+	}
+
+	/**
+	 * Guarda lo editado de un campo de la lista. Si cambió el nombre o la descripción, se vuelve a buscar en cada documento (menos donde la persona
+	 * puso el recuadro a mano): si aparece, su recuadro se mueve ahí; si no, se queda el que tenía.
+	 */
+	function guardarEdicion(indice: number) {
+		const campo = propuestos[indice];
+		const nombre = nombreValido(indice);
+		if (!campo || !nombre) return;
+		const descripcion = fDescripcion.trim();
+		const buscarOtraVez = nombre !== campo.nombre || descripcion !== campo.descripcion;
+		const noEstabaDisponible = yaExiste(campo.nombre);
+		propuestos[indice] = {
+			...campo,
+			nombre,
+			tipoDato: fTipo,
+			descripcion,
+			subcampos: fTipo === 'grupo' ? campo.subcampos : [],
+			valoresLista: fTipo === 'lista' ? campo.valoresLista : []
+		};
+		// Uno que chocaba con un campo que el tipo ya tiene y ahora tiene otro nombre: ya se puede agregar, y se marca.
+		if (noEstabaDisponible && !yaExiste(nombre)) elegidos[indice] = true;
+		resaltado = null;
+		cerrarFormulario();
+		if (buscarOtraVez) buscarEnTodos(indice, true);
+	}
+
+	function buscarEnTodos(indice: number, respetarAMano = false) {
+		documentosVista.forEach((a, d) => {
+			if (sePuedeMarcar(a) && !(respetarAMano && aMano[llaveMarca(d, indice)])) void buscarCampo(d, indice, vigente);
 		});
 	}
 
-	/** Busca UN campo agregado a mano en un documento y suma su ubicación a las demás. Nunca lanza. */
-	async function buscarAgregado(archivo: File, i: number, nombre: string, pedido: string, turno: number) {
-		buscando[nombre] = (buscando[nombre] ?? 0) + 1;
+	/** Busca UN campo en un documento y pone (o mueve) su recuadro. Si no aparece, se queda el que tenía. Nunca lanza. */
+	async function buscarCampo(documento: number, indice: number, turno: number) {
+		const archivo = documentosVista[documento];
+		const campo = propuestos[indice];
+		if (!archivo || !campo) return;
+		const mio = nuevoTurno(documento, indice);
+		buscando[indice] = (buscando[indice] ?? 0) + 1;
+		sinBuscar = sinBuscar.filter((k) => k !== indice);
 		const cuerpo = new FormData();
 		cuerpo.append('archivo', archivo, archivo.name);
-		cuerpo.append('campos', pedido);
+		cuerpo.append('campos', JSON.stringify([{ nombre: campo.nombre, descripcion: campo.descripcion }]));
 		try {
 			const r = await fetch('/api/procesadores/ubicar-campos', { method: 'POST', body: cuerpo });
 			const datos = await r.json().catch(() => null);
 			if (turno !== vigente) return;
-			if (r.ok) extras[i] = [...(extras[i] ?? []), ...leerUbicaciones(datos)];
-			else if (!sinBuscar.includes(nombre)) sinBuscar = [...sinBuscar, nombre];
+			if (!r.ok) {
+				if (!sinBuscar.includes(indice)) sinBuscar = [...sinBuscar, indice];
+				return;
+			}
+			const u = leerUbicaciones(datos).find((x) => x.campo === campo.nombre);
+			if (u && turnosMarca[llaveMarca(documento, indice)] === mio) {
+				marcas[documento][indice] = { pagina: u.pagina, caja: u.caja, valor: u.valor };
+				aMano[llaveMarca(documento, indice)] = false;
+			}
 		} catch {
-			if (turno === vigente && !sinBuscar.includes(nombre)) sinBuscar = [...sinBuscar, nombre];
+			if (turno === vigente && !sinBuscar.includes(indice)) sinBuscar = [...sinBuscar, indice];
 		} finally {
-			if (turno === vigente) buscando[nombre] = Math.max(0, (buscando[nombre] ?? 1) - 1);
+			if (turno === vigente) buscando[indice] = Math.max(0, (buscando[indice] ?? 1) - 1);
 		}
+	}
+
+	/** La persona movió, cambió de tamaño o dibujó un recuadro: manda sobre cualquier búsqueda que siga en camino. */
+	function cambiarCaja(cambio: CambioDeCaja) {
+		const indice = propuestos.findIndex((p) => p.nombre === cambio.campo);
+		if (indice < 0 || !marcas[cambio.documento]) return;
+		nuevoTurno(cambio.documento, indice);
+		const antes = marcas[cambio.documento][indice];
+		marcas[cambio.documento][indice] = { pagina: cambio.pagina, caja: cambio.caja, valor: cambio.modo === 'ajustar' ? (antes?.valor ?? '') : '' };
+		aMano[llaveMarca(cambio.documento, indice)] = true;
+		// El recuadro del campo que se edita cambió a mano: lo que hay dentro puede describir mejor al campo.
+		if (indice === editando) {
+			turnoSugerencia += 1;
+			sugerencia = { fase: 'pensando' };
+			programarSugerencia();
+		}
+	}
+
+	function quitarCaja(documento: number, nombre: string) {
+		const indice = propuestos.findIndex((p) => p.nombre === nombre);
+		if (indice < 0 || !marcas[documento]) return;
+		nuevoTurno(documento, indice);
+		delete marcas[documento][indice];
+		aMano[llaveMarca(documento, indice)] = true;
+		if (indice === editando) olvidarSugerencia();
 	}
 	let arrastrando = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -201,10 +405,13 @@
 		propuestos = [];
 		elegidos = [];
 		documentosVista = [];
-		extras = [];
+		documentoVisible = 0;
+		marcas = [];
+		turnosMarca = {};
+		aMano = {};
 		buscando = {};
 		sinBuscar = [];
-		cerrarNuevo();
+		cerrarFormulario();
 		estadosUbicacion = [];
 		resaltado = null;
 	}
@@ -303,32 +510,43 @@
 		// El documento a un lado, y en cada uno se buscan los campos (en paralelo; no se espera: la lista ya sirve).
 		// Las fotos van ENDEREZADAS (`imagenDerecha`): lo que ve Gemini y lo que se pinta debajo de las marcas son los mismos píxeles.
 		estadosUbicacion = leidos.map((a) => (sePuedeMarcar(a) ? { fase: 'cargando' } : { fase: 'no-soportado' }));
+		marcas = leidos.map(() => ({}));
 		const derechas = await Promise.all(leidos.map((a) => imagenDerecha(a)));
 		if (turno !== vigente) return;
 		documentosVista = derechas;
-		const pedidos = JSON.stringify(propuestos.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion })));
 		derechas.forEach((a, i) => {
-			if (sePuedeMarcar(a)) void ubicar(a, i, pedidos, turno);
+			if (sePuedeMarcar(a)) void ubicar(a, i, turno);
 		});
 	}
 
-	/** Pregunta dónde está cada campo propuesto en UN documento. Nunca lanza: un fallo deja el documento sin marcas y lo dice. */
-	async function ubicar(archivo: File, i: number, campos: string, turno: number) {
+	/** Pregunta dónde está cada campo de la lista en UN documento. Nunca lanza: un fallo deja el documento sin marcas y lo dice. */
+	async function ubicar(archivo: File, documento: number, turno: number) {
+		// Lo que se pregunta es la lista de ESTE momento; cada respuesta vuelve a su campo por el nombre que se mandó.
+		const nombres = propuestos.map((c) => c.nombre);
+		const mios = nombres.map((_, k) => nuevoTurno(documento, k));
 		const cuerpo = new FormData();
 		cuerpo.append('archivo', archivo, archivo.name);
-		cuerpo.append('campos', campos);
+		cuerpo.append('campos', JSON.stringify(propuestos.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion }))));
 		let estado: EstadoUbicacion;
+		let encontradas: Ubicacion[] = [];
 		try {
 			const r = await fetch('/api/procesadores/ubicar-campos', { method: 'POST', body: cuerpo });
 			const datos = await r.json().catch(() => null);
 			// El detalle técnico no le sirve a nadie aquí: la propuesta ya está y lo único que falló es la guía visual.
+			if (r.ok) encontradas = leerUbicaciones(datos);
 			estado = r.ok
-				? { fase: 'listo', ubicaciones: leerUbicaciones(datos) }
+				? { fase: 'listo' }
 				: { fase: 'error', mensaje: r.status === 429 ? 'Hay muchas solicitudes a la vez y no se marcaron los campos.' : 'No se pudieron marcar los campos sobre este documento.' };
 		} catch {
 			estado = { fase: 'error', mensaje: 'No se pudo contactar al servidor para marcar los campos.' };
 		}
-		if (turno === vigente) estadosUbicacion[i] = estado;
+		if (turno !== vigente) return;
+		for (const u of encontradas) {
+			const k = nombres.indexOf(u.campo);
+			// Si mientras tanto la persona movió o dibujó ese recuadro (o se volvió a buscar), lo suyo manda.
+			if (k >= 0 && turnosMarca[llaveMarca(documento, k)] === mios[k]) marcas[documento][k] = { pagina: u.pagina, caja: u.caja, valor: u.valor };
+		}
+		estadosUbicacion[documento] = estado;
 	}
 
 	function alternarTodos(marcar: boolean) {
@@ -343,6 +561,105 @@
 	}
 </script>
 
+<!-- El formulario de un campo: «Otro campo» (al final de la lista) o «Editar campo» (en el renglón del campo). -->
+{#snippet formularioCampo(editar: boolean)}
+	{@const prefijo = editar ? 'editar-campo' : 'nuevo-campo'}
+	<form
+		class={['flex flex-col gap-3 rounded-lg p-4', editar ? 'border border-amber-300 bg-background dark:border-amber-800' : 'border border-dashed border-border']}
+		data-testid={prefijo}
+		onsubmit={(e) => {
+			e.preventDefault();
+			guardarFormulario();
+		}}
+	>
+		<p class="text-sm font-medium text-foreground">{editar ? 'Editar campo' : 'Otro campo'}</p>
+		<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+			<Input
+				bind:ref={fInput}
+				bind:value={fNombre}
+				placeholder="Nombre del campo"
+				aria-label="Nombre del campo"
+				aria-invalid={fError !== ''}
+				maxlength={80}
+				data-testid="{prefijo}-nombre"
+				oninput={() => (fError = '')}
+			/>
+			<Select.Root type="single" value={fTipo} onValueChange={(v) => (fTipo = v)}>
+				<Select.Trigger class="w-full" aria-label="Tipo de dato" data-testid="{prefijo}-tipo">{etiquetaTipo(fTipo)}</Select.Trigger>
+				<!-- z-70: por encima del modal (z-60); el menú vive en un portal. -->
+				<Select.Content class="z-70">
+					{#each editar ? opcionesTipo : TIPOS_DE_SUBCAMPO as tipo (tipo.value)}
+						<Select.Item value={tipo.value} label={tipo.label} />
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<Input
+			bind:value={fDescripcion}
+			placeholder="Descripción (opcional): ayuda a encontrarlo en el documento"
+			aria-label="Descripción del campo"
+			maxlength={200}
+			data-testid="{prefijo}-descripcion"
+		/>
+		{#if editar && documentosVista.some((a) => sePuedeMarcar(a))}
+			<!-- La descripción es lo que usa la extracción; el recuadro solo guía (2026-11-11, Moibe: «¿en realidad ayuda a la formación de lo que será mi esquema?»). -->
+			{#if sugerencia?.fase === 'lista'}
+				<div class="flex flex-col gap-2 rounded-md border border-primary/25 bg-primary/5 p-3" data-testid="sugerencia-descripcion" aria-live="polite">
+					<p class="flex items-center gap-1.5 text-xs font-medium text-primary dark:text-blue-300">
+						<Sparkles class="size-3.5" /> Descripción sugerida con su recuadro
+					</p>
+					<p class="text-sm text-foreground" data-testid="sugerencia-descripcion-texto">{sugerencia.descripcion}</p>
+					{#if sugerencia.valor}
+						<p class="line-clamp-2 text-xs break-all text-muted-foreground" data-testid="sugerencia-descripcion-valor">
+							En el recuadro se lee: «{sugerencia.valor}»
+						</p>
+					{/if}
+					<div class="flex justify-end gap-2">
+						<Button type="button" variant="ghost" size="sm" data-testid="sugerencia-descripcion-descartar" onclick={() => (sugerencia = null)}>Descartar</Button>
+						<Button type="button" variant="outline" size="sm" data-testid="sugerencia-descripcion-usar" onclick={usarSugerencia}>Usar esta descripción</Button>
+					</div>
+				</div>
+			{:else if sugerencia?.fase === 'pensando'}
+				<p class="flex items-center gap-2 text-xs text-muted-foreground" data-testid="sugerencia-descripcion-pensando" aria-live="polite">
+					<LoaderCircle class="size-3.5 animate-spin text-primary" /> Leyendo su recuadro para sugerir una descripción…
+				</p>
+			{:else}
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={!marcaEditando}
+						data-testid="sugerir-descripcion"
+						onclick={() => void sugerirDescripcion()}
+					>
+						<Sparkles class="size-3.5" /> Sugerir descripción con su recuadro
+					</Button>
+					{#if sugerencia?.fase === 'error'}
+						<span class="text-xs text-destructive" role="alert" data-testid="sugerencia-descripcion-error">{sugerencia.mensaje}</span>
+					{:else if !marcaEditando}
+						<span class="text-xs text-muted-foreground">Primero marca su recuadro en el documento.</span>
+					{/if}
+				</div>
+			{/if}
+			<p class="text-xs text-muted-foreground">
+				La extracción usa el nombre y la descripción; el recuadro solo sirve de guía. Al moverlo o dibujarlo, se sugiere una descripción con lo que hay dentro.
+			</p>
+		{/if}
+		{#if fError}
+			<p class="text-xs text-destructive" role="alert" data-testid="{prefijo}-error">{fError}</p>
+		{/if}
+		<div class="flex justify-end gap-3">
+			<Button type="button" variant="ghost" size="sm" data-testid="{prefijo}-cancelar" onclick={cerrarFormulario}>
+				{editar && !editoDatos ? 'Cerrar' : 'Cancelar'}
+			</Button>
+			<Button type="submit" size="sm" data-testid={editar ? 'editar-campo-guardar' : 'nuevo-campo-agregar'}>
+				{editar ? 'Guardar cambios' : 'Agregar a la lista'}
+			</Button>
+		</div>
+	</form>
+{/snippet}
+
 <DialogPrimitive.Root
 	open={abierto}
 	onOpenChange={(v) => {
@@ -353,6 +670,13 @@
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
 			data-testid="modal-generar-campos"
+			onEscapeKeydown={(e) => {
+				// Con un campo abierto, Escape cierra ese formulario y no el modal entero (se perdería la propuesta).
+				if (formulario) {
+					e.preventDefault();
+					cerrarFormulario();
+				}
+			}}
 			class="fixed top-1/2 left-1/2 z-60 flex max-h-[90vh] w-[92vw] {fase === 'propuesta' && documentosVista.length > 0 ? 'max-w-6xl' : 'max-w-2xl'} -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-background shadow-[0_10px_10px_-5px_rgba(0,0,0,0.04),0_20px_25px_-5px_rgba(0,0,0,0.1)]"
 		>
 			<div class="flex items-center gap-3 border-b border-border px-6 py-4">
@@ -467,11 +791,20 @@
 						{#if documentosVista.length > 0}
 							<div class="lg:sticky lg:top-0">
 								<DocumentoConCampos
+									bind:indice={documentoVisible}
 									documentos={documentosVista}
-									estados={estadosVista}
+									estados={estadosUbicacion}
+									ubicaciones={ubicacionesVista}
 									{visibles}
-									{resaltado}
+									resaltado={nombreEditando ?? resaltado}
+									editando={nombreEditando}
 									onResaltar={(campo) => (resaltado = campo)}
+									onElegir={(campo) => {
+										const k = propuestos.findIndex((p) => p.nombre === campo);
+										if (k >= 0) abrirEdicion(k);
+									}}
+									onCaja={cambiarCaja}
+									onQuitar={quitarCaja}
 								/>
 							</div>
 						{/if}
@@ -511,9 +844,14 @@
 							<!-- Cada renglón: solo el campo y su tipo (2026-11-10, Moibe: «hay demasiado texto… evita la descripción y en cuántos documentos apareció»). La descripción se sigue agregando al campo. -->
 							<ul class="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="generar-campos-lista">
 								{#each propuestos as campo, i (i)}
+									{#if editando === i}
+										<li class="bg-amber-50/60 p-3 dark:bg-amber-950/30" data-testid="campo-propuesto" data-editando="">
+											{@render formularioCampo(true)}
+										</li>
+									{:else}
 									<li
 										class={[
-											'flex items-start gap-3 px-4 py-3 transition-colors',
+											'group/renglon flex items-start gap-3 px-4 py-3 transition-colors',
 											!disponibles[i] && 'opacity-60',
 											resaltado === campo.nombre && elegidos[i] && 'bg-amber-50 dark:bg-amber-950/40'
 										]}
@@ -538,13 +876,13 @@
 												{/if}
 												{#if campo.manual}
 													<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="campo-propuesto-manual">Agregado por ti</span>
-													{#if (buscando[campo.nombre] ?? 0) > 0}
-														<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-buscando">
-															<LoaderCircle class="size-3 animate-spin text-primary" /> Buscándolo en el documento…
-														</span>
-													{:else if sinBuscar.includes(campo.nombre)}
-														<span class="text-xs text-muted-foreground" data-testid="campo-propuesto-sin-buscar">No se pudo buscar en el documento</span>
-													{/if}
+												{/if}
+												{#if (buscando[i] ?? 0) > 0}
+													<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-buscando">
+														<LoaderCircle class="size-3 animate-spin text-primary" /> Buscándolo en el documento…
+													</span>
+												{:else if sinBuscar.includes(i)}
+													<span class="text-xs text-muted-foreground" data-testid="campo-propuesto-sin-buscar">No se pudo buscar en el documento</span>
 												{/if}
 												{#if !disponibles[i]}
 													<span class="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-testid="campo-propuesto-existe">
@@ -561,57 +899,25 @@
 												<span class="mt-1 block text-xs text-muted-foreground">Valores: {campo.valoresLista.join(' · ')}</span>
 											{/if}
 										</label>
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											class="-my-1 shrink-0 text-muted-foreground"
+											aria-label="Editar {campo.nombre}"
+											title="Editar"
+											data-testid="campo-propuesto-editar"
+											onclick={() => abrirEdicion(i)}
+										>
+											<Pencil class="size-3.5" />
+										</Button>
 									</li>
+									{/if}
 								{/each}
 							</ul>
-							{#if nuevoAbierto}
-								<form
-									class="-mt-2 flex flex-col gap-3 rounded-lg border border-dashed border-border p-4"
-									data-testid="nuevo-campo"
-									onsubmit={(e) => {
-										e.preventDefault();
-										agregarOtro();
-									}}
-								>
-									<p class="text-sm font-medium text-foreground">Otro campo</p>
-									<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
-										<Input
-											bind:ref={nuevoInput}
-											bind:value={nuevoNombre}
-											placeholder="Nombre del campo"
-											aria-label="Nombre del campo"
-											aria-invalid={errorNuevo !== ''}
-											maxlength={80}
-											data-testid="nuevo-campo-nombre"
-											oninput={() => (errorNuevo = '')}
-										/>
-										<Select.Root type="single" value={nuevoTipo} onValueChange={(v) => (nuevoTipo = v)}>
-											<Select.Trigger class="w-full" aria-label="Tipo de dato" data-testid="nuevo-campo-tipo">{etiquetaSubtipo(nuevoTipo)}</Select.Trigger>
-											<!-- z-70: por encima del modal (z-60); el menú vive en un portal. -->
-											<Select.Content class="z-70">
-												{#each TIPOS_DE_SUBCAMPO as tipo (tipo.value)}
-													<Select.Item value={tipo.value} label={tipo.label} />
-												{/each}
-											</Select.Content>
-										</Select.Root>
-									</div>
-									<Input
-										bind:value={nuevoDescripcion}
-										placeholder="Descripción (opcional): ayuda a encontrarlo en el documento"
-										aria-label="Descripción del campo"
-										maxlength={200}
-										data-testid="nuevo-campo-descripcion"
-									/>
-									{#if errorNuevo}
-										<p class="text-xs text-destructive" role="alert" data-testid="nuevo-campo-error">{errorNuevo}</p>
-									{/if}
-									<div class="flex justify-end gap-3">
-										<Button type="button" variant="ghost" size="sm" onclick={cerrarNuevo}>Cancelar</Button>
-										<Button type="submit" size="sm" data-testid="nuevo-campo-agregar">Agregar a la lista</Button>
-									</div>
-								</form>
+							{#if formulario?.modo === 'nuevo'}
+								<div class="-mt-2">{@render formularioCampo(false)}</div>
 							{:else}
-								<Button variant="outline" size="sm" class="-mt-2 self-start" data-testid="agregar-otro-campo" onclick={() => (nuevoAbierto = true)}>
+								<Button variant="outline" size="sm" class="-mt-2 self-start" data-testid="agregar-otro-campo" onclick={abrirNuevo}>
 									<Plus class="size-4" /> Agregar otro campo
 								</Button>
 							{/if}
