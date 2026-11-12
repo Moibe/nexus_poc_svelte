@@ -264,7 +264,9 @@
 	// puertas de entrada al wizard (`nuevoTipoDocumental`, `abrirTipoDocumental`,
 	// `iniciarNuevaVersion`) lo vuelven a fijar explícitamente según si el
 	// tipo que se abre ya trae campos o no.
-	let mostrarFormularioCampo = $state(true);
+	// Replegado de origen (2026-11-12, Moibe: «en el paso 2 que esto aparezca replegado de origen»): el paso 2 abre con «Agregar campo» y
+	// «Generar a partir de un documento» a la vista; el formulario sale al pedirlo. Solo arranca abierto si trae un campo a medio capturar.
+	let mostrarFormularioCampo = $state(false);
 
 	/** "Guardar" del formulario de captura del paso 2: guarda el campo Y
 	 *  oculta el formulario (ver `mostrarFormularioCampo`). `agregarCampoEnCaptura`
@@ -772,9 +774,8 @@
 		tituloError = '';
 		errorActivacion = '';
 		altaEnCurso = true;
-		// Alta nueva: siempre en blanco, así que siempre hay que mostrar el
-		// formulario del paso 2 — no hay campos que listar todavía.
-		mostrarFormularioCampo = true;
+		// Alta nueva: el formulario del paso 2 arranca replegado (2026-11-12); se abre con «Agregar campo».
+		mostrarFormularioCampo = false;
 		vista = 'wizard';
 	}
 
@@ -820,7 +821,7 @@
 			altaEnCurso = false;
 			// Ya cargado el borrador: si trae campos, el paso 2 arranca con la
 			// lista a la vista y el formulario oculto, no al revés.
-			mostrarFormularioCampo = borrador.campos.length === 0;
+			mostrarFormularioCampo = !campoIntacto(borrador.campoEnCaptura);
 			vista = 'wizard';
 		}
 	}
@@ -895,7 +896,7 @@
 			// Mismo criterio que `abrirTipoDocumental`: conserva sus campos
 			// (`crearNuevaVersion` los copia), así que el formulario arranca
 			// oculto salvo que de verdad no traiga ninguno.
-			mostrarFormularioCampo = borrador.campos.length === 0;
+			mostrarFormularioCampo = !campoIntacto(borrador.campoEnCaptura);
 			// Después de cargar: la huella tiene que ser la del borrador YA
 			// puesto, que es contra lo que se va a comparar al salir.
 			nuevaVersionEnCurso = { id, huella: huellaDelBorrador() };
