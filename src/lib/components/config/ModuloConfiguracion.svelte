@@ -469,6 +469,13 @@
 	// regresa ahí y una línea lo dice (sin nombre, la descripción y las sugerencias no sirven de nada: la IA lo necesita).
 	let entradaNombreTipo = $state<HTMLInputElement | null>(null);
 	let pedirNombrePrimero = $state(false);
+	/**
+	 * El nombre y la descripción quedan fijos en cuanto se sale del paso 1 (2026-11-12, Moibe: «si ya salí del paso 1 cuando estoy creando el tipo
+	 * documental, regresar al paso 1 ya no permitirá modificar los campos de Nombre y descripción, solo el de vertical de negocio»). Con ellos se
+	 * propusieron y describieron los campos del paso 2; al regresar se ven, pero solo la vertical se cambia. Sin las sugerencias de la IA (reescribirían
+	 * la descripción).
+	 */
+	const datosBasicosFijos = $derived(borrador.pasoMaximo > 1);
 	$effect(() => {
 		if (borrador.paso === 1 && entradaNombreTipo && untrack(() => borrador.nombre.trim() === '')) entradaNombreTipo.focus();
 	});
@@ -2379,8 +2386,10 @@
 				{/if}
 			{:else if borrador.paso === 1}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
-				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-					Captura los datos básicos del tipo; después defines sus campos.
+				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground" data-testid="paso1-subtitulo">
+					{datosBasicosFijos
+						? 'Ya avanzaste a sus campos: el nombre y la descripción quedan fijos. Aquí solo puedes cambiar la vertical de negocio.'
+						: 'Captura los datos básicos del tipo; después defines sus campos.'}
 				</p>
 
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -2395,9 +2404,10 @@
 								bind:ref={entradaNombreTipo}
 								bind:value={borrador.nombre}
 								placeholder="Ingresa el nombre del tipo documental a configurar, por ejemplo: INE"
+								readonly={datosBasicosFijos}
 								aria-invalid={nombreTipoRepetido || pedirNombrePrimero}
 								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : pedirNombrePrimero ? 'nombre-tipo-primero' : undefined}
-								class={nombreTipoRepetido ? 'pr-9' : undefined}
+								class={[nombreTipoRepetido && 'pr-9', datosBasicosFijos && 'cursor-default bg-muted/50 text-muted-foreground focus-visible:ring-0']}
 							/>
 							{#if nombreTipoRepetido}
 								<AlertCircle
@@ -2424,8 +2434,10 @@
 							bind:value={borrador.descripcion}
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
-							class="text-justify"
+							readonly={datosBasicosFijos}
+							class={['text-justify', datosBasicosFijos && 'cursor-default bg-muted/50 text-muted-foreground focus-visible:ring-0']}
 						/>
+						{#if !datosBasicosFijos}
 						<!-- Texto justificado (2026-11-05, Moibe: «¿podría salir justificado?»): la descripción suele ser un párrafo largo (la que
 						     sugiere la IA ronda las 70 palabras) y así se lee como tal. Es solo presentación: el valor guardado no cambia, y la última
 						     línea queda a la izquierda (lo normal en `text-align: justify`). El recuadro de la sugerencia, más abajo, va igual para
@@ -2514,6 +2526,7 @@
 									<Button size="sm" variant="outline" data-testid="descartar-sugerencia" onclick={() => (sugerencia = null)}>Descartar</Button>
 								</div>
 							</div>
+						{/if}
 						{/if}
 					</div>
 
