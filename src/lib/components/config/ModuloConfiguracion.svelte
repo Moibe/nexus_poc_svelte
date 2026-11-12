@@ -264,7 +264,7 @@
 	// puertas de entrada al wizard (`nuevoTipoDocumental`, `abrirTipoDocumental`,
 	// `iniciarNuevaVersion`) lo vuelven a fijar explícitamente según si el
 	// tipo que se abre ya trae campos o no.
-	// Replegado de origen (2026-11-12, Moibe: «en el paso 2 que esto aparezca replegado de origen»): el paso 2 abre con «Agregar campo» y
+	// Replegado de origen (2026-11-12, Moibe: «en el paso 2 que esto aparezca replegado de origen»): el paso 2 abre con «Agregar campos manualmente» y
 	// «Generar a partir de un documento» a la vista; el formulario sale al pedirlo. Solo arranca abierto si trae un campo a medio capturar.
 	let mostrarFormularioCampo = $state(false);
 
@@ -774,7 +774,7 @@
 		tituloError = '';
 		errorActivacion = '';
 		altaEnCurso = true;
-		// Alta nueva: el formulario del paso 2 arranca replegado (2026-11-12); se abre con «Agregar campo».
+		// Alta nueva: el formulario del paso 2 arranca replegado (2026-11-12); se abre con «Agregar campos manualmente».
 		mostrarFormularioCampo = false;
 		vista = 'wizard';
 	}
@@ -2713,7 +2713,7 @@
 						>
 							<CirclePlus class="size-4" />
 						</span>
-						<span class="text-sm font-medium text-foreground">Agregar campo</span>
+						<span class="text-sm font-medium text-foreground">Agregar campos manualmente</span>
 					</button>
 				{/if}
 
