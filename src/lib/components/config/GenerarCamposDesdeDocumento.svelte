@@ -59,6 +59,7 @@
 	import ScanText from '@lucide/svelte/icons/scan-text';
 	import SquareDashedMousePointer from '@lucide/svelte/icons/square-dashed-mouse-pointer';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import DocumentoConCampos, { type CambioDeCaja, type EstadoUbicacion } from './DocumentoConCampos.svelte';
 	import { TIPOS_DE_DATO, TIPOS_DE_SUBCAMPO, type CampoPropuesto } from '$lib/state/configuracion.svelte';
@@ -960,12 +961,22 @@
 				</Select.Content>
 			</Select.Root>
 		</div>
-		<Input
+		<!-- Párrafo y no línea (2026-11-12, Moibe: «que el campo sea de párrafo para que no se pierda por ser de línea»): se lee completa sin desplazarse. -->
+		<Textarea
 			bind:value={fDescripcion}
 			placeholder="Descripción (opcional): ayuda a encontrarlo en el documento"
 			aria-label="Descripción del campo"
 			maxlength={200}
+			rows={2}
+			class="min-h-14 resize-none"
 			data-testid="{prefijo}-descripcion"
+			onkeydown={(e) => {
+				// Es una sola frase: Enter guarda el formulario, como en los demás campos.
+				if (e.key === 'Enter' && !e.shiftKey) {
+					e.preventDefault();
+					e.currentTarget.form?.requestSubmit();
+				}
+			}}
 		/>
 		{#if fTipo !== 'grupo'}
 			<!-- El «Valor de estructura» del paso 2 (2026-11-12): un ejemplo de la forma del dato; va al esquema dentro de la descripción. -->
