@@ -31,7 +31,8 @@
 	 * campo» y «Dibujar crea el campo»).** El recuadro no viaja a Google: el extractor lee el nombre, el tipo, la descripción y el valor de estructura
 	 * de cada campo. El 2026-11-11 el recuadro solo SUGERÍA la descripción del campo que se editaba; ahora, en cuanto llegan las marcas, Gemini lee lo
 	 * que hay dentro de cada recuadro (`/api/procesadores/describir-campos`, una llamada por documento) y escribe en cada campo su descripción (zona,
-	 * rótulo, forma), el tipo que corresponde a lo que se lee y un ejemplo INVENTADO de su forma; el renglón lo dice («Desde su recuadro»). Mover o
+	 * rótulo, forma), el tipo que corresponde a lo que se lee y un ejemplo INVENTADO de su forma (el renglón ya no lo dice con una etiqueta: Moibe, 2026-11-12, «lo siento redundante»; queda
+	 * `data-desde-recuadro` en el renglón para las pruebas). Mover o
 	 * dibujar un recuadro lo vuelve a leer (`/api/procesadores/describir-campo`, tras 1.2 s quieto). Lo que escribió la persona NUNCA lo cambia un
 	 * recuadro (`origenes`): si la descripción es suya, el recuadro solo se la sugiere.
 	 *
@@ -1282,6 +1283,7 @@
 											resaltado === campo.nombre && elegidos[i] && 'bg-amber-50 dark:bg-amber-950/40'
 										]}
 										data-testid="campo-propuesto"
+										data-desde-recuadro={desdeRecuadro(i) ? '' : undefined}
 										onpointerenter={() => (resaltado = campo.nombre)}
 										onpointerleave={() => (resaltado = null)}
 									>
@@ -1302,16 +1304,6 @@
 												{/if}
 												{#if campo.manual}
 													<span class="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="campo-propuesto-manual">Agregado por ti</span>
-												{/if}
-												{#if desdeRecuadro(i)}
-													<!-- Lo que el extractor leerá de este campo salió de su recuadro (2026-11-12). -->
-													<span
-														class="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary dark:text-blue-300"
-														data-testid="campo-propuesto-recuadro"
-														title="Biblioratum escribió su descripción, su tipo y su estructura con lo que hay dentro de su recuadro. Edítalo para cambiarlos."
-													>
-														<ScanText class="size-3" /> Desde su recuadro
-													</span>
 												{/if}
 												{#if completando[i] && !completandoTodos}
 													<span class="flex items-center gap-1 text-xs text-muted-foreground" data-testid="campo-propuesto-leyendo">
