@@ -64,6 +64,9 @@ export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado
  * «Antigüedad contra hoy» (2026-11-10) lleva además su `maximo` y su `unidad` («3 meses»), que son parte de la regla y se guardan, y `hoy`: la fecha de
  * hoy de EJEMPLO que se escribe en el lienzo para probarla. `hoy` NO se guarda (ni `serializarDibujo` lo escribe ni `hidratarDibujo` lo lee): sin
  * él, la regla se decide con la fecha del día, que es lo que hace una ejecución.
+ *
+ * «Igual a» (NEX-579, 2026-11-20) lleva `ignorarEscritura`, su casilla «Ignorar mayúsculas, acentos, guiones y espacios»: es parte de la regla y se
+ * guarda, pero SOLO cuando está activada (un «Igual a» de antes, sin ella, se guarda exactamente como antes).
  */
 export type DatosNodoOperador = {
 	operador: ClaveOperador;
@@ -74,7 +77,28 @@ export type DatosNodoOperador = {
 	maximo?: number;
 	unidad?: UnidadDeTiempo;
 	hoy?: string;
+	ignorarEscritura?: boolean;
 };
+
+/** La casilla de «Igual a» (NEX-579), con las palabras del ticket. */
+export const TEXTO_IGNORAR_ESCRITURA = 'Ignorar mayúsculas, acentos, guiones y espacios';
+
+/** ¿Este nodo es un «Igual a» con la casilla activada? Solo cuenta un `true` de verdad: cualquier otra cosa es la casilla apagada. */
+export function ignoraEscritura(datos: { operador?: unknown; ignorarEscritura?: unknown } | null | undefined): boolean {
+	return datos?.operador === 'igual' && datos.ignorarEscritura === true;
+}
+
+/**
+ * Un texto reducido a lo que DICE, sin cómo está escrito (NEX-579): sin acentos (ni la tilde de la ñ, como en «Parecido a»), en minúsculas y sin
+ * guiones (de cualquier largo: -, ‐, –, —, el signo menos y el guion invisible) ni espacios. Así «ABC-123-D» y «abc 123 d» son el mismo «abc123d».
+ */
+export function textoSinEscritura(texto: string): string {
+	return texto
+		.normalize('NFD')
+		.replace(/\p{M}/gu, '')
+		.toLocaleLowerCase('es')
+		.replace(/[\s\p{Pd}−­]+/gu, '');
+}
 
 /** «Parecido a» (2026-11-10): el porcentaje mínimo de parecido para que pase, cuando el nodo no trae otro. El back usa el mismo (`MINIMO_PARECIDO`). */
 export const MINIMO_PARECIDO = 90;
@@ -968,8 +992,13 @@ function aBooleano(s: string): boolean | null {
  *   · fecha: por el día, venga como venga escrita;
  *   · sí/no: «sí» y «true» son lo mismo.
  * Un valor que no se entiende (un número que no es número) no es igual a nada.
+ *
+ * `ignorarEscritura` (la casilla de «Igual a», NEX-579) hace que los TEXTOS se comparen además sin acentos, sin guiones y sin ningún espacio
+ * (`textoSinEscritura`): «ABC-123-D» = «abc123d». Toca solo lo que se compara como texto (también una fecha que no se reconoce): los números, las
+ * fechas y los sí/no ya se comparan por lo que valen.
  */
-export function sonIguales(familia: Familia, a: string, b: string): boolean {
+export function sonIguales(familia: Familia, a: string, b: string, ignorarEscritura = false): boolean {
+	const comoTexto = (x: string, y: string) => (ignorarEscritura ? textoSinEscritura(x) === textoSinEscritura(y) : textoLimpio(x) === textoLimpio(y));
 	switch (familia) {
 		case 'numero': {
 			const x = aNumero(a);
@@ -979,7 +1008,7 @@ export function sonIguales(familia: Familia, a: string, b: string): boolean {
 		case 'fecha': {
 			const x = aFecha(a);
 			const y = aFecha(b);
-			return x !== null && y !== null ? x === y : textoLimpio(a) === textoLimpio(b);
+			return x !== null && y !== null ? x === y : comoTexto(a, b);
 		}
 		case 'booleano': {
 			const x = aBooleano(a);
@@ -987,7 +1016,7 @@ export function sonIguales(familia: Familia, a: string, b: string): boolean {
 			return x !== null && y !== null && x === y;
 		}
 		default:
-			return textoLimpio(a) === textoLimpio(b);
+			return comoTexto(a, b);
 	}
 }
 
@@ -1035,13 +1064,16 @@ export type Veredicto = 'pasa' | 'no_pasa' | 'sin_valores' | 'sin_conexion';
 /** Lo mismo, más `listo`: una regla que entrega un VALOR (Cantidad, Suma) no «pasa», ya calculó su número. */
 export type Estado = Veredicto | 'listo';
 
-/** El veredicto de una COMPARACIÓN con los valores de ejemplo. Un valor que no se entiende no cumple ninguna comparación. */
-export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: string, b: string): Veredicto {
+/**
+ * El veredicto de una COMPARACIÓN con los valores de ejemplo. Un valor que no se entiende no cumple ninguna comparación. `ignorarEscritura` es la
+ * casilla de «Igual a» (NEX-579); los demás operadores no la tienen y no la miran.
+ */
+export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: string, b: string, ignorarEscritura = false): Veredicto {
 	if (!a.trim() || !b.trim()) return 'sin_valores';
 	const si = (ok: boolean): Veredicto => (ok ? 'pasa' : 'no_pasa');
 	switch (clave) {
 		case 'igual':
-			return si(sonIguales(familia, a, b));
+			return si(sonIguales(familia, a, b, ignorarEscritura));
 		case 'distinto':
 			return si(!sonIguales(familia, a, b));
 		case 'contiene':
@@ -1385,7 +1417,7 @@ export function evaluar(
 				if (r.medida) antiguedades[id] = r.medida;
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
-				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
+				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra, ignoraEscritura(datos)) : 'sin_conexion';
 			} else if (def.grupo === 'documento') {
 				estado = evaluarExistencia(llegan[0].muestra);
 			} else {
@@ -1493,7 +1525,9 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 					...(usaTerceraEntrada(d.operador) ? { c: d.c ?? '' } : {}),
 					...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {}),
 					// «Antigüedad contra hoy»: el máximo y su unidad son parte de la regla. Su `hoy` de ejemplo NO se guarda.
-					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {})
+					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {}),
+					// «Igual a» (NEX-579): su casilla, solo si está activada; apagada se guarda como siempre (y la huella de lo de antes no cambia).
+					...(ignoraEscritura(d) ? { ignorarEscritura: true } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE) {
@@ -1563,7 +1597,8 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 					b: typeof n.data.b === 'string' ? n.data.b : '',
 					...(usaTerceraEntrada(n.data.operador) ? { c: typeof n.data.c === 'string' ? n.data.c : '' } : {}),
 					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {}),
-					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {})
+					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {}),
+					...(ignoraEscritura(n.data) ? { ignorarEscritura: true } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {

@@ -32,12 +32,15 @@
 	import SelloDeVeredicto from '$lib/components/reglas/SelloDeVeredicto.svelte';
 	import SimboloDeOperador from '$lib/components/reglas/SimboloDeOperador.svelte';
 	import { usarOrigenes } from '$lib/components/reglas/origenes';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import {
 		CLAVE_VEREDICTOS,
 		SALIDA_RESULTADO,
+		TEXTO_IGNORAR_ESCRITURA,
 		TOPE_MAXIMO_ANTIGUEDAD,
 		UNIDADES_DE_TIEMPO,
 		esNumero,
+		ignoraEscritura,
 		lineasDeEjemplo,
 		maximoDeAntiguedad,
 		minimoDeParecido,
@@ -101,6 +104,10 @@
 		if (Number.isInteger(n) && n >= 1 && n <= TOPE_MAXIMO_ANTIGUEDAD) updateNodeData(id, { maximo: n });
 		else maximoEscrito = String(maximo);
 	}
+
+	// «Igual a» (NEX-579): la casilla «Ignorar mayúsculas, acentos, guiones y espacios» vive en el nodo y se guarda con la regla.
+	const esIgual = $derived(def?.clave === 'igual');
+	const ignorar = $derived(ignoraEscritura(data));
 
 	/** El renglón de una lista de ejemplo que no es número, cuando la regla suma: se avisa en vez de dejar un «sin valores» mudo. */
 	function lineaQueNoEsNumero(): string | null {
@@ -189,6 +196,28 @@
 				/>
 			</div>
 		{/each}
+
+		{#if esIgual}
+			<!-- NEX-579: apagada (lo de siempre), los textos se comparan sin mayúsculas ni espacios de más; activada, además sin acentos, guiones ni
+			     ningún espacio: «ABC-123-D» = «abc123d». Números, fechas y sí/no ya se comparan por lo que valen y no cambian. -->
+			<div class="border-b border-border px-3 py-2.5" data-testid="igual-ignorar-escritura" data-activa={ignorar}>
+				<label class="nodrag flex cursor-pointer items-start gap-2 text-xs leading-snug">
+					<Checkbox
+						class="nodrag mt-px"
+						checked={ignorar}
+						onCheckedChange={(v) => updateNodeData(id, { ignorarEscritura: v === true })}
+						onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
+						data-testid="igual-ignorar-escritura-casilla"
+					/>
+					<span>{TEXTO_IGNORAR_ESCRITURA}</span>
+				</label>
+				{#if ignorar}
+					<p class="mt-1 pl-6 text-[11px] leading-snug text-muted-foreground" data-testid="igual-ignorar-escritura-ayuda">
+						Compara solo lo que dice: «ABC-123-D» es igual a «abc123d».
+					</p>
+				{/if}
+			</div>
+		{/if}
 
 		{#if esParecido}
 			<div class="border-b border-border px-3 py-2.5" data-testid="parecido-minimo">
