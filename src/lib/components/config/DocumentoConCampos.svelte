@@ -6,6 +6,9 @@
 
 	/** `dibujar`: un recuadro nuevo (el valor que se había leído ya no aplica); `ajustar`: el mismo, movido o de otro tamaño. */
 	export type CambioDeCaja = { documento: number; campo: string; pagina: number; caja: Ubicacion['caja']; modo: 'dibujar' | 'ajustar' };
+
+	/** Un recuadro dibujado con «Dibujar un campo», antes de ser campo: dónde está y qué etiqueta lleva mientras se revisa. */
+	export type RecuadroNuevo = { documento: number; pagina: number; caja: Ubicacion['caja']; etiqueta: string };
 </script>
 
 <script lang="ts">
@@ -20,15 +23,25 @@
 	 * de una esquina para cambiar su tamaño (o con las flechas del teclado), se dibuja de nuevo arrastrando sobre la página, o se quita. Si el campo
 	 * no está marcado en este documento, la página queda lista para dibujarlo. Cada cambio sale por `onCaja`; aquí solo se dibuja.
 	 *
-	 * Las ubicaciones las da Gemini (`/api/procesadores/ubicar-campos`) o la persona: son una AYUDA para ver qué es cada campo, no lo que extraerá
-	 * el procesador. Un PDF se pinta página por página con pdf.js (`abrirPdf`); una imagen, tal cual. El TIFF no se puede pintar en el navegador.
-	 * Nada sale de la pestaña: los documentos se pintan desde la memoria.
+	 * **Dibujar un campo nuevo (2026-11-12, Moibe eligió «Dibujar crea el campo»).** Con `dibujarNuevo`, la página espera un recuadro que todavía no
+	 * es de ningún campo; al soltarlo sale por `onNuevo` y quien abrió esto propone el campo con lo que hay dentro. Mientras se revisa, `nuevo` se
+	 * pinta punteado con su etiqueta.
+	 *
+	 * **Las etiquetas no tapan lo marcado (2026-11-12).** En renglones seguidos, la etiqueta de cada recuadro (que iba siempre arriba) tapaba el
+	 * renglón de arriba y se encimaba con la vecina. Ahora cada una va arriba, a la derecha, abajo o a la izquierda, donde no pise otro recuadro ni
+	 * otra etiqueta (`colocarEtiquetas`).
+	 *
+	 * Las ubicaciones las da Gemini (`/api/procesadores/ubicar-campos`) o la persona. Lo que hay dentro de cada recuadro completa su campo (la
+	 * descripción, el tipo y la estructura: lo hace `GenerarCamposDesdeDocumento`); el recuadro mismo no se guarda ni viaja a Google. Un PDF se pinta
+	 * página por página con pdf.js (`abrirPdf`); una imagen, tal cual. El TIFF no se puede pintar en el navegador. Nada sale de la pestaña: los
+	 * documentos se pintan desde la memoria.
 	 */
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { colocarEtiquetas, type Lado } from '$lib/documentos/etiquetas';
 	import { abrirPdf, type PdfAbierto } from '$lib/documentos/paginasPdf';
 	import { cajaEnPorcentaje, esPdf } from '$lib/documentos/ubicaciones';
 
@@ -46,6 +59,10 @@
 		onElegir,
 		onCaja,
 		onQuitar,
+		dibujarNuevo = false,
+		nuevo = null,
+		onNuevo,
+		onCancelarDibujo,
 		indice = $bindable(0)
 	}: {
 		documentos: File[];
@@ -63,6 +80,13 @@
 		onElegir?: (campo: string) => void;
 		onCaja?: (cambio: CambioDeCaja) => void;
 		onQuitar?: (documento: number, campo: string) => void;
+		/** «Dibujar un campo»: la página espera un recuadro nuevo, que no es de ningún campo todavía. */
+		dibujarNuevo?: boolean;
+		/** El recuadro dibujado para el campo nuevo, mientras se revisa (se pinta punteado). */
+		nuevo?: RecuadroNuevo | null;
+		/** Se soltó el recuadro del campo nuevo. */
+		onNuevo?: (dibujo: { documento: number; pagina: number; caja: Ubicacion['caja'] }) => void;
+		onCancelarDibujo?: () => void;
 		/** El documento que se está enseñando (la pestaña elegida). */
 		indice?: number;
 	} = $props();
@@ -91,13 +115,64 @@
 	let redibujar = $state(false);
 	let arrastre = $state<{ modo: Modo; y0: number; x0: number; inicio: Caja; caja: Caja } | null>(null);
 	const cajaEditada = $derived(editando ? ubicaciones.find((u) => u.campo === editando) : undefined);
-	const sePuedeEditar = $derived(!!editando && !!urlPagina && !errorPagina && estado.fase !== 'no-soportado');
-	const dibujando = $derived(sePuedeEditar && (redibujar || !cajaEditada));
+	/** Hay página pintada en la que se puede marcar (no un TIFF ni un PDF que no abrió). */
+	const puedeMarcar = $derived(!!urlPagina && !errorPagina && estado.fase !== 'no-soportado');
+	const sePuedeEditar = $derived(!!editando && puedeMarcar);
+	const dibujando = $derived((sePuedeEditar && (redibujar || !cajaEditada)) || (dibujarNuevo && puedeMarcar));
+	/** El recuadro del campo nuevo, si está en el documento y la página que se ven. */
+	const nuevoAqui = $derived(nuevo && nuevo.documento === actual && nuevo.pagina === pagina ? nuevo : null);
 
-	// Otro campo, u otro documento: se empieza sin «Dibujar de nuevo».
+	// ── Dónde va cada etiqueta (2026-11-12): donde no tape otro recuadro ni otra etiqueta ─────────────────────────
+	let anchoLienzo = $state(0);
+	let altoLienzo = $state(0);
+	let medidor: CanvasRenderingContext2D | null = null;
+	/** El ancho en píxeles de una etiqueta (texto de 10 px más su relleno), medido con la letra de la página. */
+	function anchoDeEtiqueta(texto: string): number {
+		if (!medidor && typeof document !== 'undefined') {
+			medidor = document.createElement('canvas').getContext('2d');
+			if (medidor) medidor.font = `500 10px ${getComputedStyle(document.body).fontFamily}`;
+		}
+		return (medidor ? medidor.measureText(texto).width : texto.length * 6) + 10;
+	}
+	const CLAVE_NUEVO = '\u0000nuevo';
+	const lados = $derived(
+		colocarEtiquetas(
+			[
+				...enEstaPagina.map((u) => ({
+					clave: u.campo,
+					caja: u.caja,
+					anchoPx: anchoDeEtiqueta(u.campo),
+					altoPx: 15,
+					// La del que se edita va más lejos: sus esquinas salen 11 px por fuera.
+					separacionPx: u.campo === editando && !dibujando ? 14 : 4
+				})),
+				...(nuevoAqui ? [{ clave: CLAVE_NUEVO, caja: nuevoAqui.caja, anchoPx: anchoDeEtiqueta(nuevoAqui.etiqueta), altoPx: 15, separacionPx: 4 }] : [])
+			],
+			{ anchoPx: anchoLienzo, altoPx: altoLienzo }
+		)
+	);
+	/**
+	 * Las clases que ponen la etiqueta de un recuadro en su lado. `bottom-full`/`top-full` cuentan desde DENTRO del borde (2 px): con 3 px de margen la
+	 * etiqueta queda 1 px fuera del recuadro, sin pisar su borde (con 1 px lo pisaba, y en renglones seguidos tapaba el dato de arriba).
+	 */
+	function claseDeLado(lado: Lado, lejos: boolean): string {
+		switch (lado) {
+			case 'arriba':
+				return `bottom-full left-[-2px] ${lejos ? 'mb-3' : 'mb-[3px]'}`;
+			case 'abajo':
+				return `top-full left-[-2px] ${lejos ? 'mt-3' : 'mt-[3px]'}`;
+			case 'derecha':
+				return `left-full top-1/2 -translate-y-1/2 ${lejos ? 'ml-3.5' : 'ml-1'}`;
+			case 'izquierda':
+				return `right-full top-1/2 -translate-y-1/2 ${lejos ? 'mr-3.5' : 'mr-1'}`;
+		}
+	}
+
+	// Otro campo, otro documento, o se entra o sale de «Dibujar un campo»: se empieza sin «Dibujar de nuevo» y sin arrastre a medias.
 	$effect(() => {
 		void editando;
 		void actual;
+		void dibujarNuevo;
 		redibujar = false;
 		arrastre = null;
 	});
@@ -148,9 +223,15 @@
 	function soltar() {
 		const a = arrastre;
 		arrastre = null;
-		if (!a || !editando) return;
+		if (!a) return;
 		const caja = a.caja.map((n) => Math.round(n)) as Caja;
 		if (caja[2] - caja[0] < MINIMO || caja[3] - caja[1] < MINIMO) return; // un clic suelto, no un recuadro
+		// El recuadro de un campo que todavía no existe: quien abrió esto propone el campo con lo que hay dentro.
+		if (a.modo === 'dibujar' && dibujarNuevo) {
+			onNuevo?.({ documento: actual, pagina, caja });
+			return;
+		}
+		if (!editando) return;
 		if (a.modo !== 'dibujar' && caja.every((n, i) => n === Math.round(a.inicio[i]))) return;
 		const dibujado = a.modo === 'dibujar';
 		redibujar = false;
@@ -315,7 +396,7 @@
 		{:else if errorPagina}
 			<p class="p-6 text-center text-sm text-muted-foreground">{errorPagina}</p>
 		{:else if urlPagina}
-			<div class="relative" bind:this={lienzo}>
+			<div class="relative" bind:this={lienzo} bind:clientWidth={anchoLienzo} bind:clientHeight={altoLienzo}>
 				<img
 					src={urlPagina}
 					alt="Página {pagina} de «{archivoActual.name}»"
@@ -361,11 +442,13 @@
 					>
 						<span
 							class={[
-								'pointer-events-none absolute left-[-2px] rounded-sm px-1 py-px text-[10px] leading-tight font-medium whitespace-nowrap',
-								// La del que se edita va un poco más lejos, para que sus esquinas no la tapen.
-								c.top < 4 ? (editable ? 'top-full mt-3' : 'top-full mt-px') : editable ? 'bottom-full mb-3' : 'bottom-full mb-px',
+								'pointer-events-none absolute rounded-sm px-1 py-px text-[10px] leading-tight font-medium whitespace-nowrap',
+								// Del lado donde no tapa otro recuadro ni otra etiqueta; la del que se edita, un poco más lejos, para que sus esquinas no la tapen.
+								claseDeLado(lados[u.campo] ?? 'arriba', editable),
 								activo ? 'bg-amber-500 text-black' : 'bg-primary text-primary-foreground'
 							]}
+							data-testid="marca-campo-etiqueta"
+							data-lado={lados[u.campo] ?? 'arriba'}
 						>
 							{u.campo}
 						</span>
@@ -386,8 +469,23 @@
 						{/if}
 					</div>
 				{/each}
+				{#if nuevoAqui}
+					<!-- El recuadro del campo nuevo, mientras se revisa lo que propone Biblioratum con él. -->
+					{@const c = cajaEnPorcentaje(nuevoAqui.caja)}
+					<div
+						class="pointer-events-none absolute z-20 rounded-[3px] border-2 border-dashed border-amber-500 bg-amber-400/20"
+						style="top:{c.top}%;left:{c.left}%;width:{c.width}%;height:{c.height}%"
+						data-testid="marca-campo-nuevo"
+					>
+						<span
+							class="absolute rounded-sm bg-amber-500 px-1 py-px text-[10px] leading-tight font-medium whitespace-nowrap text-black {claseDeLado(lados[CLAVE_NUEVO] ?? 'arriba', false)}"
+						>
+							{nuevoAqui.etiqueta}
+						</span>
+					</div>
+				{/if}
 				{#if dibujando}
-					<!-- La superficie para dibujar: tapa la página entera mientras se dibuja el recuadro del campo que se edita. -->
+					<!-- La superficie para dibujar: tapa la página entera mientras se dibuja el recuadro del campo que se edita (o el de uno nuevo). -->
 					<div
 						class="absolute inset-0 z-30 cursor-crosshair touch-none"
 						data-testid="documento-con-campos-lienzo"
@@ -415,7 +513,17 @@
 		{/if}
 	</div>
 
-	{#if sePuedeEditar && editando}
+	{#if dibujarNuevo}
+		<!-- «Dibujar un campo»: qué hacer, y cómo salir. Debajo del documento, como la barra de edición. -->
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-foreground" data-testid="documento-con-campos-dibujo-nuevo" aria-live="polite">
+			<p class="min-w-0 flex-1">
+				{puedeMarcar
+					? 'Arrastra sobre la página para marcar el dato del campo nuevo. Biblioratum lo leerá y te propondrá el campo.'
+					: 'Este documento no se puede marcar: elige otro para dibujar.'}
+			</p>
+			<Button variant="ghost" size="sm" class="shrink-0" data-testid="documento-con-campos-cancelar-nuevo" onclick={() => onCancelarDibujo?.()}>Cancelar</Button>
+		</div>
+	{:else if sePuedeEditar && editando}
 		{@render barraDeEdicion()}
 	{/if}
 
@@ -424,12 +532,12 @@
 			{#if estado.fase === 'listo'}
 				{contadas.length === 1 ? '1 campo marcado' : `${contadas.length} campos marcados`}{sinUbicar.length > 0
 					? ` · ${sinUbicar.length === 1 ? '1 no se encontró' : `${sinUbicar.length} no se encontraron`} en este documento`
-					: ''}. Las marcas son una guía, no la extracción.
+					: ''}. De cada recuadro salen la descripción, el tipo y la estructura de su campo.
 			{:else if estado.fase === 'error'}
 				{estado.mensaje}
 				{contadas.length > 0
 					? `${contadas.length === 1 ? '1 campo marcado' : `${contadas.length} campos marcados`} a mano.`
-					: 'Para marcar un campo, edítalo y dibuja su recuadro.'}
+					: 'Para marcar un campo, edítalo y dibuja su recuadro, o usa «Dibujar un campo».'}
 			{/if}
 		</p>
 		{#if numPaginas > 1}

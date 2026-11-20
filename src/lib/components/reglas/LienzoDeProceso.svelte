@@ -106,6 +106,7 @@
 		llaveDeParecido,
 		type MedidaDeParecido,
 		faltaParaGuardar,
+		motivosDeInactividad,
 		hayCambiosSinGuardar,
 		huellaDelDibujo,
 		estadoDeTipoEnLienzo,
@@ -114,7 +115,7 @@
 		numeroDeOperador,
 		operadorDe,
 		posicionLibre,
-		resultadoConectado,
+		textoDeMotivo,
 		serializarDibujo,
 		usaTerceraEntrada,
 		usosDeNodo,
@@ -264,8 +265,6 @@
 	);
 	/** El proceso termina con UNA palabra: si ya tiene su nodo de resultado, la paleta no ofrece otro. */
 	const hayResultado = $derived(nodes.some((n) => n.type === NODO_RESULTADO));
-	/** El proceso necesita al menos un tipo documental: son sus entradas. Sin ninguno no tiene sobre qué correr (NEX-529 y NEX-532). */
-	const hayTipoDocumental = $derived(nodes.some((n) => n.type === NODO_TIPO));
 
 	// ── Solo los tipos documentales ACTIVOS se pueden usar (2026-11-05, Moibe: «no deberíamos poder usar en el canvas los tipos documentales
 	// que no estén activos»). La paleta ya solo ofrece activos; faltaba lo demás: soltar uno que no lo es, conectar desde un nodo cuyo tipo
@@ -550,6 +549,8 @@
 	/** Si el proceso está activo (se cambia desde la lista de procesos, no aquí). Aquí solo se CONSERVA: al guardar se manda lo mismo que se
 	 *  leyó, porque guardar arma el proceso entero y, sin esto, cada guardado lo dejaría activo otra vez. */
 	let activo = $state(true);
+	/** Lo guardado está inactivo porque se guardó incompleto (`DatosProceso.inactivoPorIncompleto`): al guardarlo completo vuelve a estar activo. */
+	let inactivoPorIncompleto = $state(false);
 
 	const nombreDeTipoDocumental = (tipoId: string) => tiposDocumentales.find((t) => t.id === tipoId)?.nombre ?? 'Tipo documental no disponible';
 
@@ -565,13 +566,19 @@
 	const huella = $derived(huellaDelDibujo(serializarDibujo(nodes, edges)));
 	const sucio = $derived(hayCambiosSinGuardar(existe, { huella, nombre, hayDibujo: nodes.length > 0 || edges.length > 0 }, guardado));
 	const estadoDeProceso = $derived<EstadoDeProceso>(existe ? (sucio ? 'cambios' : 'guardado') : sucio ? 'sin_guardar' : 'nuevo');
-	// Qué se exige para guardar lo decide `faltaParaGuardar`: el nombre, al menos un tipo documental en el lienzo (NEX-529, 2026-11-04), que ningún nodo
-	// sea de un tipo que no esté activo (2026-11-05) y el RESULTADO (Moibe, 2026-11-03: «sí, que sea obligatorio el Resultado»). De este último solo se
-	// exige que el nodo exista. El back NO exige nada de esto (activar o desactivar desde la lista guarda el proceso entero y no debe fallar en los de
-	// antes), y la ejecución se niega a correr uno sin Resultado conectado. Ya NO se exige un tipo de expediente virtual (Moibe, 2026-11-05).
-	const puedeGuardar = $derived(
-		sucio && faltaParaGuardar({ nombre, hayTipoDocumental, tiposNoActivos: tiposNoActivos.length, hayResultado }) === null
-	);
+	// Para guardar solo se exige el NOMBRE (2026-11-20, Moibe: «quiero poder guardar aún sin tipo documental u otras restricciones que tengamos»). Lo que
+	// antes impedía guardar —un tipo documental (NEX-529), que todos estén activos (2026-11-05), el Resultado (2026-11-03)— y lo que impedía ejecutarlo
+	// —una regla conectada al Resultado— ahora son los MOTIVOS por los que el proceso queda INACTIVO (`motivosDeInactividad`): se avisa antes de guardar
+	// y la lista de procesos los dice junto a «Inactivo». Mientras la biblioteca no está leída no se juzgan los tipos no activos (no se sabe).
+	const puedeGuardar = $derived(sucio && faltaParaGuardar({ nombre }) === null);
+	const biblioteca = $derived(estadoBiblioteca.cargada ? tiposDocumentales : null);
+	const motivos = $derived(motivosDeInactividad({ nodos: nodes, aristas: edges }, biblioteca));
+	/** El dibujo tal como está GUARDADO (al abrir y tras cada guardado): de él sale el estado efectivo de lo guardado. */
+	let dibujoGuardado = $state<{ nodos: unknown[]; aristas: unknown[] }>({ nodos: [], aristas: [] });
+	/** Por qué lo GUARDADO no puede estar activo: con alguno, el proceso está inactivo aunque su `activo` diga otra cosa (2026-11-20). */
+	const motivosGuardados = $derived(motivosDeInactividad(dibujoGuardado, biblioteca));
+	/** Lo guardado está activo de verdad: marcado activo y completo. Uno que aún no existe nace activo (guardarlo incompleto avisa). */
+	const activoEfectivo = $derived(activo && (!existe || motivosGuardados.length === 0));
 	/** El nombre que el servidor rechazó por repetido en la organización (409 `ya_existe`): la barra lo dice bajo el campo mientras siga escrito. */
 	let nombreOcupado = $state<string | null>(null);
 	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
@@ -594,6 +601,8 @@
 		nombre = p.datos.nombre;
 		descripcion = p.datos.descripcion ?? '';
 		activo = procesoActivo(p);
+		inactivoPorIncompleto = !activo && p.datos.inactivoPorIncompleto === true;
+		dibujoGuardado = { nodos: dibujo.nodes, aristas: dibujo.edges };
 		guardado = foto;
 		aviso = '';
 		await tick();
@@ -607,6 +616,7 @@
 		| { tipo: 'cambios'; despues: () => void }
 		| { tipo: 'borrar' }
 		| { tipo: 'conflicto' }
+		| { tipo: 'inactivo'; motivos: string[]; despues: (() => void) | null }
 		| { tipo: 'quitar'; mensaje: string }
 		| { tipo: 'error'; titulo: string; mensaje: string };
 	let dialogo = $state<Dialogo>(null);
@@ -651,23 +661,51 @@
 	/** La dirección ya dice el id del proceso (después de su primer guardado), no `nuevo`. */
 	let direccionAlDia = false;
 
-	async function guardar() {
+	/**
+	 * Guardar un proceso ACTIVO (o uno nuevo, que nace activo) al que le falta algo lo deja inactivo: antes se pregunta (2026-11-20, Moibe: «se le
+	 * advertirá al usuario que ya no estará Activo ese proceso»). Uno que ya estaba inactivo se guarda sin preguntar: no cambia de estado.
+	 */
+	const avisarAntesDeGuardar = () => motivos.length > 0 && activoEfectivo;
+
+	async function guardar(confirmado = false) {
 		if (!puedeGuardar || guardando) return;
+		if (!confirmado && avisarAntesDeGuardar()) {
+			dialogo = { tipo: 'inactivo', motivos: motivos.map(textoDeMotivo), despues: null };
+			return;
+		}
 		guardando = true;
 		const limpio = nombre.trim();
 		const dibujo = serializarDibujo(nodes, edges);
-		const r = await guardarProceso(procesoId, existe ? revision : 0, { nombre: limpio, descripcion, activo, ...dibujo });
+		const faltan = motivos.map(textoDeMotivo);
+		// Incompleto: queda inactivo (y, si estaba activo, con la marca de que fue por eso). Completo: si estaba inactivo por incompleto, vuelve a estar
+		// activo; uno desactivado desde la lista se queda como está.
+		const quedaActivo = faltan.length > 0 ? false : inactivoPorIncompleto ? true : activo;
+		const quedaPorIncompleto = faltan.length > 0 ? activo || inactivoPorIncompleto : false;
+		const r = await guardarProceso(procesoId, existe ? revision : 0, {
+			nombre: limpio,
+			descripcion,
+			activo: quedaActivo,
+			...(quedaPorIncompleto ? { inactivoPorIncompleto: true } : {}),
+			...dibujo
+		});
 		guardando = false;
 		if (r.ok) {
+			const reactivado = !activoEfectivo && quedaActivo;
 			revision = r.proceso.revision;
 			existe = true;
 			nombre = limpio;
+			activo = quedaActivo;
+			inactivoPorIncompleto = quedaPorIncompleto;
+			dibujoGuardado = dibujo;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
 			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
-			// Guardar solo exige que el nodo Resultado exista; sin una regla conectada a él el proceso queda guardado pero no se puede ejecutar: se dice (2026-11-06).
 			avisarExito(
 				'Proceso guardado',
-				resultadoConectado(dibujo) ? `«${limpio}» quedó guardado.` : `«${limpio}» quedó guardado, pero todavía no se puede ejecutar: conecta una regla a su Resultado.`
+				faltan.length > 0
+					? `«${limpio}» quedó guardado e inactivo. Para activarlo: ${faltan.join('; ')}.`
+					: reactivado
+						? `«${limpio}» quedó guardado y vuelve a estar activo.`
+						: `«${limpio}» quedó guardado.`
 			);
 			// Un proceso que nació en `/motor-de-reglas/nuevo` ya tiene su dirección: se cambia la barra del navegador SIN navegar (recargar o
 			// compartir el enlace abre ESTE proceso, y no un lienzo en blanco).
@@ -731,8 +769,21 @@
 	async function guardarYSalir() {
 		const despues = dialogo?.tipo === 'cambios' ? dialogo.despues : despuesPendiente;
 		dialogo = null;
-		await guardar();
+		// Si guardar lo deja inactivo, primero se avisa; la salida espera a que se confirme.
+		if (puedeGuardar && avisarAntesDeGuardar()) {
+			dialogo = { tipo: 'inactivo', motivos: motivos.map(textoDeMotivo), despues };
+			return;
+		}
+		await guardar(true);
 		if (existe && !sucio) despues?.();
+	}
+
+	/** Se confirmó guardar aunque quede inactivo: se guarda y, si venía de «Guardar y salir», se sale. */
+	async function guardarInactivo() {
+		const despues = dialogo?.tipo === 'inactivo' ? dialogo.despues : null;
+		dialogo = null;
+		await guardar(true);
+		if (despues && existe && !sucio) despues();
 	}
 	/** Copia de a dónde iba, porque el diálogo se limpia al cerrarse antes de que corra `guardarYSalir`. */
 	let despuesPendiente: (() => void) | null = null;
@@ -813,18 +864,10 @@
 	{guardando}
 	{puedeGuardar}
 	puedeBorrar={existe}
-	tieneResultado={hayResultado}
-	tieneDocumento={hayTipoDocumental}
-	tiposNoActivos={tiposNoActivos.map((t) => t.nombre)}
+	inactivo={existe && !activoEfectivo ? { motivos: motivosGuardados.map(textoDeMotivo), porIncompleto: inactivoPorIncompleto } : null}
 	{nombreOcupado}
-	alGuardar={guardar}
+	alGuardar={() => void guardar()}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
-	alFaltaResultado={() => void paleta?.mostrarResultado()}
-	alFaltaDocumento={() => void paleta?.mostrarTipos()}
-	alFaltaActivo={() => {
-		const primero = tiposNoActivos[0];
-		if (primero) fitView({ nodes: [{ id: primero.nodoId }], duration: 300, maxZoom: 1 });
-	}}
 />
 
 <div
@@ -913,7 +956,7 @@
 	accionExtra={{
 		etiqueta: 'Guardar y salir',
 		deshabilitado: !puedeGuardar,
-		titulo: puedeGuardar ? undefined : 'Al proceso le falta algo para guardarse (nombre, un tipo documental activo o el Resultado): sigue editando para completarlo',
+		titulo: puedeGuardar ? undefined : 'Ponle un nombre al proceso para guardarlo: sigue editando para escribirlo',
 		alPulsar: guardarYSalir
 	}}
 	onConfirmar={() => {
@@ -925,6 +968,26 @@
 		if (dialogo?.tipo === 'cambios') dialogo = null;
 	}}
 />
+
+<!-- 2026-11-20: guardar un proceso activo (o nuevo) incompleto lo deja inactivo; se avisa con el porqué, el mismo que dirá la lista de procesos. -->
+<ConfirmarAccion
+	abierto={dialogo?.tipo === 'inactivo'}
+	titulo="El proceso quedará inactivo"
+	mensaje="Se guarda, pero no se podrá ejecutar hasta que esté completo. Le falta:"
+	variante="neutral"
+	etiquetaConfirmar="Guardar como inactivo"
+	etiquetaCancelar="Seguir editando"
+	onConfirmar={() => void guardarInactivo()}
+	onCerrar={() => {
+		if (dialogo?.tipo === 'inactivo') dialogo = null;
+	}}
+>
+	<ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground" data-testid="motivos-inactivo">
+		{#each dialogo?.tipo === 'inactivo' ? dialogo.motivos : [] as m (m)}
+			<li>{m}</li>
+		{/each}
+	</ul>
+</ConfirmarAccion>
 
 <ConfirmarAccion
 	abierto={dialogoDeQuitar !== null}

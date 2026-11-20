@@ -31,6 +31,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import DesplegableMultiple from '$lib/components/ui/DesplegableMultiple.svelte';
+	import FlechaDePaso from '$lib/components/ui/FlechaDePaso.svelte';
 	import { MAX_NOMBRE_PROCESO } from '$lib/reglas/reglas';
 	import { claveDeNombreTipo, estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
 	import { estadoProcesos } from '$lib/state/procesos.svelte';
@@ -60,6 +61,14 @@
 	);
 	const completo = $derived(nombreLimpio !== '' && !repetido && elegidos.length > 0);
 
+	// La flecha » animada (2026-11-20, Moibe: «ponlas también en el asistente de procesos»; ver `FlechaDePaso`). Este asistente no tiene costado de pasos:
+	// sus pasos son el nombre, los tipos documentales y «Continuar al lienzo», y la flecha señala el que toca y avanza SOLA al completarlo (no se apaga al
+	// escribir, como en el de tipos documentales: aquí los pasos cambian solos, y al final queda señalando el botón que sigue).
+	const hayTiposParaElegir = $derived(estadoBiblioteca.cargada && !estadoBiblioteca.errorCarga && activos.length > 0);
+	const pasoActual = $derived<'nombre' | 'tipos' | 'continuar' | null>(
+		nombreLimpio === '' || repetido ? 'nombre' : !hayTiposParaElegir ? null : elegidos.length === 0 ? 'tipos' : 'continuar'
+	);
+
 	// Lo elegido se enseña debajo del desplegable, y el panel es de alto fijo con scroll por dentro: en una pantalla normal las etiquetas quedaban al
 	// borde o cortadas y había que desplazar para confirmar qué se marcó y en qué orden (lo vio la prueba en navegador, 2026-11-06). Al marcar, se
 	// desplaza lo justo para que se vean.
@@ -84,11 +93,16 @@
 		continuar();
 	}}
 >
-	<div class="min-h-0 flex-1 overflow-y-auto">
+	<!-- `-ml-6 pl-6`: el contenido queda donde estaba, pero la caja con scroll llega al margen del panel, donde va la flecha (si no, la recortaría). -->
+	<div class="-ml-6 min-h-0 flex-1 overflow-y-auto pl-6">
 		<h3 class="text-xl font-medium text-foreground">Nuevo proceso</h3>
 		<p class="mt-1 text-sm text-muted-foreground">Corre sobre un expediente completo y toma de él los documentos de los tipos que elijas.</p>
 
-		<div class="mt-4 rounded-xl border border-border bg-card p-4">
+		<div class="relative mt-4 rounded-xl border border-border bg-card p-4">
+			{#if pasoActual === 'nombre'}
+				<!-- A la altura del rótulo: su línea empieza a 16 px (el p-4) y la flecha sube 1.5 px para centrarse con un texto de 16 px. -->
+				<FlechaDePaso alto={24} desfase={14.5} />
+			{/if}
 			<label for="nuevo-proceso-nombre" class="text-base font-medium text-foreground">Nombre de proceso *</label>
 			<Input
 				id="nuevo-proceso-nombre"
@@ -121,7 +135,10 @@
 					Tu organización no tiene tipos documentales activos. Se activan en Configuración › Tipos documentales; sin ninguno, un proceso no tiene qué usar como entrada.
 				</p>
 			{:else}
-				<div class="mt-4 rounded-xl border border-border bg-card p-4">
+				<div class="relative mt-4 rounded-xl border border-border bg-card p-4">
+					{#if pasoActual === 'tipos'}
+						<FlechaDePaso alto={24} desfase={14.5} />
+					{/if}
 					<label for="nuevo-proceso-tipos" class="text-base font-medium text-foreground">Tipos documentales *</label>
 					<div class="mt-2">
 						<DesplegableMultiple
@@ -160,6 +177,11 @@
 
 	<div class="mt-4 flex items-center justify-end gap-4 border-t border-border pt-3">
 		<Button type="button" variant="link" class="h-9.5 px-4 text-destructive" data-testid="nuevo-proceso-cancelar" onclick={alCancelar}>Cancelar</Button>
+		<span class="relative inline-flex">
+			{#if pasoActual === 'continuar'}
+				<!-- La caja de la flecha mide lo que el botón (38 px) y sube 2 px, como junto a un texto de 14 px. -->
+				<FlechaDePaso alto={38} desfase={-2} />
+			{/if}
 		<Button
 			type="submit"
 			class="h-9.5 px-4"
@@ -169,5 +191,6 @@
 		>
 			Continuar al lienzo
 		</Button>
+		</span>
 	</div>
 </form>

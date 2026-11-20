@@ -29,6 +29,12 @@ export type DatosProceso = {
 	 * tocarlo. Lo respeta Ejecuciones: solo ofrece los procesos activos.
 	 */
 	activo?: boolean;
+	/**
+	 * El proceso está inactivo PORQUE se guardó incompleto (2026-11-20, `motivosDeInactividad`), y no porque alguien lo desactivara desde la lista. Al
+	 * guardarlo completo vuelve solo a estar activo; uno desactivado a mano no trae esta marca y se queda inactivo. Activar o desactivar desde la lista la
+	 * quita. nexus_back la conserva sin interpretarla, igual que `activo`.
+	 */
+	inactivoPorIncompleto?: boolean;
 };
 
 /**

@@ -32,6 +32,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Save from '@lucide/svelte/icons/save';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import FlechaDePaso from '$lib/components/ui/FlechaDePaso.svelte';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
@@ -264,7 +265,12 @@
 	// puertas de entrada al wizard (`nuevoTipoDocumental`, `abrirTipoDocumental`,
 	// `iniciarNuevaVersion`) lo vuelven a fijar explícitamente según si el
 	// tipo que se abre ya trae campos o no.
-	let mostrarFormularioCampo = $state(true);
+	// Replegado de origen (2026-11-12, Moibe: «en el paso 2 que esto aparezca replegado de origen»): el paso 2 abre con «Agregar campos manualmente» y
+	// «Generar a partir de un documento» a la vista; el formulario sale al pedirlo. Solo arranca abierto si trae un campo a medio capturar.
+	let mostrarFormularioCampo = $state(false);
+	/** Las dos maneras de llenar el paso 2 —«Generar a partir de un documento» y «Agregar campos manualmente»— con el mismo molde y ancho, para que se lean como equivalentes (2026-11-12). */
+	const TARJETA_CAMINO =
+		'flex w-full items-center gap-3 rounded-xl border border-dashed border-border px-6 py-2.5 text-left transition-colors outline-none hover:border-primary hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50 sm:w-80';
 
 	/** "Guardar" del formulario de captura del paso 2: guarda el campo Y
 	 *  oculta el formulario (ver `mostrarFormularioCampo`). `agregarCampoEnCaptura`
@@ -469,6 +475,13 @@
 	// regresa ahí y una línea lo dice (sin nombre, la descripción y las sugerencias no sirven de nada: la IA lo necesita).
 	let entradaNombreTipo = $state<HTMLInputElement | null>(null);
 	let pedirNombrePrimero = $state(false);
+	/**
+	 * El nombre y la descripción quedan fijos en cuanto se sale del paso 1 (2026-11-12, Moibe: «si ya salí del paso 1 cuando estoy creando el tipo
+	 * documental, regresar al paso 1 ya no permitirá modificar los campos de Nombre y descripción, solo el de vertical de negocio»). Con ellos se
+	 * propusieron y describieron los campos del paso 2; al regresar se ven, pero solo la vertical se cambia. Sin las sugerencias de la IA (reescribirían
+	 * la descripción).
+	 */
+	const datosBasicosFijos = $derived(borrador.pasoMaximo > 1);
 	$effect(() => {
 		if (borrador.paso === 1 && entradaNombreTipo && untrack(() => borrador.nombre.trim() === '')) entradaNombreTipo.focus();
 	});
@@ -741,6 +754,17 @@
 		}
 	}
 
+	// Las flechitas » animadas (2026-11-20, Moibe: «cada que lleguemos a un nuevo paso ponme las flechitas animadas señalándolo, como las que tengo en
+	// buzzword-agentes-ui»; es el mismo «subtab-arrow-indicator» de allá). Al llegar a un paso del asistente —al abrirlo, con «Continuar», con «Atrás» o picando
+	// el costado— su título lleva el » que se mece; se apaga en cuanto se empieza a trabajar en el paso (un clic o una tecla en el panel de la derecha).
+	let flechaEnPaso = $state<number | null>(null);
+	$effect(() => {
+		if (vista === 'wizard') flechaEnPaso = borrador.paso;
+	});
+	const apagarFlecha = () => {
+		if (flechaEnPaso !== null) flechaEnPaso = null;
+	};
+
 	function regresar() {
 		if (borrador.paso > 1) borrador.paso -= 1;
 		else {
@@ -765,9 +789,8 @@
 		tituloError = '';
 		errorActivacion = '';
 		altaEnCurso = true;
-		// Alta nueva: siempre en blanco, así que siempre hay que mostrar el
-		// formulario del paso 2 — no hay campos que listar todavía.
-		mostrarFormularioCampo = true;
+		// Alta nueva: el formulario del paso 2 arranca replegado (2026-11-12); se abre con «Agregar campos manualmente».
+		mostrarFormularioCampo = false;
 		vista = 'wizard';
 	}
 
@@ -813,7 +836,7 @@
 			altaEnCurso = false;
 			// Ya cargado el borrador: si trae campos, el paso 2 arranca con la
 			// lista a la vista y el formulario oculto, no al revés.
-			mostrarFormularioCampo = borrador.campos.length === 0;
+			mostrarFormularioCampo = !campoIntacto(borrador.campoEnCaptura);
 			vista = 'wizard';
 		}
 	}
@@ -888,7 +911,7 @@
 			// Mismo criterio que `abrirTipoDocumental`: conserva sus campos
 			// (`crearNuevaVersion` los copia), así que el formulario arranca
 			// oculto salvo que de verdad no traiga ninguno.
-			mostrarFormularioCampo = borrador.campos.length === 0;
+			mostrarFormularioCampo = !campoIntacto(borrador.campoEnCaptura);
 			// Después de cargar: la huella tiene que ser la del borrador YA
 			// puesto, que es contra lo que se va a comparar al salir.
 			nuevaVersionEnCurso = { id, huella: huellaDelBorrador() };
@@ -1342,7 +1365,13 @@
 								{n}. {step.title}
 							</button>
 						{:else}
-							<p class="text-sm font-semibold text-foreground">{n}. {step.title}</p>
+							<p class="relative text-sm font-semibold text-foreground">
+								{#if flechaEnPaso === n}
+									<!-- A la izquierda del título, en el margen del costado: no lo empuja, y al apagarse el título no brinca. -->
+									<FlechaDePaso />
+								{/if}
+								{n}. {step.title}
+							</p>
 						{/if}
 							<p class="mt-1 text-sm text-muted-foreground">{step.description}</p>
 						</li>
@@ -1353,7 +1382,14 @@
 		{/if}
 
 		<!-- Sin la barra lateral (la Biblioteca), la línea de 2 px que separaba la banda del título la pone el contenido. -->
-		<div class="flex-1 overflow-y-auto p-8 {vista === 'biblioteca' ? 'border-t-2 border-muted' : ''}">
+		<!-- Un clic o una tecla aquí apaga la flecha del paso (`apagarFlecha`): ya se está trabajando en él. -->
+		<div
+			class="flex-1 overflow-y-auto p-8 {vista === 'biblioteca' ? 'border-t-2 border-muted' : ''}"
+			onpointerdown={apagarFlecha}
+			onkeydown={apagarFlecha}
+			oninput={apagarFlecha}
+			role="presentation"
+		>
 			{#if vista === 'biblioteca' && !estadoBiblioteca.cargada}
 				<!-- La biblioteca vive en el servidor (por organización) y todavía no llega: un panel vacío con «Agregar
 				     nuevo tipo documental» se leería como «no tienes ninguno», y crear uno encima de eso es justo lo que
@@ -2379,8 +2415,10 @@
 				{/if}
 			{:else if borrador.paso === 1}
 				<h3 class="text-xl font-semibold text-foreground">Nuevo tipo documental</h3>
-				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-					Captura los datos básicos del tipo; después defines sus campos.
+				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground" data-testid="paso1-subtitulo">
+					{datosBasicosFijos
+						? 'Ya avanzaste a sus campos: el nombre y la descripción quedan fijos. Aquí solo puedes cambiar la vertical de negocio.'
+						: 'Captura los datos básicos del tipo; después defines sus campos.'}
 				</p>
 
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -2395,9 +2433,10 @@
 								bind:ref={entradaNombreTipo}
 								bind:value={borrador.nombre}
 								placeholder="Ingresa el nombre del tipo documental a configurar, por ejemplo: INE"
+								readonly={datosBasicosFijos}
 								aria-invalid={nombreTipoRepetido || pedirNombrePrimero}
 								aria-describedby={nombreTipoRepetido ? 'nombre-tipo-error' : pedirNombrePrimero ? 'nombre-tipo-primero' : undefined}
-								class={nombreTipoRepetido ? 'pr-9' : undefined}
+								class={[nombreTipoRepetido && 'pr-9', datosBasicosFijos && 'cursor-default bg-muted/50 text-muted-foreground focus-visible:ring-0']}
 							/>
 							{#if nombreTipoRepetido}
 								<AlertCircle
@@ -2424,8 +2463,10 @@
 							bind:value={borrador.descripcion}
 							rows={3}
 							placeholder="Describe el propósito y contenido de este tipo documental."
-							class="text-justify"
+							readonly={datosBasicosFijos}
+							class={['text-justify', datosBasicosFijos && 'cursor-default bg-muted/50 text-muted-foreground focus-visible:ring-0']}
 						/>
+						{#if !datosBasicosFijos}
 						<!-- Texto justificado (2026-11-05, Moibe: «¿podría salir justificado?»): la descripción suele ser un párrafo largo (la que
 						     sugiere la IA ronda las 70 palabras) y así se lee como tal. Es solo presentación: el valor guardado no cambia, y la última
 						     línea queda a la izquierda (lo normal en `text-align: justify`). El recuadro de la sugerencia, más abajo, va igual para
@@ -2515,6 +2556,7 @@
 								</div>
 							</div>
 						{/if}
+						{/if}
 					</div>
 
 					<div class="space-y-2">
@@ -2544,18 +2586,22 @@
 				<!-- Como el botón del mismo nombre en la consola de Document AI (pedido el 2026-10-29): en vez de capturar campo por
 				     campo, Document AI propone los campos leyendo un documento de ejemplo. Ver `GenerarCamposDesdeDocumento.svelte`. Va después de
 				     -->
-				<Button
-					variant="outline"
-					class="mt-4 gap-2"
+				<!-- Mismo molde que «Agregar campos manualmente» (2026-11-12, Moibe: «que tengan más o menos el mismo tamaño para que se sepa que son
+				     equivalentes»): dos caminos para lo mismo, del mismo ancho y alto (`TARJETA_CAMINO`). -->
+				<button
+					type="button"
+					class="mt-6 {TARJETA_CAMINO}"
 					data-testid="abrir-generar-campos"
 					onclick={() => {
 						ejemplosParaGenerar = ejemplosDelPaso1Actuales();
 						generarCamposAbierto = true;
 					}}
 				>
-					<Sparkles class="size-4 text-primary" />
-					Generar a partir de un documento
-				</Button>
+					<span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+						<Sparkles class="size-4" />
+					</span>
+					<span class="text-sm font-medium text-foreground">Generar a partir de un documento</span>
+				</button>
 
 				{#if mostrarFormularioCampo}
 					<!-- El formulario de alta. Ya NO queda siempre visible (cambio del
@@ -2691,7 +2737,8 @@
 					     campo MÁS después del primero. -->
 					<button
 						type="button"
-						class="mt-8 flex max-w-3xl items-center gap-3 rounded-xl border border-dashed border-border px-6 py-2.5 text-left transition-colors hover:border-primary hover:bg-primary/5"
+						class="mt-3 {TARJETA_CAMINO}"
+						data-testid="agregar-campos-manualmente"
 						onclick={() => (mostrarFormularioCampo = true)}
 					>
 						<span
@@ -2699,7 +2746,7 @@
 						>
 							<CirclePlus class="size-4" />
 						</span>
-						<span class="text-sm font-medium text-foreground">Agregar campo</span>
+						<span class="text-sm font-medium text-foreground">Agregar campos manualmente</span>
 					</button>
 				{/if}
 

@@ -34,6 +34,7 @@ import {
 	evaluar,
 	fechaDeHoy,
 	hidratarDibujo,
+	ignoraEscritura,
 	lineasDeEjemplo,
 	llaveDeParecido,
 	maximoDeAntiguedad,
@@ -126,7 +127,8 @@ export type ReglaDeCorrida = {
 	antiguedad?: MedidaDeAntiguedad;
 	/**
 	 * Lo que le llegó a cada entrada, en el orden del nodo (2026-11-10). Las ejecuciones de antes no lo traen. A una «Antigüedad contra hoy» se le suman dos
-	 * renglones que no son entradas pero también se compararon: su «Máximo» y el «Hoy» de la ejecución.
+	 * renglones que no son entradas pero también se compararon: su «Máximo» y el «Hoy» de la ejecución. A un «Igual a» con su casilla activada (NEX-579),
+	 * uno que dice cómo se comparó: «Al comparar · En la regla · Sin fijarse en mayúsculas, acentos, guiones ni espacios».
 	 */
 	entradas?: EntradaDeCorrida[];
 };
@@ -222,6 +224,8 @@ function origenDe(cable: CableDeLienzo | undefined, nodos: readonly NodoDeLienzo
 
 const TEXTO_SIN_VALORES = 'Faltan valores para decidirla';
 const TEXTO_INCOMPLETA = 'Le falta algo conectado';
+/** Cómo comparó un «Igual a» con su casilla activada (NEX-579): el renglón que se suma a sus entradas en el historial. */
+export const COMPARADO_SIN_ESCRITURA = 'Sin fijarse en mayúsculas, acentos, guiones ni espacios';
 
 /** Lo que dice el historial de una regla que llega a otra: su veredicto en palabras (igual que la insignia del lienzo). */
 const ESTADO_EN_PALABRAS: Record<Estado, string> = { pasa: 'Pasa', no_pasa: 'No pasa', listo: 'Listo', sin_valores: 'Sin valores', sin_conexion: 'Incompleta' };
@@ -347,7 +351,9 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}, hoy: string =
 						{ etiqueta: 'Máximo', origen: 'En la regla', valor: cuantoTiempo(maximoDeAntiguedad(n.data), unidadDeAntiguedad(n.data)) },
 						{ etiqueta: 'Hoy', origen: 'Día de la ejecución', valor: hoy }
 					]
-				: [])
+				: []),
+			// «Igual a» con su casilla (NEX-579): que el historial diga que «ABC-123-D» y «abc123d» pasaron porque así se pidió comparar.
+			...(ignoraEscritura(n.data) ? [{ etiqueta: 'Al comparar', origen: 'En la regla', valor: COMPARADO_SIN_ESCRITURA }] : [])
 		];
 		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
 			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });

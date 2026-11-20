@@ -23,6 +23,11 @@
 	 * con que el nodo exista: conectarlo a una regla no se exige para guardar (se puede dejar a medias), pero un proceso sin regla en su Resultado no
 	 * se ejecuta.
 	 *
+	 * Desde el 2026-11-20 «Guardar» SOLO exige el nombre (Moibe: «quiero poder guardar aún sin tipo documental u otras restricciones que tengamos»):
+	 * lo que antes impedía guardar —un tipo documental, que todos estén activos, el Resultado— ahora deja el proceso INACTIVO, y lo avisa el lienzo al
+	 * guardar. Los avisos de «falta» de esas tres cosas se fueron de aquí; queda el del nombre. Si el proceso guardado está inactivo, junto a su estado se
+	 * ve «Inactivo», y su título dice por qué.
+	 *
 	 * Es solo presentación: quien decide qué pasa con cada botón es `LienzoDeProceso`, que es dueño del dibujo.
 	 */
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -40,37 +45,25 @@
 		guardando,
 		puedeGuardar,
 		puedeBorrar,
-		tieneResultado,
-		tieneDocumento,
-		tiposNoActivos,
+		inactivo,
 		nombreOcupado,
 		alGuardar,
-		alBorrar,
-		alFaltaResultado,
-		alFaltaDocumento,
-		alFaltaActivo
+		alBorrar
 	}: {
 		nombre: string;
 		estado: EstadoDeProceso;
 		guardando: boolean;
 		puedeGuardar: boolean;
 		puedeBorrar: boolean;
-		/** El lienzo ya trae su nodo de «Resultado» (obligatorio para guardar). */
-		tieneResultado: boolean;
-		/** El lienzo trae al menos un tipo documental (obligatorio para guardar: son las entradas del proceso). */
-		tieneDocumento: boolean;
-		/** Los nombres de los tipos documentales del lienzo que NO están activos (borrador, archivados o borrados): con alguno no se guarda. */
-		tiposNoActivos: string[];
+		/**
+		 * El proceso GUARDADO está inactivo; `null` si está activo o aún no existe. `motivos` es lo que le falta ahora mismo (`motivosDeInactividad`) y
+		 * `porIncompleto`, si quedó inactivo por eso (al guardarlo completo vuelve a estar activo) o porque se desactivó desde la lista.
+		 */
+		inactivo: { motivos: string[]; porIncompleto: boolean } | null;
 		/** El nombre que el servidor dijo que ya tiene otro proceso de la organización (409 `ya_existe`), o `null`. Se quita al cambiarlo. */
 		nombreOcupado: string | null;
 		alGuardar: () => void;
 		alBorrar: () => void;
-		/** Se pulsó «Guardar» sin Resultado: que la paleta lo señale. */
-		alFaltaResultado: () => void;
-		/** Se pulsó «Guardar» sin ningún tipo documental: que la paleta los señale. */
-		alFaltaDocumento: () => void;
-		/** Se pulsó «Guardar» con tipos que no están activos: que el lienzo señale el primero. */
-		alFaltaActivo: () => void;
 	} = $props();
 
 	const TEXTO_DE_ESTADO: Record<EstadoDeProceso, string> = {
@@ -80,17 +73,12 @@
 		guardado: 'Todos los cambios guardados'
 	};
 
-	/** Lo primero que le falta al proceso para guardarse (el orden es el de `faltaParaGuardar`); `null` si nada. Es lo que dice el título del botón. */
-	const queFalta = $derived<FaltaParaGuardar | null>(
-		faltaParaGuardar({ nombre, hayTipoDocumental: tieneDocumento, tiposNoActivos: tiposNoActivos.length, hayResultado: tieneResultado })
-	);
-	/** Qué le falta al proceso para guardarse, si la persona pulsó «Guardar» sin eso: se dice bajo el campo y se quita al llenarlo. */
+	/** Lo que le falta al proceso para guardarse (solo el nombre, `faltaParaGuardar`); `null` si nada. Es lo que dice el título del botón. */
+	const queFalta = $derived<FaltaParaGuardar | null>(faltaParaGuardar({ nombre }));
+	/** La persona pulsó «Guardar» sin nombre: se dice bajo el campo y se quita al escribirlo. */
 	let falta = $state<FaltaParaGuardar | null>(null);
 	$effect(() => {
 		if (falta === 'nombre' && nombre.trim() !== '') falta = null;
-		if (falta === 'documento' && tieneDocumento) falta = null;
-		if (falta === 'inactivos' && tiposNoActivos.length === 0) falta = null;
-		if (falta === 'resultado' && tieneResultado) falta = null;
 	});
 	/** El nombre que se está escribiendo es justo el que el servidor rechazó por repetido: se dice bajo el campo hasta que se cambie. */
 	const nombreRepetido = $derived(nombreOcupado !== null && nombre.trim() === nombreOcupado);
@@ -103,15 +91,6 @@
 		} else if (queFalta === 'nombre') {
 			falta = 'nombre';
 			document.getElementById('nombre-del-proceso')?.focus();
-		} else if (queFalta === 'documento') {
-			falta = 'documento';
-			alFaltaDocumento();
-		} else if (queFalta === 'inactivos') {
-			falta = 'inactivos';
-			alFaltaActivo();
-		} else if (queFalta === 'resultado') {
-			falta = 'resultado';
-			alFaltaResultado();
 		}
 		// Sin cambios que guardar: no hay nada que decir; el título del botón ya lo explica.
 	}
@@ -151,6 +130,20 @@
 	>
 		{TEXTO_DE_ESTADO[estado]}
 	</span>
+	{#if inactivo}
+		<span
+			data-testid="proceso-inactivo"
+			title={inactivo.motivos.length
+				? `Inactivo. Para activarlo: ${inactivo.motivos.join('; ')}`
+				: inactivo.porIncompleto
+					? 'Inactivo. Ya está completo: al guardarlo vuelve a estar activo'
+					: 'Inactivo: se desactivó desde la lista de procesos'}
+			class="flex h-5.5 items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs font-medium text-muted-foreground"
+		>
+			<span class="size-1.5 rounded-full bg-muted-foreground/60" aria-hidden="true"></span>
+			Inactivo
+		</span>
+	{/if}
 
 	<div class="ml-auto flex flex-wrap items-center gap-2">
 		{#if puedeBorrar}
@@ -165,37 +158,12 @@
 				disabled={guardando}
 				aria-disabled={!puedeGuardar || guardando}
 				class={!puedeGuardar && !guardando ? 'cursor-not-allowed opacity-50' : ''}
-				title={queFalta === 'nombre'
-					? 'Ponle un nombre al proceso para guardarlo'
-					: queFalta === 'documento'
-						? 'Agrega al menos un tipo documental para guardarlo'
-						: queFalta === 'inactivos'
-							? 'Quita del proceso los tipos documentales que no están activos (o vuelve a activarlos) para guardarlo'
-							: queFalta === 'resultado'
-								? 'Agrega el nodo «Resultado» para guardarlo'
-								: !puedeGuardar
-									? 'No hay cambios que guardar'
-									: 'Guardar (Ctrl+S)'}
+				title={queFalta === 'nombre' ? 'Ponle un nombre al proceso para guardarlo' : !puedeGuardar ? 'No hay cambios que guardar' : 'Guardar (Ctrl+S)'}
 				onclick={pulsarGuardar}
 			>
 				<Save />
 				{guardando ? 'Guardando…' : 'Guardar'}
 			</Button>
-			{#if falta === 'documento'}
-				<p role="alert" data-testid="falta-documento" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
-					Agrega al menos un tipo documental para guardar: son las entradas del proceso. Los encuentras en «Tipos documentales».
-				</p>
-			{/if}
-			{#if falta === 'inactivos'}
-				<p role="alert" data-testid="falta-activo" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
-					Solo se pueden usar tipos documentales activos y estos ya no lo están: {tiposNoActivos.map((n) => `«${n}»`).join(', ')}. Quítalos del proceso o vuelve a activarlos en Configuración › Tipos documentales.
-				</p>
-			{/if}
-			{#if falta === 'resultado'}
-				<p role="alert" data-testid="falta-resultado" class="absolute top-full right-0 z-10 mt-1.5 w-72 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
-					Agrega el nodo «Resultado» para guardar: es la palabra con la que termina el proceso. Lo encuentras en «Salidas del proceso».
-				</p>
-			{/if}
 		</div>
 	</div>
 </div>

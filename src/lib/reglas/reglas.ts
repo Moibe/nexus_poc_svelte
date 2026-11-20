@@ -64,6 +64,9 @@ export function estadoDeTipoEnLienzo(tipos: readonly Pick<TipoDocumentalGuardado
  * «Antigüedad contra hoy» (2026-11-10) lleva además su `maximo` y su `unidad` («3 meses»), que son parte de la regla y se guardan, y `hoy`: la fecha de
  * hoy de EJEMPLO que se escribe en el lienzo para probarla. `hoy` NO se guarda (ni `serializarDibujo` lo escribe ni `hidratarDibujo` lo lee): sin
  * él, la regla se decide con la fecha del día, que es lo que hace una ejecución.
+ *
+ * «Igual a» (NEX-579, 2026-11-20) lleva `ignorarEscritura`, su casilla «Ignorar mayúsculas, acentos, guiones y espacios»: es parte de la regla y se
+ * guarda, pero SOLO cuando está activada (un «Igual a» de antes, sin ella, se guarda exactamente como antes).
  */
 export type DatosNodoOperador = {
 	operador: ClaveOperador;
@@ -74,7 +77,28 @@ export type DatosNodoOperador = {
 	maximo?: number;
 	unidad?: UnidadDeTiempo;
 	hoy?: string;
+	ignorarEscritura?: boolean;
 };
+
+/** La casilla de «Igual a» (NEX-579), con las palabras del ticket. */
+export const TEXTO_IGNORAR_ESCRITURA = 'Ignorar mayúsculas, acentos, guiones y espacios';
+
+/** ¿Este nodo es un «Igual a» con la casilla activada? Solo cuenta un `true` de verdad: cualquier otra cosa es la casilla apagada. */
+export function ignoraEscritura(datos: { operador?: unknown; ignorarEscritura?: unknown } | null | undefined): boolean {
+	return datos?.operador === 'igual' && datos.ignorarEscritura === true;
+}
+
+/**
+ * Un texto reducido a lo que DICE, sin cómo está escrito (NEX-579): sin acentos (ni la tilde de la ñ, como en «Parecido a»), en minúsculas y sin
+ * guiones (de cualquier largo: -, ‐, –, —, el signo menos y el guion invisible) ni espacios. Así «ABC-123-D» y «abc 123 d» son el mismo «abc123d».
+ */
+export function textoSinEscritura(texto: string): string {
+	return texto
+		.normalize('NFD')
+		.replace(/\p{M}/gu, '')
+		.toLocaleLowerCase('es')
+		.replace(/[\s\p{Pd}−­]+/gu, '');
+}
 
 /** «Parecido a» (2026-11-10): el porcentaje mínimo de parecido para que pase, cuando el nodo no trae otro. El back usa el mismo (`MINIMO_PARECIDO`). */
 export const MINIMO_PARECIDO = 90;
@@ -968,8 +992,13 @@ function aBooleano(s: string): boolean | null {
  *   · fecha: por el día, venga como venga escrita;
  *   · sí/no: «sí» y «true» son lo mismo.
  * Un valor que no se entiende (un número que no es número) no es igual a nada.
+ *
+ * `ignorarEscritura` (la casilla de «Igual a», NEX-579) hace que los TEXTOS se comparen además sin acentos, sin guiones y sin ningún espacio
+ * (`textoSinEscritura`): «ABC-123-D» = «abc123d». Toca solo lo que se compara como texto (también una fecha que no se reconoce): los números, las
+ * fechas y los sí/no ya se comparan por lo que valen.
  */
-export function sonIguales(familia: Familia, a: string, b: string): boolean {
+export function sonIguales(familia: Familia, a: string, b: string, ignorarEscritura = false): boolean {
+	const comoTexto = (x: string, y: string) => (ignorarEscritura ? textoSinEscritura(x) === textoSinEscritura(y) : textoLimpio(x) === textoLimpio(y));
 	switch (familia) {
 		case 'numero': {
 			const x = aNumero(a);
@@ -979,7 +1008,7 @@ export function sonIguales(familia: Familia, a: string, b: string): boolean {
 		case 'fecha': {
 			const x = aFecha(a);
 			const y = aFecha(b);
-			return x !== null && y !== null ? x === y : textoLimpio(a) === textoLimpio(b);
+			return x !== null && y !== null ? x === y : comoTexto(a, b);
 		}
 		case 'booleano': {
 			const x = aBooleano(a);
@@ -987,7 +1016,7 @@ export function sonIguales(familia: Familia, a: string, b: string): boolean {
 			return x !== null && y !== null && x === y;
 		}
 		default:
-			return textoLimpio(a) === textoLimpio(b);
+			return comoTexto(a, b);
 	}
 }
 
@@ -1035,13 +1064,16 @@ export type Veredicto = 'pasa' | 'no_pasa' | 'sin_valores' | 'sin_conexion';
 /** Lo mismo, más `listo`: una regla que entrega un VALOR (Cantidad, Suma) no «pasa», ya calculó su número. */
 export type Estado = Veredicto | 'listo';
 
-/** El veredicto de una COMPARACIÓN con los valores de ejemplo. Un valor que no se entiende no cumple ninguna comparación. */
-export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: string, b: string): Veredicto {
+/**
+ * El veredicto de una COMPARACIÓN con los valores de ejemplo. Un valor que no se entiende no cumple ninguna comparación. `ignorarEscritura` es la
+ * casilla de «Igual a» (NEX-579); los demás operadores no la tienen y no la miran.
+ */
+export function evaluarComparacion(clave: ClaveOperador, familia: Familia, a: string, b: string, ignorarEscritura = false): Veredicto {
 	if (!a.trim() || !b.trim()) return 'sin_valores';
 	const si = (ok: boolean): Veredicto => (ok ? 'pasa' : 'no_pasa');
 	switch (clave) {
 		case 'igual':
-			return si(sonIguales(familia, a, b));
+			return si(sonIguales(familia, a, b, ignorarEscritura));
 		case 'distinto':
 			return si(!sonIguales(familia, a, b));
 		case 'contiene':
@@ -1385,7 +1417,7 @@ export function evaluar(
 				if (r.medida) antiguedades[id] = r.medida;
 			} else if (def.grupo === 'comparacion') {
 				const familia = (llegan[0].fuente as Fuente).familia;
-				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra) : 'sin_conexion';
+				estado = familia ? evaluarComparacion(def.clave, familia, llegan[0].muestra, llegan[1].muestra, ignoraEscritura(datos)) : 'sin_conexion';
 			} else if (def.grupo === 'documento') {
 				estado = evaluarExistencia(llegan[0].muestra);
 			} else {
@@ -1493,7 +1525,9 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 					...(usaTerceraEntrada(d.operador) ? { c: d.c ?? '' } : {}),
 					...(d.operador === 'parecido' ? { minimo: minimoDeParecido(d) } : {}),
 					// «Antigüedad contra hoy»: el máximo y su unidad son parte de la regla. Su `hoy` de ejemplo NO se guarda.
-					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {})
+					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {}),
+					// «Igual a» (NEX-579): su casilla, solo si está activada; apagada se guarda como siempre (y la huella de lo de antes no cambia).
+					...(ignoraEscritura(d) ? { ignorarEscritura: true } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE) {
@@ -1563,7 +1597,8 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 					b: typeof n.data.b === 'string' ? n.data.b : '',
 					...(usaTerceraEntrada(n.data.operador) ? { c: typeof n.data.c === 'string' ? n.data.c : '' } : {}),
 					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {}),
-					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {})
+					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {}),
+					...(ignoraEscritura(n.data) ? { ignorarEscritura: true } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {
@@ -1638,24 +1673,75 @@ export function hayCambiosSinGuardar(existe: boolean, ahora: { huella: string; n
 }
 
 /**
- * Qué le falta a un proceso para poder guardarse, en el orden en que se le dice a la persona; `null` si no le falta nada (sin contar si hay cambios).
- * «Guardar» exige:
- *   · un NOMBRE;
- *   · al menos un TIPO DOCUMENTAL en el lienzo (NEX-529): son las entradas, la declaración de qué documentos necesita el proceso del expediente;
- *   · que NINGUNO de los tipos del lienzo haya dejado de estar activo (2026-11-05, Moibe: «no deberíamos poder usar en el canvas los tipos documentales
- *     que no estén activos»);
- *   · el nodo del RESULTADO (2026-11-03, Moibe): sin la palabra con la que termina no hay con qué contestar cuando se ejecute.
- * Desde el 2026-11-05 YA NO exige un tipo de expediente virtual (Moibe: «voy a quitar los expedientes virtuales»): un proceso corre sobre cualquier
- * expediente de la organización. Es una regla de la pantalla: el back no exige nada de esto (activar o desactivar desde la lista guarda el proceso
- * entero y no debe fallar con los procesos de antes).
+ * Qué le falta a un proceso para poder guardarse; `null` si nada (sin contar si hay cambios). Desde el 2026-11-20 SOLO el NOMBRE (Moibe: «quiero poder
+ * guardar aún sin tipo documental u otras restricciones que tengamos»): lo demás que antes se exigía —al menos un tipo documental (NEX-529), que todos
+ * estén activos (2026-11-05) y el nodo del Resultado (2026-11-03)— ya no impide guardar: hace que el proceso quede INACTIVO (`motivosDeInactividad`).
+ * El nombre sigue, porque es como se reconoce el proceso en la lista y el servidor lo exige (y lo pide único en la organización).
  */
-export type FaltaParaGuardar = 'nombre' | 'documento' | 'inactivos' | 'resultado';
-export function faltaParaGuardar(proceso: { nombre: string; hayTipoDocumental: boolean; tiposNoActivos: number; hayResultado: boolean }): FaltaParaGuardar | null {
-	if (proceso.nombre.trim() === '') return 'nombre';
-	if (!proceso.hayTipoDocumental) return 'documento';
-	if (proceso.tiposNoActivos > 0) return 'inactivos';
-	if (!proceso.hayResultado) return 'resultado';
-	return null;
+export type FaltaParaGuardar = 'nombre';
+export function faltaParaGuardar(proceso: { nombre: string }): FaltaParaGuardar | null {
+	return proceso.nombre.trim() === '' ? 'nombre' : null;
+}
+
+/**
+ * Por qué un proceso NO puede estar activo (2026-11-20, Moibe: «lo que cambiará es que se le advertirá al usuario que ya no estará Activo ese proceso,
+ * y efectivamente esa será la restricción»). Son las condiciones que antes impedían guardar, más la que impedía ejecutarlo:
+ *   · `documento`: no tiene ningún tipo documental (sus entradas);
+ *   · `inactivos`: usa tipos documentales que existen pero ya no están activos (borrador o archivado), con sus nombres;
+ *   · `borrados`: usa tipos documentales que ya no existen (cuántos: su nombre ya no se sabe);
+ *   · `resultado`: no tiene el nodo «Resultado»;
+ *   · `resultado_sin_regla`: lo tiene, pero ninguna regla llega a él (antes se guardaba «activo» pero Ejecuciones no lo podía correr).
+ * Sin motivos, puede estar activo; CON motivos el proceso está INACTIVO aunque lo guardado diga `activo` (2026-11-20, Moibe: «cuando no se pueda ejecutar
+ * entonces pasa a Inactivo»). nexus_back tiene el espejo exacto (`procesos.motivos_de_inactividad`) para lo que ofrece ejecutar. `tipos` es la biblioteca de la organización; `null` mientras no se ha leído (entonces no se juzga `inactivos`, porque
+ * no se sabe). La lista y el lienzo usan esta MISMA función: lo que el lienzo avisa al guardar es lo que la lista dice junto a «Inactivo».
+ */
+export type MotivoDeInactividad =
+	| { clave: 'documento' }
+	| { clave: 'inactivos'; tipos: string[] }
+	| { clave: 'borrados'; cantidad: number }
+	| { clave: 'resultado' }
+	| { clave: 'resultado_sin_regla' };
+
+export function motivosDeInactividad(
+	dibujo: { nodos: readonly unknown[]; aristas: readonly unknown[] },
+	tipos: readonly Pick<TipoDocumentalGuardado, 'id' | 'estado' | 'nombre'>[] | null
+): MotivoDeInactividad[] {
+	const nodos = dibujo.nodos.filter((n): n is { type?: unknown; data?: unknown } => !!n && typeof n === 'object');
+	const deTipo = nodos.filter((n) => n.type === NODO_TIPO);
+	const motivos: MotivoDeInactividad[] = [];
+	if (deTipo.length === 0) motivos.push({ clave: 'documento' });
+	if (tipos) {
+		const noActivos = new Set<string>();
+		const borrados = new Set<string>();
+		for (const n of deTipo) {
+			const tipoId = String((n.data as { tipoId?: unknown } | undefined)?.tipoId ?? '');
+			const tipo = tipos.find((t) => t.id === tipoId);
+			if (!tipo) borrados.add(tipoId);
+			else if (tipo.estado !== 'activo') noActivos.add(tipo.nombre);
+		}
+		if (noActivos.size > 0) motivos.push({ clave: 'inactivos', tipos: [...noActivos] });
+		if (borrados.size > 0) motivos.push({ clave: 'borrados', cantidad: borrados.size });
+	}
+	if (!nodos.some((n) => n.type === NODO_RESULTADO)) motivos.push({ clave: 'resultado' });
+	else if (!resultadoConectado(dibujo)) motivos.push({ clave: 'resultado_sin_regla' });
+	return motivos;
+}
+
+/** Cómo se dice un motivo: «No tiene tipos documentales», «Usa tipos documentales que ya no están activos: «INE»»… */
+export function textoDeMotivo(m: MotivoDeInactividad): string {
+	switch (m.clave) {
+		case 'documento':
+			return 'No tiene tipos documentales';
+		case 'inactivos':
+			return `Usa ${m.tipos.length === 1 ? 'un tipo documental que ya no está activo' : 'tipos documentales que ya no están activos'}: ${m.tipos.map((t) => `«${t}»`).join(', ')}`;
+		case 'borrados':
+			// Sin nombre (ya no se sabe) y sin dos puntos (2026-11-20, Moibe: «que solo diga: … Usa un tipo documental que ya no está activo.»).
+			return m.cantidad === 1 ? 'Usa un tipo documental que ya no está activo' : 'Usa tipos documentales que ya no están activos';
+		case 'resultado':
+			return 'No tiene el nodo «Resultado»';
+		case 'resultado_sin_regla':
+			return 'Su «Resultado» no tiene ninguna regla conectada';
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────── el alta de un proceso (2026-11-06)

@@ -22,6 +22,10 @@
 	 *     dice «Nuevo proceso».
 	 *   · «Documentos configurados | N» cuenta los tipos documentales que el proceso trae como entradas.
 	 *   · Activar y desactivar marca el proceso (se guarda en el servidor) y Ejecuciones solo ofrece los activos. El aviso es el del diseño.
+	 *   · Junto a «Inactivo» se dice POR QUÉ (2026-11-20, Moibe: «en la parte donde señala que está Inactivo también señalará por qué»): lo que le falta
+	 *     (`motivosDeInactividad`, la misma regla con que el lienzo avisa al guardar) o que se desactivó a mano. Uno incompleto NO se puede activar: el
+	 *     botón lo explica en vez de activarlo. Lo que se enseña es el estado EFECTIVO (2026-11-20, Moibe: «cuando no se pueda ejecutar entonces pasa a
+	 *     Inactivo»): uno guardado como activo pero incompleto se ve «Inactivo», y en cuanto se complete (p. ej. se reactiva su tipo) vuelve a verse activo.
 	 *   · Sin «Corre sobre: …» (2026-11-05, Moibe: quitar los expedientes virtuales): del 2026-10-29 al 2026-11-05 cada tarjeta decía sobre qué
 	 *     tipo de expediente virtual corría el proceso; un proceso corre sobre cualquier expediente de la organización y la tarjeta ya no lo dice.
 	 *
@@ -48,19 +52,22 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import NuevoProceso from '$lib/components/reglas/NuevoProceso.svelte';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import { direccionDeProcesoNuevo } from '$lib/reglas/reglas';
+	import { direccionDeProcesoNuevo, motivosDeInactividad, textoDeMotivo } from '$lib/reglas/reglas';
 	import { avisarExito } from '$lib/state/avisos.svelte';
+	import { cargarBiblioteca, estadoBiblioteca, tiposDocumentales } from '$lib/state/configuracion.svelte';
 	import {
 		cargarProcesos,
 		estadoProcesos,
 		guardarProceso,
 		procesoActivo,
 		reiniciarProcesos,
-		resultadoConectadoDe,
-		tieneResultado,
 		tiposDelProceso,
 		type ProcesoGuardado
 	} from '$lib/state/procesos.svelte';
+
+	/** Lo que le falta a un proceso para poder estar activo, en palabras. Sin la biblioteca leída no se juzgan los tipos no activos. */
+	const motivosDe = (p: ProcesoGuardado): string[] =>
+		motivosDeInactividad(p.datos, estadoBiblioteca.cargada ? tiposDocumentales : null).map(textoDeMotivo);
 
 	/** En el orden en que el servidor los entrega (el de su creación): una tarjeta no debe brincar de lugar al activarla o desactivarla. */
 	const procesos = $derived(estadoProcesos.lista);
@@ -75,6 +82,8 @@
 	onMount(() => {
 		reiniciarProcesos();
 		void cargarProcesos();
+		// Para saber si un proceso usa tipos que ya no están activos hace falta la biblioteca (normalmente ya se leyó al abrir la sesión).
+		if (!estadoBiblioteca.cargada) void cargarBiblioteca();
 		return () => reiniciarProcesos();
 	});
 
@@ -85,10 +94,26 @@
 	let cambiandoId = $state<string | null>(null);
 	let falla = $state<{ titulo: string; mensaje: string } | null>(null);
 
+	/** El botón de encendido de un proceso inactivo: si le falta algo no se activa, se dice qué le falta (2026-11-20). */
+	function activar(p: ProcesoGuardado) {
+		const faltan = motivosDe(p);
+		if (faltan.length > 0) {
+			falla = {
+				titulo: `No se puede activar «${p.datos.nombre}»`,
+				mensaje: `Le falta: ${faltan.join('; ')}. Ábrelo en el lienzo para completarlo; al guardarlo completo vuelve a estar activo.`
+			};
+			return;
+		}
+		void cambiarActivo(p, true);
+	}
+
 	async function cambiarActivo(p: ProcesoGuardado, activo: boolean) {
 		cambiandoId = p.id;
 		const nombre = p.datos.nombre;
-		const r = await guardarProceso(p.id, p.revision, { ...p.datos, activo });
+		// Activar o desactivar a mano quita la marca de «inactivo por incompleto»: desde ahora su estado es el que se eligió aquí.
+		const datos = { ...p.datos };
+		delete datos.inactivoPorIncompleto;
+		const r = await guardarProceso(p.id, p.revision, { ...datos, activo });
 		cambiandoId = null;
 		if (r.ok) {
 			avisarExito(activo ? 'Proceso activado' : 'Proceso desactivado', `«${nombre}» quedó ${activo ? 'activo' : 'inactivo'}.`);
@@ -180,7 +205,8 @@
 			{:else}
 				<div class="flex flex-col gap-3">
 					{#each procesos as p (p.id)}
-						{@const activo = procesoActivo(p)}
+						{@const faltan = motivosDe(p)}
+						{@const activo = procesoActivo(p) && faltan.length === 0}
 						{@const tipos = tiposDelProceso(p)}
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
@@ -201,17 +227,6 @@
 											Documentos configurados | {tipos}
 										{/if}
 									</span>
-									<!-- Desde el 2026-11-03 el Resultado es obligatorio: los procesos de antes que no lo traen se siguen abriendo, pero no se pueden ejecutar. -->
-									{#if !tieneResultado(p)}
-										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-sin-resultado" title="Ábrelo y agrega el nodo «Resultado» para poder ejecutarlo">
-											Sin Resultado: ábrelo y agrégalo para poder ejecutarlo
-										</span>
-									{:else if !resultadoConectadoDe(p)}
-										<!-- Tiene el nodo pero ninguna regla llega a él (2026-11-06): tampoco se puede ejecutar, y con el alta nueva es fácil guardarlo así. -->
-										<span class="block truncate text-xs text-amber-700 dark:text-amber-400" data-testid="proceso-resultado-sin-regla" title="Ábrelo y conecta una regla a su «Resultado» para poder ejecutarlo">
-											Su Resultado no tiene ninguna regla conectada: ábrelo y conéctala para poder ejecutarlo
-										</span>
-									{/if}
 								</span>
 							</div>
 
@@ -221,16 +236,29 @@
 									Guardando…
 								</span>
 							{:else}
-								<span
-									data-testid="insignia-proceso"
-									data-estado={activo ? 'activo' : 'inactivo'}
-									class="flex h-5.5 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium {activo
-										? 'bg-green-50 text-green-700'
-										: 'bg-muted text-muted-foreground'}"
-								>
-									<span class="size-1.5 rounded-full {activo ? 'bg-green-500' : 'bg-muted-foreground/60'}" aria-hidden="true"></span>
-									{activo ? 'Activo' : 'Inactivo'}
-								</span>
+								<!-- La insignia (el estado EFECTIVO) y, debajo, el porqué (2026-11-20): lo que le falta, o que se desactivó a mano. -->
+								<div class="flex max-w-72 shrink-0 flex-col items-end gap-1">
+									<span
+										data-testid="insignia-proceso"
+										data-estado={activo ? 'activo' : 'inactivo'}
+										class="flex h-5.5 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium {activo
+											? 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-400'
+											: 'bg-muted text-muted-foreground'}"
+									>
+										<span class="size-1.5 rounded-full {activo ? 'bg-green-500' : 'bg-muted-foreground/60'}" aria-hidden="true"></span>
+										{activo ? 'Activo' : 'Inactivo'}
+									</span>
+									{#if faltan.length > 0}
+										<span class="text-right text-xs leading-snug text-amber-700 dark:text-amber-400" data-testid="proceso-motivos">
+											Para activarlo: {faltan.join('; ')}
+										</span>
+									{:else if !activo}
+										<!-- Sin motivos: o lo desactivaron a mano, o quedó inactivo por incompleto y ya se completó (p. ej. se activó el tipo que le faltaba). -->
+										<span class="text-right text-xs leading-snug text-muted-foreground" data-testid="proceso-motivos"
+											>{p.datos.inactivoPorIncompleto ? 'Ya está completo: ya se puede activar' : 'Se desactivó a mano'}</span
+										>
+									{/if}
+								</div>
 							{/if}
 
 							<!-- Dos íconos directos en vez del menú ⋮ (2026-11-03, Moibe: «no usemos puntitos aquí»): el lápiz abre el proceso y el de encendido lo activa o desactiva.
@@ -248,10 +276,10 @@
 								<button
 									type="button"
 									data-testid="proceso-alternar-activo"
-									title={activo ? 'Desactivar' : 'Activar'}
+									title={activo ? 'Desactivar' : faltan.length > 0 ? 'Complétalo para poder activarlo' : 'Activar'}
 									aria-label="{activo ? 'Desactivar' : 'Activar'} {p.datos.nombre}"
 									disabled={cambiandoId === p.id}
-									onclick={() => (activo ? (porDesactivar = p) : void cambiarActivo(p, true))}
+									onclick={() => (activo ? (porDesactivar = p) : activar(p))}
 									class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 {activo ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}"
 								>
 									<Power class="size-4" />
