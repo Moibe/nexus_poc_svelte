@@ -753,6 +753,17 @@
 		}
 	}
 
+	// Las flechitas » animadas (2026-11-20, Moibe: «cada que lleguemos a un nuevo paso ponme las flechitas animadas señalándolo, como las que tengo en
+	// buzzword-agentes-ui»; es el mismo «subtab-arrow-indicator» de allá). Al llegar a un paso del asistente —al abrirlo, con «Continuar», con «Atrás» o picando
+	// el costado— su título lleva el » que se mece; se apaga en cuanto se empieza a trabajar en el paso (un clic o una tecla en el panel de la derecha).
+	let flechaEnPaso = $state<number | null>(null);
+	$effect(() => {
+		if (vista === 'wizard') flechaEnPaso = borrador.paso;
+	});
+	const apagarFlecha = () => {
+		if (flechaEnPaso !== null) flechaEnPaso = null;
+	};
+
 	function regresar() {
 		if (borrador.paso > 1) borrador.paso -= 1;
 		else {
@@ -1353,7 +1364,13 @@
 								{n}. {step.title}
 							</button>
 						{:else}
-							<p class="text-sm font-semibold text-foreground">{n}. {step.title}</p>
+							<p class="relative text-sm font-semibold text-foreground">
+								{#if flechaEnPaso === n}
+									<!-- A la izquierda del título, en el margen del costado: no lo empuja, y al apagarse el título no brinca. -->
+									<span class="flecha-de-paso" aria-hidden="true" data-testid="flecha-de-paso">»</span>
+								{/if}
+								{n}. {step.title}
+							</p>
 						{/if}
 							<p class="mt-1 text-sm text-muted-foreground">{step.description}</p>
 						</li>
@@ -1364,7 +1381,14 @@
 		{/if}
 
 		<!-- Sin la barra lateral (la Biblioteca), la línea de 2 px que separaba la banda del título la pone el contenido. -->
-		<div class="flex-1 overflow-y-auto p-8 {vista === 'biblioteca' ? 'border-t-2 border-muted' : ''}">
+		<!-- Un clic o una tecla aquí apaga la flecha del paso (`apagarFlecha`): ya se está trabajando en él. -->
+		<div
+			class="flex-1 overflow-y-auto p-8 {vista === 'biblioteca' ? 'border-t-2 border-muted' : ''}"
+			onpointerdown={apagarFlecha}
+			onkeydown={apagarFlecha}
+			oninput={apagarFlecha}
+			role="presentation"
+		>
 			{#if vista === 'biblioteca' && !estadoBiblioteca.cargada}
 				<!-- La biblioteca vive en el servidor (por organización) y todavía no llega: un panel vacío con «Agregar
 				     nuevo tipo documental» se leería como «no tienes ninguno», y crear uno encima de eso es justo lo que
@@ -3333,3 +3357,38 @@
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
 />
+
+<style>
+	/* La flecha » del paso al que se acaba de llegar (2026-11-20): la de `subtab-arrow-indicator` de buzzword-agentes-ui, con el color de marca de aquí. */
+	.flecha-de-paso {
+		position: absolute;
+		right: 100%;
+		top: 0;
+		margin-right: 0.4rem;
+		font-size: 1.35rem;
+		font-weight: 900;
+		/* La misma altura de línea que el título (text-sm): queda a la altura de su primera línea. */
+		line-height: 1.25rem;
+		color: var(--primary);
+		text-shadow: 0 0 8px color-mix(in oklab, var(--primary) 45%, transparent);
+		animation: flecha-de-paso 1.2s ease-in-out infinite;
+		pointer-events: none;
+		user-select: none;
+	}
+	@keyframes flecha-de-paso {
+		0%,
+		100% {
+			transform: translateX(0);
+			opacity: 0.85;
+		}
+		50% {
+			transform: translateX(4px);
+			opacity: 1;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.flecha-de-paso {
+			animation: none;
+		}
+	}
+</style>
