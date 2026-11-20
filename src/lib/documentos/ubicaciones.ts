@@ -52,6 +52,37 @@ export async function imagenDerecha(archivo: File): Promise<File> {
 	}
 }
 
+/** Lo que se manda de un campo para ubicarlo. Solo lo que sirve para encontrarlo; `tipoDato` y `cardinalidad` solo cuando cambian algo. */
+export type CampoAUbicar = {
+	nombre: string;
+	descripcion: string;
+	cardinalidad?: 'multiple';
+	tipoDato?: 'grupo';
+	subcampos?: { nombre: string; descripcion: string }[];
+};
+
+/**
+ * Un campo propuesto, listo para `/api/procesadores/ubicar-campos` (2026-11-20). Desde que ubica Document AI (con un esquema armado con estos campos), un
+ * grupo viaja con sus subcampos y lo que se repite como múltiple, para que se marque el bloque entero; antes solo iban el nombre y la descripción.
+ * Descripciones de a lo más 200 (lo que el servidor admite) para no pasar del tope del formulario con muchos campos.
+ */
+export function campoAUbicar(c: {
+	nombre: string;
+	descripcion?: string | null;
+	tipoDato?: string | null;
+	cardinalidad?: string | null;
+	subcampos?: { nombre: string; descripcion?: string | null }[] | null;
+}): CampoAUbicar {
+	const salida: CampoAUbicar = { nombre: c.nombre, descripcion: (c.descripcion ?? '').slice(0, 200) };
+	if (c.cardinalidad === 'multiple') salida.cardinalidad = 'multiple';
+	const subcampos = (c.subcampos ?? []).filter((s) => s && typeof s.nombre === 'string' && s.nombre.trim());
+	if (c.tipoDato === 'grupo' && subcampos.length > 0) {
+		salida.tipoDato = 'grupo';
+		salida.subcampos = subcampos.slice(0, 30).map((s) => ({ nombre: s.nombre, descripcion: (s.descripcion ?? '').slice(0, 200) }));
+	}
+	return salida;
+}
+
 /** La caja como `top/left/width/height` en porcentaje de la página. */
 export function cajaEnPorcentaje([ymin, xmin, ymax, xmax]: Ubicacion['caja']) {
 	return { top: ymin / 10, left: xmin / 10, width: (xmax - xmin) / 10, height: (ymax - ymin) / 10 };

@@ -13,7 +13,7 @@
 	 *
 	 * **El documento a un lado, con los campos marcados (2026-11-11, Moibe: «que a un lado mostremos el documento y marcados etiquetados los campos
 	 * seleccionados»).** Al llegar la propuesta, el modal se ensancha: a la izquierda el documento (`DocumentoConCampos`, con pestañas si son varios) y
-	 * a la derecha la lista. Por cada documento se pregunta, en paralelo, dónde está cada campo propuesto (`/api/procesadores/ubicar-campos`, Gemini);
+	 * a la derecha la lista. Por cada documento se pregunta, en paralelo, dónde está cada campo propuesto (`/api/procesadores/ubicar-campos`: desde el 2026-11-20 Document AI y, lo que no ubique, Gemini);
 	 * los campos ELEGIDOS se marcan con un recuadro y su nombre, y pasar el puntero por un renglón resalta su recuadro. Si ubicar falla, la propuesta
 	 * sirve igual y el documento se enseña sin marcas. Se pregunta una vez por documento con TODOS los propuestos: marcar y desmarcar no vuelve a llamar.
 	 *
@@ -54,7 +54,7 @@
 	import FolderLibraryIcon from '$lib/components/icons/FolderLibraryIcon.svelte';
 	import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 	import { llaveDeCampo, unirPropuestas, type CampoUnido } from '$lib/documentos/unirPropuestas';
-	import { imagenDerecha, leerUbicaciones, sePuedeMarcar, type Ubicacion } from '$lib/documentos/ubicaciones';
+	import { campoAUbicar, imagenDerecha, leerUbicaciones, sePuedeMarcar, type Ubicacion } from '$lib/documentos/ubicaciones';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import ScanText from '@lucide/svelte/icons/scan-text';
@@ -646,7 +646,7 @@
 		sinBuscar = sinBuscar.filter((k) => k !== indice);
 		const cuerpo = new FormData();
 		cuerpo.append('archivo', archivo, archivo.name);
-		cuerpo.append('campos', JSON.stringify([{ nombre: campo.nombre, descripcion: campo.descripcion }]));
+		cuerpo.append('campos', JSON.stringify([campoAUbicar(campo)]));
 		try {
 			const r = await fetch('/api/procesadores/ubicar-campos', { method: 'POST', body: cuerpo });
 			const datos = await r.json().catch(() => null);
@@ -861,7 +861,7 @@
 		const mios = nombres.map((_, k) => nuevoTurno(documento, k));
 		const cuerpo = new FormData();
 		cuerpo.append('archivo', archivo, archivo.name);
-		cuerpo.append('campos', JSON.stringify(propuestos.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion }))));
+		cuerpo.append('campos', JSON.stringify(propuestos.map(campoAUbicar)));
 		let estado: EstadoUbicacion;
 		let encontradas: Ubicacion[] = [];
 		try {
