@@ -1687,15 +1687,18 @@ export function faltaParaGuardar(proceso: { nombre: string }): FaltaParaGuardar 
  * Por qué un proceso NO puede estar activo (2026-11-20, Moibe: «lo que cambiará es que se le advertirá al usuario que ya no estará Activo ese proceso,
  * y efectivamente esa será la restricción»). Son las condiciones que antes impedían guardar, más la que impedía ejecutarlo:
  *   · `documento`: no tiene ningún tipo documental (sus entradas);
- *   · `inactivos`: usa tipos documentales que ya no están activos (borrador, archivados o borrados), con sus nombres;
+ *   · `inactivos`: usa tipos documentales que existen pero ya no están activos (borrador o archivado), con sus nombres;
+ *   · `borrados`: usa tipos documentales que ya no existen (cuántos: su nombre ya no se sabe);
  *   · `resultado`: no tiene el nodo «Resultado»;
  *   · `resultado_sin_regla`: lo tiene, pero ninguna regla llega a él (antes se guardaba «activo» pero Ejecuciones no lo podía correr).
- * Sin motivos, puede estar activo. `tipos` es la biblioteca de la organización; `null` mientras no se ha leído (entonces no se juzga `inactivos`, porque
+ * Sin motivos, puede estar activo; CON motivos el proceso está INACTIVO aunque lo guardado diga `activo` (2026-11-20, Moibe: «cuando no se pueda ejecutar
+ * entonces pasa a Inactivo»). nexus_back tiene el espejo exacto (`procesos.motivos_de_inactividad`) para lo que ofrece ejecutar. `tipos` es la biblioteca de la organización; `null` mientras no se ha leído (entonces no se juzga `inactivos`, porque
  * no se sabe). La lista y el lienzo usan esta MISMA función: lo que el lienzo avisa al guardar es lo que la lista dice junto a «Inactivo».
  */
 export type MotivoDeInactividad =
 	| { clave: 'documento' }
 	| { clave: 'inactivos'; tipos: string[] }
+	| { clave: 'borrados'; cantidad: number }
 	| { clave: 'resultado' }
 	| { clave: 'resultado_sin_regla' };
 
@@ -1709,12 +1712,15 @@ export function motivosDeInactividad(
 	if (deTipo.length === 0) motivos.push({ clave: 'documento' });
 	if (tipos) {
 		const noActivos = new Set<string>();
+		const borrados = new Set<string>();
 		for (const n of deTipo) {
 			const tipoId = String((n.data as { tipoId?: unknown } | undefined)?.tipoId ?? '');
 			const tipo = tipos.find((t) => t.id === tipoId);
-			if (tipo?.estado !== 'activo') noActivos.add(tipo?.nombre ?? 'Tipo documental no disponible');
+			if (!tipo) borrados.add(tipoId);
+			else if (tipo.estado !== 'activo') noActivos.add(tipo.nombre);
 		}
 		if (noActivos.size > 0) motivos.push({ clave: 'inactivos', tipos: [...noActivos] });
+		if (borrados.size > 0) motivos.push({ clave: 'borrados', cantidad: borrados.size });
 	}
 	if (!nodos.some((n) => n.type === NODO_RESULTADO)) motivos.push({ clave: 'resultado' });
 	else if (!resultadoConectado(dibujo)) motivos.push({ clave: 'resultado_sin_regla' });
@@ -1728,6 +1734,9 @@ export function textoDeMotivo(m: MotivoDeInactividad): string {
 			return 'No tiene tipos documentales';
 		case 'inactivos':
 			return `Usa ${m.tipos.length === 1 ? 'un tipo documental que ya no está activo' : 'tipos documentales que ya no están activos'}: ${m.tipos.map((t) => `«${t}»`).join(', ')}`;
+		case 'borrados':
+			// Sin nombre (ya no se sabe) y sin dos puntos (2026-11-20, Moibe: «que solo diga: … Usa un tipo documental que ya no está activo.»).
+			return m.cantidad === 1 ? 'Usa un tipo documental que ya no está activo' : 'Usa tipos documentales que ya no están activos';
 		case 'resultado':
 			return 'No tiene el nodo «Resultado»';
 		case 'resultado_sin_regla':

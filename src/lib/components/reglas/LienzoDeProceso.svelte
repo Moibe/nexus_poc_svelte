@@ -571,7 +571,14 @@
 	// —una regla conectada al Resultado— ahora son los MOTIVOS por los que el proceso queda INACTIVO (`motivosDeInactividad`): se avisa antes de guardar
 	// y la lista de procesos los dice junto a «Inactivo». Mientras la biblioteca no está leída no se juzgan los tipos no activos (no se sabe).
 	const puedeGuardar = $derived(sucio && faltaParaGuardar({ nombre }) === null);
-	const motivos = $derived(motivosDeInactividad({ nodos: nodes, aristas: edges }, estadoBiblioteca.cargada ? tiposDocumentales : null));
+	const biblioteca = $derived(estadoBiblioteca.cargada ? tiposDocumentales : null);
+	const motivos = $derived(motivosDeInactividad({ nodos: nodes, aristas: edges }, biblioteca));
+	/** El dibujo tal como está GUARDADO (al abrir y tras cada guardado): de él sale el estado efectivo de lo guardado. */
+	let dibujoGuardado = $state<{ nodos: unknown[]; aristas: unknown[] }>({ nodos: [], aristas: [] });
+	/** Por qué lo GUARDADO no puede estar activo: con alguno, el proceso está inactivo aunque su `activo` diga otra cosa (2026-11-20). */
+	const motivosGuardados = $derived(motivosDeInactividad(dibujoGuardado, biblioteca));
+	/** Lo guardado está activo de verdad: marcado activo y completo. Uno que aún no existe nace activo (guardarlo incompleto avisa). */
+	const activoEfectivo = $derived(activo && (!existe || motivosGuardados.length === 0));
 	/** El nombre que el servidor rechazó por repetido en la organización (409 `ya_existe`): la barra lo dice bajo el campo mientras siga escrito. */
 	let nombreOcupado = $state<string | null>(null);
 	/** La paleta, para señalarle a la persona dónde está el Resultado cuando «Guardar» lo echa de menos. */
@@ -595,6 +602,7 @@
 		descripcion = p.datos.descripcion ?? '';
 		activo = procesoActivo(p);
 		inactivoPorIncompleto = !activo && p.datos.inactivoPorIncompleto === true;
+		dibujoGuardado = { nodos: dibujo.nodes, aristas: dibujo.edges };
 		guardado = foto;
 		aviso = '';
 		await tick();
@@ -657,7 +665,7 @@
 	 * Guardar un proceso ACTIVO (o uno nuevo, que nace activo) al que le falta algo lo deja inactivo: antes se pregunta (2026-11-20, Moibe: «se le
 	 * advertirá al usuario que ya no estará Activo ese proceso»). Uno que ya estaba inactivo se guarda sin preguntar: no cambia de estado.
 	 */
-	const avisarAntesDeGuardar = () => motivos.length > 0 && activo;
+	const avisarAntesDeGuardar = () => motivos.length > 0 && activoEfectivo;
 
 	async function guardar(confirmado = false) {
 		if (!puedeGuardar || guardando) return;
@@ -682,12 +690,13 @@
 		});
 		guardando = false;
 		if (r.ok) {
-			const reactivado = !activo && quedaActivo;
+			const reactivado = !activoEfectivo && quedaActivo;
 			revision = r.proceso.revision;
 			existe = true;
 			nombre = limpio;
 			activo = quedaActivo;
 			inactivoPorIncompleto = quedaPorIncompleto;
+			dibujoGuardado = dibujo;
 			// Lo que se guardó es lo que se mandó: si durante el guardado se tocó algo, eso sigue siendo un cambio.
 			guardado = { huella: huellaDelDibujo(dibujo), nombre: limpio };
 			avisarExito(
@@ -855,7 +864,7 @@
 	{guardando}
 	{puedeGuardar}
 	puedeBorrar={existe}
-	inactivo={existe && !activo ? { motivos: motivos.map(textoDeMotivo), porIncompleto: inactivoPorIncompleto } : null}
+	inactivo={existe && !activoEfectivo ? { motivos: motivosGuardados.map(textoDeMotivo), porIncompleto: inactivoPorIncompleto } : null}
 	{nombreOcupado}
 	alGuardar={() => void guardar()}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}

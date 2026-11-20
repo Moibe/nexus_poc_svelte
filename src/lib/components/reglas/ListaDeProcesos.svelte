@@ -24,7 +24,8 @@
 	 *   · Activar y desactivar marca el proceso (se guarda en el servidor) y Ejecuciones solo ofrece los activos. El aviso es el del diseño.
 	 *   · Junto a «Inactivo» se dice POR QUÉ (2026-11-20, Moibe: «en la parte donde señala que está Inactivo también señalará por qué»): lo que le falta
 	 *     (`motivosDeInactividad`, la misma regla con que el lienzo avisa al guardar) o que se desactivó a mano. Uno incompleto NO se puede activar: el
-	 *     botón lo explica en vez de activarlo. Un proceso de antes que está activo pero incompleto conserva su «Activo» y dice que no se puede ejecutar.
+	 *     botón lo explica en vez de activarlo. Lo que se enseña es el estado EFECTIVO (2026-11-20, Moibe: «cuando no se pueda ejecutar entonces pasa a
+	 *     Inactivo»): uno guardado como activo pero incompleto se ve «Inactivo», y en cuanto se complete (p. ej. se reactiva su tipo) vuelve a verse activo.
 	 *   · Sin «Corre sobre: …» (2026-11-05, Moibe: quitar los expedientes virtuales): del 2026-10-29 al 2026-11-05 cada tarjeta decía sobre qué
 	 *     tipo de expediente virtual corría el proceso; un proceso corre sobre cualquier expediente de la organización y la tarjeta ya no lo dice.
 	 *
@@ -204,9 +205,9 @@
 			{:else}
 				<div class="flex flex-col gap-3">
 					{#each procesos as p (p.id)}
-						{@const activo = procesoActivo(p)}
-						{@const tipos = tiposDelProceso(p)}
 						{@const faltan = motivosDe(p)}
+						{@const activo = procesoActivo(p) && faltan.length === 0}
+						{@const tipos = tiposDelProceso(p)}
 						<div class="flex items-center gap-4 rounded-xl border border-border bg-background px-4 py-3" data-testid="tarjeta-proceso" data-proceso-id={p.id}>
 							<div class="flex min-w-0 flex-1 items-center gap-4">
 								<span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-primary">
@@ -235,8 +236,7 @@
 									Guardando…
 								</span>
 							{:else}
-								<!-- La insignia y, debajo, el porqué (2026-11-20): lo que le falta, o que se desactivó a mano. Un proceso de antes que sigue activo pero
-								     incompleto conserva su «Activo» y dice que no se puede ejecutar. -->
+								<!-- La insignia (el estado EFECTIVO) y, debajo, el porqué (2026-11-20): lo que le falta, o que se desactivó a mano. -->
 								<div class="flex max-w-72 shrink-0 flex-col items-end gap-1">
 									<span
 										data-testid="insignia-proceso"
@@ -250,7 +250,7 @@
 									</span>
 									{#if faltan.length > 0}
 										<span class="text-right text-xs leading-snug text-amber-700 dark:text-amber-400" data-testid="proceso-motivos">
-											{activo ? 'No se puede ejecutar' : 'Para activarlo'}: {faltan.join('; ')}
+											Para activarlo: {faltan.join('; ')}
 										</span>
 									{:else if !activo}
 										<!-- Sin motivos: o lo desactivaron a mano, o quedó inactivo por incompleto y ya se completó (p. ej. se activó el tipo que le faltaba). -->
