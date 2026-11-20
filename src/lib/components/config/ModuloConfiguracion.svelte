@@ -300,6 +300,11 @@
 
 	// «Probar con documentos» (2026-11-07): el tipo cuya extracción se está probando (`null` = cerrado). Se abre desde el menú ⋮ de un tipo activo y, solo, justo
 	// después de ACTIVAR un tipo cuyos campos se generaron con documentos de ejemplo que todavía están en memoria.
+	//
+	// QUITADO por ahora (2026-11-20, Moibe: «por el momento quitemos Probar con documentos, pero recuerda que estuvo ahí»): con esto en `false` no sale en el
+	// menú ⋮ ni se abre solo al activar. La ventana (`ProbarExtraccion.svelte`), su montaje y los documentos recordados siguen igual: para volver a
+	// ponerlo basta con `true`.
+	const MOSTRAR_PROBAR_CON_DOCUMENTOS = false;
 	let pruebaDeId = $state<string | null>(null);
 	const tipoEnPrueba = $derived(pruebaDeId ? (tiposDocumentales.find((t) => t.id === pruebaDeId) ?? null) : null);
 
@@ -402,7 +407,7 @@
 			return;
 		}
 		// Si los campos se generaron con documentos de ejemplo, ahora que ya hay procesador se ofrece probar la extracción con ellos (no corre sola: pide un botón).
-		if (ejemplosDeTipo(id).length > 0) pruebaDeId = id;
+		if (MOSTRAR_PROBAR_CON_DOCUMENTOS && ejemplosDeTipo(id).length > 0) pruebaDeId = id;
 		// El Extractor (lo que este botón promete) ya quedó activo llegado
 		// aquí — un fallo sincronizando el clasificador es secundario: este
 		// tipo puede seguir cayendo en "otro" al clasificar hasta que se
@@ -1688,16 +1693,19 @@
 												</DropdownMenu.Item>
 											{/if}
 
-											<!-- «Probar con documentos» (2026-11-07): ver qué extrae el tipo de hasta 3 documentos, sin guardar nada. Solo un tipo activo con su procesador. -->
-											<DropdownMenu.Item
-												class="h-11.5 gap-3 px-2 whitespace-nowrap"
-												disabled={tipo.estado !== 'activo' || !tipo.procesadorId}
-												data-testid="probar-tipo"
-												onSelect={() => (pruebaDeId = tipo.id)}
-											>
-												<FlaskConical class="size-4 text-muted-foreground" />
-												<span>Probar con documentos</span>
-											</DropdownMenu.Item>
+											<!-- «Probar con documentos» (2026-11-07): ver qué extrae el tipo de hasta 3 documentos, sin guardar nada. Solo un tipo activo con su procesador.
+											     Quitado por ahora (2026-11-20): ver `MOSTRAR_PROBAR_CON_DOCUMENTOS`. -->
+											{#if MOSTRAR_PROBAR_CON_DOCUMENTOS}
+												<DropdownMenu.Item
+													class="h-11.5 gap-3 px-2 whitespace-nowrap"
+													disabled={tipo.estado !== 'activo' || !tipo.procesadorId}
+													data-testid="probar-tipo"
+													onSelect={() => (pruebaDeId = tipo.id)}
+												>
+													<FlaskConical class="size-4 text-muted-foreground" />
+													<span>Probar con documentos</span>
+												</DropdownMenu.Item>
+											{/if}
 
 											<!-- Picar el texto/ícono del renglón sigue llevando a Calibración
 											     (2026-09-02). El switch, en cambio, ya NO es decorativo
