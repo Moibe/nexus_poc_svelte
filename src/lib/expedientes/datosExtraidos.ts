@@ -24,6 +24,20 @@ export type Campo = {
 	confianza: number | null;
 	pagina: number | null;
 	corregido: boolean;
+	/** Lo que dice la extracción vigente, aunque una persona lo haya corregido (NEX-614). Los datos de antes no lo traen. */
+	valorExtraido?: string | null;
+	/** La extracción de la que viene la corrección, si se hizo antes y se conservó al volver a extraer (NEX-614). */
+	correccionTrasladadaDe?: string | null;
+};
+
+/** Una corrección a mano de la extracción anterior que NO pasó a la vigente (NEX-614), con su motivo. */
+export type CorreccionSinTrasladar = { ruta: string; valor: string | null; motivo: string; deExtraccion?: string | null };
+
+/** Por qué una corrección no se conservó, en palabras. */
+export const MOTIVOS_SIN_TRASLADAR: Record<string, string> = {
+	campo_ausente: 'la nueva extracción ya no trae ese campo',
+	fila_distinta: 'en la nueva extracción esa fila trae otro dato',
+	otro_tipo: 'el documento se volvió a extraer como otro tipo documental'
 };
 
 export type Datos = {
@@ -37,7 +51,27 @@ export type Datos = {
 		totalCorridas: number;
 	} | null;
 	campos: Campo[];
+	/** NEX-614: lo corregido a mano que no pasó a la extracción vigente. Los servidores de antes no lo mandan. */
+	correccionesSinTrasladar?: CorreccionSinTrasladar[];
 };
+
+/**
+ * El aviso de las correcciones que dejaron de aplicarse al volver a extraer el documento (NEX-614, criterio 4: «no se aplica, y se avisa»), o `null` si no hay.
+ * Una por renglón: «Campo: «valor» (motivo)».
+ */
+export function avisoDeCorreccionesSinTrasladar(datos: Pick<Datos, 'correccionesSinTrasladar'>): { titulo: string; texto: string } | null {
+	const lista = Array.isArray(datos.correccionesSinTrasladar) ? datos.correccionesSinTrasladar.filter((c) => c && typeof c.ruta === 'string') : [];
+	if (lista.length === 0) return null;
+	const renglones = lista.map((c) => {
+		const valor = c.valor === null || c.valor === undefined || c.valor === '' ? '' : ` «${c.valor}»`;
+		const motivo = MOTIVOS_SIN_TRASLADAR[c.motivo] ?? 'ya no corresponde a la nueva extracción';
+		return `${primeraMayuscula(legible(c.ruta))}${valor}: ${motivo}.`;
+	});
+	return {
+		titulo: lista.length === 1 ? 'Una corrección ya no se aplica' : `${lista.length} correcciones ya no se aplican`,
+		texto: `El documento se volvió a extraer y ${lista.length === 1 ? 'esta corrección hecha a mano no pasó' : 'estas correcciones hechas a mano no pasaron'} a la nueva extracción; hay que revisar ${lista.length === 1 ? 'ese dato' : 'esos datos'}. ${renglones.join(' ')}`
+	};
+}
 
 /**
  * El motivo de una extracción fallida, para decírselo a la persona; `null` si no hay nada que valga la pena decir. Hasta el 2026-11-07 el servidor guardaba
@@ -89,7 +123,8 @@ const primeraMayuscula = (t: string) => (t ? t[0].toUpperCase() + t.slice(1) : t
  */
 function filaDeCampo(c: Campo): { etiqueta: string; valor: string } {
 	const partes: string[] = [c.valor === null || c.valor === '' ? (MOTIVOS_SIN_VALOR[c.motivoSinValor ?? ''] ?? 'Sin valor') : c.valor];
-	if (c.valor !== null && c.corregido) partes[0] += ' (corregido)';
+	if (c.valor !== null && c.corregido) partes[0] += c.correccionTrasladadaDe ? ' (corregido; se conservó al volver a extraer)' : ' (corregido)';
+	if (c.corregido && c.valorExtraido && c.valorExtraido !== c.valor) partes.push(`la extracción dice: ${c.valorExtraido}`);
 	if (c.confianza !== null && c.confianza !== undefined) {
 		const cal = calidadDe(c.confianza);
 		partes.push(`${c.confianza.toFixed(2)} %${cal ? ` · ${cal}` : ''}`);
@@ -119,6 +154,8 @@ export function construirInformeDeDatos(documento: DocumentoDeExpediente, datos:
 	} else if (e?.estado === 'no_reconocido') {
 		avisos.push({ titulo: 'No se reconocieron sus campos', texto: 'El extractor no reconoció los campos de este documento.' });
 	}
+	const sinTrasladar = avisoDeCorreccionesSinTrasladar(datos);
+	if (sinTrasladar) avisos.push(sinTrasladar);
 
 	return {
 		titulo: 'Resultados de la extracción',

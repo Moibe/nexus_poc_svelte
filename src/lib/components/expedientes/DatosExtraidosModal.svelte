@@ -14,6 +14,9 @@
 	 *
 	 * Solo lee. Corregir un dato ya existe en el servidor (`POST …/datos/correcciones`) pero todavía no tiene pantalla, y la capa de OCR
 	 * (de qué bloque salió cada valor) quedó para después.
+	 *
+	 * NEX-614 (2026-11-20): una corrección a mano se conserva cuando el documento se vuelve a extraer. El campo lo dice («corregido; se conservó al volver a
+	 * extraer» y lo que leyó la extracción nueva), y lo que NO se pudo conservar sale como aviso al final, con su motivo (`avisoDeCorreccionesSinTrasladar`).
 	 */
 	import { Dialog as DialogPrimitive } from 'bits-ui';
 	import Download from '@lucide/svelte/icons/download';
