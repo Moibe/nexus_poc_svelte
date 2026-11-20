@@ -32,6 +32,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Save from '@lucide/svelte/icons/save';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import FlechaDePaso from '$lib/components/ui/FlechaDePaso.svelte';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CirclePlus from '@lucide/svelte/icons/circle-plus';
@@ -1367,7 +1368,7 @@
 							<p class="relative text-sm font-semibold text-foreground">
 								{#if flechaEnPaso === n}
 									<!-- A la izquierda del título, en el margen del costado: no lo empuja, y al apagarse el título no brinca. -->
-									<span class="flecha-de-paso" aria-hidden="true" data-testid="flecha-de-paso">»</span>
+									<FlechaDePaso />
 								{/if}
 								{n}. {step.title}
 							</p>
@@ -3357,38 +3358,3 @@
 	onCerrar={() => (generarCamposAbierto = false)}
 	onAgregar={agregarPropuestos}
 />
-
-<style>
-	/* La flecha » del paso al que se acaba de llegar (2026-11-20): la de `subtab-arrow-indicator` de buzzword-agentes-ui, con el color de marca de aquí. */
-	.flecha-de-paso {
-		position: absolute;
-		right: 100%;
-		top: 0;
-		margin-right: 0.4rem;
-		font-size: 1.35rem;
-		font-weight: 900;
-		/* La misma altura de línea que el título (text-sm): queda a la altura de su primera línea. */
-		line-height: 1.25rem;
-		color: var(--primary);
-		text-shadow: 0 0 8px color-mix(in oklab, var(--primary) 45%, transparent);
-		animation: flecha-de-paso 1.2s ease-in-out infinite;
-		pointer-events: none;
-		user-select: none;
-	}
-	@keyframes flecha-de-paso {
-		0%,
-		100% {
-			transform: translateX(0);
-			opacity: 0.85;
-		}
-		50% {
-			transform: translateX(4px);
-			opacity: 1;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.flecha-de-paso {
-			animation: none;
-		}
-	}
-</style>
