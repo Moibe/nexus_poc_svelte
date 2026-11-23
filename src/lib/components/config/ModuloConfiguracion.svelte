@@ -65,6 +65,9 @@
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
 	import CargarDocumentoEjemplo from './CargarDocumentoEjemplo.svelte';
 	import RecortarEjemploCampo from './RecortarEjemploCampo.svelte';
+	import EtiquetarEjemplo from './EtiquetarEjemplo.svelte';
+	import MedicionDeTipo from './MedicionDeTipo.svelte';
+	import { EstadoEtiquetado } from '$lib/etiquetado/estado.svelte';
 	import DocumentoConRecortes from './DocumentoConRecortes.svelte';
 	import RecorteGuardado from './RecorteGuardado.svelte';
 	import RecomendacionEjemplos from './RecomendacionEjemplos.svelte';
@@ -205,6 +208,8 @@
 	function confirmarQuitarDocumentoEjemplo() {
 		if (tipoEnCalibracion && documentoAQuitar) {
 			borrarDocumentoEjemplo(tipoEnCalibracion.id, documentoAQuitar);
+			// Sus etiquetas se van con él (2026-11-23): las de un documento que ya no está tampoco contarían al medir.
+			void estadoEtiquetado?.quitar(documentoAQuitar);
 			// Si la instancia borrada era la seleccionada, la selección pasa a
 			// la primera que quede (o a ninguna si ya no queda ninguna) — sin
 			// esto, la pantalla se quedaría "mirando" un id que ya no existe.
@@ -747,7 +752,11 @@
 	 *  que acordarse de agregar cada vista nueva aquí: si no, su X cierra el
 	 *  módulo entero en vez de regresar a la Biblioteca. */
 	function cerrarNivel() {
-		if (vista === 'wizard' || vista === 'calibracion') {
+		if (vista === 'calibracion') {
+			salirDeEjemploDocumental();
+			return;
+		}
+		if (vista === 'wizard') {
 			// Salir del asistente sin haber tocado nada deshace la nueva versión
 			// que abrirlo había empezado. Mientras esto fue un panel lateral,
 			// Escape y el clic fuera entraban también por aquí; de página solo
@@ -1038,6 +1047,42 @@
 	// pantalla; agregar o quitar una instancia también la actualiza — ver
 	// esos puntos para no dejarla apuntando a un id que ya no existe.
 	let documentoSeleccionadoId = $state<string | null>(null);
+
+	/**
+	 * «Ejemplo documental» etiqueta y mide (2026-11-23, Moibe: «arranca con el punto 1, la medición»): el estado de las etiquetas y las
+	 * mediciones del tipo que se está viendo. Lo comparten `MedicionDeTipo` y `EtiquetarEjemplo`.
+	 */
+	let estadoEtiquetado = $state<EstadoEtiquetado | null>(null);
+	/** Salir con etiquetas sin guardar pregunta antes (una lectura sin guardar se pagó y se perdería). */
+	let avisoSinGuardar = $state(false);
+	const documentosSinGuardar = $derived(
+		estadoEtiquetado && tipoEnCalibracion ? estadoEtiquetado.pendientes(tipoEnCalibracion.documentosEjemplo.map((d) => d.id)) : []
+	);
+
+	let guardandoTodo = $state(false);
+	async function guardarEtiquetasYSalir() {
+		if (!estadoEtiquetado) return salirDeEjemploDocumental(true);
+		guardandoTodo = true;
+		let todas = true;
+		for (const id of documentosSinGuardar) {
+			if (!(await estadoEtiquetado.guardar(id))) {
+				todas = false;
+				documentoSeleccionadoId = id;
+			}
+		}
+		guardandoTodo = false;
+		if (todas) salirDeEjemploDocumental(true);
+	}
+
+	function salirDeEjemploDocumental(forzar = false) {
+		if (!forzar && documentosSinGuardar.length > 0) {
+			avisoSinGuardar = true;
+			return;
+		}
+		avisoSinGuardar = false;
+		estadoEtiquetado = null;
+		vista = 'biblioteca';
+	}
 	const documentoSeleccionado = $derived(
 		documentoSeleccionadoId
 			? (tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentoSeleccionadoId) ?? null)
@@ -1095,6 +1140,10 @@
 		calibrandoId = id;
 		calibracionExpandida = true;
 		vista = 'calibracion';
+		// Las etiquetas y las mediciones de ESTE tipo (2026-11-23): se leen del servidor cada vez que se abre la pantalla.
+		estadoEtiquetado = new EstadoEtiquetado(id);
+		void estadoEtiquetado.cargar();
+		avisoSinGuardar = false;
 		// Arranca en la primera instancia que haya, para no aterrizar en un
 		// selector vacío si ya existen documentos de una visita anterior.
 		documentoSeleccionadoId =
@@ -1312,14 +1361,25 @@
 								     x=44 (pl-11), tramo vertical + guion horizontal por renglón. -->
 								<ul class="mt-2">
 									{#each tipoEnCalibracion.campos as campo (campo.id)}
-										<li class="relative flex h-9.5 items-center pl-11">
+										<!-- Junto a cada campo, cómo le fue en la última medición (2026-11-23): «2/3», en rojo si falló alguna vez. -->
+										{@const medido = estadoEtiquetado?.mediciones[0]?.detalle?.campos.find((c) => c.etiqueta === campo.nombre)}
+										<li class="relative flex h-9.5 items-center gap-2 pl-11">
 											<span
 												class="absolute top-1/2 left-11 h-5.5 w-px -translate-y-1/2 bg-border"
 											></span>
 											<span class="absolute top-1/2 left-11 h-px w-[11.5px] bg-border"></span>
-											<span class="ml-[19.5px] min-w-0 truncate text-sm text-muted-foreground">
+											<span class="ml-[19.5px] min-w-0 flex-1 truncate text-sm text-muted-foreground">
 												{campo.nombre}
 											</span>
+											{#if medido && medido.total > 0}
+												<span
+													class="shrink-0 text-xs tabular-nums {medido.aciertos === medido.total ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}"
+													title="Última medición: {medido.aciertos} de {medido.total} acertados"
+													data-testid="campo-medido"
+												>
+													{medido.aciertos}/{medido.total}
+												</span>
+											{/if}
 										</li>
 									{/each}
 								</ul>
@@ -1987,14 +2047,25 @@
 				     campo. El selector de chips de abajo elige cuál instancia está
 				     activa; los campos siempre recortan sobre ESA. -->
 				<h3 class="text-xl font-semibold text-foreground">Configurar ejemplos de extracción</h3>
+				<!-- 2026-11-23: el texto de antes prometía que los ejemplos «ayudan al motor de IA a mejorar la precisión», y nada los usaba. Ahora
+				     dice lo que hacen: etiquetar y medir. Que también sirvan para entrenar es el paso siguiente, que se decide aparte. -->
 				<p class="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-					Carga y etiqueta uno o más documentos de ejemplo para asociar sus valores a los campos
-					configurados. Estos ejemplos ayudan al motor de IA a mejorar la precisión y el nivel de
-					confianza durante la extracción de información.
+					Carga documentos de ejemplo y etiquétalos: Biblioratum lee cada uno y tú confirmas o corriges lo que leyó. Con ellos se mide cuántos
+					campos acierta el tipo, y si una descripción nueva lo mejora.
 				</p>
 
 				{#if tipoEnCalibracion}
-					<div class="mt-8 max-w-3xl">
+					<div class="mt-6 max-w-6xl">
+						{#if estadoEtiquetado}
+							{#if estadoEtiquetado.errorCarga}
+								<p class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert">
+									{estadoEtiquetado.errorCarga}
+								</p>
+							{/if}
+							<div class="mb-6">
+								<MedicionDeTipo estado={estadoEtiquetado} documentos={tipoEnCalibracion.documentosEjemplo} />
+							</div>
+						{/if}
 						<!-- Selector de instancias: un chip por documento ya subido,
 						     más un "+" para agregar otro. Sin frame de Figma — no hay
 						     mockup de esta parte, se diseñó desde cero para el pedido
@@ -2005,11 +2076,11 @@
 									     campo etiquetado (recortado), de un vistazo, sin tener
 									     que seleccionar cada chip para averiguarlo (pedido
 									     explícito 2026-09-05). -->
-								{@const recortesDelDoc = tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}}
-								{@const tieneRecortes = Object.keys(recortesDelDoc).length > 0}
-								{@const todosEtiquetados =
-									tipoEnCalibracion.campos.length > 0 &&
-									tipoEnCalibracion.campos.every((c) => recortesDelDoc[c.nombre])}
+								{@const sinGuardar = !!estadoEtiquetado?.sinGuardar(doc.id)}
+								{@const tieneRecortes = false}
+								<!-- 2026-11-23: la palomita ya no cuenta RECORTES (sin valor, que nadie usaba) sino etiquetas guardadas en el servidor; el
+								     punto ámbar dice que hay algo sin guardar. -->
+								{@const todosEtiquetados = !!estadoEtiquetado?.etiquetas[doc.id] && !sinGuardar}
 								<!-- `aria-label` fijo al nombre del archivo: sin él, el
 								     nombre ACCESIBLE de este botón incluiría también el
 								     texto (aunque sea `sr-only`) de la palomita/círculo de
@@ -2044,13 +2115,14 @@
 													{#snippet child({ props })}
 														<span
 															{...props}
-															class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-amber-400"
+															class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-green-600"
+															data-testid="chip-etiquetado"
 														>
 															<Check class="size-2.5 text-white" aria-hidden="true" />
 														</span>
 													{/snippet}
 												</Tooltip.Trigger>
-												<Tooltip.Content side="top">Etiquetado al 100%</Tooltip.Content>
+												<Tooltip.Content side="top">Etiquetado</Tooltip.Content>
 											</Tooltip.Root>
 										</Tooltip.Provider>
 									{:else if tieneRecortes}
@@ -2072,6 +2144,8 @@
 												<Tooltip.Content side="top">Parcialmente etiquetado</Tooltip.Content>
 											</Tooltip.Root>
 										</Tooltip.Provider>
+									{:else if sinGuardar}
+										<span class="size-2 shrink-0 rounded-full bg-amber-500" data-testid="chip-sin-guardar" title="Sin guardar"></span>
 									{/if}
 									<span class="truncate">{doc.nombre}</span>
 								</button>
@@ -2160,263 +2234,19 @@
 								>
 									<Trash2 class="size-3.5" />
 								</button>
-								<!-- Ver el documento completo con todos sus recortes ya
-									     marcados encima (pedido explícito 2026-09-05) — sin salir
-									     de Calibración ni abrir el modal de recorte, que es de
-									     edición, no de vista. -->
-								<button
-									type="button"
-									aria-label={documentoCompletoExpandido
-										? 'Ocultar el documento completo'
-										: 'Ver el documento completo con sus recortes'}
-									aria-expanded={documentoCompletoExpandido}
-									class="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-									onclick={() => (documentoCompletoExpandido = !documentoCompletoExpandido)}
-								>
-									{#if documentoCompletoExpandido}
-										<ChevronUp class="size-4" />
-									{:else}
-										<ChevronDown class="size-4" />
-									{/if}
-								</button>
 							</div>
 
-							{#if documentoCompletoExpandido}
-								<!-- Una página a la vez, con sus recortes encima (`DocumentoConRecortes`). Con una sola página se ve como siempre. -->
+							<!-- 2026-11-23: aquí iban el documento con sus RECORTES y, por campo, las tijeras para recortarlo (solo 4 coordenadas, sin el valor:
+							     nadie los usaba). Ahora se ETIQUETA: Biblioratum lee el documento y la persona confirma, corrige o marca «no aparece» cada campo
+							     (`EtiquetarEjemplo`). Los recortes viejos siguen guardados en el tipo; ya no se enseñan. -->
+							{#if estadoEtiquetado}
 								{#key doc.id}
-									<DocumentoConRecortes
-										{doc}
-										campos={tipoEnCalibracion.campos}
-										recortes={tipoEnCalibracion.recortesPorDocumento[doc.id] ?? {}}
-									/>
+									<EtiquetarEjemplo estado={estadoEtiquetado} {doc} />
 								{/key}
 							{/if}
-
-							{#each tipoEnCalibracion.campos as campo (campo.id)}
-								{@const ejemplo = tipoEnCalibracion.recortesPorDocumento[doc.id]?.[campo.nombre]}
-								<div class="border-b border-border py-4 last:border-0">
-									<div class="flex items-center justify-between gap-4">
-										<span class="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
-											<!-- Columna fija para la palomita (pedido explícito
-											     2026-09-05): antes vivía inline antes del nombre, así
-											     que un campo CON recorte empujaba su nombre más a la
-											     derecha que uno sin recorte — los nombres no quedaban
-											     alineados entre sí. Este `span` de ancho fijo se
-											     dibuja SIEMPRE (con o sin palomita), para que el
-											     nombre arranque en la misma columna en todas las
-											     filas. -->
-											<span class="flex size-4 shrink-0 items-center justify-center">
-												{#if ejemplo}
-													<Check class="size-4 text-green-600" aria-hidden="true" />
-												{/if}
-											</span>
-											{campo.nombre}
-											{#if ejemplo && ((doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1)}
-												<span
-													data-testid="pagina-del-recorte"
-													class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
-												>
-													p. {paginaDeRecorte(ejemplo.recorte)}
-												</span>
-											{/if}
-										</span>
-										<div class="flex items-center gap-1">
-											{#if ejemplo}
-												<!-- Orden pedido el 2026-09-05: ojo, lápiz, bote (antes
-												     era lápiz, bote, chevron). Los tres con tooltip
-												     ("Ver"/"Editar"/"Eliminar") — mismos `aria-label`
-												     de siempre, que ya describen la acción sin
-												     ambigüedad, así que las pruebas que buscan por ellos
-												     no se tocaron. -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<button
-																	{...props}
-																	type="button"
-																	aria-label={camposExpandidos.has(campo.nombre)
-																		? `Ocultar el recorte de ${campo.nombre}`
-																		: `Mostrar el recorte de ${campo.nombre}`}
-																	aria-expanded={camposExpandidos.has(campo.nombre)}
-																	class="flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-																	onclick={() => alternarExpandidoCampo(campo.nombre)}
-																>
-																	{#if camposExpandidos.has(campo.nombre)}
-																		<EyeOff class="size-4" />
-																	{:else}
-																		<Eye class="size-4" />
-																	{/if}
-																</button>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Ver</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-
-												<!-- Réplica del Figma: con un recorte ya guardado, el
-												     botón deja de ser "Recortar" y pasa a ser un ícono
-												     de lápiz que reabre el mismo modal para rehacer el
-												     recorte — `guardarRecorteEjemplo` ya sobreescribe
-												     el anterior, así que "editar" y "recortar de nuevo"
-												     son la misma operación. -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<button
-																	{...props}
-																	type="button"
-																	aria-label={`Editar el recorte de ${campo.nombre}`}
-																	class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
-																	onclick={() => {
-																		campoRecorteNombre = campo.nombre;
-																		modalRecorteAbierto = true;
-																	}}
-																>
-																	<Pencil class="size-4" />
-																</button>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Editar recorte</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-
-												<!-- Basura para poder dejar el campo SIN recorte
-												     asignado EN ESTA INSTANCIA (a diferencia de "editar",
-												     esto sí pide confirmar). -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<button
-																	{...props}
-																	type="button"
-																	aria-label={`Quitar el recorte de ${campo.nombre}`}
-																	class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
-																	onclick={() =>
-																		(recorteAQuitar = {
-																			idTipo: tipoEnCalibracion.id,
-																			idDocumento: doc.id,
-																			nombreCampo: campo.nombre
-																		})}
-																>
-																	<Trash2 class="size-4" />
-																</button>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Eliminar</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-											{:else}
-												<!-- Mismo orden y mismos tres tooltips que arriba. Ojo y
-												     bote van DESHABILITADOS y grises — sin recorte
-												     todavía no hay nada que ver ni que quitar — puro
-												     relleno por simetría (pedido explícito 2026-09-05).
-												     Un botón `disabled` no dispara el hover del tooltip
-												     (mismo motivo que el "Editar" deshabilitado del menú
-												     `⋮`, arriba): el trigger real es el `<span>` que lo
-												     envuelve, no el botón mismo. -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<span {...props} class="block">
-																	<button
-																		type="button"
-																		aria-label={`Aún no hay recorte que ver de ${campo.nombre}`}
-																		disabled
-																		class="flex size-8 shrink-0 items-center justify-center text-muted-foreground/50"
-																	>
-																		<Eye class="size-4" />
-																	</button>
-																</span>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Ver</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-
-												<!-- Ícono, no botón con texto (cambio pedido el
-												     2026-09-05): misma concordancia visual que el
-												     lápiz de "Editar" y la basura de "Quitar" — mismo
-												     tamaño, mismo `bg-primary/10`, mismo radio. -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<button
-																	{...props}
-																	type="button"
-																	aria-label={`Recortar ${campo.nombre}`}
-																	class="flex size-8 shrink-0 items-center justify-center text-primary transition-colors hover:text-primary/70"
-																	onclick={() => {
-																		campoRecorteNombre = campo.nombre;
-																		modalRecorteAbierto = true;
-																	}}
-																>
-																	<Scissors class="size-4" />
-																</button>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Marcar recorte</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-
-												<!-- Basura deshabilitada, puramente de relleno (pedido
-												     explícito 2026-09-05): sin recorte todavía no hay nada
-												     que quitar, pero dejar SOLO las tijeras rompía la
-												     simetría con las filas de arriba (lápiz + basura +
-												     chevron). Mismo tamaño que las demás, en gris para que
-												     se lea inerte. -->
-												<Tooltip.Provider>
-													<Tooltip.Root>
-														<Tooltip.Trigger>
-															{#snippet child({ props })}
-																<span {...props} class="block">
-																	<button
-																		type="button"
-																		aria-label={`Aún no hay recorte que quitar de ${campo.nombre}`}
-																		disabled
-																		class="flex size-8 shrink-0 items-center justify-center text-muted-foreground/50"
-																	>
-																		<Trash2 class="size-4" />
-																	</button>
-																</span>
-															{/snippet}
-														</Tooltip.Trigger>
-														<Tooltip.Content side="top">Eliminar</Tooltip.Content>
-													</Tooltip.Root>
-												</Tooltip.Provider>
-											{/if}
-										</div>
-									</div>
-
-									{#if ejemplo && camposExpandidos.has(campo.nombre)}
-										<!-- Lo que "Guardar" del modal de recorte dejó: la región
-										     seleccionada, como imagen — nunca un texto, porque aquí
-										     no corrió ningún OCR todavía. Desde el 2026-09-25 no es
-										     una copia guardada del pedazo sino el documento mismo
-										     recortado con CSS en sus coordenadas (ver
-										     `RecorteDeDocumento.svelte`). El documento de origen ya
-										     se muestra arriba (una vez por instancia seleccionada),
-										     así que aquí no se repite su tarjeta. -->
-										<div class="mt-4 max-w-lg">
-											<p class="mb-2 text-xs font-medium text-muted-foreground">
-												Texto seleccionado{#if (doc.paginas ?? 1) > 1 || paginaDeRecorte(ejemplo.recorte) > 1} · página {paginaDeRecorte(ejemplo.recorte)}{/if}
-											</p>
-											<RecorteGuardado
-												{doc}
-												recorte={ejemplo.recorte}
-												alt={`Recorte guardado para ${campo.nombre}`}
-											/>
-										</div>
-									{/if}
-								</div>
-							{/each}
 						{:else}
 							<p class="mt-6 text-sm text-muted-foreground">
-								Agrega un documento de ejemplo para empezar a recortar sus campos.
+								Agrega un documento de ejemplo para empezar a etiquetar sus campos.
 							</p>
 						{/if}
 					</div>
@@ -3234,15 +3064,17 @@
 		     mismo destino que la X, Escape y el clic fuera vía
 		     `cerrarNivel`), pero como la acción AFIRMATIVA de "ya terminé de
 		     configurar los ejemplos", en vez de la de salida. -->
+		<!-- 2026-11-23: con las etiquetas, «Guardar configuración» SÍ tiene qué empujar: guarda las de los documentos que tengan algo sin
+		     guardar y sale; si alguna no se pudo guardar, se queda para que se vea el porqué. «Cancelar» pregunta antes de perder algo. -->
 		<div class="flex items-center justify-between border-t border-border px-6 py-4">
 			<Button
 				variant="link"
 				class="h-auto p-0 text-destructive"
-				onclick={() => (vista = 'biblioteca')}
+				onclick={() => salirDeEjemploDocumental()}
 			>
 				Cancelar configuración
 			</Button>
-			<Button onclick={() => (vista = 'biblioteca')}>Guardar configuración</Button>
+			<Button disabled={guardandoTodo} data-testid="guardar-configuracion-ejemplos" onclick={guardarEtiquetasYSalir}>Guardar configuración</Button>
 		</div>
 	{/if}
 </div>
@@ -3313,10 +3145,22 @@
 <ConfirmarAccion
 	abierto={documentoAQuitar !== null}
 	titulo="¿Quitar este documento de ejemplo?"
-	mensaje={`Se quitará "${tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentoAQuitar)?.nombre ?? ''}" junto con TODOS los recortes ya guardados sobre él, en todos los campos. Esta acción no se puede deshacer.`}
+	mensaje={`Se quitará "${tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentoAQuitar)?.nombre ?? ''}" junto con sus etiquetas: ya no contará al medir. Esta acción no se puede deshacer.`}
 	etiquetaConfirmar="Sí, quitar"
 	onConfirmar={confirmarQuitarDocumentoEjemplo}
 	onCerrar={() => (documentoAQuitar = null)}
+/>
+
+<!-- Salir de «Ejemplo documental» con etiquetas sin guardar (2026-11-23): una lectura nueva se pagó y lo que la persona corrigió se perdería. -->
+<ConfirmarAccion
+	abierto={avisoSinGuardar}
+	titulo="¿Salir sin guardar las etiquetas?"
+	mensaje={documentosSinGuardar.length === 1
+		? `«${tipoEnCalibracion?.documentosEjemplo.find((d) => d.id === documentosSinGuardar[0])?.nombre ?? ''}» tiene etiquetas sin guardar. Si sales, se pierden (y habría que volver a leerlo).`
+		: `${documentosSinGuardar.length} documentos tienen etiquetas sin guardar. Si sales, se pierden (y habría que volver a leerlos).`}
+	etiquetaConfirmar="Salir sin guardar"
+	onConfirmar={() => salirDeEjemploDocumental(true)}
+	onCerrar={() => (avisoSinGuardar = false)}
 />
 
 <CargarDocumentoEjemplo

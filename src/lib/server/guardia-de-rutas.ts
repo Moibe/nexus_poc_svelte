@@ -71,6 +71,9 @@ const LIMITES: readonly { patron: RegExp; metodo: string; regla: ReglaDeLimite }
 	// Los recuadros de «Generar a partir de un documento» (2026-11-12): marcar, completar y proponer campos son llamadas a Gemini (~US$0.0005 cada una).
 	// Una propuesta con 3 documentos hace 6 de golpe y cada ajuste de un recuadro, una más (tras 1.2 s quieto); 60 por minuto por persona sobra para eso.
 	{ patron: /^\/api\/procesadores\/(ubicar-campos|describir-campos?|proponer-campo)$/, metodo: 'POST', regla: { nombre: 'recuadros', usuario: 60, ip: 300 } },
+	// «Ejemplo documental» (2026-11-23): leer un ejemplo es una extracción de Document AI (~US$0.03 por página) y medir, una por cada documento
+	// etiquetado (hasta 25). Quien etiqueta lee un documento a la vez y mide de vez en cuando: 30 por minuto por persona sobra.
+	{ patron: /^\/api\/tipos-documentales\/[^/]+\/(ejemplos\/[^/]+\/leer|mediciones)$/, metodo: 'POST', regla: { nombre: 'etiquetado', usuario: 30, ip: 150 } },
 	// El servidor le pega a una URL de un tercero (nexus_back ya limita por webhook; esto es el tope por persona).
 	{ patron: /^\/api\/webhooks\/[^/]+\/validar$/, metodo: 'POST', regla: { nombre: 'validar-webhook', usuario: 20, ip: 60 } },
 	// Cada reenvío es un correo.

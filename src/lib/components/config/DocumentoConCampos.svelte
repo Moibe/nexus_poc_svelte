@@ -63,6 +63,7 @@
 		nuevo = null,
 		onNuevo,
 		onCancelarDibujo,
+		explicacion = 'De cada recuadro salen la descripción, el tipo y la estructura de su campo.',
 		indice = $bindable(0)
 	}: {
 		documentos: File[];
@@ -87,6 +88,8 @@
 		/** Se soltó el recuadro del campo nuevo. */
 		onNuevo?: (dibujo: { documento: number; pagina: number; caja: Ubicacion['caja'] }) => void;
 		onCancelarDibujo?: () => void;
+		/** La frase que sigue a «N campos marcados» (2026-11-23: «Ejemplo documental» la cambia; en «Generar a partir de un documento» es la de siempre). */
+		explicacion?: string;
 		/** El documento que se está enseñando (la pestaña elegida). */
 		indice?: number;
 	} = $props();
@@ -532,7 +535,7 @@
 			{#if estado.fase === 'listo'}
 				{contadas.length === 1 ? '1 campo marcado' : `${contadas.length} campos marcados`}{sinUbicar.length > 0
 					? ` · ${sinUbicar.length === 1 ? '1 no se encontró' : `${sinUbicar.length} no se encontraron`} en este documento`
-					: ''}. De cada recuadro salen la descripción, el tipo y la estructura de su campo.
+					: ''}. {explicacion}
 			{:else if estado.fase === 'error'}
 				{estado.mensaje}
 				{contadas.length > 0
