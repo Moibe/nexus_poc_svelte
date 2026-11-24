@@ -7,6 +7,7 @@
 	 *   · Centro operativo documental: el inicio, con sus tres bandejas (carga documental, bandeja de preparación y pipeline).
 	 *   · Expedientes: la carpeta de cada cliente o caso y los documentos que reúne. Desde ahí, dentro de cada expediente, se ejecuta un proceso del motor de
 	 *     reglas y se ve su historial de ejecuciones.
+	 *   · Búsqueda (NEX-607, 2026-11-23): preguntar con palabras propias sobre los datos extraídos y ver la respuesta como tabla.
 	 *
 	 * Ejecuciones tuvo aquí su propio cuadro y su pantalla (2026-10-30 al 2026-11-07); Moibe las quitó («quita ejecuciones de la sección aparte»): ahora viven
 	 * dentro del expediente. Recuperar la pantalla: `git show <commit anterior al 2026-11-07>:src/routes/ejecuciones/+page.svelte`.
@@ -16,6 +17,7 @@
 	 */
 	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import MessageCircleQuestion from '@lucide/svelte/icons/message-circle-question-mark';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 
 	const SECCIONES = [
@@ -34,6 +36,14 @@
 			icono: FolderOpen,
 			descripcion:
 				'Los expedientes de tu organización: la carpeta de cada cliente o caso y los documentos que reúne.'
+		},
+		{
+			id: 'busqueda',
+			nombre: 'Búsqueda',
+			href: '/busqueda',
+			icono: MessageCircleQuestion,
+			descripcion:
+				'Pregunta con tus palabras sobre los datos extraídos de los documentos de tu organización y recibe la respuesta como tabla.'
 		}
 	];
 </script>
