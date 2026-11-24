@@ -129,3 +129,114 @@ export const PISTAS = [
 	'¿Qué documentos tienen campos corregidos?',
 	'¿Cuántos documentos llegaron este mes?'
 ];
+
+// ── NEX-608: entender la respuesta y llevársela ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las preguntas sugeridas al abrir la página, armadas con los tipos documentales de la organización (solo los suyos: los trae el `load` con el tenant de
+ * la sesión). Con tipos, una por cada uno de los primeros tres más dos generales; sin tipos, solo las generales. Al picarlas se preguntan tal cual.
+ */
+export function preguntasSugeridas(tipos: string[]): string[] {
+	const limpios = [...new Set(tipos.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+	const porTipo = limpios.slice(0, 3).map((t, i) => {
+		const plantillas = [`¿Cuántos documentos de tipo ${t} llegaron este mes?`, `¿Qué documentos de tipo ${t} tienen campos faltantes?`, `Dame la lista de documentos de tipo ${t}`];
+		return plantillas[i % plantillas.length];
+	});
+	return [...porTipo, '¿Cuántos documentos hay por tipo documental?', '¿Qué documentos tienen campos corregidos?'];
+}
+
+export type Direccion = 'asc' | 'desc';
+export type Orden = { indice: number; direccion: Direccion } | null;
+
+/** Qué orden queda al picar el encabezado de una columna: la primera vez ascendente; la misma otra vez, invierte. */
+export function ordenAlPicar(actual: Orden, indice: number): Orden {
+	if (actual && actual.indice === indice) return { indice, direccion: actual.direccion === 'asc' ? 'desc' : 'asc' };
+	return { indice, direccion: 'asc' };
+}
+
+function comparar(a: unknown, b: unknown): number {
+	if (typeof a === 'number' && typeof b === 'number') return a - b;
+	if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+	// Las fechas vienen como texto ISO: el orden de texto es el orden de fecha. Lo demás, como lo leería una persona (acentos y mayúsculas aparte).
+	return String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' });
+}
+
+/** Las filas ordenadas por una columna; lo vacío va siempre al final. Sin orden, tal como llegaron. No toca la lista original. */
+export function ordenarFilas(filas: unknown[][], orden: Orden): unknown[][] {
+	if (!orden) return filas;
+	const { indice, direccion } = orden;
+	const signo = direccion === 'asc' ? 1 : -1;
+	return [...filas].sort((f, g) => {
+		const a = f[indice];
+		const b = g[indice];
+		const vacioA = a === null || a === undefined || a === '';
+		const vacioB = b === null || b === undefined || b === '';
+		if (vacioA && vacioB) return 0;
+		if (vacioA) return 1;
+		if (vacioB) return -1;
+		return signo * comparar(a, b);
+	});
+}
+
+/** Las columnas que la pantalla NO enseña: `documento` (el id) y `pagina`, que sirven para abrir el documento en su página (el back las pide así). */
+export function indicesOcultos(columnas: string[]): Set<number> {
+	const fuera = new Set<number>();
+	columnas.forEach((c, i) => {
+		const n = c.trim().toLowerCase();
+		if (n === 'documento' || n === 'pagina' || n === 'página') fuera.add(i);
+	});
+	return fuera;
+}
+
+/** Hay un enlace si la fila trae un `documento` con forma de id: `{ documento, pagina }` (`pagina` solo si viene y es un entero positivo). */
+export function enlaceDeFila(columnas: string[], fila: unknown[]): { documento: string; pagina: number | null } | null {
+	const iDoc = columnas.findIndex((c) => c.trim().toLowerCase() === 'documento');
+	if (iDoc < 0) return null;
+	const documento = fila[iDoc];
+	if (typeof documento !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(documento)) return null;
+	const iPag = columnas.findIndex((c) => ['pagina', 'página'].includes(c.trim().toLowerCase()));
+	const pagina = iPag >= 0 ? fila[iPag] : null;
+	return { documento, pagina: typeof pagina === 'number' && Number.isInteger(pagina) && pagina > 0 ? pagina : null };
+}
+
+/** La dirección que abre el documento (en su página, si se sabe): un BFF resuelve dónde está el archivo y manda al visor. */
+export function hrefDeDocumento(enlace: { documento: string; pagina: number | null }): string {
+	return `/api/documentos/${encodeURIComponent(enlace.documento)}/abrir${enlace.pagina ? `?pagina=${enlace.pagina}` : ''}`;
+}
+
+function celdaCsv(valor: unknown): string {
+	// Exactamente lo que muestra la tabla, salvo lo que Excel entiende mejor crudo: los números sin separador de miles y las fechas como AAAA-MM-DD.
+	let texto: string;
+	if (valor === null || valor === undefined) texto = '';
+	else if (typeof valor === 'number') texto = String(valor);
+	else if (typeof valor === 'string' && (FECHA.test(valor) || FECHA_HORA.test(valor))) texto = valor.replace(/T.*$/, '');
+	else texto = formatearCelda(valor);
+	return /[",\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+/**
+ * La respuesta como CSV: las mismas columnas y filas que la tabla (sin las ocultas y en el orden que se ve), con BOM UTF-8 y renglones CRLF para que Excel la
+ * abra con los acentos bien y sin acomodar nada.
+ */
+export function aCsv(columnas: string[], filas: unknown[][]): string {
+	const fuera = indicesOcultos(columnas);
+	const visibles = columnas.map((_, i) => i).filter((i) => !fuera.has(i));
+	const encabezado = visibles.map((i) => celdaCsv(columnas[i] || `Columna ${i + 1}`)).join(',');
+	const cuerpo = filas.map((f) => visibles.map((i) => celdaCsv(f[i])).join(','));
+	return '﻿' + [encabezado, ...cuerpo].join('\r\n') + '\r\n';
+}
+
+/** El nombre del archivo: la pregunta recortada y la fecha, sin caracteres que un sistema de archivos rechace. */
+export function nombreCsv(pregunta: string, hoy = new Date()): string {
+	const base = pregunta
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.replace(/[^A-Za-z0-9 ]+/g, ' ')
+		.trim()
+		.replace(/\s+/g, '-')
+		.toLowerCase()
+		.slice(0, 40)
+		.replace(/-+$/, '');
+	const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+	return `biblioratum-busqueda-${base || 'respuesta'}-${fecha}.csv`;
+}
