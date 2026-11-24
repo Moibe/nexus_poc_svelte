@@ -9,6 +9,9 @@
 
 export const MAX_PREGUNTA = 500;
 
+/** De dónde salió la consulta (NEX-609): el modelo, un ejemplo aprobado por la organización o una pregunta igual que ya había salido bien. */
+export type Origen = 'modelo' | 'ejemplo' | 'anterior';
+
 export type Respuesta = {
 	columnas: string[];
 	filas: unknown[][];
@@ -18,13 +21,18 @@ export type Respuesta = {
 	consulta?: string;
 	explicacion?: string;
 	intentos?: number;
+	/** NEX-609: el renglón de la bitácora, para «¿Te sirvió?» (null si no se pudo anotar: entonces no se ofrece). */
+	preguntaId?: string | null;
+	origen?: Origen;
+	reusoDe?: string | null;
 };
 
-/** Lo que sale de preguntar: la tabla, o un caso que se dice con sus palabras. */
+/** Lo que sale de preguntar: la tabla, o un caso que se dice con sus palabras. `tope`: se llegó al tope de uso (NEX-609) o se preguntó muy seguido. */
 export type Resultado =
 	| { tipo: 'tabla'; respuesta: Respuesta }
 	| { tipo: 'no_se_puede'; mensaje: string }
 	| { tipo: 'tardo'; mensaje: string }
+	| { tipo: 'tope'; mensaje: string }
 	| { tipo: 'error'; mensaje: string };
 
 const NO_SE_PUEDE = 'Eso no se puede responder con los datos extraídos de tus documentos.';
@@ -53,11 +61,43 @@ export function resultadoDe(status: number, cuerpo: unknown): Resultado {
 		if (esRespuesta(cuerpo)) return { tipo: 'tabla', respuesta: cuerpo };
 		return { tipo: 'error', mensaje: FALLO };
 	}
-	const c = cuerpo as { codigo?: unknown; mensaje?: unknown } | null;
+	const c = cuerpo as { codigo?: unknown; mensaje?: unknown; reintentarEn?: unknown } | null;
 	const mensaje = typeof c?.mensaje === 'string' && c.mensaje.trim() ? c.mensaje : '';
 	if (c?.codigo === 'no_se_puede') return { tipo: 'no_se_puede', mensaje: mensaje || NO_SE_PUEDE };
 	if (c?.codigo === 'tardo') return { tipo: 'tardo', mensaje: mensaje || TARDO };
+	// El tope de uso del back (por persona por hora, por organización por día) y el del servidor de la página (muchas seguidas en un minuto).
+	if (c?.codigo === 'tope') return { tipo: 'tope', mensaje: mensajeDeTope(mensaje, c.reintentarEn) };
+	if (status === 429 && c?.codigo === 'demasiadas_peticiones') return { tipo: 'tope', mensaje: mensaje || MUY_SEGUIDO };
 	return { tipo: 'error', mensaje: mensaje || FALLO };
+}
+
+const MUY_SEGUIDO = 'Hiciste muchas preguntas seguidas. Espera un momento e intenta de nuevo.';
+
+function dosDigitos(n: number): string {
+	return String(n).padStart(2, '0');
+}
+
+/**
+ * El mensaje del tope con CUÁNDO se puede volver a preguntar, en la hora de quien lo lee: «… Podrás volver a preguntar a las 15:42.», «… mañana a las
+ * 09:15.» o «… el 26 nov a las 09:15.». `reintentarEn` viene del back en UTC (ISO); si no viene o no se entiende, solo el mensaje.
+ */
+export function mensajeDeTope(mensaje: string, reintentarEn: unknown, ahora: Date = new Date()): string {
+	const base = mensaje.trim() || 'Llegaste al tope de preguntas.';
+	if (typeof reintentarEn !== 'string') return base;
+	const cuando = new Date(reintentarEn);
+	if (Number.isNaN(cuando.getTime())) return base;
+	const hora = `${dosDigitos(cuando.getHours())}:${dosDigitos(cuando.getMinutes())}`;
+	const mismoDia = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+	const manana = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 1);
+	const dia = mismoDia(cuando, ahora) ? '' : mismoDia(cuando, manana) ? 'mañana ' : `el ${cuando.getDate()} ${MESES[cuando.getMonth()]} `;
+	return `${base} Podrás volver a preguntar ${dia}a las ${hora}.`;
+}
+
+/** Lo que se dice bajo una respuesta cuya consulta se reusó (NEX-609), o `null` si la escribió el modelo para esta pregunta. */
+export function notaDeOrigen(origen: Origen | undefined): string | null {
+	if (origen === 'ejemplo') return 'Usé un ejemplo que aprobó tu organización para esta misma pregunta.';
+	if (origen === 'anterior') return 'Usé la misma consulta de la vez anterior que se hizo esta pregunta; los datos son los de hoy.';
+	return null;
 }
 
 /** «1 renglón», «14 renglones», o el aviso de que hay más de los que se muestran. */
@@ -121,6 +161,63 @@ export function esColumnaNumerica(filas: unknown[][], indice: number): boolean {
 /** La pregunta lista para mandar: sin espacios de más; vacía si no hay nada que preguntar. */
 export function limpiarPregunta(texto: string): string {
 	return texto.replace(/\s+/g, ' ').trim().slice(0, MAX_PREGUNTA);
+}
+
+// ── NEX-609: lo que se guarda de cada pregunta y los ejemplos de la organización ────────────────────────────────────────────────────────
+
+/** Una de «Tus preguntas recientes» (`GET /busqueda/preguntas`). */
+export type Reciente = { id: string; pregunta: string; resultado: string; en: string | null };
+
+export type Persona = { guid: string; nombre: string | null; correo: string | null } | null;
+
+/** Una respuesta marcada «Sí me sirvió» que quien administra todavía no aprueba ni descarta (`GET /busqueda/por-revisar`). */
+export type PorRevisar = {
+	id: string;
+	pregunta: string;
+	consulta: string;
+	explicacion: string;
+	renglones: number | null;
+	en: string | null;
+	veces: number;
+	personasUtil: number;
+	autor: Persona;
+};
+
+/** Un ejemplo aprobado de la organización (`GET /busqueda/ejemplos`). */
+export type EjemploAprobado = {
+	id: string;
+	pregunta: string;
+	consulta: string;
+	explicacion: string;
+	aprobadoEn: string | null;
+	reusos: number;
+	aprobadoPor: Persona;
+};
+
+/** Cómo se nombra a una persona en las listas: su nombre, si no su correo, si no «alguien de tu organización» (una cuenta retirada). */
+export function nombreDe(persona: Persona): string {
+	return persona?.nombre?.trim() || persona?.correo?.trim() || 'alguien de tu organización';
+}
+
+/** «Se preguntó 3 veces · le sirvió a 2 personas». */
+export function resumenDeUso(veces: number, personasUtil: number): string {
+	const v = veces === 1 ? 'Se preguntó 1 vez' : `Se preguntó ${formatearNumero(veces)} veces`;
+	const p = personasUtil === 1 ? 'le sirvió a 1 persona' : `le sirvió a ${formatearNumero(personasUtil)} personas`;
+	return `${v} · ${p}`;
+}
+
+/** «Su consulta se reusó 4 veces tal cual», o que todavía no. */
+export function resumenDeReusos(reusos: number): string {
+	if (reusos <= 0) return 'Todavía nadie ha hecho esta misma pregunta.';
+	return reusos === 1 ? 'Su consulta se reusó 1 vez tal cual.' : `Su consulta se reusó ${formatearNumero(reusos)} veces tal cual.`;
+}
+
+/** Ids que el navegador manda al BFF: se validan antes de pegarlos a una ruta de nexus_back. */
+export function esIdDePregunta(valor: unknown): valor is string {
+	return typeof valor === 'string' && /^pregunta-[0-9a-f]{32}$/.test(valor);
+}
+export function esIdDeEjemplo(valor: unknown): valor is string {
+	return typeof valor === 'string' && /^ejemplo-[0-9a-f]{32}$/.test(valor);
 }
 
 /** Preguntas que se ofrecen como pista mientras no se ha preguntado nada (son texto, no se mandan solas). */

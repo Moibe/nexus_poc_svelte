@@ -41,9 +41,15 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = (cuerpo as { detail?: { mensaje?: unknown } } | null)?.detail;
+		const detalle = (cuerpo as { detail?: { mensaje?: unknown; reintentarEn?: unknown; alcance?: unknown; tope?: unknown; ventana?: unknown } } | null)?.detail;
 		const curado = [422, 429, 503].includes(respuesta.status) && typeof detalle?.mensaje === 'string' ? detalle.mensaje : null;
-		return json({ mensaje: curado ?? mensajeDeError(cuerpo, respuesta.status), codigo: codigoDe(cuerpo) }, { status: respuesta.status });
+		const codigo = codigoDe(cuerpo);
+		// El tope de uso (NEX-609) dice además hasta cuándo: la pantalla lo pone en la hora de quien lo lee.
+		const tope =
+			codigo === 'tope' && typeof detalle?.reintentarEn === 'string'
+				? { reintentarEn: detalle.reintentarEn, alcance: detalle.alcance, tope: detalle.tope, ventana: detalle.ventana }
+				: {};
+		return json({ mensaje: curado ?? mensajeDeError(cuerpo, respuesta.status), codigo, ...tope }, { status: respuesta.status });
 	}
 	return json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
 };

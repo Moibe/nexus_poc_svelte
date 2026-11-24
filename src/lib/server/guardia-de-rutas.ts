@@ -38,6 +38,10 @@ const REGLAS: readonly Regla[] = [
 	// Administrar — solo al escribir (leer lo abre el back a quien opera en la organización: el pipeline y las pantallas de uso lo necesitan).
 	{ patron: /^\/api\/procesos(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
 	{ patron: /^\/api\/tipos-documentales(\/.*)?$/, metodos: 'escritura', exige: 'administrar' },
+	// Los ejemplos de la búsqueda (NEX-609): aprobarlos, quitarlos y descartar lo que está «Por revisar» es de quien administra
+	// (`aislamiento.exigir_administrar` en nexus_back). Preguntar y valorar lo propio no están aquí: los deja el back a cualquier rol.
+	{ patron: /^\/api\/busqueda\/ejemplos(\/.*)?$/, metodos: 'todos', exige: 'administrar' },
+	{ patron: /^\/api\/busqueda\/preguntas\/[^/]+\/descartar$/, metodos: 'todos', exige: 'administrar' },
 	// Organizar — solo al escribir.
 	{ patron: /^\/api\/expedientes(\/.*)?$/, metodos: 'escritura', exige: 'organizar' },
 	{ patron: /^\/api\/ejecuciones(\/.*)?$/, metodos: 'escritura', exige: 'organizar' }
