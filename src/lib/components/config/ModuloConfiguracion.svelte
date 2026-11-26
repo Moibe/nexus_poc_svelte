@@ -93,6 +93,7 @@
 		borrarRecorteEjemplo,
 		campoCompleto,
 		campoIntacto,
+		campoVacio,
 		activarTipoDocumental,
 		crearNuevaVersion,
 		cancelarNuevaVersion,
@@ -283,6 +284,12 @@
 	 *  campo" siempre arranca limpio. */
 	function guardarCampoEnCaptura() {
 		agregarCampoEnCaptura();
+		mostrarFormularioCampo = false;
+	}
+
+	/** «Descartar» del formulario de captura: tira lo capturado (en blanco, para que no bloquee el avance) y lo oculta. */
+	function descartarCampoEnCaptura() {
+		borrador.campoEnCaptura = campoVacio();
 		mostrarFormularioCampo = false;
 	}
 
@@ -619,6 +626,11 @@
 	// abajo debe mostrarse exactamente cuando esto es falso, ni antes ni
 	// después.
 	const hayCampoAlAvanzar = $derived(borrador.campos.length > 0 || puedeAgregar);
+
+	/** Paso 2 con campos ya agregados y uno a medio capturar arriba: es lo único que entonces apaga «Guardar y agregar propiedades» (2026-11-26). */
+	const campoAMedias = $derived(
+		borrador.paso === 2 && borrador.campos.length > 0 && !campoIntacto(borrador.campoEnCaptura) && !puedeAgregar
+	);
 
 	/**
 	 * ¿El paso `n` está HECHO? Es lo que pinta «Listo» en el costado (2026-11-08, Moibe: «no sé por qué tiene palomita en el 2, si de verdad no tiene
@@ -2558,15 +2570,28 @@
 							     dejar listo el formulario para el siguiente. "Guardar" hace
 							     solo lo primero; lo segundo ahora es explícito, ver el botón
 							     "Agregar campo" de más abajo. -->
-							<Button
-								variant="link"
-								class="h-auto gap-1.5 p-0 text-primary"
-								disabled={!puedeAgregar}
-								onclick={guardarCampoEnCaptura}
-							>
-								<Save class="size-4" />
-								Guardar
-							</Button>
+							<!-- «Descartar» (2026-11-26, bug de Moibe): abrir el formulario era un camino sin regreso —no había cómo cerrarlo— y si se
+							     quedaba a medias (p. ej. tras «Generar a partir de un documento») apagaba «Guardar y agregar propiedades» sin decir por qué.
+							     Descarta lo capturado y vuelve a las dos tarjetas; los campos ya agregados no se tocan. -->
+							<div class="flex items-center gap-5">
+								<Button
+									variant="link"
+									class="h-auto p-0 text-muted-foreground hover:text-foreground"
+									data-testid="descartar-campo-en-captura"
+									onclick={descartarCampoEnCaptura}
+								>
+									Descartar
+								</Button>
+								<Button
+									variant="link"
+									class="h-auto gap-1.5 p-0 text-primary"
+									disabled={!puedeAgregar}
+									onclick={guardarCampoEnCaptura}
+								>
+									<Save class="size-4" />
+									Guardar
+								</Button>
+							</div>
 						</div>
 					</div>
 				{:else}
@@ -3051,7 +3076,21 @@
 			<Button variant="link" class="h-auto p-0 text-green-600" onclick={regresar}>
 				Regresar
 			</Button>
-			<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
+			<div class="flex items-center gap-4">
+				{#if campoAMedias}
+					<!-- Junto al botón gris, que es a donde se mira (2026-11-26, bug de Moibe): con campos ya agregados, lo único que lo apaga es un
+					     campo a medio capturar en el formulario de arriba, que con la lista larga queda fuera de la vista. Se dice y se ofrece tirarlo. -->
+					<p class="text-right text-xs text-amber-700 dark:text-amber-300" data-testid="aviso-campo-a-medias">
+						Hay un campo a medio capturar.
+						<button
+							type="button"
+							class="font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
+							onclick={descartarCampoEnCaptura}
+						>Descartarlo</button>
+					</p>
+				{/if}
+				<Button disabled={!canContinue} onclick={continuar}>{etiquetaAvance}</Button>
+			</div>
 		</div>
 	{:else if vista === 'calibracion'}
 		<!-- "Guardar configuración" nacía deshabilitado (cuando el lado
