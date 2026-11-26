@@ -109,6 +109,14 @@
 	--border: #e2e8f0;
 	--input: #e2e8f0;
 	--ring: #a0b3fc;
+	/* NEX-610: la gráfica de la búsqueda (una sola serie). El azul de la marca; «Otras» en gris porque junta categorías; rejilla y eje
+	   finos, un paso fuera de la tarjeta. Validados con el validador de paletas: la serie pasa 3:1 sobre la tarjeta en los dos temas. */
+	--grafica-serie: #4268fb;
+	--grafica-serie-area: rgba(66, 104, 251, 0.1);
+	--grafica-otras: #94a3b8;
+	--grafica-rejilla: #eef2f7;
+	--grafica-eje: #cbd5e1;
+	--grafica-resalte: rgba(66, 104, 251, 0.07);
 }
 
 .dark {
@@ -131,6 +139,13 @@
 	--border: rgba(255, 255, 255, 0.1);
 	--input: rgba(255, 255, 255, 0.15);
 	--ring: #4268fb;
+	/* NEX-610: sobre la tarjeta oscura (#334155) el azul de la marca no llega a 3:1 (2.3): la serie sube un paso (#7a92fc, 3.6:1). */
+	--grafica-serie: #7a92fc;
+	--grafica-serie-area: rgba(122, 146, 252, 0.14);
+	--grafica-otras: #94a3b8;
+	--grafica-rejilla: rgba(255, 255, 255, 0.08);
+	--grafica-eje: rgba(255, 255, 255, 0.24);
+	--grafica-resalte: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {

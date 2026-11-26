@@ -26,6 +26,10 @@
 	 *   · «Tus preguntas recientes», para repetir una con un clic (se vuelven a pedir después de cada pregunta);
 	 *   · el tope de uso (por persona por hora, por organización por día) sale en ámbar con la hora a la que se puede volver a preguntar.
 	 *
+	 * NEX-610 (2026-11-26, ver la respuesta como gráfica): cuando la respuesta es un resumen por categorías o por fechas (`planDeGrafica`), junto a
+	 * «Exportar CSV» aparece «Tabla | Gráfica»: barras para categorías, línea para fechas, armadas aquí con las mismas filas (no se vuelve a llamar al
+	 * modelo). La vista elegida se queda para las siguientes respuestas que se presten; las que no (un número suelto, una lista) se ven en tabla.
+	 *
 	 * Enter manda la pregunta; Shift+Enter hace un salto de línea. Mientras se piensa, la caja y el botón se apagan: una pregunta a la vez.
 	 */
 	import { invalidate } from '$app/navigation';
@@ -33,6 +37,8 @@
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import BadgeCheck from '@lucide/svelte/icons/badge-check';
+	import ChartBar from '@lucide/svelte/icons/chart-bar';
+	import ChartLine from '@lucide/svelte/icons/chart-line';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -42,9 +48,11 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import Search from '@lucide/svelte/icons/search';
+	import Table2 from '@lucide/svelte/icons/table-2';
 	import ThumbsDown from '@lucide/svelte/icons/thumbs-down';
 	import ThumbsUp from '@lucide/svelte/icons/thumbs-up';
 
+	import GraficaRespuesta from '$lib/components/busqueda/GraficaRespuesta.svelte';
 	import AvisoRojo from '$lib/components/config/AvisoRojo.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
@@ -68,6 +76,7 @@
 		type Orden,
 		type Resultado
 	} from '$lib/busqueda/busqueda';
+	import { planDeGrafica } from '$lib/busqueda/grafica';
 
 	let { data } = $props();
 
@@ -83,6 +92,13 @@
 	let preguntaHecha = $state('');
 	let resultado = $state<Resultado | null>(null);
 	let orden = $state<Orden>(null);
+	/** NEX-610: tabla o gráfica. Se queda entre preguntas; solo se usa cuando la respuesta se presta para gráfica. */
+	let vista = $state<'tabla' | 'grafica'>('tabla');
+	/** Qué graficar, o `null` si la respuesta no se presta (un número suelto, una lista de nombres o de documentos). */
+	const plan = $derived(resultado?.tipo === 'tabla' ? planDeGrafica(resultado.respuesta.columnas, resultado.respuesta.filas) : null);
+	const enGrafica = $derived(plan !== null && vista === 'grafica');
+	/** Qué columna de números se grafica (si hay varias): se queda al ir a la tabla y volver; con otra respuesta, otra vez la primera. */
+	let medidaElegida = $state<number | null>(null);
 
 	const lista = $derived(limpiarPregunta(pregunta));
 	const puedePreguntar = $derived(!pensando && lista.length > 0);
@@ -109,6 +125,7 @@
 		preguntaHecha = texto;
 		resultado = null;
 		orden = null;
+		medidaElegida = null;
 		try {
 			const r = await fetch('/api/busqueda/preguntar', {
 				method: 'POST',
@@ -175,7 +192,8 @@
 	<div>
 		<h1 class="text-2xl font-semibold text-foreground">Búsqueda</h1>
 		<p class="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-			Pregunta con tus palabras sobre los datos extraídos de los documentos de tu organización. La respuesta llega como tabla.
+			Pregunta con tus palabras sobre los datos extraídos de los documentos de tu organización. La respuesta llega como tabla y, cuando se presta, también
+			como gráfica.
 		</p>
 	</div>
 	{#if data.administra}
@@ -292,10 +310,50 @@
 		<div class="mt-1 flex flex-wrap items-center justify-between gap-2">
 			<p class="text-sm font-medium text-foreground" data-testid="renglones">{textoDeRenglones(r)}</p>
 			{#if r.filas.length > 0}
-				<Button variant="outline" size="sm" class="gap-1.5" data-testid="exportar-csv" onclick={exportar}>
-					<Download class="size-3.5" aria-hidden="true" />
-					Exportar CSV
-				</Button>
+				<div class="flex flex-wrap items-center gap-2">
+					{#if plan}
+						<!-- NEX-610: el lenguaje de «Ver como lista / mosaico» de los expedientes, pero con nombre: es la primera vez que aparece. -->
+						<div
+							role="group"
+							aria-label="Ver la respuesta como"
+							class="flex h-9 items-center gap-0.5 rounded-lg border border-border bg-background p-0.5"
+							data-testid="alternar-tabla-grafica"
+						>
+							<button
+								type="button"
+								aria-pressed={!enGrafica}
+								data-testid="vista-tabla"
+								class="flex h-7.5 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 {!enGrafica
+									? 'bg-primary text-primary-foreground'
+									: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+								onclick={() => (vista = 'tabla')}
+							>
+								<Table2 class="size-4" aria-hidden="true" />
+								Tabla
+							</button>
+							<button
+								type="button"
+								aria-pressed={enGrafica}
+								data-testid="vista-grafica"
+								class="flex h-7.5 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 {enGrafica
+									? 'bg-primary text-primary-foreground'
+									: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+								onclick={() => (vista = 'grafica')}
+							>
+								{#if plan.forma === 'linea'}
+									<ChartLine class="size-4" aria-hidden="true" />
+								{:else}
+									<ChartBar class="size-4" aria-hidden="true" />
+								{/if}
+								Gráfica
+							</button>
+						</div>
+					{/if}
+					<Button variant="outline" size="sm" class="gap-1.5" data-testid="exportar-csv" onclick={exportar}>
+						<Download class="size-3.5" aria-hidden="true" />
+						Exportar CSV
+					</Button>
+				</div>
 			{/if}
 		</div>
 		{#if r.explicacion}
@@ -321,7 +379,12 @@
 				<p class="mt-1 text-xs text-muted-foreground">Selecciónala para copiarla.</p>
 			</details>
 		{/if}
-		{#if r.filas.length > 0}
+		{#if r.filas.length > 0 && plan && enGrafica}
+			<!-- Una gráfica por respuesta: con otra respuesta se arma de nuevo (y vuelve a la primera columna de números). -->
+			{#key r}
+				<GraficaRespuesta columnas={r.columnas} filas={r.filas} {plan} pregunta={preguntaHecha} bind:elegida={medidaElegida} />
+			{/key}
+		{:else if r.filas.length > 0}
 			<div class="mt-3 overflow-x-auto rounded-2xl border-2 border-border bg-card">
 				<table class="w-full text-left text-sm" data-testid="tabla-respuesta">
 					<caption class="sr-only">Respuesta a «{preguntaHecha}», ordenada por la columna marcada</caption>

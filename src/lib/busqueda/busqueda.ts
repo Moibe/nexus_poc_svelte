@@ -110,21 +110,26 @@ export function textoDeRenglones(respuesta: Pick<Respuesta, 'filas' | 'hayMas' |
 
 const FECHA = /^(\d{4})-(\d{2})-(\d{2})$/;
 const FECHA_HORA = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z?$/;
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+/** Un mes `AAAA-MM`, como lo devuelve la búsqueda al agrupar por mes (FORMAT(fecha, 'yyyy-MM')). */
+const MES = /^(\d{4})-(0[1-9]|1[0-2])$/;
+export const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 export function formatearNumero(n: number): string {
 	return new Intl.NumberFormat('es-MX', { maximumFractionDigits: 6 }).format(n);
 }
 
 /**
- * Una celda como la lee una persona: `null` es «—»; una fecha `AAAA-MM-DD` sale «15 mar 2024»; una fecha con hora (UTC, como la guarda el servidor)
- * sale en la hora local «15 mar 2024, 10:30»; un número con separador de miles y sin ceros de más; un booleano «Sí»/«No»; lo demás, tal cual.
+ * Una celda como la lee una persona: `null` es «—»; una fecha `AAAA-MM-DD` sale «15 mar 2024»; un mes `AAAA-MM` sale «mar 2024» (NEX-610: igual que
+ * en la gráfica); una fecha con hora (UTC, como la guarda el servidor) sale en la hora local «15 mar 2024, 10:30»; un número con separador de miles y
+ * sin ceros de más; un booleano «Sí»/«No»; lo demás, tal cual.
  */
 export function formatearCelda(valor: unknown): string {
 	if (valor === null || valor === undefined) return '—';
 	if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
 	if (typeof valor === 'number') return Number.isFinite(valor) ? formatearNumero(valor) : String(valor);
 	if (typeof valor === 'string') {
+		const m = MES.exec(valor);
+		if (m) return `${MESES[Number(m[2]) - 1]} ${m[1]}`;
 		const f = FECHA.exec(valor);
 		if (f) {
 			const mes = Number(f[2]);
@@ -302,11 +307,12 @@ export function hrefDeDocumento(enlace: { documento: string; pagina: number | nu
 }
 
 function celdaCsv(valor: unknown): string {
-	// Exactamente lo que muestra la tabla, salvo lo que Excel entiende mejor crudo: los números sin separador de miles y las fechas como AAAA-MM-DD.
+	// Exactamente lo que muestra la tabla, salvo lo que Excel entiende mejor crudo: los números sin separador de miles, las fechas como AAAA-MM-DD y los
+	// meses como AAAA-MM.
 	let texto: string;
 	if (valor === null || valor === undefined) texto = '';
 	else if (typeof valor === 'number') texto = String(valor);
-	else if (typeof valor === 'string' && (FECHA.test(valor) || FECHA_HORA.test(valor))) texto = valor.replace(/T.*$/, '');
+	else if (typeof valor === 'string' && (FECHA.test(valor) || FECHA_HORA.test(valor) || MES.test(valor))) texto = valor.replace(/T.*$/, '');
 	else texto = formatearCelda(valor);
 	return /[",\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
@@ -325,6 +331,11 @@ export function aCsv(columnas: string[], filas: unknown[][]): string {
 
 /** El nombre del archivo: la pregunta recortada y la fecha, sin caracteres que un sistema de archivos rechace. */
 export function nombreCsv(pregunta: string, hoy = new Date()): string {
+	return nombreDeArchivo(pregunta, 'csv', hoy);
+}
+
+/** El mismo nombre que el CSV, con otra extensión (NEX-610: la gráfica se baja como `.png`). */
+export function nombreDeArchivo(pregunta: string, extension: string, hoy = new Date()): string {
 	const base = pregunta
 		.normalize('NFD')
 		.replace(/[̀-ͯ]/g, '')
@@ -335,5 +346,5 @@ export function nombreCsv(pregunta: string, hoy = new Date()): string {
 		.slice(0, 40)
 		.replace(/-+$/, '');
 	const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-	return `biblioratum-busqueda-${base || 'respuesta'}-${fecha}.csv`;
+	return `biblioratum-busqueda-${base || 'respuesta'}-${fecha}.${extension}`;
 }
