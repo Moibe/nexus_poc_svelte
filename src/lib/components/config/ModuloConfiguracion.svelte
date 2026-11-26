@@ -2862,6 +2862,15 @@
 													{/each}
 												</Select.Content>
 											</Select.Root>
+											<!-- Qué hará, con un ejemplo (2026-11-26: desde hoy el servidor la aplica al extraer). -->
+											{#each REGLAS_TRANSFORMACION.filter((r) => r.value === campo.reglaTransformacion) as regla (regla.value)}
+												<p class="text-xs text-muted-foreground" data-testid="ayuda-regla">{regla.ayuda}</p>
+												{#if regla.value === 'valor_canonico' && campo.tipoDato !== 'lista'}
+													<p class="text-xs text-amber-700 dark:text-amber-300" data-testid="aviso-regla-sin-lista">
+														Este campo no es de tipo Lista: sin valores de la lista, esta regla no cambiará nada.
+													</p>
+												{/if}
+											{/each}
 										</div>
 									</div>
 

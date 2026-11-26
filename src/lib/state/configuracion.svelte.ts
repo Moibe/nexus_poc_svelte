@@ -71,12 +71,25 @@ export const UMBRALES_CONFIANZA = ['50', '60', '70', '80', '90', '100'].map((v) 
  * en `_limpiar_ine`. Cuando esto se guarde en base, esas dos dejan de ser código
  * fijo y pasan a ser configuración.
  */
+// Desde el 2026-11-26 SE APLICAN: nexus_back (`servicios/transformaciones.py`) las aplica al guardar cada extracción; lo leído se conserva como valor
+// crudo. `ayuda` es lo que se lee bajo el desplegable. «Conversión a mayúsculas o minúsculas» era ambigua: `cambiar_caja` (la llave de antes, que ya está
+// guardada en tipos) quedó como MAYÚSCULAS y se agregó `minusculas`. «Sin transformación» deja quitar una regla ya elegida.
 export const REGLAS_TRANSFORMACION = [
-	{ value: 'fecha_iso', label: 'Normalización de fechas a ISO 8601' },
-	{ value: 'quitar_moneda', label: 'Eliminación de símbolos de moneda' },
-	{ value: 'cambiar_caja', label: 'Conversión a mayúsculas o minúsculas' },
-	{ value: 'trim_espacios', label: 'Trim de espacios' },
-	{ value: 'valor_canonico', label: 'Variantes textuales a valor canónico' }
+	{ value: 'ninguna', label: 'Sin transformación', ayuda: 'El valor se guarda tal como lo leyó Biblioratum.' },
+	{
+		value: 'fecha_iso',
+		label: 'Normalización de fechas a ISO 8601',
+		ayuda: '«15/03/2026» o «15 de marzo de 2026» → «2026-03-15» (el día va antes que el mes). Una fecha que no se entiende se queda como vino.'
+	},
+	{ value: 'quitar_moneda', label: 'Eliminación de símbolos de moneda', ayuda: '«$ 1,234.50 MXN» → «1234.50».' },
+	{ value: 'cambiar_caja', label: 'Conversión a mayúsculas', ayuda: '«Juan Pérez» → «JUAN PÉREZ».' },
+	{ value: 'minusculas', label: 'Conversión a minúsculas', ayuda: '«JUAN@CORREO.COM» → «juan@correo.com».' },
+	{ value: 'trim_espacios', label: 'Trim de espacios', ayuda: 'Quita los espacios de las orillas y deja uno solo entre palabras.' },
+	{
+		value: 'valor_canonico',
+		label: 'Variantes textuales a valor canónico',
+		ayuda: '«masc» o «M.» → «Masculino»: lleva lo leído a uno de los valores de la lista del campo. Si no corresponde a uno solo, se queda como vino.'
+	}
 ] as const;
 
 /**
