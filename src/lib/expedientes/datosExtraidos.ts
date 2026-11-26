@@ -32,15 +32,22 @@ export type Campo = {
 	corregidoEn?: string | null;
 	corregidoPorNombre?: string | null;
 	motivoCorreccion?: string | null;
+	/** El «Umbral de confianza» del campo en su tipo documental (paso 3), 0-100; sin él (servidores de antes, campos sin umbral) se usa {@link CONFIANZA_PARA_REVISAR}. */
+	umbral?: number | null;
 };
 
 // ── Revisar y corregir (HU073, 2026-11-26) ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Debajo de esta confianza un campo se pide revisar: es donde las insignias de calidad de la app dejan de decir «Buena» (`calidadDe`). No se usa el
- * «Umbral de confianza» de cada campo del paso 3 porque los nombres de lo extraído no casan con los de la definición del tipo.
+ * Desde el 2026-11-26 (Moibe: «usa el umbral de cada campo en revisar campos») un campo se pide revisar cuando su confianza queda DEBAJO del «Umbral de
+ * confianza» que se le puso en el paso 3 (`Campo.umbral`, que manda el servidor). Esta es solo la de respaldo, para un campo sin umbral: donde las insignias
+ * de calidad de la app dejan de decir «Buena» (`calidadDe`).
  */
 export const CONFIANZA_PARA_REVISAR = 85;
+
+/** El umbral con que se juzga un campo: el suyo, o el de respaldo. */
+export const umbralDe = (c: Pick<Campo, 'umbral'>): number =>
+	typeof c.umbral === 'number' && Number.isFinite(c.umbral) ? c.umbral : CONFIANZA_PARA_REVISAR;
 export const MAX_VALOR_CORREGIDO = 4000;
 export const MAX_MOTIVO_CORRECCION = 500;
 
@@ -48,7 +55,7 @@ export type CampoPorRevisar = { campo: Campo; motivo: string };
 
 /**
  * Qué campos pedirle a la persona que revise y cuáles no. Pendiente: el que no trae valor (con su motivo: «No apareció», «Ilegible»…) o el que lo trae con
- * confianza menor a {@link CONFIANZA_PARA_REVISAR} («Confianza insuficiente»). Uno ya corregido a mano ya lo revisó alguien: va con los demás. El orden es
+ * confianza menor a su umbral ({@link umbralDe}: «Confianza insuficiente»). Uno ya corregido a mano ya lo revisó alguien: va con los demás. El orden es
  * el del documento.
  */
 export function revisionDeCampos(campos: Campo[] | null | undefined): { pendientes: CampoPorRevisar[]; demas: Campo[] } {
@@ -58,7 +65,7 @@ export function revisionDeCampos(campos: Campo[] | null | undefined): { pendient
 		if (!c || typeof c.ruta !== 'string') continue;
 		const sinValor = c.valor === null || c.valor === undefined || c.valor === '';
 		if (!c.corregido && sinValor) pendientes.push({ campo: c, motivo: MOTIVOS_SIN_VALOR[c.motivoSinValor ?? ''] ?? 'Sin valor' });
-		else if (!c.corregido && typeof c.confianza === 'number' && c.confianza < CONFIANZA_PARA_REVISAR) pendientes.push({ campo: c, motivo: 'Confianza insuficiente' });
+		else if (!c.corregido && typeof c.confianza === 'number' && c.confianza < umbralDe(c)) pendientes.push({ campo: c, motivo: 'Confianza insuficiente' });
 		else demas.push(c);
 	}
 	return { pendientes, demas };

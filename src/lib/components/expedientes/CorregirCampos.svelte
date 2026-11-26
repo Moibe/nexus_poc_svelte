@@ -3,7 +3,8 @@
 	 * Revisar y corregir los datos extraídos de un documento (HU073 del Figma, «corregir campos», 2026-11-26; Moibe: «va, haz la pantalla de corrección con el
 	 * HU073»). Vive como pestaña del detalle de datos extraídos (`DatosExtraidosModal`), que es donde nuestro modelo ya enseña lo extraído.
 	 *
-	 * Arriba, los campos que piden revisión (`revisionDeCampos`: sin valor, o con confianza menor a 85 %), cada uno en la tarjeta del diseño: su motivo, la
+	 * Arriba, los campos que piden revisión (`revisionDeCampos`: sin valor, o con confianza menor al «Umbral de confianza» del campo en el paso 3; 85 % si no
+	 * tiene), cada uno en la tarjeta del diseño: su motivo, la
 	 * confianza obtenida, «Valor extraído *» con lo leído y «Guardar», que se vuelve una palomita al quedar guardado. Debajo, plegados, los demás campos, que
 	 * también se pueden corregir. Cada corrección se guarda aparte del dato extraído (que no se toca), con quién, cuándo y un motivo opcional; desde ese momento
 	 * es el valor vigente: lo usan las ejecuciones de procesos y la búsqueda («¿qué se corrigió y quién?»).
@@ -28,6 +29,7 @@
 		problemaDeCorreccion,
 		quienCorrigio,
 		revisionDeCampos,
+		umbralDe,
 		type Campo
 	} from '$lib/expedientes/datosExtraidos';
 
@@ -155,7 +157,10 @@
 					</div>
 					<div>
 						<p class="text-xs text-muted-foreground">Confianza obtenida</p>
-						<p class="mt-0.5 text-sm text-foreground tabular-nums">{typeof c.confianza === 'number' ? `${c.confianza.toFixed(0)} %` : '—'}</p>
+						<p class="mt-0.5 text-sm text-foreground tabular-nums">
+							{typeof c.confianza === 'number' ? `${c.confianza.toFixed(0)} %` : '—'}
+							<span class="text-xs text-muted-foreground" data-testid="campo-corregir-umbral">· mínimo {umbralDe(c)} %</span>
+						</p>
 					</div>
 				</div>
 			{/if}
