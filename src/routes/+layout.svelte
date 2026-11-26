@@ -73,7 +73,8 @@
 	<div class="flex min-h-screen flex-col bg-background">
 		<TopBar usuario={data.usuario} />
 
-		<main class="mx-auto w-full max-w-360 flex-1 px-6 py-8">
+		<!-- Bajo 640 px, 16 px a los lados como la barra de arriba (2026-11-26): el contenido empieza donde el logo. -->
+		<main class="mx-auto w-full max-w-360 flex-1 px-4 py-8 sm:px-6">
 			{@render children()}
 		</main>
 

@@ -53,7 +53,9 @@
 	};
 </script>
 
-<div class="mt-3 overflow-x-auto">
+<!-- `relative`: lo que va con `position: absolute` dentro de la tabla (el «Acciones» para el lector de pantalla) se queda dentro del recuadro que se
+     desplaza. Sin él se medía contra la página, y en un teléfono la ensanchaba a lo que mide la tabla (758 px a 390, 2026-11-26). -->
+<div class="relative mt-3 overflow-x-auto">
 	<table class="w-full min-w-3xl table-fixed text-left text-sm" data-testid="tabla-expedientes">
 		<caption class="sr-only">Expedientes de tu organización, ordenados por la columna marcada</caption>
 		<thead>

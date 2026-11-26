@@ -151,46 +151,55 @@
 	const opcionesConfiguracion = $derived(TODAS_LAS_OPCIONES.filter((o) => puedeVerOpcionDelEngrane(usuario, o.id)));
 </script>
 
+<!-- En pantallas angostas (2026-11-26): hasta entonces la barra medía lo mismo en un teléfono que en el escritorio y se salía de la pantalla
+     (a 390 px llegaba a 411 con un Viewer, 557 con quien administra la organización y 690 con el de plataforma), dejando fuera el menú ⋮, que es
+     donde está «Cerrar sesión». Ahora, de lo más angosto a lo más ancho: bajo 640 px el logo enseña solo su ícono y no salen Buscar ni
+     Notificaciones (todavía no hacen nada); bajo 768 el nombre y el rol se leen arriba del menú ⋮; bajo 1024 la navegación va solo con íconos
+     (su nombre queda para el lector de pantalla y al pasar el cursor). Desde 1024 la barra es la de siempre. -->
 <header class="sticky top-0 z-40 border-b border-border bg-card">
-	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-6 px-6">
-		<div class="flex items-center gap-6">
-			<a href="/" class="flex items-center">
-				<!-- Dos logos y el tema decide cuál se ve (2026-11-06): el oscuro trae el texto en blanco. -->
-				<img src={logo} alt="Biblioratum by Grupo CSI" class="h-9 w-auto dark:hidden" />
-				<img src={logoOscuro} alt="Biblioratum by Grupo CSI" class="hidden h-9 w-auto dark:block" />
+	<div class="mx-auto flex h-16 max-w-360 items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
+		<div class="flex shrink-0 items-center gap-3 sm:gap-6">
+			<a href="/" class="flex shrink-0 items-center">
+				<!-- Dos logos y el tema decide cuál se ve (2026-11-06): el oscuro trae el texto en blanco. Bajo 640 px el recuadro mide 38 px y
+				     solo deja ver el ícono (en la imagen termina a los 34 px de 36 de alto y el texto empieza a los 44). -->
+				<span class="block w-[38px] overflow-hidden sm:w-auto">
+					<img src={logo} alt="Biblioratum by Grupo CSI" class="h-9 w-auto max-w-none dark:hidden" />
+					<img src={logoOscuro} alt="Biblioratum by Grupo CSI" class="hidden h-9 w-auto max-w-none dark:block" />
+				</span>
 			</a>
 
-			<nav class="flex items-center gap-2">
+			<nav class="flex items-center gap-1 sm:gap-2">
 				{#each navItems as item (item.href)}
 					{@const active = item.href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.href)}
 					<a
 						href={item.href}
+						title={item.label}
 						class={[
-							'flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium transition-colors',
+							'flex items-center gap-2 rounded-lg px-2.5 py-2.5 text-xs font-medium transition-colors lg:px-3',
 							active
 								? 'bg-primary text-primary-foreground'
 								: 'text-foreground hover:bg-muted'
 						]}
 					>
 						<item.icon />
-						{item.label}
+						<span class="sr-only lg:not-sr-only">{item.label}</span>
 					</a>
 				{/each}
 			</nav>
 		</div>
 
-		<div class="flex items-center gap-3">
+		<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 			<button
 				type="button"
 				aria-label="Buscar"
-				class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted"
+				class="hidden size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted sm:flex"
 			>
 				<SearchIcon />
 			</button>
 			<button
 				type="button"
 				aria-label="Notificaciones"
-				class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted"
+				class="hidden size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted sm:flex"
 			>
 				<NotificationBellIcon />
 			</button>
@@ -205,7 +214,7 @@
 							{...props}
 							type="button"
 							aria-label="Configuración"
-							class="flex size-8 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted data-[state=open]:bg-muted"
+							class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card transition-colors hover:bg-muted data-[state=open]:bg-muted"
 						>
 							<SettingGearIcon />
 						</button>
@@ -221,13 +230,14 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			{/if}
-			<div class="h-6 w-px bg-border"></div>
+			<div class="hidden h-6 w-px shrink-0 bg-border md:block"></div>
 			<!-- El usuario de la sesión (Sprint 1, HU03). Hasta el 2026-10-07 era un
 			     nombre fijo. El rol todavía no existe en la sesión (llega con HU07),
 			     así que dice "Administrador de plataforma" o "Usuario". -->
-			<div class="flex items-center gap-3">
-				<div>
-					<p class="text-sm font-medium text-foreground" data-testid="usuario-nombre">{usuario?.nombre ?? '—'}</p>
+			<div class="flex min-w-0 items-center gap-3">
+				<!-- Bajo 768 px no cabe: se lee arriba del menú ⋮. Si el espacio aprieta, el nombre se recorta en vez de empujar la barra fuera. -->
+				<div class="hidden min-w-0 max-w-60 md:block">
+					<p class="truncate text-sm font-medium text-foreground" title={usuario?.nombre} data-testid="usuario-nombre">{usuario?.nombre ?? '—'}</p>
 					<!-- El rol y, a su lado, la empresa. Van en dos elementos aparte para que quien busque
 					     solo el rol (`usuario-rol`) siga encontrándolo sin la empresa. Un nombre largo se
 					     recorta con puntos suspensivos y se lee completo al pasar el cursor. -->
@@ -247,7 +257,7 @@
 								type="button"
 								aria-label="Más opciones"
 								data-testid="menu-usuario"
-								class="flex size-6 items-center justify-center rounded-lg bg-muted transition-colors hover:bg-border data-[state=open]:bg-border"
+								class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted transition-colors hover:bg-border data-[state=open]:bg-border md:size-6"
 							>
 								<MoreVerticalIcon />
 							</button>
@@ -257,6 +267,12 @@
 					     punteada, modo oscuro con interruptor e idioma, otra línea, y
 					     al pie la versión. -->
 					<DropdownMenu.Content align="end" class="w-60 p-2">
+						<!-- Bajo 768 px la barra no enseña quién es la persona: lo dice aquí, con su línea punteada como las demás secciones. -->
+						<div class="px-2 pt-1 pb-0.5 md:hidden" data-testid="menu-usuario-quien">
+							<p class="truncate text-sm font-medium text-foreground">{usuario?.nombre ?? '—'}</p>
+							<p class="truncate text-xs text-muted-foreground">{etiquetaDeRol}{empresa ? ` · ${empresa}` : ''}</p>
+						</div>
+						<div role="separator" class="my-1.5 border-t border-dashed border-border md:hidden"></div>
 						<DropdownMenu.Item class="gap-3 py-2.5" data-testid="mi-perfil" onSelect={() => (perfilAbierto = true)}>
 							<UserCircle class="size-4 text-muted-foreground" />
 							Mi perfil

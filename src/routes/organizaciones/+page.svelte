@@ -223,8 +223,9 @@
 		</button>
 	</div>
 {:else}
-	<div class="mt-8 flex min-h-150 gap-4">
-		<aside class="flex w-72 shrink-0 flex-col rounded-2xl border-2 border-border bg-card p-4">
+	<!-- Bajo 768 px la lista va arriba y el detalle debajo (2026-11-26): lado a lado, la lista de 288 px dejaba la página a 555 en un teléfono. -->
+	<div class="mt-8 flex min-h-150 flex-col gap-4 md:flex-row">
+		<aside class="flex w-full shrink-0 flex-col rounded-2xl border-2 border-border bg-card p-4 md:w-72">
 			<div class="flex items-start gap-2">
 				<span class="mt-0.5 text-muted-foreground"><Network class="size-4" /></span>
 				<div class="min-w-0">
@@ -263,7 +264,8 @@
 			</div>
 
 			<p class="mt-5 text-xs font-medium text-muted-foreground">Organizaciones</p>
-			<ul class="mt-2 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" data-testid="arbol-organizaciones">
+			<!-- Apilada (bajo 768 px) la lista se queda en 18 rem con su propio scroll, para que el detalle no quede al fondo de una lista larga. -->
+			<ul class="mt-2 flex max-h-72 min-h-0 flex-1 flex-col gap-1 overflow-y-auto md:max-h-none" data-testid="arbol-organizaciones">
 				{#each filtradas as organizacion (organizacion.guid)}
 					<li>
 						<button
