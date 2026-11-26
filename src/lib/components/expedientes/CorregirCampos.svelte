@@ -3,7 +3,7 @@
 	 * Revisar y corregir los datos extraídos de un documento (HU073 del Figma, «corregir campos», 2026-11-26; Moibe: «va, haz la pantalla de corrección con el
 	 * HU073»). Vive como pestaña del detalle de datos extraídos (`DatosExtraidosModal`), que es donde nuestro modelo ya enseña lo extraído.
 	 *
-	 * Arriba, los campos que piden revisión (`revisionDeCampos`: sin valor, o con confianza menor al «Umbral de confianza» del campo en el paso 3; 85 % si no
+	 * Arriba, los campos que piden revisión (`revisionDeCampos`: sin valor, o con confianza menor al «Umbral de confianza» del campo en el paso 3; 75 % si no
 	 * tiene), cada uno en la tarjeta del diseño: su motivo, la
 	 * confianza obtenida, «Valor extraído *» con lo leído y «Guardar», que se vuelve una palomita al quedar guardado. Debajo, plegados, los demás campos, que
 	 * también se pueden corregir. Cada corrección se guarda aparte del dato extraído (que no se toca), con quién, cuándo y un motivo opcional; desde ese momento

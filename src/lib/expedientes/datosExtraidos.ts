@@ -40,10 +40,10 @@ export type Campo = {
 
 /**
  * Desde el 2026-11-26 (Moibe: «usa el umbral de cada campo en revisar campos») un campo se pide revisar cuando su confianza queda DEBAJO del «Umbral de
- * confianza» que se le puso en el paso 3 (`Campo.umbral`, que manda el servidor). Esta es solo la de respaldo, para un campo sin umbral: donde las insignias
- * de calidad de la app dejan de decir «Buena» (`calidadDe`).
+ * confianza» que se le puso en el paso 3 (`Campo.umbral`, que manda el servidor). Esta es solo la de respaldo, para un campo sin umbral: la misma que el
+ * umbral por omisión de un campo nuevo (75, desde el 2026-11-26; antes 85).
  */
-export const CONFIANZA_PARA_REVISAR = 85;
+export const CONFIANZA_PARA_REVISAR = 75;
 
 /** El umbral con que se juzga un campo: el suyo, o el de respaldo. */
 export const umbralDe = (c: Pick<Campo, 'umbral'>): number =>

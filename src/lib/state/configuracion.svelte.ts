@@ -51,7 +51,8 @@ const VALORES_TIPO = TIPOS_DE_DATO.map((t) => t.value) as readonly string[];
  * Conviene elegir umbrales con margen, no al filo. Ver la nota de la sección 2.7
  * en nexus_back/docs/solicitudes-dba.md.
  */
-export const UMBRALES_CONFIANZA = ['50', '60', '70', '80', '90', '100'].map((v) => ({
+// 75 agregado el 2026-11-26: es el umbral por omisión (Moibe: «súbelo que su default sea 75»).
+export const UMBRALES_CONFIANZA = ['50', '60', '70', '75', '80', '90', '100'].map((v) => ({
 	value: v,
 	label: `${v}%`
 }));
@@ -247,9 +248,9 @@ export function campoVacio(): CampoBorrador {
 		// como venga de localStorage — cambiar el default no debe reescribir la
 		// decisión que alguien ya tomó sobre un campo existente.
 		obligatorio: true,
-		// 50% viene del frame, que muestra ese valor ya seleccionado. Es un
-		// default bajo: acepta casi cualquier lectura sin mandarla a revisión.
-		umbralConfianza: '50',
+		// 75% desde el 2026-11-26 (Moibe: «súbelo que su default sea 75»), cuando «Revisar campos» empezó a usar el umbral de cada campo: el 50% del
+		// frame aceptaba casi cualquier lectura sin mandarla a revisión. Los campos ya guardados conservan el suyo.
+		umbralConfianza: '75',
 		reglaTransformacion: '',
 		cardinalidad: 'unico',
 		valoresLista: [],
@@ -404,7 +405,7 @@ function leerCampo(c: unknown): CampoBorrador | null {
 		umbralConfianza:
 			typeof d.umbralConfianza === 'string' && VALORES_UMBRAL.includes(d.umbralConfianza)
 				? d.umbralConfianza
-				: '50',
+				: '75',
 		reglaTransformacion:
 			typeof d.reglaTransformacion === 'string' && VALORES_REGLA.includes(d.reglaTransformacion)
 				? d.reglaTransformacion
