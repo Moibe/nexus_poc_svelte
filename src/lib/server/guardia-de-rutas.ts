@@ -44,6 +44,8 @@ const REGLAS: readonly Regla[] = [
 	{ patron: /^\/api\/busqueda\/preguntas\/[^/]+\/descartar$/, metodos: 'todos', exige: 'administrar' },
 	// Organizar — solo al escribir.
 	{ patron: /^\/api\/expedientes(\/.*)?$/, metodos: 'escritura', exige: 'organizar' },
+	// Corregir un dato extraído (HU073, 2026-11-26): lo mismo que exige el back (`exigir_organizar`).
+	{ patron: /^\/api\/documentos\/[^/]+\/datos\/correcciones$/, metodos: 'todos', exige: 'organizar' },
 	{ patron: /^\/api\/ejecuciones(\/.*)?$/, metodos: 'escritura', exige: 'organizar' }
 ];
 

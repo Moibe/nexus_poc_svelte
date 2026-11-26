@@ -323,4 +323,4 @@
 	</div>
 {/if}
 
-<DatosExtraidosModal bind:documento={datosDe} />
+<DatosExtraidosModal bind:documento={datosDe} puedeCorregir={data.puedeOrganizar} />

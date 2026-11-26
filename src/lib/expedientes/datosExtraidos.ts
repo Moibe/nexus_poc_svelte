@@ -28,7 +28,66 @@ export type Campo = {
 	valorExtraido?: string | null;
 	/** La extracción de la que viene la corrección, si se hizo antes y se conservó al volver a extraer (NEX-614). */
 	correccionTrasladadaDe?: string | null;
+	/** Cuándo y quién la corrigió (el nombre; el guid no se enseña) y por qué (HU073, 2026-11-26). Los servidores de antes no mandan nombre ni motivo. */
+	corregidoEn?: string | null;
+	corregidoPorNombre?: string | null;
+	motivoCorreccion?: string | null;
 };
+
+// ── Revisar y corregir (HU073, 2026-11-26) ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Debajo de esta confianza un campo se pide revisar: es donde las insignias de calidad de la app dejan de decir «Buena» (`calidadDe`). No se usa el
+ * «Umbral de confianza» de cada campo del paso 3 porque los nombres de lo extraído no casan con los de la definición del tipo.
+ */
+export const CONFIANZA_PARA_REVISAR = 85;
+export const MAX_VALOR_CORREGIDO = 4000;
+export const MAX_MOTIVO_CORRECCION = 500;
+
+export type CampoPorRevisar = { campo: Campo; motivo: string };
+
+/**
+ * Qué campos pedirle a la persona que revise y cuáles no. Pendiente: el que no trae valor (con su motivo: «No apareció», «Ilegible»…) o el que lo trae con
+ * confianza menor a {@link CONFIANZA_PARA_REVISAR} («Confianza insuficiente»). Uno ya corregido a mano ya lo revisó alguien: va con los demás. El orden es
+ * el del documento.
+ */
+export function revisionDeCampos(campos: Campo[] | null | undefined): { pendientes: CampoPorRevisar[]; demas: Campo[] } {
+	const pendientes: CampoPorRevisar[] = [];
+	const demas: Campo[] = [];
+	for (const c of Array.isArray(campos) ? campos : []) {
+		if (!c || typeof c.ruta !== 'string') continue;
+		const sinValor = c.valor === null || c.valor === undefined || c.valor === '';
+		if (!c.corregido && sinValor) pendientes.push({ campo: c, motivo: MOTIVOS_SIN_VALOR[c.motivoSinValor ?? ''] ?? 'Sin valor' });
+		else if (!c.corregido && typeof c.confianza === 'number' && c.confianza < CONFIANZA_PARA_REVISAR) pendientes.push({ campo: c, motivo: 'Confianza insuficiente' });
+		else demas.push(c);
+	}
+	return { pendientes, demas };
+}
+
+/** El nombre de un campo para la pantalla: `socios[2].nombre` → «Socios 2 · nombre». */
+export const nombreDeCampo = (ruta: string): string => primeraMayuscula(legible(ruta));
+
+/**
+ * ¿Se puede guardar lo escrito como corrección del campo? Hace falta un valor (sin espacios sueltos) distinto del vigente, y que quepa; el motivo es opcional pero
+ * también tiene tope. Devuelve el problema en palabras, o `null` si se puede.
+ */
+export function problemaDeCorreccion(campo: Pick<Campo, 'valor'>, valor: string, motivo = ''): string | null {
+	const v = valor.trim();
+	if (!v) return 'Escribe el valor como aparece en el documento.';
+	if (v.length > MAX_VALOR_CORREGIDO) return `El valor no puede pasar de ${MAX_VALOR_CORREGIDO} caracteres.`;
+	if (motivo.trim().length > MAX_MOTIVO_CORRECCION) return `El motivo no puede pasar de ${MAX_MOTIVO_CORRECCION} caracteres.`;
+	if (v === (campo.valor ?? '').trim()) return 'Es el mismo valor que ya tiene.';
+	return null;
+}
+
+/** «Corregido por Dora Delta el 26/11/2026 · 15:40 h: la CURP traía una letra cambiada». Sin nombre (un servidor de antes), «Corregido a mano». */
+export function quienCorrigio(c: Pick<Campo, 'corregido' | 'corregidoEn' | 'corregidoPorNombre' | 'motivoCorreccion'>): string | null {
+	if (!c.corregido) return null;
+	const quien = c.corregidoPorNombre ? `Corregido por ${c.corregidoPorNombre}` : 'Corregido a mano';
+	const cuando = c.corregidoEn ? ` el ${fechaHoraDe(c.corregidoEn)}` : '';
+	const motivo = c.motivoCorreccion?.trim() ? `: ${c.motivoCorreccion.trim()}` : '';
+	return `${quien}${cuando}${motivo}`;
+}
 
 /** Una corrección a mano de la extracción anterior que NO pasó a la vigente (NEX-614), con su motivo. */
 export type CorreccionSinTrasladar = { ruta: string; valor: string | null; motivo: string; deExtraccion?: string | null };

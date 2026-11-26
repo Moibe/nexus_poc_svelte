@@ -12,8 +12,9 @@
 	 * «JSON») y el botón «Descargar» del pie baja lo que se está viendo: el PDF en la pestaña PDF y el `.json` en la JSON (igual que el «Descargar» del detalle de las
 	 * bandejas). Ya no hay botones de PDF y JSON sueltos en la tarjeta del documento.
 	 *
-	 * Solo lee. Corregir un dato ya existe en el servidor (`POST …/datos/correcciones`) pero todavía no tiene pantalla, y la capa de OCR
-	 * (de qué bloque salió cada valor) quedó para después.
+	 * «Revisar campos» (HU073, 2026-11-26): una tercera pestaña, solo para quien puede organizar (`puedeCorregir`), con los campos que piden revisión y la
+	 * corrección a mano de cualquier campo (`CorregirCampos`). Su pie cambia a «Cerrar» / «Guardar y cerrar»; cerrar con algo escrito sin guardar no lo tira
+	 * sin preguntar. La capa de OCR (de qué bloque salió cada valor) quedó para después.
 	 *
 	 * NEX-614 (2026-11-20): una corrección a mano se conserva cuando el documento se vuelve a extraer. El campo lo dice («corregido; se conservó al volver a
 	 * extraer» y lo que leyó la extracción nueva), y lo que NO se pudo conservar sale como aviso al final, con su motivo (`avisoDeCorreccionesSinTrasladar`).
@@ -24,19 +25,85 @@
 	import ScanText from '@lucide/svelte/icons/scan-text';
 
 	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+
+	import CorregirCampos from '$lib/components/expedientes/CorregirCampos.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { avisarExito } from '$lib/state/avisos.svelte';
 	import { descargarBlob, descargarPdf, sinExtension } from '$lib/documentos/descargar';
-	import { construirInformeDeDatos, type Datos } from '$lib/expedientes/datosExtraidos';
+	import { construirInformeDeDatos, revisionDeCampos, type Campo, type Datos } from '$lib/expedientes/datosExtraidos';
 	import { fechaCorta, type DocumentoDeExpediente } from '$lib/expedientes/expedientes';
 
 	/**
 	 * `contexto` es de dónde se abrió, para la migaja de arriba («Archivos procesados» por omisión) y, si viene, el expediente que sale en el informe. `detalle` es el documento
 	 * tal como lo trae la lista (su tamaño, su canal, su huella…): el informe lo dice; sin él se arma con lo único que hay, el nombre.
 	 */
-	let { documento = $bindable() }: { documento: { id: string; nombre: string; contexto?: string; detalle?: DocumentoDeExpediente } | null } = $props();
+	let {
+		documento = $bindable(),
+		puedeCorregir = false
+	}: {
+		documento: { id: string; nombre: string; contexto?: string; detalle?: DocumentoDeExpediente } | null;
+		/** Si quien mira puede corregir datos (su rol organiza): sin esto no ve «Revisar campos». El servidor lo exige igual. */
+		puedeCorregir?: boolean;
+	} = $props();
 
-	let vista = $state<'pdf' | 'json'>('pdf');
+	let vista = $state<'pdf' | 'json' | 'revisar'>('pdf');
 	let datos = $state<Datos | null>(null);
+	/** Cuántos piden revisión hoy (la insignia de la pestaña). */
+	const porRevisar = $derived(datos ? revisionDeCampos(datos.campos).pendientes.length : 0);
+	const conRevisar = $derived(puedeCorregir && !!datos && Array.isArray(datos.campos) && datos.campos.length > 0);
+	const pestanas = $derived<[typeof vista, string][]>([['pdf', 'PDF'], ['json', 'JSON'], ...(conRevisar ? [['revisar', 'Revisar campos'] as [typeof vista, string]] : [])]);
+
+	let corregir = $state<ReturnType<typeof CorregirCampos> | null>(null);
+	let cambiosSinGuardar = $state(0);
+	let guardandoTodo = $state(false);
+	/** Se quiso cerrar con algo escrito sin guardar: el pie pregunta qué hacer con eso. */
+	let preguntarAlCerrar = $state(false);
+	let corregidosEnLaSesion = $state(0);
+
+	/** El campo como quedó tras corregirlo: el informe (PDF, JSON) lo enseña ya corregido sin volver a pedir todo. */
+	function alCorregir(nuevo: Campo) {
+		if (!datos) return;
+		datos.campos = datos.campos.map((c) => (c.ruta === nuevo.ruta ? { ...c, ...nuevo } : c));
+		corregidosEnLaSesion++;
+	}
+
+	function cerrar() {
+		if (corregidosEnLaSesion > 0)
+			avisarExito(
+				'Correcciones guardadas correctamente',
+				corregidosEnLaSesion === 1
+					? 'El dato corregido ya es el valor vigente del documento: lo usan las ejecuciones de procesos y la búsqueda.'
+					: `Los ${corregidosEnLaSesion} datos corregidos ya son los valores vigentes del documento: los usan las ejecuciones de procesos y la búsqueda.`
+			);
+		documento = null;
+	}
+
+	/** Cerrar (la X, Escape, fuera o «Cerrar»): con algo sin guardar, primero se pregunta. */
+	function pedirCerrar() {
+		if (cambiosSinGuardar > 0 && vista === 'revisar') {
+			preguntarAlCerrar = true;
+			abierto = true;
+			return;
+		}
+		cerrar();
+	}
+
+	async function guardarYCerrar() {
+		if (!corregir || guardandoTodo) return;
+		guardandoTodo = true;
+		const { fallidos } = await corregir.guardarTodo();
+		guardandoTodo = false;
+		preguntarAlCerrar = false;
+		if (fallidos === 0) cerrar();
+	}
+
+	function descartarYCerrar() {
+		corregir?.descartarTodo();
+		preguntarAlCerrar = false;
+		cambiosSinGuardar = 0;
+		cerrar();
+	}
 	const json = $derived(datos ? JSON.stringify(datos, null, 2) : '');
 	const informe = $derived(
 		datos && documento
@@ -80,6 +147,9 @@
 		error = '';
 		errorDescarga = '';
 		vista = 'pdf';
+		cambiosSinGuardar = 0;
+		preguntarAlCerrar = false;
+		corregidosEnLaSesion = 0;
 		if (!doc) return;
 		let vigente = true;
 		fetch(`/api/documentos/${encodeURIComponent(doc.id)}/datos`)
@@ -98,7 +168,7 @@
 	});
 </script>
 
-<DialogPrimitive.Root bind:open={abierto} onOpenChange={(v) => !v && (documento = null)}>
+<DialogPrimitive.Root bind:open={abierto} onOpenChange={(v) => !v && pedirCerrar()}>
 	<DialogPrimitive.Portal>
 		<DialogPrimitive.Overlay class="supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-60 bg-black/10" />
 		<DialogPrimitive.Content
@@ -136,16 +206,24 @@
 			<!-- Dos pestañas: el PDF (lo que diría el informe) y el JSON. Sin datos no hay nada que cambiar. -->
 			{#if datos}
 				<div class="flex gap-1 border-b border-border px-1" role="tablist" aria-label="Cómo ver el detalle">
-					{#each [['pdf', 'PDF'], ['json', 'JSON']] as const as [clave, texto] (clave)}
+					{#each pestanas as [clave, texto] (clave)}
 						<button
 							type="button"
 							role="tab"
 							aria-selected={vista === clave}
 							data-testid="datos-pestana-{clave}"
-							class="-mb-px border-b-2 px-3 py-1.5 text-sm transition-colors {vista === clave ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+							class="-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm transition-colors {vista === clave ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
 							onclick={() => (vista = clave)}
 						>
+							{#if clave === 'revisar' && porRevisar > 0}
+								<TriangleAlert class="size-3.5 shrink-0 fill-amber-300 text-amber-600 dark:fill-amber-400/30 dark:text-amber-300" aria-hidden="true" />
+							{/if}
 							{texto}
+							{#if clave === 'revisar' && porRevisar > 0}
+								<span class="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 tabular-nums dark:bg-amber-950 dark:text-amber-200" data-testid="datos-por-revisar">
+									{porRevisar}<span class="sr-only"> por revisar</span>
+								</span>
+							{/if}
 						</button>
 					{/each}
 				</div>
@@ -156,6 +234,10 @@
 					<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" role="alert">{error}</p>
 				{:else if !datos}
 					<p class="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+				{:else if vista === 'revisar' && documento}
+					<div class="max-h-[56vh] overflow-auto pr-1">
+						<CorregirCampos bind:this={corregir} bind:cambiosSinGuardar documentoId={documento.id} campos={datos.campos} {alCorregir} />
+					</div>
 				{:else if vista === 'json'}
 					<pre class="mt-3 max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed text-foreground" data-testid="json-datos-extraidos">{json}</pre>
 				{:else if informe}
@@ -188,6 +270,30 @@
 			</div>
 
 			<!-- Abajo, «Descargar» baja lo que se está viendo (PDF o JSON), como en el detalle de las bandejas. -->
+			{#if vista === 'revisar'}
+				<!-- El pie del diseño (HU073): «Guardar y cerrar» guarda todo lo escrito. Sin «Registrar como ejemplo» (HU074). -->
+				<div class="flex flex-wrap items-center justify-end gap-2 border-t border-border p-2.5">
+					{#if preguntarAlCerrar && cambiosSinGuardar > 0}
+						<p class="mr-auto text-xs text-amber-700 dark:text-amber-300" role="alert" data-testid="aviso-sin-guardar">
+							{cambiosSinGuardar === 1 ? 'Tienes un cambio sin guardar.' : `Tienes ${cambiosSinGuardar} cambios sin guardar.`}
+						</p>
+						<Button type="button" variant="link" class="h-9.5 px-4 text-muted-foreground" data-testid="descartar-y-cerrar" onclick={descartarYCerrar}>
+							Descartar y cerrar
+						</Button>
+					{:else}
+						{#if cambiosSinGuardar > 0}
+							<p class="mr-auto text-xs text-muted-foreground" data-testid="cambios-sin-guardar">
+								{cambiosSinGuardar === 1 ? '1 cambio sin guardar' : `${cambiosSinGuardar} cambios sin guardar`}
+							</p>
+						{/if}
+						<Button type="button" variant="link" class="h-9.5 px-4 dark:text-blue-300" data-testid="cerrar-revisar" onclick={pedirCerrar}>Cerrar</Button>
+					{/if}
+					<Button type="button" class="h-9.5 gap-2 px-4" data-testid="guardar-y-cerrar" disabled={guardandoTodo} onclick={guardarYCerrar}>
+						{#if guardandoTodo}<LoaderCircle class="size-4 animate-spin" />{/if}
+						Guardar y cerrar
+					</Button>
+				</div>
+			{:else}
 			<div class="flex items-center justify-end gap-2 border-t border-border p-2.5">
 				<Button
 					type="button"
@@ -201,8 +307,9 @@
 					{#if descargando}<LoaderCircle class="size-4 animate-spin" />{:else}<Download class="size-4" />{/if}
 					Descargar
 				</Button>
-				<Button type="button" variant="link" class="h-9.5 px-4 dark:text-blue-300" onclick={() => (documento = null)}>Cerrar</Button>
+				<Button type="button" variant="link" class="h-9.5 px-4 dark:text-blue-300" onclick={cerrar}>Cerrar</Button>
 			</div>
+			{/if}
 		</DialogPrimitive.Content>
 	</DialogPrimitive.Portal>
 </DialogPrimitive.Root>

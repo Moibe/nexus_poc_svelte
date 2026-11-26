@@ -192,7 +192,8 @@
 				<h2 class="truncate text-sm font-medium text-foreground" data-testid="expediente-detalle-nombre" title={expediente.nombre}>
 					{expediente.nombre}
 				</h2>
-				<div class="flex items-center gap-1 text-xs text-muted-foreground">
+				<!-- `flex-wrap` (2026-11-26): con «Tipo documental repetido» y «Duplicados» a la vez, el renglón se salía a 563 px en un teléfono. -->
+				<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
 					<span
 						class="flex size-4.25 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-[10px] font-medium text-primary dark:text-blue-300"
 						data-testid="total-documentos">{expediente.documentos.length}</span
@@ -325,7 +326,7 @@
 	{/if}
 </div>
 
-<DatosExtraidosModal bind:documento={datosDe} />
+<DatosExtraidosModal bind:documento={datosDe} puedeCorregir={data.puedeOrganizar} />
 
 <!-- NEX-612: «Preguntar»: la búsqueda en lenguaje natural acotada a este expediente. -->
 <Sheet.Root bind:open={preguntando}>
