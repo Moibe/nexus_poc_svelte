@@ -46,6 +46,8 @@ export const load: PageServerLoad = async ({ cookies, locals, url, depends }) =>
 			.map((t) => (t.datos!.nombre as string).trim()),
 		recientes,
 		administra,
-		porRevisar: porRevisar.length
+		porRevisar: porRevisar.length,
+		// NEX-611: si la sesión cambia de organización con la página abierta, la conversación empieza de cero (el back tampoco las mezcla nunca).
+		organizacion: tenantDe(locals)
 	};
 };

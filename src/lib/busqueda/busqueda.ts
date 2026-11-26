@@ -25,6 +25,11 @@ export type Respuesta = {
 	preguntaId?: string | null;
 	origen?: Origen;
 	reusoDe?: string | null;
+	/** NEX-611: la conversación en la que quedó y el número de pregunta; si tomó algo de las anteriores; hasta tres preguntas para seguir. */
+	conversacion?: string | null;
+	turno?: number | null;
+	usaAnteriores?: boolean;
+	sugerencias?: string[];
 };
 
 /** Lo que sale de preguntar: la tabla, o un caso que se dice con sus palabras. `tope`: se llegó al tope de uso (NEX-609) o se preguntó muy seguido. */
@@ -332,6 +337,97 @@ export function aCsv(columnas: string[], filas: unknown[][]): string {
 /** El nombre del archivo: la pregunta recortada y la fecha, sin caracteres que un sistema de archivos rechace. */
 export function nombreCsv(pregunta: string, hoy = new Date()): string {
 	return nombreDeArchivo(pregunta, 'csv', hoy);
+}
+
+// ── NEX-611: la conversación ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Una pregunta de la conversación con su respuesta (`resultado` null: se está pensando). `orden` y `medida` son de esa respuesta (cómo se ordenó su tabla
+ * y qué columna se grafica); `abierto`, si una respuesta anterior está desplegada; `reinicio`, si el servidor la tomó como el inicio de una conversación
+ * nueva aunque se mandó la anterior (no encontró sus preguntas: no se tomaron en cuenta).
+ */
+export type Turno = {
+	id: number;
+	pregunta: string;
+	resultado: Resultado | null;
+	orden: Orden;
+	medida: number | null;
+	abierto: boolean;
+	reinicio: boolean;
+};
+
+export function esIdDeConversacion(valor: unknown): valor is string {
+	return typeof valor === 'string' && /^conversacion-[0-9a-f]{32}$/.test(valor);
+}
+
+/** La conversación en la que quedó una pregunta: viene en la respuesta y también en los errores (la pantalla sigue en ella). */
+export function conversacionDe(cuerpo: unknown): string | null {
+	const c = (cuerpo as { conversacion?: unknown } | null)?.conversacion;
+	return esIdDeConversacion(c) ? c : null;
+}
+
+/** Como compara el servidor dos preguntas: minúsculas, sin acentos ni signos. */
+function clave(texto: string): string {
+	return texto
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.toLowerCase()
+		.replace(/[^0-9a-zñ]+/g, ' ')
+		.trim();
+}
+
+/** Las preguntas para seguir de una respuesta: texto, sin repetidas ni la pregunta misma, hasta tres (el servidor ya las limpia; esto por si acaso). */
+export function sugerenciasDe(valor: unknown, pregunta: string): string[] {
+	if (!Array.isArray(valor)) return [];
+	const vistas = new Set([clave(pregunta)]);
+	const salida: string[] = [];
+	for (const v of valor) {
+		if (typeof v !== 'string') continue;
+		const texto = v.replace(/\s+/g, ' ').trim();
+		const k = clave(texto);
+		if (texto.length < 3 || texto.length > 120 || !k || vistas.has(k)) continue;
+		vistas.add(k);
+		salida.push(texto);
+		if (salida.length === 3) break;
+	}
+	return salida;
+}
+
+/** El valor de una respuesta que es UN dato (un renglón con una sola columna a la vista), para enseñarlo en el resumen de una pregunta anterior. */
+export function valorUnico(respuesta: Pick<Respuesta, 'columnas' | 'filas'>): { columna: string; valor: string } | null {
+	if (respuesta.filas.length !== 1) return null;
+	const ocultas = indicesOcultos(respuesta.columnas);
+	const visibles = respuesta.columnas.map((_, i) => i).filter((i) => !ocultas.has(i));
+	if (visibles.length !== 1) return null;
+	const i = visibles[0];
+	return { columna: respuesta.columnas[i] || 'Respuesta', valor: formatearCelda(respuesta.filas[0][i]) };
+}
+
+/**
+ * Lo que se ve de una pregunta anterior plegada: el dato si la respuesta es uno («INE de este año: 3»), si no cuántos renglones, con la frase de cómo
+ * se entendió; o qué pasó si no hubo respuesta. `tono` pinta el ícono.
+ */
+export function resumenDeTurno(resultado: Resultado | null): { destacado: string | null; texto: string; tono: 'normal' | 'aviso' | 'error' } {
+	if (resultado === null) return { destacado: null, texto: 'Pensando…', tono: 'normal' };
+	if (resultado.tipo === 'tabla') {
+		const r = resultado.respuesta;
+		const unico = valorUnico(r);
+		const explicacion = (r.explicacion ?? '').trim();
+		if (unico) return { destacado: `${unico.columna}: ${unico.valor}`, texto: explicacion, tono: 'normal' };
+		return { destacado: textoDeRenglones(r), texto: explicacion, tono: 'normal' };
+	}
+	if (resultado.tipo === 'no_se_puede') return { destacado: 'No se puede responder con los datos extraídos.', texto: resultado.mensaje, tono: 'aviso' };
+	if (resultado.tipo === 'tardo') return { destacado: 'Tardó demasiado.', texto: resultado.mensaje, tono: 'aviso' };
+	if (resultado.tipo === 'tope') return { destacado: 'No se pudo preguntar.', texto: resultado.mensaje, tono: 'aviso' };
+	return { destacado: 'No se pudo responder.', texto: resultado.mensaje, tono: 'error' };
+}
+
+/** Lo que se agradece tras «¿Te sirvió?». Una respuesta que tomó algo de su conversación no se propone como ejemplo ni se reusa sola: solo «Gracias.». */
+export function textoDeGracias(util: boolean, usaAnteriores: boolean | undefined): string {
+	if (usaAnteriores) return 'Gracias.';
+	return util
+		? 'Gracias. Quien administra tu organización podrá aprobarla como ejemplo.'
+		: 'Gracias. La próxima vez que alguien lo pregunte, se buscará otra forma de responder.';
 }
 
 /** El mismo nombre que el CSV, con otra extensión (NEX-610: la gráfica se baja como `.png`). */

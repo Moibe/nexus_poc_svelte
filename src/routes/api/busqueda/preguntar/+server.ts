@@ -7,11 +7,15 @@
  * Los errores llegan como `{ mensaje, codigo }`. Los 422 del back (`no_se_puede`, `consulta_invalida`, `tardo`) y el 429 traen un texto curado para la
  * persona y se reenvían tal cual; el 503 (sin configurar) también, porque dice lo justo («no está disponible en este servidor») sin nada interno. Los
  * demás 5xx se esconden como siempre (`mensajeDeError`, NEX-567).
+ *
+ * NEX-611: el navegador manda también `conversacion` (el id que devolvió la pregunta anterior) y se reenvía solo si tiene la forma de uno; el back lo
+ * busca con la organización de la sesión y la persona del JWT, así que uno ajeno empieza una conversación nueva. Los errores devuelven en qué
+ * conversación quedó la pregunta, para que la pantalla siga en ella.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
 
-import { MAX_PREGUNTA, limpiarPregunta } from '$lib/busqueda/busqueda';
+import { MAX_PREGUNTA, esIdDeConversacion, limpiarPregunta } from '$lib/busqueda/busqueda';
 import { codigoDe } from '$lib/server/expediente';
 import { mensajeDeError, urlNexus } from '$lib/server/nexus';
 import { cabecerasConSesion } from '$lib/server/sesion';
@@ -27,12 +31,13 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 		return json({ mensaje: `La pregunta es demasiado larga: hasta ${MAX_PREGUNTA} caracteres.` }, { status: 400 });
 	}
 	const tenant = tenantDe(locals);
+	const conversacion = esIdDeConversacion(datos.conversacion) ? datos.conversacion : null;
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/busqueda/preguntar'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant, pregunta }),
+			body: JSON.stringify({ tenant, pregunta, ...(conversacion ? { conversacion } : {}) }),
 			signal: AbortSignal.timeout(ESPERA_MS)
 		});
 	} catch (err) {
@@ -41,7 +46,9 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	}
 	const cuerpo = await respuesta.json().catch(() => null);
 	if (!respuesta.ok) {
-		const detalle = (cuerpo as { detail?: { mensaje?: unknown; reintentarEn?: unknown; alcance?: unknown; tope?: unknown; ventana?: unknown } } | null)?.detail;
+		const detalle = (
+			cuerpo as { detail?: { mensaje?: unknown; reintentarEn?: unknown; alcance?: unknown; tope?: unknown; ventana?: unknown; conversacion?: unknown; turno?: unknown } } | null
+		)?.detail;
 		const curado = [422, 429, 503].includes(respuesta.status) && typeof detalle?.mensaje === 'string' ? detalle.mensaje : null;
 		const codigo = codigoDe(cuerpo);
 		// El tope de uso (NEX-609) dice además hasta cuándo: la pantalla lo pone en la hora de quien lo lee.
@@ -49,7 +56,11 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 			codigo === 'tope' && typeof detalle?.reintentarEn === 'string'
 				? { reintentarEn: detalle.reintentarEn, alcance: detalle.alcance, tope: detalle.tope, ventana: detalle.ventana }
 				: {};
-		return json({ mensaje: curado ?? mensajeDeError(cuerpo, respuesta.status), codigo, ...tope }, { status: respuesta.status });
+		// NEX-611: en qué conversación quedó (solo el id con su forma y el número).
+		const enConversacion = esIdDeConversacion(detalle?.conversacion)
+			? { conversacion: detalle.conversacion, turno: typeof detalle?.turno === 'number' ? detalle.turno : null }
+			: {};
+		return json({ mensaje: curado ?? mensajeDeError(cuerpo, respuesta.status), codigo, ...tope, ...enConversacion }, { status: respuesta.status });
 	}
 	return json(cuerpo, { headers: { 'Cache-Control': 'no-store' } });
 };
