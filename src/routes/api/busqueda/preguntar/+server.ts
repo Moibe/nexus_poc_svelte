@@ -11,6 +11,9 @@
  * NEX-611: el navegador manda también `conversacion` (el id que devolvió la pregunta anterior) y se reenvía solo si tiene la forma de uno; el back lo
  * busca con la organización de la sesión y la persona del JWT, así que uno ajeno empieza una conversación nueva. Los errores devuelven en qué
  * conversación quedó la pregunta, para que la pantalla siga en ella.
+ *
+ * NEX-612: y `expediente` cuando se pregunta desde un expediente. Uno sin la forma de un id se rechaza aquí; el back comprueba que sea de la organización
+ * de la sesión (404 `expediente_no_existe`, con su texto) y lo fija en la conexión: la respuesta solo trae lo de ese expediente.
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -32,12 +35,17 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 	}
 	const tenant = tenantDe(locals);
 	const conversacion = esIdDeConversacion(datos.conversacion) ? datos.conversacion : null;
+	// NEX-612: preguntar desde un expediente. El back comprueba que sea de la organización de la sesión (404 si no) y lo fija en la conexión.
+	if (datos.expediente !== undefined && datos.expediente !== null && (typeof datos.expediente !== 'string' || !/^expediente-[0-9a-f]{32}$/.test(datos.expediente))) {
+		return json({ mensaje: 'Ese expediente no existe.', codigo: 'expediente_no_existe' }, { status: 404 });
+	}
+	const expediente = typeof datos.expediente === 'string' ? datos.expediente : null;
 	let respuesta: Response;
 	try {
 		respuesta = await fetch(urlNexus('/busqueda/preguntar'), {
 			method: 'POST',
 			headers: cabecerasConSesion(cookies, { 'Content-Type': 'application/json' }),
-			body: JSON.stringify({ tenant, pregunta, ...(conversacion ? { conversacion } : {}) }),
+			body: JSON.stringify({ tenant, pregunta, ...(conversacion ? { conversacion } : {}), ...(expediente ? { expediente } : {}) }),
 			signal: AbortSignal.timeout(ESPERA_MS)
 		});
 	} catch (err) {
@@ -49,7 +57,7 @@ export const POST: RequestHandler = async ({ cookies, request, locals }) => {
 		const detalle = (
 			cuerpo as { detail?: { mensaje?: unknown; reintentarEn?: unknown; alcance?: unknown; tope?: unknown; ventana?: unknown; conversacion?: unknown; turno?: unknown } } | null
 		)?.detail;
-		const curado = [422, 429, 503].includes(respuesta.status) && typeof detalle?.mensaje === 'string' ? detalle.mensaje : null;
+		const curado = [404, 422, 429, 503].includes(respuesta.status) && typeof detalle?.mensaje === 'string' ? detalle.mensaje : null;
 		const codigo = codigoDe(cuerpo);
 		// El tope de uso (NEX-609) dice además hasta cuándo: la pantalla lo pone en la hora de quien lo lee.
 		const tope =

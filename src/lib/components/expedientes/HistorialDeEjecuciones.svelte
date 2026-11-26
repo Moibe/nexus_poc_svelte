@@ -15,8 +15,11 @@
 	 *
 	 * Lo que se pidió con «Ver más» NO se tira con la recarga periódica del layout (cada 20 s vuelve a traer `data`, con objetos nuevos aunque digan lo mismo): se
 	 * reinicia solo cuando CAMBIA lo de arriba (la ejecución más reciente o el total), que es cuando se ejecutó algo.
+	 *
+	 * NEX-612: con `?ejecucion=<id>` en la dirección (el «Abrir» de un renglón de la búsqueda), esa ejecución se abre al cargar la página.
 	 */
 	import { untrack } from 'svelte';
+	import { page } from '$app/state';
 	import History from '@lucide/svelte/icons/history';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
@@ -98,6 +101,15 @@
 			modalError = e instanceof Error ? e.message : 'No se pudo abrir la ejecución.';
 		}
 	}
+
+	// NEX-612: «Abrir» en un renglón de la búsqueda que sale de una ejecución llega aquí con `?ejecucion=<id>`: se abre al cargar (una vez por id).
+	let abiertaDeLaDireccion: string | null = null;
+	$effect(() => {
+		const id = page.url.searchParams.get('ejecucion');
+		if (!id || !/^ejecucion-[0-9a-f]{32}$/.test(id) || id === abiertaDeLaDireccion) return;
+		abiertaDeLaDireccion = id;
+		untrack(() => void abrir(id));
+	});
 </script>
 
 <section id="historial-ejecuciones" class="mt-6 scroll-mt-4 rounded-lg border border-border bg-background px-4 py-3" data-testid="historial-seccion" aria-labelledby="titulo-historial-ejecuciones">

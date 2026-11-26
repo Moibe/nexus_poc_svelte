@@ -30,6 +30,9 @@ export type Respuesta = {
 	turno?: number | null;
 	usaAnteriores?: boolean;
 	sugerencias?: string[];
+	/** NEX-612: el expediente desde el que se preguntó (null: toda la organización) y, sin renglones, por qué (sin ejecuciones o sin documentos). */
+	expediente?: string | null;
+	aviso?: string | null;
 };
 
 /** Lo que sale de preguntar: la tabla, o un caso que se dice con sus palabras. `tope`: se llegó al tope de uso (NEX-609) o se preguntó muy seguido. */
@@ -285,14 +288,61 @@ export function ordenarFilas(filas: unknown[][], orden: Orden): unknown[][] {
 	});
 }
 
-/** Las columnas que la pantalla NO enseña: `documento` (el id) y `pagina`, que sirven para abrir el documento en su página (el back las pide así). */
+/**
+ * Las columnas que la pantalla NO enseña: `documento` (el id) y `pagina`, que sirven para abrir el documento en su página (el back las pide así); y desde
+ * NEX-612 `expediente` y `ejecucion` (los ids, para abrir el expediente o la ejecución). Estas dos solo con ese nombre exacto: un alias como
+ * [Expediente] trae el NOMBRE y se enseña.
+ */
 export function indicesOcultos(columnas: string[]): Set<number> {
 	const fuera = new Set<number>();
 	columnas.forEach((c, i) => {
 		const n = c.trim().toLowerCase();
-		if (n === 'documento' || n === 'pagina' || n === 'página') fuera.add(i);
+		if (n === 'documento' || n === 'pagina' || n === 'página' || c === 'expediente' || c === 'ejecucion') fuera.add(i);
 	});
 	return fuera;
+}
+
+/** NEX-612: lo que abre «Abrir» en un renglón: el documento en su página, la ejecución en su expediente o el expediente. */
+export type Abrir = { tipo: 'documento' | 'ejecucion' | 'expediente'; href: string; titulo: string };
+
+const ID_EXPEDIENTE = /^expediente-[0-9a-f]{32}$/;
+const ID_EJECUCION = /^ejecucion-[0-9a-f]{32}$/;
+
+/**
+ * Qué abre un renglón: si trae `documento`, ese documento (en su página, NEX-608); si no, si trae `ejecucion` y `expediente`, esa ejecución en su
+ * expediente; si solo trae `expediente`, el expediente. `null` si no trae nada con qué abrir.
+ */
+export function abrirDeFila(columnas: string[], fila: unknown[]): Abrir | null {
+	const doc = enlaceDeFila(columnas, fila);
+	if (doc) return { tipo: 'documento', href: hrefDeDocumento(doc), titulo: doc.pagina ? `Abrir el documento en la página ${doc.pagina}` : 'Abrir el documento' };
+	const expediente = fila[columnas.indexOf('expediente')];
+	if (typeof expediente !== 'string' || !ID_EXPEDIENTE.test(expediente)) return null;
+	const ejecucion = fila[columnas.indexOf('ejecucion')];
+	if (typeof ejecucion === 'string' && ID_EJECUCION.test(ejecucion)) {
+		return { tipo: 'ejecucion', href: `/expediente/${expediente}?ejecucion=${ejecucion}`, titulo: 'Abrir la ejecución en su expediente' };
+	}
+	return { tipo: 'expediente', href: `/expediente/${expediente}`, titulo: 'Abrir el expediente' };
+}
+
+/** El encabezado de la columna «Abrir»: lo que abren todos sus renglones, o «Abrir» si abren cosas distintas. */
+export function encabezadoDeAbrir(tipos: Abrir['tipo'][]): string {
+	const unicos = [...new Set(tipos)];
+	if (unicos.length !== 1) return 'Abrir';
+	return { documento: 'Documento', ejecucion: 'Ejecución', expediente: 'Expediente' }[unicos[0]];
+}
+
+/**
+ * NEX-612: las preguntas para empezar DENTRO de un expediente (las del documento de casos de uso). `ultimoResultado` es la palabra de su última
+ * ejecución: con ella, «¿Por qué quedó en Requiere revisión?»; sin ejecuciones, qué se le ha ejecutado.
+ */
+export function preguntasDelExpediente(ultimoResultado: string | null): string[] {
+	const resultado = ultimoResultado?.replace(/\s+/g, ' ').trim();
+	return [
+		'¿Qué documentos le faltan a este expediente?',
+		resultado ? `¿Por qué quedó en ${resultado}?` : '¿Qué procesos se le han ejecutado y con qué resultado?',
+		'¿Qué datos de este expediente se corrigieron y quién lo hizo?',
+		'¿Qué documentos tiene y de qué tipo?'
+	];
 }
 
 /** Hay un enlace si la fila trae un `documento` con forma de id: `{ documento, pagina }` (`pagina` solo si viene y es un entero positivo). */
@@ -355,6 +405,24 @@ export type Turno = {
 	abierto: boolean;
 	reinicio: boolean;
 };
+
+/**
+ * Todo lo de una conversación en pantalla (NEX-611): sus preguntas, el id que devolvió el servidor, la vista (tabla o gráfica), lo valorado y el ámbito en
+ * que se hizo (`organización|expediente`: si cambia, empieza de cero). NEX-612: vive fuera del componente cuando la página lo necesita (el panel de
+ * «Preguntar» del expediente se desmonta al cerrarse y la conversación sigue ahí al volver a abrirlo).
+ */
+export type EstadoDeConversacion = {
+	turnos: Turno[];
+	conversacion: string | null;
+	vista: 'tabla' | 'grafica';
+	valoraciones: Record<string, boolean>;
+	siguienteId: number;
+	ambito: string | null;
+};
+
+export function nuevoEstadoDeConversacion(): EstadoDeConversacion {
+	return { turnos: [], conversacion: null, vista: 'tabla', valoraciones: {}, siguienteId: 0, ambito: null };
+}
 
 export function esIdDeConversacion(valor: unknown): valor is string {
 	return typeof valor === 'string' && /^conversacion-[0-9a-f]{32}$/.test(valor);

@@ -57,14 +57,21 @@
 	 * **Historial de ejecuciones (2026-11-07, Moibe: «quita ejecuciones de la sección aparte»).** La pantalla de Ejecuciones desapareció (su tarjeta del módulo de
 	 * uso y su ruta) y su historial se mudó al final de esta página (`HistorialDeEjecuciones`): las ejecuciones de ESTE expediente, para todos los roles; lo lee
 	 * el `load` junto con el expediente.
+	 *
+	 * **Preguntar (NEX-612, 2026-11-26: «va, dale al 612»).** «Preguntar» en el encabezado (para todos los roles: solo lee) abre un panel con la búsqueda en
+	 * lenguaje natural ACOTADA a este expediente: el back fija el expediente en la conexión y todas las vistas solo traen lo suyo (sus documentos y sus datos,
+	 * sus ejecuciones con sus reglas y faltantes, lo que le falta y lo que se corrigió). Es la misma conversación de /busqueda (`ConversacionBusqueda`), con
+	 * preguntas para empezar sobre el expediente; la conversación vive en esta página, así que cerrar el panel y volver a abrirlo la conserva.
 	 */
 	import { invalidateAll } from '$app/navigation';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Folder from '@lucide/svelte/icons/folder';
+	import MessageSquareText from '@lucide/svelte/icons/message-square-text';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Upload from '@lucide/svelte/icons/upload';
 
+	import ConversacionBusqueda from '$lib/components/busqueda/ConversacionBusqueda.svelte';
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import DatosExtraidosModal from '$lib/components/expedientes/DatosExtraidosModal.svelte';
 	import EjecutarProceso from '$lib/components/expedientes/EjecutarProceso.svelte';
@@ -72,9 +79,12 @@
 	import OrdenarMenu from '$lib/components/expedientes/OrdenarMenu.svelte';
 	import SubirArchivosModal from '$lib/components/expedientes/SubirArchivosModal.svelte';
 	import TarjetaDocumento from '$lib/components/expedientes/TarjetaDocumento.svelte';
+	import CancelSquareIcon from '$lib/components/icons/CancelSquareIcon.svelte';
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import { nuevoEstadoDeConversacion, preguntasDelExpediente } from '$lib/busqueda/busqueda';
 		import { mensajeDeFallo } from '$lib/documentos/mensajeDeFallo';
 		import {
 		archivosRepetidos,
@@ -88,6 +98,12 @@
 	import { avisoDeSubida } from '$lib/expedientes/subida';
 
 	let { data } = $props();
+
+	/** NEX-612: el panel de «Preguntar» y su conversación (vive aquí para que cerrar el panel no la pierda; si cambia el expediente, empieza de cero). */
+	let preguntando = $state(false);
+	let conversacionDelExpediente = $state(nuevoEstadoDeConversacion());
+	/** Las preguntas para empezar: con la palabra de su última ejecución, «¿Por qué quedó en …?». */
+	const sugeridasDelExpediente = $derived(preguntasDelExpediente(data.historial?.ejecuciones?.[0]?.resultado?.texto ?? null));
 
 	const expediente = $derived(data.expediente);
 	/** Los tipos documentales de los que el expediente trae DOS O MÁS documentos (los marca nexus_back al leer; en el cable se llaman `duplicados`). */
@@ -229,10 +245,15 @@
 			{/if}
 			<!-- Subir archivos a ESTE expediente (2026-10-30): solo quien organiza. Va aquí y no dentro del bloque de arriba porque un expediente
 			     vacío es justo donde más hace falta. -->
+			{#if expediente.documentos.length > 0}
+				<span class="h-9.5 w-px bg-border" aria-hidden="true"></span>
+			{/if}
+			<!-- NEX-612: preguntarle a ESTE expediente, para todos los roles (solo lee). -->
+			<Button variant="outline" data-testid="preguntar-expediente" onclick={() => (preguntando = true)}>
+				<MessageSquareText class="size-4" />
+				Preguntar
+			</Button>
 			{#if data.puedeOrganizar}
-				{#if expediente.documentos.length > 0}
-					<span class="h-9.5 w-px bg-border" aria-hidden="true"></span>
-				{/if}
 				<Button
 					data-testid="subir-archivos-expediente"
 					onclick={() => {
@@ -305,6 +326,39 @@
 </div>
 
 <DatosExtraidosModal bind:documento={datosDe} />
+
+<!-- NEX-612: «Preguntar»: la búsqueda en lenguaje natural acotada a este expediente. -->
+<Sheet.Root bind:open={preguntando}>
+	<Sheet.Content
+		showCloseButton={false}
+		data-testid="panel-preguntar"
+		class="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[75%] data-[side=right]:xl:w-[65%]"
+	>
+		<div class="flex items-center gap-3 border-b-2 border-muted px-6 py-4">
+			<Sheet.Title class="flex-1 text-sm font-normal text-muted-foreground">Preguntar</Sheet.Title>
+			<Sheet.Close class="flex size-6 shrink-0 items-center justify-center text-[#475569] transition-colors hover:text-foreground dark:text-slate-400">
+				<CancelSquareIcon />
+				<span class="sr-only">Cerrar</span>
+			</Sheet.Close>
+		</div>
+		<div class="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-10">
+			<h2 class="text-lg font-medium text-foreground">Pregúntale a este expediente</h2>
+			<Sheet.Description class="mt-1 max-w-3xl text-sm">
+				Contesta solo sobre «{expediente.nombre}»: sus documentos y sus datos, los procesos que se le han ejecutado y por qué quedaron así, lo que le
+				falta y lo que se corrigió a mano.
+			</Sheet.Description>
+			<ConversacionBusqueda
+				bind:estado={conversacionDelExpediente}
+				organizacion={data.usuario?.tenantGuid ?? null}
+				expediente={expediente.id}
+				sugeridas={sugeridasDelExpediente}
+				idCaja="pregunta-expediente"
+				placeholder="Por ejemplo: ¿qué documentos le faltan?"
+				aviso="Contesta con lo que ya se guardó de este expediente: los datos extraídos de sus documentos, su historial de ejecuciones y las correcciones. Lo que no está ahí no se puede responder. Puedes seguir preguntando sobre cada respuesta."
+			/>
+		</div>
+	</Sheet.Content>
+</Sheet.Root>
 
 <!-- Antes de sacar un documento del expediente: dice que el archivo NO se borra. -->
 <ConfirmarAccion

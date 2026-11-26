@@ -17,6 +17,7 @@
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Download from '@lucide/svelte/icons/download';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Info from '@lucide/svelte/icons/info';
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import Table2 from '@lucide/svelte/icons/table-2';
 	import ThumbsDown from '@lucide/svelte/icons/thumbs-down';
@@ -27,10 +28,10 @@
 	import { descargarBlob } from '$lib/documentos/descargar';
 	import {
 		aCsv,
-		enlaceDeFila,
+		abrirDeFila,
+		encabezadoDeAbrir,
 		esColumnaNumerica,
 		formatearCelda,
-		hrefDeDocumento,
 		indicesOcultos,
 		nombreCsv,
 		notaDeOrigen,
@@ -83,12 +84,15 @@
 	const tabla = $derived.by(() => {
 		const { columnas, filas } = r;
 		const ocultas = indicesOcultos(columnas);
+		// NEX-612: «Abrir» abre el documento en su página, la ejecución en su expediente o el expediente, según lo que traiga el renglón.
+		const tipos = filas.map((f) => abrirDeFila(columnas, f)?.tipo).filter((t) => t !== undefined);
 		return {
 			columnas,
 			visibles: columnas.map((_, i) => i).filter((i) => !ocultas.has(i)),
 			numericas: columnas.map((_, i) => esColumnaNumerica(filas, i)),
 			filas: ordenarFilas(filas, orden),
-			conEnlace: filas.some((f) => enlaceDeFila(columnas, f) !== null)
+			conEnlace: tipos.length > 0,
+			encabezadoAbrir: encabezadoDeAbrir(tipos)
 		};
 	});
 
@@ -146,6 +150,13 @@
 		</div>
 	{/if}
 </div>
+{#if r.filas.length === 0 && r.aviso}
+	<!-- NEX-612: por qué un expediente no trae renglones (no se le ha ejecutado nada, o no tiene documentos), en vez de solo «no hay información». -->
+	<p class="mt-1 flex items-start gap-1.5 text-sm text-foreground" data-testid="aviso-respuesta">
+		<Info class="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+		{r.aviso}
+	</p>
+{/if}
 {#if r.explicacion}
 	<p class="mt-1 text-sm text-muted-foreground" data-testid="explicacion">{r.explicacion}</p>
 {/if}
@@ -207,13 +218,13 @@
 						</th>
 					{/each}
 					{#if tabla.conEnlace}
-						<th scope="col" class="w-24 px-4 py-2 font-normal whitespace-nowrap">Documento</th>
+						<th scope="col" class="w-24 px-4 py-2 font-normal whitespace-nowrap">{tabla.encabezadoAbrir}</th>
 					{/if}
 				</tr>
 			</thead>
 			<tbody data-testid="filas-respuesta">
 				{#each tabla.filas as fila, f (f)}
-					{@const enlace = enlaceDeFila(tabla.columnas, fila)}
+					{@const enlace = abrirDeFila(tabla.columnas, fila)}
 					<tr class="border-b border-border last:border-0" data-testid="fila-respuesta">
 						{#each tabla.visibles as i (i)}
 							<td
@@ -228,12 +239,13 @@
 						{#if tabla.conEnlace}
 							<td class="px-4 py-2 align-top whitespace-nowrap">
 								{#if enlace}
+									<!-- En otra pestaña: la conversación se queda como está. -->
 									<a
-										href={hrefDeDocumento(enlace)}
+										href={enlace.href}
 										target="_blank"
 										rel="noopener"
-										data-testid="abrir-documento"
-										title={enlace.pagina ? `Abrir el documento en la página ${enlace.pagina}` : 'Abrir el documento'}
+										data-testid="abrir-{enlace.tipo}"
+										title={enlace.titulo}
 										class="inline-flex items-center gap-1 text-sm text-primary outline-none hover:underline focus-visible:rounded-md focus-visible:ring-3 focus-visible:ring-ring/50"
 									>
 										Abrir

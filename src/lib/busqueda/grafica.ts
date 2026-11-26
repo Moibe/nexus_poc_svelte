@@ -109,7 +109,8 @@ function cuantosConValor(filas: unknown[][], medida: number, dimension: number |
  */
 export function planDeGrafica(columnas: string[], filas: unknown[][]): Plan | null {
 	if (filas.length < 2) return null;
-	if (columnas.some((c) => normal(c) === 'documento')) return null;
+	// Una lista de documentos, de expedientes o de ejecuciones (NEX-612) no es un resumen.
+	if (columnas.some((c) => normal(c) === 'documento' || c === 'expediente' || c === 'ejecucion')) return null;
 	const ocultas = indicesOcultos(columnas);
 	const visibles = columnas.map((_, i) => i).filter((i) => !ocultas.has(i));
 	const numericas = visibles.filter((i) => esColumnaNumerica(filas, i));
