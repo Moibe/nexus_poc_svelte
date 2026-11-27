@@ -78,6 +78,8 @@ export type DatosNodoOperador = {
 	unidad?: UnidadDeTiempo;
 	hoy?: string;
 	ignorarEscritura?: boolean;
+	/** NEX-613: el nombre de negocio de la regla («Vigencia de la INE»). Opcional: sin él, la regla se llama por su operador y su número. */
+	nombre?: string;
 };
 
 /** La casilla de «Igual a» (NEX-579), con las palabras del ticket. */
@@ -284,6 +286,38 @@ export function textosDelResultado(datos: Partial<Record<CasoDelResultado, unkno
 	return { si: de('si'), no: de('no'), sin: de('sin') };
 }
 
+// ── El nombre de una regla (NEX-613, 2026-11-26) ───────────────────────────────
+
+/** Tope del nombre propio de una regla (igual que nexus_back, `procesos.MAX_NOMBRE_REGLA`). */
+export const MAX_NOMBRE_REGLA = 80;
+
+/** El nombre propio de una regla, sin espacios de más; vacío o de puros espacios cuenta como sin nombre (''). */
+export const nombrePropioDeRegla = (datos: { nombre?: unknown } | null | undefined): string =>
+	typeof datos?.nombre === 'string' ? datos.nombre.split(/\s+/).filter(Boolean).join(' ') : '';
+
+/** «Igual a #2»: cómo se llama una regla por su operador y su número (lo de siempre, y lo que se lee si no tiene nombre propio). */
+export const tipoDeRegla = (nodoId: string, datos: { operador?: unknown } | null | undefined): string =>
+	`${operadorDe(String(datos?.operador ?? ''))?.etiqueta ?? 'Regla'} #${numeroDeOperador(nodoId)}`;
+
+/**
+ * El nombre con que se habla de una regla en el lienzo, en sus avisos, en el detalle de una ejecución y en la búsqueda: el que le pusieron
+ * («Vigencia de la INE») o, sin nombre, el de siempre («Igual a #2»).
+ */
+export const nombreDeRegla = (nodoId: string, datos: { nombre?: unknown; operador?: unknown } | null | undefined): string =>
+	nombrePropioDeRegla(datos) || tipoDeRegla(nodoId, datos);
+
+/** Las reglas cuyo nombre propio choca con el de otra del mismo proceso (sin distinguir mayúsculas ni espacios de más). Las que no tienen nombre no chocan. */
+export function reglasRepetidas(nodos: readonly NodoMinimo[]): Set<string> {
+	const porNombre = new Map<string, string[]>();
+	for (const n of nodos) {
+		if (n.type !== NODO_OPERADOR) continue;
+		const nombre = nombrePropioDeRegla(n.data as { nombre?: unknown }).toLocaleLowerCase('es');
+		if (!nombre) continue;
+		porNombre.set(nombre, [...(porNombre.get(nombre) ?? []), n.id]);
+	}
+	return new Set([...porNombre.values()].flatMap((ids) => (ids.length > 1 ? ids : [])));
+}
+
 /** El nombre con el que un valor final entra a la lista de la corrida: el que se escribió o, sin nombre, «Valor final #N» (su número). */
 export const nombreDeValorFinal = (nodoId: string, datos: { nombre?: unknown } | null | undefined): string =>
 	(typeof datos?.nombre === 'string' ? datos.nombre.trim() : '') || `Valor final #${numeroDeOperador(nodoId)}`;
@@ -324,10 +358,7 @@ export type UsoDeNodo = { destino: string; entrada: string | null };
  */
 export function usosDeNodo(nodoId: string, nodes: readonly NodoMinimo[], edges: readonly Conexion[]): UsoDeNodo[] {
 	const nombreDe = (n: NodoMinimo): string => {
-		if (n.type === NODO_OPERADOR) {
-			const def = operadorDelNodo(n);
-			return `${def?.etiqueta ?? 'Regla'} #${numeroDeOperador(n.id)}`;
-		}
+		if (n.type === NODO_OPERADOR) return nombreDeRegla(n.id, n.data as { nombre?: unknown; operador?: unknown });
 		if (n.type === NODO_CONSTANTE) return `Valor fijo #${numeroDeOperador(n.id)}`;
 		if (n.type === NODO_VALOR_FINAL) return `Valor final «${nombreDeValorFinal(n.id, n.data)}»`;
 		if (n.type === NODO_RESULTADO) return 'Resultado';
@@ -1527,7 +1558,9 @@ export function serializarDibujo(nodes: readonly NodoDeLienzo[], edges: readonly
 					// «Antigüedad contra hoy»: el máximo y su unidad son parte de la regla. Su `hoy` de ejemplo NO se guarda.
 					...(d.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(d), unidad: unidadDeAntiguedad(d) } : {}),
 					// «Igual a» (NEX-579): su casilla, solo si está activada; apagada se guarda como siempre (y la huella de lo de antes no cambia).
-					...(ignoraEscritura(d) ? { ignorarEscritura: true } : {})
+					...(ignoraEscritura(d) ? { ignorarEscritura: true } : {}),
+					// NEX-613: el nombre propio, solo si tiene algo (sin espacios de más): una regla sin nombre se guarda igual que antes.
+					...(nombrePropioDeRegla(d) ? { nombre: nombrePropioDeRegla(d) } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE) {
@@ -1598,7 +1631,9 @@ export function hidratarDibujo(guardado: { nodos?: unknown; aristas?: unknown })
 					...(usaTerceraEntrada(n.data.operador) ? { c: typeof n.data.c === 'string' ? n.data.c : '' } : {}),
 					...(n.data.operador === 'parecido' ? { minimo: minimoDeParecido(n.data) } : {}),
 					...(n.data.operador === 'antiguedad' ? { maximo: maximoDeAntiguedad(n.data), unidad: unidadDeAntiguedad(n.data) } : {}),
-					...(ignoraEscritura(n.data) ? { ignorarEscritura: true } : {})
+					...(ignoraEscritura(n.data) ? { ignorarEscritura: true } : {}),
+					// NEX-613: el nombre propio de la regla, si tiene.
+					...(nombrePropioDeRegla(n.data) ? { nombre: nombrePropioDeRegla(n.data) } : {})
 				}
 			});
 		} else if (n.type === NODO_CONSTANTE && esFamilia(n.data.familia)) {

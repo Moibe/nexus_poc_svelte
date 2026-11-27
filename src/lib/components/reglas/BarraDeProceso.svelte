@@ -47,6 +47,7 @@
 		puedeBorrar,
 		inactivo,
 		nombreOcupado,
+		reglasRepetidas = false,
 		alGuardar,
 		alBorrar
 	}: {
@@ -62,6 +63,8 @@
 		inactivo: { motivos: string[]; porIncompleto: boolean } | null;
 		/** El nombre que el servidor dijo que ya tiene otro proceso de la organización (409 `ya_existe`), o `null`. Se quita al cambiarlo. */
 		nombreOcupado: string | null;
+		/** NEX-613: dos reglas del proceso se llaman igual; no se guarda hasta que se cambie uno de los nombres. */
+		reglasRepetidas?: boolean;
 		alGuardar: () => void;
 		alBorrar: () => void;
 	} = $props();
@@ -83,8 +86,18 @@
 	/** El nombre que se está escribiendo es justo el que el servidor rechazó por repetido: se dice bajo el campo hasta que se cambie. */
 	const nombreRepetido = $derived(nombreOcupado !== null && nombre.trim() === nombreOcupado);
 
+	/** Se pulsó «Guardar» con dos reglas que se llaman igual: se dice junto al botón y se quita al corregirlo. */
+	let avisarRepetidas = $state(false);
+	$effect(() => {
+		if (!reglasRepetidas) avisarRepetidas = false;
+	});
+
 	function pulsarGuardar() {
 		if (guardando) return;
+		if (reglasRepetidas && queFalta === null) {
+			avisarRepetidas = true;
+			return;
+		}
 		if (puedeGuardar) {
 			falta = null;
 			alGuardar();
@@ -158,12 +171,23 @@
 				disabled={guardando}
 				aria-disabled={!puedeGuardar || guardando}
 				class={!puedeGuardar && !guardando ? 'cursor-not-allowed opacity-50' : ''}
-				title={queFalta === 'nombre' ? 'Ponle un nombre al proceso para guardarlo' : !puedeGuardar ? 'No hay cambios que guardar' : 'Guardar (Ctrl+S)'}
+				title={queFalta === 'nombre'
+					? 'Ponle un nombre al proceso para guardarlo'
+					: reglasRepetidas
+						? 'Dos reglas se llaman igual: cambia uno de los nombres para guardar'
+						: !puedeGuardar
+							? 'No hay cambios que guardar'
+							: 'Guardar (Ctrl+S)'}
 				onclick={pulsarGuardar}
 			>
 				<Save />
 				{guardando ? 'Guardando…' : 'Guardar'}
 			</Button>
+			{#if avisarRepetidas}
+				<p role="alert" data-testid="reglas-repetidas" class="absolute top-full right-0 z-10 mt-1.5 w-64 rounded-md border border-destructive/30 bg-card px-2.5 py-1.5 text-xs text-destructive shadow-md">
+					Dos reglas se llaman igual. Cambia uno de los nombres (están marcados en rojo) para guardar.
+				</p>
+			{/if}
 		</div>
 	</div>
 </div>

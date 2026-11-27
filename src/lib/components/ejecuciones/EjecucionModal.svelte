@@ -152,7 +152,11 @@
 								<li class="px-3 py-2 text-sm" data-testid="regla-de-corrida" data-regla={r.id} data-estado={r.estado}>
 									<div class="flex items-center gap-3">
 										<span class="min-w-0 flex-1">
-											<span class="block font-medium text-foreground">{r.etiqueta}</span>
+											<span class="block font-medium text-foreground">
+												{r.etiqueta}
+												<!-- NEX-613: con nombre propio, también qué regla es («Igual a #2»). Las ejecuciones de antes no lo traen. -->
+												{#if r.tipo}<span class="ml-1 text-xs font-normal text-muted-foreground" data-testid="regla-tipo">{r.tipo}</span>{/if}
+											</span>
 											<span class="block text-xs text-muted-foreground">{r.texto}</span>
 											<!-- «Parecido a»: por qué lo decidió la IA (ya se guardaba; el detalle no lo enseñaba). -->
 											{#if r.parecido?.razon}

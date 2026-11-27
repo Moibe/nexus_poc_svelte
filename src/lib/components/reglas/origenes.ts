@@ -14,6 +14,7 @@ import {
 	NODO_CONSTANTE,
 	NODO_OPERADOR,
 	NODO_TIPO,
+	nombreDeRegla,
 	numeroDeOperador,
 	operadorDe,
 	salidaDeCampo,
@@ -47,7 +48,7 @@ export function usarOrigenes(entradas: readonly string[]): (entrada: string) => 
 			return otro
 				? {
 						clase: 'regla',
-						nombre: `${otro.etiqueta} #${numeroDeOperador(nodo.id)}`,
+						nombre: nombreDeRegla(nodo.id, nodo.data as DatosNodoOperador),
 						estado: evaluado.todos[nodo.id] ?? 'sin_conexion',
 						valor: evaluado.valores[nodo.id],
 						entrega: otro.salida

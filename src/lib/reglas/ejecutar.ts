@@ -38,8 +38,11 @@ import {
 	lineasDeEjemplo,
 	llaveDeParecido,
 	maximoDeAntiguedad,
+	nombreDeRegla,
 	nombreDeValorFinal,
+	nombrePropioDeRegla,
 	numeroDeOperador,
+	tipoDeRegla,
 	operadorDe,
 	salidaDeCampo,
 	textoDeAntiguedad,
@@ -113,10 +116,18 @@ export type EntradaDeCorrida = {
 	valor: string | null;
 };
 
+/** `etiqueta` (y `tipo`, si la regla tiene nombre propio) de una regla para el historial (NEX-613). */
+function nombresDeLaRegla(id: string, datos: DatosNodoOperador): { etiqueta: string; tipo?: string } {
+	return nombrePropioDeRegla(datos) ? { etiqueta: nombreDeRegla(id, datos), tipo: tipoDeRegla(id, datos) } : { etiqueta: nombreDeRegla(id, datos) };
+}
+
 /** Cómo salió una regla. */
 export type ReglaDeCorrida = {
 	id: string;
+	/** Cómo se llama la regla: su nombre propio («Vigencia de la INE», NEX-613) o, sin él, su operador y su número («Igual a #2»). */
 	etiqueta: string;
+	/** Solo si tiene nombre propio (NEX-613): qué regla es («Igual a #2»), para que el detalle diga las dos cosas. */
+	tipo?: string;
 	operador: ClaveOperador;
 	estado: Estado;
 	valor: string | null;
@@ -217,7 +228,7 @@ function origenDe(cable: CableDeLienzo | undefined, nodos: readonly NodoDeLienzo
 	if (origen.type === NODO_CONSTANTE) return `Valor fijo #${numeroDeOperador(origen.id)}`;
 	if (origen.type === NODO_OPERADOR) {
 		const def = operadorDe(String((origen.data as DatosNodoOperador).operador));
-		return def ? `${def.etiqueta} #${numeroDeOperador(origen.id)}` : null;
+		return def ? nombreDeRegla(origen.id, origen.data as DatosNodoOperador) : null;
 	}
 	return null;
 }
@@ -356,16 +367,16 @@ export function correr(prep: Preparacion, medidos: Parecidos = {}, hoy: string =
 			...(ignoraEscritura(n.data) ? [{ etiqueta: 'Al comparar', origen: 'En la regla', valor: COMPARADO_SIN_ESCRITURA }] : [])
 		];
 		if (parecido && (estado === 'pasa' || estado === 'no_pasa')) {
-			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });
+			reglas.push({ id: n.id, ...nombresDeLaRegla(n.id, n.data as DatosNodoOperador), operador: def.clave, estado, valor, texto: textoDeParecido(estado, parecido), parecido: { ...parecido }, entradas });
 			continue;
 		}
 		if (antiguedad && (estado === 'pasa' || estado === 'no_pasa')) {
-			reglas.push({ id: n.id, etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`, operador: def.clave, estado, valor, texto: textoDeAntiguedad(estado, antiguedad), antiguedad: { ...antiguedad }, entradas });
+			reglas.push({ id: n.id, ...nombresDeLaRegla(n.id, n.data as DatosNodoOperador), operador: def.clave, estado, valor, texto: textoDeAntiguedad(estado, antiguedad), antiguedad: { ...antiguedad }, entradas });
 			continue;
 		}
 		reglas.push({
 			id: n.id,
-			etiqueta: `${def.etiqueta} #${numeroDeOperador(n.id)}`,
+			...nombresDeLaRegla(n.id, n.data as DatosNodoOperador),
 			operador: def.clave,
 			estado,
 			valor,

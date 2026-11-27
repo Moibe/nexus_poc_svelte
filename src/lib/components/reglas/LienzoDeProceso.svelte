@@ -112,7 +112,9 @@
 		estadoDeTipoEnLienzo,
 		idNodoDeTipo,
 		motivoDeRechazo,
+		nombreDeRegla,
 		numeroDeOperador,
+		reglasRepetidas,
 		operadorDe,
 		posicionLibre,
 		textoDeMotivo,
@@ -527,9 +529,8 @@
 			sobran
 				.map((e) => {
 					const destino = nodes.find((n) => n.id === e.target);
-					const def = destino ? operadorDe(String((destino.data as DatosNodoOperador).operador)) : undefined;
 					const motivo = motivoDeRechazo(e, nodes, edges.filter((o) => o !== e), tiposDocumentales);
-					return `Se desconectó «Valor fijo #${numeroDeOperador(e.source)}» de «${def?.etiqueta ?? 'la regla'} #${numeroDeOperador(e.target)}»: ${motivo}`;
+					return `Se desconectó «Valor fijo #${numeroDeOperador(e.source)}» de «${nombreDeRegla(e.target, destino?.data as DatosNodoOperador | undefined)}»: ${motivo}`;
 				})
 				.join(' ')
 		);
@@ -570,7 +571,9 @@
 	// antes impedía guardar —un tipo documental (NEX-529), que todos estén activos (2026-11-05), el Resultado (2026-11-03)— y lo que impedía ejecutarlo
 	// —una regla conectada al Resultado— ahora son los MOTIVOS por los que el proceso queda INACTIVO (`motivosDeInactividad`): se avisa antes de guardar
 	// y la lista de procesos los dice junto a «Inactivo». Mientras la biblioteca no está leída no se juzgan los tipos no activos (no se sabe).
-	const puedeGuardar = $derived(sucio && faltaParaGuardar({ nombre }) === null);
+	// NEX-613: dos reglas con el mismo nombre propio no se guardan (el nodo lo marca y la barra lo dice).
+	const repetidas = $derived(reglasRepetidas(nodes));
+	const puedeGuardar = $derived(sucio && faltaParaGuardar({ nombre }) === null && repetidas.size === 0);
 	const biblioteca = $derived(estadoBiblioteca.cargada ? tiposDocumentales : null);
 	const motivos = $derived(motivosDeInactividad({ nodos: nodes, aristas: edges }, biblioteca));
 	/** El dibujo tal como está GUARDADO (al abrir y tras cada guardado): de él sale el estado efectivo de lo guardado. */
@@ -866,6 +869,7 @@
 	puedeBorrar={existe}
 	inactivo={existe && !activoEfectivo ? { motivos: motivosGuardados.map(textoDeMotivo), porIncompleto: inactivoPorIncompleto } : null}
 	{nombreOcupado}
+	reglasRepetidas={repetidas.size > 0}
 	alGuardar={() => void guardar()}
 	alBorrar={() => (dialogo = { tipo: 'borrar' })}
 />

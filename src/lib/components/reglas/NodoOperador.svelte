@@ -22,7 +22,7 @@
 	 * Lo que evaluó el lienzo para todo el grafo (`evaluar`) se lo ofrece a los nodos por contexto: una regla que depende de otra tiene
 	 * que ver el estado y el valor actuales de ésa.
 	 */
-	import { Handle, Position, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
+	import { Handle, Position, useNodes, useSvelteFlow, type Node, type NodeProps } from '@xyflow/svelte';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import Equal from '@lucide/svelte/icons/equal';
 	import X from '@lucide/svelte/icons/x';
@@ -35,6 +35,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import {
 		CLAVE_VEREDICTOS,
+		MAX_NOMBRE_REGLA,
 		SALIDA_RESULTADO,
 		TEXTO_IGNORAR_ESCRITURA,
 		TOPE_MAXIMO_ANTIGUEDAD,
@@ -46,6 +47,8 @@
 		minimoDeParecido,
 		numeroDeOperador,
 		operadorDe,
+		reglasRepetidas,
+		tipoDeRegla,
 		textoDeAntiguedad,
 		textoDeParecido,
 		unidadDeAntiguedad,
@@ -58,6 +61,9 @@
 	let { id, data, selected }: NodeProps<Node<DatosNodoOperador>> = $props();
 
 	const { deleteElements, updateNodeData } = useSvelteFlow();
+	// NEX-613: el nombre propio de la regla. Dos reglas con el mismo nombre no se guardan: el nodo se marca en rojo.
+	const nodosDelLienzo = useNodes();
+	const nombreRepetido = $derived(reglasRepetidas(nodosDelLienzo.current).has(id));
 	const evaluado = getContext<EvaluadoDelLienzo>(CLAVE_VEREDICTOS);
 	/** Lo que llega a cada entrada (un campo, un valor fijo o una regla); lo comparte con los nodos finales. `c` solo existe en «Entre». */
 	const origenDe = usarOrigenes(['a', 'b', 'c']);
@@ -182,6 +188,29 @@
 			>
 				<X class="size-3.5" />
 			</button>
+		</div>
+
+		<!-- NEX-613 (2026-11-26): el nombre de negocio de la regla («Vigencia de la INE»). Opcional; sin él, la regla se llama «Igual a #2» en el
+		     historial, en los avisos y en la búsqueda. -->
+		<div class="border-b border-border px-3 py-2.5">
+			<label for="nombre-regla-{id}" class="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Nombre de la regla (opcional)</label>
+			<input
+				id="nombre-regla-{id}"
+				type="text"
+				data-testid="regla-nombre"
+				maxlength={MAX_NOMBRE_REGLA}
+				placeholder={tipoDeRegla(id, data)}
+				autocomplete="off"
+				value={data.nombre ?? ''}
+				aria-invalid={nombreRepetido || undefined}
+				aria-describedby={nombreRepetido ? `nombre-regla-${id}-repetido` : undefined}
+				class="nodrag nowheel mt-1.5 h-8 w-full rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary {nombreRepetido ? 'border-destructive' : 'border-border'}"
+				oninput={(e) => updateNodeData(id, { nombre: e.currentTarget.value })}
+				onkeydown={(e) => e.stopPropagation()}
+			/>
+			{#if nombreRepetido}
+				<p id="nombre-regla-{id}-repetido" class="mt-1 text-[11px] text-destructive" data-testid="regla-nombre-repetido">Otra regla de este proceso se llama igual. Cambia uno de los dos nombres para guardar.</p>
+			{/if}
 		</div>
 
 		{#each def.entradas as entrada (entrada.id)}
