@@ -2,8 +2,8 @@
 	/**
 	 * Búsqueda · una respuesta en tabla, con todo lo que la acompaña (NEX-607 a 611): cuántos renglones, «Tabla | Gráfica» (NEX-610) y «Exportar CSV»,
 	 * la frase de cómo se entendió la pregunta (con NEX-611 dice además qué se tomó de la pregunta anterior), de dónde salió la consulta (NEX-609), la
-	 * consulta plegada, la tabla ordenable con «Abrir» o la gráfica, «¿Te sirvió?» y, en la última pregunta de la conversación, hasta tres preguntas
-	 * para seguir, que al picarlas se preguntan dentro de la misma conversación.
+	 * consulta plegada (oculta por ahora: `MOSTRAR_CONSULTA_SQL`), la tabla ordenable con «Abrir» o la gráfica, «¿Te sirvió?» y, en la última pregunta
+	 * de la conversación, hasta tres preguntas para seguir, que al picarlas se preguntan dentro de la misma conversación.
 	 *
 	 * Salió del +page.svelte de /busqueda con NEX-611: la página la usa para la última pregunta y para una anterior que se despliega. El orden de la
 	 * tabla y la columna que se grafica son de cada respuesta (`orden`, `medida`); la vista (tabla o gráfica), de toda la página (`vista`).
@@ -33,6 +33,7 @@
 		esColumnaNumerica,
 		formatearCelda,
 		indicesOcultos,
+		MOSTRAR_CONSULTA_SQL,
 		nombreCsv,
 		notaDeOrigen,
 		ordenAlPicar,
@@ -170,7 +171,8 @@
 		{nota}
 	</p>
 {/if}
-{#if r.consulta}
+{#if MOSTRAR_CONSULTA_SQL && r.consulta}
+	<!-- Oculta por ahora (2026-11-26): ver `MOSTRAR_CONSULTA_SQL`. -->
 	<details class="mt-2 max-w-3xl text-sm" data-testid="consulta-usada">
 		<summary class="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Ver la consulta que se usó</summary>
 		<pre

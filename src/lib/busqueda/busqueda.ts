@@ -4,10 +4,18 @@
  *
  * nexus_back contesta `{columnas, filas, hayMas, tope, milisegundos, consulta, explicacion, intentos}`; `filas` son listas en el orden de `columnas`,
  * con fechas como texto `AAAA-MM-DD` o ISO, números como números y bits como booleanos (`servicios/busqueda.py`). Esta pantalla enseña la tabla y
- * cuántos renglones son; la consulta y la explicación ya viajan, pero se enseñan desde NEX-608.
+ * cuántos renglones son; la consulta y la explicación ya viajan, pero se enseñan desde NEX-608 (la consulta, oculta por ahora: `MOSTRAR_CONSULTA_SQL`).
  */
 
 export const MAX_PREGUNTA = 500;
+
+/**
+ * ¿Se le enseña a la persona la consulta SQL con la que se respondió? Por ahora NO (Moibe, 2026-11-26: «por ahora no mostrar las consultas de SQL al
+ * usuario final, pero solo ocúltala porque a mí me puede ser útil»). Apagada, no salen «Ver la consulta que se usó» bajo una respuesta (en /busqueda y
+ * en «Preguntar» del expediente) ni «Ver la consulta» en los Ejemplos de la organización. Solo se oculta: el servidor la sigue mandando y guardando en
+ * la bitácora (`nexus.searchQuestions`), y basta con ponerla en `true` para que vuelva todo como estaba.
+ */
+export const MOSTRAR_CONSULTA_SQL = false;
 
 /** De dónde salió la consulta (NEX-609): el modelo, un ejemplo aprobado por la organización o una pregunta igual que ya había salido bien. */
 export type Origen = 'modelo' | 'ejemplo' | 'anterior';

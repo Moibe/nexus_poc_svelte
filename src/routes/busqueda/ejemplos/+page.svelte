@@ -6,7 +6,8 @@
 	 * si alguien más la marca útil). Un ejemplo aprobado se puede QUITAR, con la confirmación de la casa (`ConfirmarAccion`).
 	 *
 	 * Dos secciones: «Por revisar» (una por pregunta, la más reciente: cuántas veces se hizo, a cuántas personas les sirvió, quién la hizo la última vez,
-	 * la frase de cómo se entendió y la consulta plegada) y «Ejemplos aprobados» (quién lo aprobó, cuándo y cuántas veces se reusó su consulta tal cual).
+	 * la frase de cómo se entendió y la consulta plegada, oculta por ahora: `MOSTRAR_CONSULTA_SQL`) y «Ejemplos aprobados» (quién lo aprobó, cuándo y
+	 * cuántas veces se reusó su consulta tal cual).
 	 *
 	 * Quien no administra ve que esto es de quien administra. Cada acción va a su BFF y después se vuelve a pedir todo (`invalidateAll`); el aviso verde o
 	 * rojo queda arriba, en una región que se anuncia.
@@ -21,7 +22,7 @@
 	import AvisoVerde from '$lib/components/config/AvisoVerde.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ConfirmarAccion } from '$lib/components/ui/confirmar/index.js';
-	import { formatearCelda, nombreDe, resumenDeReusos, resumenDeUso, type EjemploAprobado } from '$lib/busqueda/busqueda';
+	import { formatearCelda, MOSTRAR_CONSULTA_SQL, nombreDe, resumenDeReusos, resumenDeUso, type EjemploAprobado } from '$lib/busqueda/busqueda';
 
 	let { data } = $props();
 
@@ -132,10 +133,12 @@
 						{#if p.explicacion}
 							<p class="mt-2 text-sm text-muted-foreground">{p.explicacion}</p>
 						{/if}
-						<details class="mt-2 text-sm">
-							<summary class="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Ver la consulta</summary>
-							<pre class="mt-1.5 overflow-x-auto rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground select-all">{p.consulta}</pre>
-						</details>
+						{#if MOSTRAR_CONSULTA_SQL}
+							<details class="mt-2 text-sm" data-testid="por-revisar-consulta">
+								<summary class="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Ver la consulta</summary>
+								<pre class="mt-1.5 overflow-x-auto rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground select-all">{p.consulta}</pre>
+							</details>
+						{/if}
 						<div class="mt-4 flex flex-wrap gap-2">
 							<Button size="sm" class="gap-1.5" disabled={ocupado !== null} data-testid="aprobar" onclick={() => aprobar(p.id, p.pregunta)}>
 								<BadgeCheck class="size-3.5" aria-hidden="true" />
@@ -189,10 +192,12 @@
 						{#if e.explicacion}
 							<p class="mt-2 text-sm text-muted-foreground">{e.explicacion}</p>
 						{/if}
-						<details class="mt-2 text-sm">
-							<summary class="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Ver la consulta</summary>
-							<pre class="mt-1.5 overflow-x-auto rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground select-all">{e.consulta}</pre>
-						</details>
+						{#if MOSTRAR_CONSULTA_SQL}
+							<details class="mt-2 text-sm" data-testid="ejemplo-consulta">
+								<summary class="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">Ver la consulta</summary>
+								<pre class="mt-1.5 overflow-x-auto rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground select-all">{e.consulta}</pre>
+							</details>
+						{/if}
 					</li>
 				{/each}
 			</ul>
