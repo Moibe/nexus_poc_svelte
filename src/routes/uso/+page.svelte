@@ -8,6 +8,7 @@
 	 *   · Expedientes: la carpeta de cada cliente o caso y los documentos que reúne. Desde ahí, dentro de cada expediente, se ejecuta un proceso del motor de
 	 *     reglas y se ve su historial de ejecuciones.
 	 *   · Búsqueda (NEX-607, 2026-11-23): preguntar con palabras propias sobre los datos extraídos y ver la respuesta como tabla.
+	 *   · Buscar en documentos (épica 14, 2026-11-28): encontrar el fragmento y la página donde aparece algo, por sentido, en el texto de los documentos.
 	 *
 	 * Ejecuciones tuvo aquí su propio cuadro y su pantalla (2026-10-30 al 2026-11-07); Moibe las quitó («quita ejecuciones de la sección aparte»): ahora viven
 	 * dentro del expediente. Recuperar la pantalla: `git show <commit anterior al 2026-11-07>:src/routes/ejecuciones/+page.svelte`.
@@ -19,6 +20,7 @@
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import MessageCircleQuestion from '@lucide/svelte/icons/message-circle-question-mark';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import FileSearch from '@lucide/svelte/icons/file-search';
 
 	const SECCIONES = [
 		{
@@ -44,6 +46,14 @@
 			icono: MessageCircleQuestion,
 			descripcion:
 				'Pregunta con tus palabras sobre los datos extraídos de los documentos de tu organización y recibe la respuesta como tabla.'
+		},
+		{
+			id: 'buscar-en-documentos',
+			nombre: 'Buscar en documentos',
+			href: '/busqueda/documentos',
+			icono: FileSearch,
+			descripcion:
+				'Encuentra en qué documento y en qué página aparece algo: busca por sentido en el texto de los documentos y te enseña el fragmento.'
 		}
 	];
 </script>

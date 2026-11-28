@@ -83,6 +83,9 @@ const LIMITES: readonly { patron: RegExp; metodo: string; regla: ReglaDeLimite }
 	// «Búsqueda» (NEX-607, 2026-11-23): cada pregunta es una llamada al modelo (dos si corrige) y una consulta a la base. Una persona pregunta, lee y vuelve
 	// a preguntar: 20 por minuto sobra; la IP va holgada por las oficinas que salen por una sola.
 	{ patron: /^\/api\/busqueda\/preguntar$/, metodo: 'POST', regla: { nombre: 'busqueda', usuario: 20, ip: 100 } },
+	// «Buscar en documentos» (épica 14): cada búsqueda nueva pide un vector a Google (fracciones de centavo); filtrar, ordenar o «Cargar más» repiten la
+	// petición pero el back reusa el vector. 60 por minuto por persona deja hojear con calma.
+	{ patron: /^\/api\/busqueda\/documentos$/, metodo: 'POST', regla: { nombre: 'busqueda-documentos', usuario: 60, ip: 300 } },
 	// El servidor le pega a una URL de un tercero (nexus_back ya limita por webhook; esto es el tope por persona).
 	{ patron: /^\/api\/webhooks\/[^/]+\/validar$/, metodo: 'POST', regla: { nombre: 'validar-webhook', usuario: 20, ip: 60 } },
 	// Cada reenvío es un correo.
